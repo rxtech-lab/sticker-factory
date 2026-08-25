@@ -1,0 +1,58 @@
+{
+  "stickerList": {
+    "data": [
+      {
+        "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "title": "Happy cloud",
+        "kind": "animated",
+        "status": "published",
+        "activeRevisionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "createdAt": "2026-08-24T00:00:00.000Z",
+        "updatedAt": "2026-08-24T00:01:00.000Z",
+        "previewAsset": null,
+        "systemSticker": {
+          "assetId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          "mimeType": "image/gif",
+          "byteSize": 482100,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ],
+    "nextCursor": null
+  },
+  "assetDownload": {
+    "url": "https://downloads.example.test/private/signed",
+    "expiresAt": "2026-08-24T00:06:00.000Z",
+    "asset": {
+      "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "stickerId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "kind": "system",
+      "state": "ready",
+      "mimeType": "image/gif",
+      "byteSize": 482100,
+      "width": 408,
+      "height": 408,
+      "frameCount": 60,
+      "durationSeconds": 2,
+      "fps": 30,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hasAlpha": true,
+      "createdAt": "2026-08-24T00:01:00.000Z"
+    }
+  },
+  "chatMessages": {
+    "data": [],
+    "nextBeforeSequence": null
+  },
+  "publishExports": {
+    "revisionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "gifAssetId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "mp4AssetId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    "systemAssetId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "mp4Background": {
+      "type": "linearGradient",
+      "colors": ["#112233", "#445566"],
+      "angleDegrees": 30
+    }
+  }
+}

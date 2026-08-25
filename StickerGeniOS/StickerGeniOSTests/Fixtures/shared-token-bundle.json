@@ -1,0 +1,7 @@
+{
+  "accessToken": "fixture.header.payload.signature",
+  "expiresAt": "2030-01-02T03:04:05Z",
+  "idToken": "fixture.id.token",
+  "refreshToken": "fixture-refresh-token",
+  "subject": "fixture-user"
+}

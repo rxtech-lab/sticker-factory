@@ -1,0 +1,2 @@
+#include "Base.xcconfig"
+STICKER_FACTORY_API_BASE_URL = https:/$()/sticker.rxlab.app
