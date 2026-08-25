@@ -1,0 +1,2802 @@
+[
+  {
+    "name": "empty",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "empty-with-anchor",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "fadeIn-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "fadeIn"
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "value": 1,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "fadeOut-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "fadeOut"
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "value": 0,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "popIn-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "popIn",
+        "from": 0.6
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.6,
+          "y": 0.6,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 1,
+          "y": 1,
+          "easing": "easeInOut"
+        }
+      ],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "value": 1,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "popOut-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "popOut",
+        "to": 0.6
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 1,
+          "y": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 0.6,
+          "y": 0.6,
+          "easing": "easeInOut"
+        }
+      ],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "value": 0,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "slideIn-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "slideIn",
+        "direction": "up",
+        "distance": 0.3
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.5,
+          "y": 0.8,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeInOut"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "value": 1,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "slideOut-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "slideOut",
+        "direction": "left",
+        "distance": 0.3
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 0.8,
+          "y": 0.5,
+          "easing": "easeInOut"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "value": 0,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "moveTo",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "moveTo",
+        "x": 0.2,
+        "y": 0.8
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 0.2,
+          "y": 0.8,
+          "easing": "easeInOut"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "scaleTo",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "scaleTo",
+        "x": 1.6,
+        "y": 0.4
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 1,
+          "y": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 1.6,
+          "y": 0.4,
+          "easing": "easeInOut"
+        }
+      ],
+      "rotation": [],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "rotateTo",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "rotateTo",
+        "degrees": -135
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "degrees": -135,
+          "easing": "easeInOut"
+        }
+      ],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "spin-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "spin",
+        "turns": 1,
+        "direction": "cw"
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "degrees": 360,
+          "easing": "easeInOut"
+        }
+      ],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "wiggle-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "wiggle",
+        "amplitudeDegrees": 8,
+        "cycles": 3
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.0417,
+          "degrees": 8,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.0833,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.125,
+          "degrees": -8,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.1667,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.2083,
+          "degrees": 8,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.25,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.2917,
+          "degrees": -8,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.3333,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.375,
+          "degrees": 8,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.4167,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.4583,
+          "degrees": -8,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.5,
+          "degrees": 0,
+          "easing": "easeInOut"
+        }
+      ],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "pulse-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "pulse",
+        "minScale": 0.92,
+        "maxScale": 1.08,
+        "cycles": 3
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 1,
+          "y": 1,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.0417,
+          "x": 1.08,
+          "y": 1.08,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.0833,
+          "x": 1,
+          "y": 1,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.125,
+          "x": 0.92,
+          "y": 0.92,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.1667,
+          "x": 1,
+          "y": 1,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.2083,
+          "x": 1.08,
+          "y": 1.08,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.25,
+          "x": 1,
+          "y": 1,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.2917,
+          "x": 0.92,
+          "y": 0.92,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.3333,
+          "x": 1,
+          "y": 1,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.375,
+          "x": 1.08,
+          "y": 1.08,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.4167,
+          "x": 1,
+          "y": 1,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.4583,
+          "x": 0.92,
+          "y": 0.92,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 1,
+          "y": 1,
+          "easing": "easeInOut"
+        }
+      ],
+      "rotation": [],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "bounce-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "bounce",
+        "height": 0.12,
+        "bounces": 2
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.125,
+          "x": 0.5,
+          "y": 0.38,
+          "easing": "easeOut"
+        },
+        {
+          "timeSeconds": 0.25,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 0.375,
+          "x": 0.5,
+          "y": 0.428,
+          "easing": "easeOut"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeIn"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "float-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "float",
+        "amplitude": 0.04,
+        "cycles": 2
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.0625,
+          "x": 0.5,
+          "y": 0.46,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.125,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.1875,
+          "x": 0.5,
+          "y": 0.54,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.25,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.3125,
+          "x": 0.5,
+          "y": 0.46,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.375,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.4375,
+          "x": 0.5,
+          "y": 0.54,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeInOut"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "blurIn-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "blurIn",
+        "radius": 8
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [
+        {
+          "timeSeconds": 0,
+          "blurRadius": 8,
+          "hueDegrees": 0,
+          "saturation": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "blurRadius": 0,
+          "hueDegrees": 0,
+          "saturation": 1,
+          "easing": "easeInOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "blurOut-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "blurOut",
+        "radius": 8
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [
+        {
+          "timeSeconds": 0,
+          "blurRadius": 0,
+          "hueDegrees": 0,
+          "saturation": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "blurRadius": 8,
+          "hueDegrees": 0,
+          "saturation": 1,
+          "easing": "easeInOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hueShift",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "hueShift",
+        "degrees": -140
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [
+        {
+          "timeSeconds": 0,
+          "blurRadius": 0,
+          "hueDegrees": 0,
+          "saturation": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "blurRadius": 0,
+          "hueDegrees": -140,
+          "saturation": 1,
+          "easing": "easeInOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "popIn-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.35,
+        "duration": 1.25,
+        "easing": "springBouncy",
+        "type": "popIn",
+        "from": 0.17
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0.35,
+          "x": 0.1275,
+          "y": 0.2125,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.6,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springBouncy"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0.35,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.6,
+          "value": 0.8,
+          "easing": "springBouncy"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "slideIn-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.5,
+        "duration": 0.75,
+        "easing": "easeOut",
+        "type": "slideIn",
+        "direction": "right",
+        "distance": 0.85
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0.5,
+          "x": -0.51,
+          "y": 0.62,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.25,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeOut"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0.5,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.25,
+          "value": 0.8,
+          "easing": "easeOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "spin-ccw",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 3,
+        "easing": "linear",
+        "type": "spin",
+        "turns": 2.75,
+        "direction": "ccw"
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 3,
+          "degrees": -1008,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "wiggle-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.2,
+        "duration": 3.3,
+        "easing": "easeInOut",
+        "type": "wiggle",
+        "amplitudeDegrees": 33,
+        "cycles": 5
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0.2,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.365,
+          "degrees": 15,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.53,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.695,
+          "degrees": -51,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.86,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.025,
+          "degrees": 15,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.19,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.355,
+          "degrees": -51,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.52,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.685,
+          "degrees": 15,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.85,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.015,
+          "degrees": -51,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.18,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.345,
+          "degrees": 15,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.51,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.675,
+          "degrees": -51,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.84,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 3.005,
+          "degrees": 15,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 3.17,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 3.335,
+          "degrees": -51,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 3.5,
+          "degrees": -18,
+          "easing": "easeInOut"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "pulse-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 2.8,
+        "easing": "springSoft",
+        "type": "pulse",
+        "minScale": 0.31,
+        "maxScale": 2.7,
+        "cycles": 4
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 0.175,
+          "x": 2.025,
+          "y": 3.375,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 0.35,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 0.525,
+          "x": 0.2325,
+          "y": 0.3875,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 0.7,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 0.875,
+          "x": 2.025,
+          "y": 3.375,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 1.05,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 1.225,
+          "x": 0.2325,
+          "y": 0.3875,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 1.4,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 1.575,
+          "x": 2.025,
+          "y": 3.375,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 1.75,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 1.925,
+          "x": 0.2325,
+          "y": 0.3875,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 2.1,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 2.275,
+          "x": 2.025,
+          "y": 3.375,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 2.45,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 2.625,
+          "x": 0.2325,
+          "y": 0.3875,
+          "easing": "springSoft"
+        },
+        {
+          "timeSeconds": 2.8,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springSoft"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "bounce-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.1,
+        "duration": 3.5,
+        "easing": "easeInOut",
+        "type": "bounce",
+        "height": 0.37,
+        "bounces": 5
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0.1,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.45,
+          "x": 0.34,
+          "y": 0.25,
+          "easing": "easeOut"
+        },
+        {
+          "timeSeconds": 0.8,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.15,
+          "x": 0.34,
+          "y": 0.398,
+          "easing": "easeOut"
+        },
+        {
+          "timeSeconds": 1.5,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.85,
+          "x": 0.34,
+          "y": 0.4868,
+          "easing": "easeOut"
+        },
+        {
+          "timeSeconds": 2.2,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 2.55,
+          "x": 0.34,
+          "y": 0.54008,
+          "easing": "easeOut"
+        },
+        {
+          "timeSeconds": 2.9,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 3.25,
+          "x": 0.34,
+          "y": 0.57205,
+          "easing": "easeOut"
+        },
+        {
+          "timeSeconds": 3.6,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "float-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 3.6,
+        "easing": "easeIn",
+        "type": "float",
+        "amplitude": 0.23,
+        "cycles": 6
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 0.15,
+          "x": 0.34,
+          "y": 0.39,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 0.3,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 0.45,
+          "x": 0.34,
+          "y": 0.85,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 0.6,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 0.75,
+          "x": 0.34,
+          "y": 0.39,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 0.9,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.05,
+          "x": 0.34,
+          "y": 0.85,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.2,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.35,
+          "x": 0.34,
+          "y": 0.39,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.5,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.65,
+          "x": 0.34,
+          "y": 0.85,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.8,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 1.95,
+          "x": 0.34,
+          "y": 0.39,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 2.1,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 2.25,
+          "x": 0.34,
+          "y": 0.85,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 2.4,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 2.55,
+          "x": 0.34,
+          "y": 0.39,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 2.7,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 2.85,
+          "x": 0.34,
+          "y": 0.85,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 3,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 3.15,
+          "x": 0.34,
+          "y": 0.39,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 3.3,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 3.45,
+          "x": 0.34,
+          "y": 0.85,
+          "easing": "easeIn"
+        },
+        {
+          "timeSeconds": 3.6,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "easeIn"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "blurIn-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.25,
+        "duration": 1.75,
+        "easing": "easeOut",
+        "type": "blurIn",
+        "radius": 17.5
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [
+        {
+          "timeSeconds": 0.25,
+          "blurRadius": 17.5,
+          "hueDegrees": 0,
+          "saturation": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2,
+          "blurRadius": 0,
+          "hueDegrees": 0,
+          "saturation": 1,
+          "easing": "easeOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "clamp-position",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.02,
+        "y": 0.98
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 1,
+        "easing": "easeInOut",
+        "type": "slideIn",
+        "direction": "down",
+        "distance": 1
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.02,
+          "y": -0.02,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "x": 0.02,
+          "y": 0.98,
+          "easing": "easeInOut"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "value": 1,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "clamp-rotation",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 900,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 2,
+        "easing": "easeInOut",
+        "type": "spin",
+        "turns": 3,
+        "direction": "cw"
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": 900,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2,
+          "degrees": 1080,
+          "easing": "easeInOut"
+        }
+      ],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "clamp-scale",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 7,
+        "y": 7
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 1,
+        "easing": "easeInOut",
+        "type": "pulse",
+        "minScale": 0.05,
+        "maxScale": 4,
+        "cycles": 1
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 7,
+          "y": 7,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.25,
+          "x": 8,
+          "y": 8,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 7,
+          "y": 7,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.75,
+          "x": 0.35,
+          "y": 0.35,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1,
+          "x": 7,
+          "y": 7,
+          "easing": "easeInOut"
+        }
+      ],
+      "rotation": [],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "multi-channel",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.6,
+        "easing": "springBouncy",
+        "type": "popIn",
+        "from": 0.6
+      },
+      {
+        "delay": 0.6,
+        "duration": 1.4,
+        "easing": "easeInOut",
+        "type": "wiggle",
+        "amplitudeDegrees": 12,
+        "cycles": 2
+      },
+      {
+        "delay": 2,
+        "duration": 1,
+        "easing": "easeInOut",
+        "type": "hueShift",
+        "degrees": 90
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.45,
+          "y": 0.75,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.6,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "springBouncy"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0.6,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.775,
+          "degrees": -6,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.95,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.125,
+          "degrees": -30,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.3,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.475,
+          "degrees": -6,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.65,
+          "degrees": -18,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.825,
+          "degrees": -30,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2,
+          "degrees": -18,
+          "easing": "easeInOut"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.6,
+          "value": 0.8,
+          "easing": "springBouncy"
+        }
+      ],
+      "effects": [
+        {
+          "timeSeconds": 2,
+          "blurRadius": 0,
+          "hueDegrees": 0,
+          "saturation": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 3,
+          "blurRadius": 0,
+          "hueDegrees": 90,
+          "saturation": 1,
+          "easing": "easeInOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "touching-windows",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 1,
+        "easing": "easeInOut",
+        "type": "fadeIn"
+      },
+      {
+        "delay": 1,
+        "duration": 1,
+        "easing": "easeInOut",
+        "type": "fadeOut"
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "value": 1,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2,
+          "value": 0,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "staggered-entrance",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.25,
+        "y": 0.4
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.4,
+        "duration": 0.6,
+        "easing": "springBouncy",
+        "type": "slideIn",
+        "direction": "up",
+        "distance": 0.4
+      },
+      {
+        "delay": 1,
+        "duration": 2,
+        "easing": "easeInOut",
+        "type": "float",
+        "amplitude": 0.05,
+        "cycles": 2
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0.4,
+          "x": 0.25,
+          "y": 0.8,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "x": 0.25,
+          "y": 0.4,
+          "easing": "springBouncy"
+        },
+        {
+          "timeSeconds": 1.25,
+          "x": 0.25,
+          "y": 0.35,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.5,
+          "x": 0.25,
+          "y": 0.4,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.75,
+          "x": 0.25,
+          "y": 0.45,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2,
+          "x": 0.25,
+          "y": 0.4,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.25,
+          "x": 0.25,
+          "y": 0.35,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.5,
+          "x": 0.25,
+          "y": 0.4,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.75,
+          "x": 0.25,
+          "y": 0.45,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 3,
+          "x": 0.25,
+          "y": 0.4,
+          "easing": "easeInOut"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [
+        {
+          "timeSeconds": 0.4,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "value": 1,
+          "easing": "springBouncy"
+        }
+      ],
+      "effects": []
+    }
+  },
+  {
+    "name": "cycle-cap-2",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": 2,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 3.5,
+        "easing": "easeInOut",
+        "type": "wiggle",
+        "amplitudeDegrees": 20,
+        "cycles": 7
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.4375,
+          "degrees": 20,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.875,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.3125,
+          "degrees": -20,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.75,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.1875,
+          "degrees": 20,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 2.625,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 3.0625,
+          "degrees": -20,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 3.5,
+          "degrees": 0,
+          "easing": "easeInOut"
+        }
+      ],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "cycle-cap-1",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": 1,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 3,
+        "easing": "easeInOut",
+        "type": "bounce",
+        "height": 0.3,
+        "bounces": 6
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.5,
+          "x": 0.5,
+          "y": 0.2,
+          "easing": "easeOut"
+        },
+        {
+          "timeSeconds": 3,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "easeIn"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": []
+    }
+  },
+  {
+    "name": "short-duration-rounding",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 1.7
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.13,
+        "duration": 1.37,
+        "easing": "easeInOut",
+        "type": "wiggle",
+        "amplitudeDegrees": 7,
+        "cycles": 3
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [
+        {
+          "timeSeconds": 0.13,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.2442,
+          "degrees": 7,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.3583,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.4725,
+          "degrees": -7,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.5867,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.7008,
+          "degrees": 7,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.815,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 0.9292,
+          "degrees": -7,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.0433,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.1575,
+          "degrees": 7,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.2717,
+          "degrees": 0,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.3858,
+          "degrees": -7,
+          "easing": "easeInOut"
+        },
+        {
+          "timeSeconds": 1.5,
+          "degrees": 0,
+          "easing": "easeInOut"
+        }
+      ],
+      "opacity": [],
+      "effects": []
+    }
+  }
+]

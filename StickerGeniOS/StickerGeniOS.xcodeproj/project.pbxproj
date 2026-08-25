@@ -11,6 +11,7 @@
 		A00000000000000000000002 /* RxAuthSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000020 /* RxAuthSwiftUI */; };
 		A00000000000000000000003 /* StickerMessages.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* StickerMessages.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B00000000000000000000001 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000002 /* Kingfisher */; };
+		DF2A4294303DD070006910C8 /* AnimatedView in Frameworks */ = {isa = PBXBuildFile; productRef = DF2A4293303DD070006910C8 /* AnimatedView */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -141,6 +142,7 @@
 			files = (
 				B00000000000000000000001 /* Kingfisher in Frameworks */,
 				A00000000000000000000001 /* RxAuthSwift in Frameworks */,
+				DF2A4294303DD070006910C8 /* AnimatedView in Frameworks */,
 				A00000000000000000000002 /* RxAuthSwiftUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -267,6 +269,7 @@
 				B00000000000000000000002 /* Kingfisher */,
 				A00000000000000000000019 /* RxAuthSwift */,
 				A00000000000000000000020 /* RxAuthSwiftUI */,
+				DF2A4293303DD070006910C8 /* AnimatedView */,
 			);
 			productName = StickerGeniOS;
 			productReference = DF2A3E15303C7709006910C8 /* StickerGeniOS.app */;
@@ -360,6 +363,7 @@
 			packageReferences = (
 				B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */,
 				A00000000000000000000018 /* XCRemoteSwiftPackageReference "RxAuthSwift" */,
+				DF2A4292303DD070006910C8 /* XCLocalSwiftPackageReference "packages/AnimatedView" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DF2A3E16303C7709006910C8 /* Products */;
@@ -928,6 +932,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		DF2A4292303DD070006910C8 /* XCLocalSwiftPackageReference "packages/AnimatedView" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = packages/AnimatedView;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A00000000000000000000018 /* XCRemoteSwiftPackageReference "RxAuthSwift" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -962,6 +973,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */;
 			productName = Kingfisher;
+		};
+		DF2A4293303DD070006910C8 /* AnimatedView */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AnimatedView;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
