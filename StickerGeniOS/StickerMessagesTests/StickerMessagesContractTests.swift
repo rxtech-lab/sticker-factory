@@ -134,28 +134,81 @@ struct StickerMessagesContractTests {
     }
 
     @MainActor
-    @Test("Browser exposes verified local stickers through Apple's system interaction controller")
-    func stickerBrowserUsesSystemTapAndPeelController() throws {
+    @Test("Grid routes taps to an injectable insert handler and manages the animation lifecycle")
+    func stickerGridRoutesTapsToInsertHandler() throws {
         let data = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 300)).pngData { context in
             UIColor.systemPurple.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 300, height: 300))
         }
-        let fileURL = FileManager.default.temporaryDirectory.appending(path: "messages-browser-\(UUID().uuidString).png")
+        let fileURL = FileManager.default.temporaryDirectory.appending(path: "messages-grid-\(UUID().uuidString).png")
         try data.write(to: fileURL, options: .atomic)
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
-        let controller = StickerBrowserViewController()
+        let controller = StickerGridViewController()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
         controller.loadViewIfNeeded()
+
+        var inserted: [String] = []
+        // The seam that stands in for MSConversation, which is unavailable in a unit test.
+        controller.onSelect = { inserted.append($0.localizedDescription) }
+
         controller.replaceStickers(with: [
             .init(stickerID: "sticker", assetID: "asset", title: "Purple", fileURL: fileURL, updatedAt: Date()),
         ])
+        controller.view.layoutIfNeeded()
 
-        #expect(controller is MSStickerBrowserViewController)
-        #expect(controller.numberOfStickers(in: controller.stickerBrowserView) == 1)
-        _ = controller.stickerBrowserView(controller.stickerBrowserView, stickerAt: 0)
         #expect(controller.view.accessibilityIdentifier == "sticker-factory-messages-browser")
-        // Tap-to-insert and peel/drag are owned by MSStickerBrowserViewController;
-        // the physical gestures remain part of the real-device release check.
+        #expect(controller.stickerCount == 1)
+
+        controller.selectSticker(at: 0)
+        #expect(inserted == ["Purple"])
+        controller.selectSticker(at: 99)
+        #expect(inserted == ["Purple"])
+
+        let indexPath = IndexPath(item: 0, section: 0)
+        let cell = try #require(
+            controller.collectionView(controller.collectionView, cellForItemAt: indexPath) as? StickerCell
+        )
+        #expect(cell.accessibilityLabel == "Purple")
+        #expect(cell.isAccessibilityElement)
+        #expect(cell.displayedStickerFileURL == fileURL)
+
+        // Assert our tracked intent, not MSStickerView.isAnimating(): a static PNG has an
+        // animationDuration of zero and reports false even after startAnimating().
+        controller.resumeAnimations()
+        controller.collectionView(controller.collectionView, willDisplay: cell, forItemAt: indexPath)
+        #expect(cell.animationRequested)
+        controller.collectionView(controller.collectionView, didEndDisplaying: cell, forItemAt: indexPath)
+        #expect(!cell.animationRequested)
+
+        controller.collectionView(controller.collectionView, willDisplay: cell, forItemAt: indexPath)
+        cell.prepareForReuse()
+        #expect(!cell.animationRequested)
+        #expect(cell.displayedStickerFileURL == nil)
+        // Peel/drag stays owned by MSStickerView and remains part of the real-device check.
+    }
+
+    @Test("Insert failures in a non-Messages host surface the peel/drag hint")
+    func insertPolicyMapsContextRejectionToDragHint() {
+        #expect(StickerInsertPolicy.outcome(domain: nil, code: nil) == .inserted)
+        #expect(StickerInsertPolicy.outcome(
+            domain: MSMessagesErrorDomain,
+            code: MSMessageErrorCode.apiUnavailableInPresentationContext.rawValue
+        ) == .unavailableInContext)
+        #expect(StickerInsertPolicy.outcome(
+            domain: MSStickersErrorDomain,
+            code: MSMessageErrorCode.apiUnavailableInPresentationContext.rawValue
+        ) == .unavailableInContext)
+        #expect(StickerInsertPolicy.outcome(
+            domain: MSStickersErrorDomain,
+            code: MSMessageErrorCode.stickerFileImproperFileSize.rawValue
+        ) == .failed)
+
+        #expect(StickerInsertPolicy.hint(for: .inserted, context: .media) == nil)
+        #expect(StickerInsertPolicy.hint(for: .noConversation, context: .media)?
+            .contains("Press and hold") == true)
+        #expect(StickerInsertPolicy.hint(for: .unavailableInContext, context: .messages)?
+            .contains("Press and hold") == true)
     }
 }
 

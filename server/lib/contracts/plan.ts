@@ -141,6 +141,9 @@ export function planLayerAnchor(layer: PlanLayerV1): AnimationAnchorV1 {
     scale: { x: layer.scaleX, y: layer.scaleY },
     rotationDegrees: layer.rotationDegrees,
     opacity: 1,
+    // A plan never trims: draw-on is authored as a spec, not as a resting window, so a planned
+    // layer always starts out showing its whole path.
+    trim: { start: 0, end: 1 },
   };
 }
 

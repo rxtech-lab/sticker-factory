@@ -18,9 +18,18 @@ export const StickerEasingV1Schema = z.enum([
   "springBouncy",
 ]);
 
+/**
+ * The longest a sticker may run.
+ *
+ * v1 capped this at 4s. v2 widens it to 30 to match `AnimatedDocument.durationRange` on the Swift
+ * side — the two compilers must accept exactly the same inputs or a document authored on one would
+ * be rejected by the other.
+ */
+export const MAX_TIME_SECONDS = 30;
+
 const KeyframeBaseSchema = z.object({
   /** Absolute time in seconds from the beginning of the sticker. */
-  timeSeconds: z.number().min(0).max(4),
+  timeSeconds: z.number().min(0).max(MAX_TIME_SECONDS),
   /**
    * Governs the segment *ending* at this keyframe.
    *
@@ -55,12 +64,31 @@ export const EffectKeyframeV1Schema = KeyframeBaseSchema.extend({
   saturation: z.number().min(0).max(2).default(1),
 }).strict();
 
+/**
+ * A normalized window over a path's length, driving draw-on animation.
+ *
+ * `start`/`end` are fractions of the total length, mirroring SwiftUI's `Shape.trim(from:to:)`, so a
+ * `0 → 1` sweep of `end` is a stroke drawing itself on. Layers with no geometry to trim — images,
+ * text, particles — ignore the channel entirely.
+ */
+export const TrimKeyframeV1Schema = KeyframeBaseSchema.extend({
+  start: z.number().min(0).max(1).default(0),
+  end: z.number().min(0).max(1).default(1),
+}).strict();
+
 export const LayerAnimationV1Schema = z.object({
   position: z.array(PositionKeyframeV1Schema).max(32).default([]),
   scale: z.array(ScaleKeyframeV1Schema).max(32).default([]),
   rotation: z.array(RotationKeyframeV1Schema).max(32).default([]),
   opacity: z.array(OpacityKeyframeV1Schema).max(32).default([]),
   effects: z.array(EffectKeyframeV1Schema).max(32).default([]),
+  /**
+   * The sixth channel, added in v2.
+   *
+   * Defaulted rather than required so documents stored before it existed keep parsing — the same
+   * additive-field convention `anchor` and `animations` already rely on.
+   */
+  trim: z.array(TrimKeyframeV1Schema).max(32).default([]),
 }).strict();
 
 export const EMPTY_LAYER_ANIMATION = {
@@ -69,12 +97,13 @@ export const EMPTY_LAYER_ANIMATION = {
   rotation: [],
   opacity: [],
   effects: [],
+  trim: [],
 } as const;
 
 /**
- * The five channels a spec can write, named exactly as `LayerAnimationV1` keys.
+ * The six channels a spec can write, named exactly as `LayerAnimationV1` keys.
  */
-export const ANIMATION_CHANNELS = ["position", "scale", "rotation", "opacity", "effects"] as const;
+export const ANIMATION_CHANNELS = ["position", "scale", "rotation", "opacity", "effects", "trim"] as const;
 export type AnimationChannel = (typeof ANIMATION_CHANNELS)[number];
 
 /**
@@ -89,8 +118,8 @@ export type AnimationChannel = (typeof ANIMATION_CHANNELS)[number];
  * interpolator cannot express — two keyframes cannot share a timestamp.
  */
 const SpecBaseSchema = z.object({
-  delay: z.number().min(0).max(4).default(0),
-  duration: z.number().min(0.05).max(4).default(0.5),
+  delay: z.number().min(0).max(MAX_TIME_SECONDS).default(0),
+  duration: z.number().min(0.05).max(MAX_TIME_SECONDS).default(0.5),
   easing: StickerEasingV1Schema.default("easeInOut"),
 });
 
@@ -179,6 +208,25 @@ export const AnimationSpecV1Schema = z.discriminatedUnion("type", [
     type: z.literal("hueShift"),
     degrees: z.number().min(-180).max(180),
   }).strict(),
+
+  // --- path drawing (v2) -------------------------------------------------------------------
+  //
+  // These write the `trim` channel and only mean anything on a layer that has a path: shapes with
+  // a stroke, and SVG layers in vector render mode.
+  SpecBaseSchema.extend({
+    type: z.literal("drawOn"),
+    /** Where the stroke starts from, as a fraction of its length. */
+    from: z.number().min(0).max(1).default(0),
+  }).strict(),
+  SpecBaseSchema.extend({
+    type: z.literal("drawOff"),
+    to: z.number().min(0).max(1).default(1),
+  }).strict(),
+  SpecBaseSchema.extend({
+    type: z.literal("trimTo"),
+    start: z.number().min(0).max(1).default(0),
+    end: z.number().min(0).max(1).default(1),
+  }).strict(),
 ]);
 
 export const AnimationSpecsV1Schema = z.array(AnimationSpecV1Schema).max(12);
@@ -191,6 +239,7 @@ export type ScaleKeyframeV1 = z.infer<typeof ScaleKeyframeV1Schema>;
 export type RotationKeyframeV1 = z.infer<typeof RotationKeyframeV1Schema>;
 export type OpacityKeyframeV1 = z.infer<typeof OpacityKeyframeV1Schema>;
 export type EffectKeyframeV1 = z.infer<typeof EffectKeyframeV1Schema>;
+export type TrimKeyframeV1 = z.infer<typeof TrimKeyframeV1Schema>;
 
 /**
  * Which channels each spec type writes.
@@ -217,6 +266,9 @@ export const SPEC_CHANNELS: Record<AnimationSpecType, readonly AnimationChannel[
   blurIn: ["effects"],
   blurOut: ["effects"],
   hueShift: ["effects"],
+  drawOn: ["trim"],
+  drawOff: ["trim"],
+  trimTo: ["trim"],
 };
 
 /** Specs sampled over a curve, whose sample density the budget allocator may reduce. */
@@ -228,6 +280,14 @@ export type AnimationAnchorV1 = {
   scale: { x: number; y: number };
   rotationDegrees: number;
   opacity: number;
+  /**
+   * Added in v2, alongside the trim channel.
+   *
+   * Required in the type even though the schema defaults it: on the wire a v1 anchor simply has no
+   * `trim` key and picks up `{0, 1}`, but in code an anchor with an unstated resting window is a
+   * value the compiler would have to guess at.
+   */
+  trim: { start: number; end: number };
 };
 
 /**
@@ -241,7 +301,16 @@ export const DEFAULT_ANCHOR: AnimationAnchorV1 = {
   scale: { x: 1, y: 1 },
   rotationDegrees: 0,
   opacity: 1,
+  trim: { start: 0, end: 1 },
 };
+
+/** The resting trim of a layer that has never been trimmed: the whole path. */
+export const DEFAULT_TRIM = { start: 0, end: 1 } as const;
+
+/** An anchor's trim, tolerating a value decoded from a v1 payload that predates the field. */
+export function anchorTrim(anchor: AnimationAnchorV1): { start: number; end: number } {
+  return anchor.trim ?? DEFAULT_TRIM;
+}
 
 /** Total seconds a spec occupies, measured from t=0. */
 export function specEndSeconds(spec: AnimationSpecV1): number {

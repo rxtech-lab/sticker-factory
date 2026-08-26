@@ -42,12 +42,18 @@ All state-changing endpoints require `Idempotency-Key`. JSON bodies are content-
 - `GET/DELETE /api/v1/stickers/{id}`
 - `GET/POST /api/v1/stickers/{id}/chat/messages`
 - `POST /api/v1/stickers/{id}/chat/messages/{messageId}/retry`
+- `POST /api/v1/stickers/{id}/revisions` — saves a client-edited document as a new accepted revision
 - `POST /api/v1/stickers/{id}/revisions/{revisionId}/{accept|reject|revert}`
 - `POST /api/v1/stickers/{id}/exports`
 - `POST /api/v1/uploads`
 - `POST /api/v1/uploads/{assetId}/complete`
 - `GET /api/v1/assets/{assetId}/download`
 - `GET /api/v1/jobs/{jobId}/events` (replayable SSE with `Last-Event-ID`)
+
+A saved edit arrives already accepted — the user has seen exactly what they made, so there is no
+candidate to review — and its revision id is derived from the idempotency key, so a retried save
+replays rather than forking the revision chain. It carries no renditions, so a previously published
+sticker drops back to `draft` until it is exported again.
 
 The list envelope exposes an ownership-checked `systemSticker` rendition for Messages. Downloads return `{ url, expiresAt, asset }`. SSE emits only persisted schema-valid events and complete document snapshots; terminal reconnects also receive `X-Job-State` so an already-consumed terminal event is never duplicated.
 

@@ -6,7 +6,7 @@ import {
   planLayerAnchor,
   PlanV1Schema,
 } from "@/lib/contracts/plan";
-import { StickerDocumentV1Schema } from "@/lib/contracts/sticker";
+import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { derivedAssetId } from "@/lib/services/assets";
 
 const uuid = z.string().uuid();
@@ -156,7 +156,10 @@ describe("plan animations", () => {
 
   it("derives the anchor from the plan layout", () => {
     const parsed = PlanV1Schema.parse(plan());
+    // The anchor gained a resting trim window in v2. A plan never trims — draw-on is authored as a
+    // spec — so a planned layer always starts out showing its whole path.
     expect(planLayerAnchor(parsed.layers[0])).toEqual({
+      trim: { start: 0, end: 1 },
       position: { x: 0.3, y: 0.5 },
       scale: { x: 0.4, y: 0.6 },
       rotationDegrees: 0,
@@ -169,7 +172,7 @@ describe("planned layout compiles into a valid document", () => {
   function documentFrom(kind: "static" | "animated") {
     const parsed = PlanV1Schema.parse(plan({ kind }));
     const compiled = compilePlanAnimations(parsed);
-    return StickerDocumentV1Schema.parse({
+    return StickerDocumentSchema.parse({
       version: 1,
       canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
       mp4Background: { type: "solid", color: "#FFFFFF" },

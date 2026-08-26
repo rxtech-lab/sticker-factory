@@ -1,3 +1,4 @@
+import AnimatedView
 import SwiftUI
 import UIKit
 

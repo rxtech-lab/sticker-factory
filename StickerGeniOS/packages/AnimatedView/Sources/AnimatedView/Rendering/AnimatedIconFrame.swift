@@ -12,21 +12,52 @@ public struct AnimatedIconFrame: View {
     /// image, a glyph, a shape, or an SVG. Anything that lays out or previews a document — a plan
     /// card's schematic, a server-side layout check — has to use this same number or the preview
     /// and the render disagree.
-    public static let layerFit: CGFloat = 0.86
+    /// `nonisolated` so the editor's pure geometry — which must compile and be tested off the main
+    /// actor — can share this exact number rather than keeping a second copy of it that could drift.
+    public nonisolated static let layerFit: CGFloat = 0.86
 
     public var document: AnimatedDocument
     /// Wall-clock seconds since playback started. Loop mapping and `speed` are applied internally.
     public var time: Double
     public var assets: any AnimatedAssetProvider
 
+    /// Set when the caller already holds a position inside the authored timeline, bypassing
+    /// `mappedTime`. See ``init(document:documentTime:assets:)``.
+    private var resolvedDocumentTime: Double?
+
     public init(document: AnimatedDocument, time: Double, assets: any AnimatedAssetProvider = EmptyAnimatedAssets()) {
         self.document = document
         self.time = time
         self.assets = assets
+        self.resolvedDocumentTime = nil
     }
 
-    private var documentTime: Double {
-        AnimationInterpolator.mappedTime(time, document: document)
+    /// Renders one explicit instant of the *authored* timeline.
+    ///
+    /// The difference from `init(document:time:)` matters as soon as `speed` is not 1.
+    /// `AnimationInterpolator.mappedTime` multiplies wall-clock time by `speed` on the way in, so a
+    /// caller holding a document time — an editor playhead, a keyframe's `timeSeconds`, a filmstrip
+    /// tick — would have it scaled a second time and land on the wrong frame.
+    ///
+    /// `documentTime` is used verbatim: no `speed`, no loop wrapping. Anything outside
+    /// `0...durationSeconds` simply clamps to the nearest keyframe, the way the interpolator
+    /// already treats times beyond the ends of a channel.
+    public init(
+        document: AnimatedDocument,
+        documentTime: Double,
+        assets: any AnimatedAssetProvider = EmptyAnimatedAssets()
+    ) {
+        self.document = document
+        self.time = documentTime
+        self.assets = assets
+        self.resolvedDocumentTime = documentTime
+    }
+
+    /// The instant this frame samples, after whichever time convention it was built with.
+    /// Internal rather than private so tests can pin down that the two initialisers differ exactly
+    /// where they should.
+    var documentTime: Double {
+        resolvedDocumentTime ?? AnimationInterpolator.mappedTime(time, document: document)
     }
 
     public var body: some View {

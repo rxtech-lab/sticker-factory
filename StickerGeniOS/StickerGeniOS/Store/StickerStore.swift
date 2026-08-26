@@ -1,3 +1,4 @@
+import AnimatedView
 import Foundation
 import Observation
 
@@ -29,7 +30,7 @@ final class StickerStore {
     private(set) var messages: [String: [ChatMessage]] = [:]
     private(set) var nextMessageBeforeSequence: [String: Int] = [:]
     private(set) var jobs: [String: StickerJobState] = [:]
-    private(set) var streamingDocuments: [String: StickerDocumentV1] = [:]
+    private(set) var streamingDocuments: [String: AnimatedDocument] = [:]
     private(set) var computingStickerIDs: Set<String> = []
     private(set) var stoppingStickerIDs: Set<String> = []
     var isLoading = false
@@ -311,6 +312,34 @@ final class StickerStore {
             markStreamingTools(stickerID: stickerID, jobID: state.jobID, status: .failed)
         }
         await loadMessages(stickerID: stickerID)
+    }
+
+    /// Saves a document edited on device as a new revision.
+    ///
+    /// Unlike `transition`, a failure here is rethrown rather than parked in `errorMessage`: the
+    /// editor is still on screen holding the only copy of the edit, and it needs to keep it and say
+    /// so rather than silently dismissing.
+    @discardableResult
+    func saveEditedDocument(
+        stickerID: String,
+        parentRevisionID: String,
+        document: AnimatedDocument,
+        note: String? = nil
+    ) async throws -> SaveEditedDocumentResponse {
+        let response = try await api.saveEditedDocument(
+            stickerID: stickerID,
+            request: .init(parentRevisionId: parentRevisionID, document: document, note: note),
+            // A fresh key per attempt, not per session: the server hashes the whole body against
+            // it, so reusing one for a changed document is a conflict rather than a save.
+            idempotencyKey: UUID().uuidString
+        )
+        details[stickerID] = try await api.sticker(id: stickerID)
+        // The edit shows up in the transcript as its own message, and it retires any candidate it
+        // moved past, so both have to be re-read rather than patched locally.
+        streamingDocuments[stickerID] = nil
+        await loadMessages(stickerID: stickerID)
+        await refresh()
+        return response
     }
 
     func transition(stickerID: String, revisionID: String, action: RevisionAction) async throws {

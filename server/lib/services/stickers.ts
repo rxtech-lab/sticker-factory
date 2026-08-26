@@ -1,10 +1,12 @@
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import type {
   CreateStickerRequest,
   PostChatMessageRequest,
   PublishExportsRequest,
+  SaveEditedDocumentRequest,
 } from "@/lib/contracts/api";
-import { StickerDocumentV1Schema, type StickerDocumentV1 } from "@/lib/contracts/sticker";
+import { EXPORT_LOOP_HOLD_SECONDS, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import {
   assets,
@@ -70,24 +72,44 @@ export async function assertOwnedSticker(db: Database, ownerId: string, stickerI
   return sticker;
 }
 
-async function serializeSticker(db: Database, sticker: typeof stickers.$inferSelect) {
-  const revision = sticker.activeRevisionId
-    ? await db.select().from(stickerRevisions).where(and(
-      eq(stickerRevisions.id, sticker.activeRevisionId),
-      eq(stickerRevisions.stickerId, sticker.id),
-    )).get()
-    : undefined;
-  const systemAsset = revision?.systemAssetId
-    ? await db.select().from(assets).where(eq(assets.id, revision.systemAssetId)).get()
-    : undefined;
-  const previewAssetId = revision
-    ? revision.kind === "animated"
-      ? revision.gifAssetId ?? revision.systemAssetId ?? revision.previewAssetId ?? revision.masterAssetId
-      : revision.pngAssetId ?? revision.previewAssetId ?? revision.masterAssetId
-    : undefined;
-  const previewAsset = previewAssetId
-    ? await db.select().from(assets).where(eq(assets.id, previewAssetId)).get()
-    : undefined;
+const systemAssets = alias(assets, "system_assets");
+const previewAssets = alias(assets, "preview_assets");
+
+/**
+ * The asset a client shows for a revision, as SQL so the summary join can resolve it in the same
+ * round trip. Mirrors the per-kind fallback chain the clients expect: animated prefers the GIF,
+ * static prefers the PNG, and both fall back through the preview to the master.
+ */
+const previewAssetIdSql = sql`case when ${stickerRevisions.kind} = 'animated' then coalesce(${stickerRevisions.gifAssetId}, ${stickerRevisions.systemAssetId}, ${stickerRevisions.previewAssetId}, ${stickerRevisions.masterAssetId}) else coalesce(${stickerRevisions.pngAssetId}, ${stickerRevisions.previewAssetId}, ${stickerRevisions.masterAssetId}) end`;
+
+/**
+ * A sticker plus its active revision's system and preview assets, resolved in one statement.
+ *
+ * The database lives in a single region, so every extra `select` costs a full round trip from the
+ * function. Walking sticker -> revision -> asset -> asset per row made a 30-item page 90+ chained
+ * queries; the joins below keep it at one regardless of page size.
+ */
+function selectStickerSummaries(db: Database) {
+  return db.select({
+    sticker: stickers,
+    systemAsset: systemAssets,
+    previewAsset: previewAssets,
+  }).from(stickers)
+    .leftJoin(stickerRevisions, and(
+      eq(stickerRevisions.id, stickers.activeRevisionId),
+      eq(stickerRevisions.stickerId, stickers.id),
+    ))
+    .leftJoin(systemAssets, eq(systemAssets.id, stickerRevisions.systemAssetId))
+    .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql));
+}
+
+type StickerSummaryRow = {
+  sticker: typeof stickers.$inferSelect;
+  systemAsset: typeof assets.$inferSelect | null;
+  previewAsset: typeof assets.$inferSelect | null;
+};
+
+function serializeStickerSummary({ sticker, systemAsset, previewAsset }: StickerSummaryRow) {
   return {
     id: sticker.id,
     title: sticker.title,
@@ -106,6 +128,11 @@ async function serializeSticker(db: Database, sticker: typeof stickers.$inferSel
   };
 }
 
+async function serializeSticker(db: Database, sticker: typeof stickers.$inferSelect) {
+  const row = await selectStickerSummaries(db).where(eq(stickers.id, sticker.id)).get();
+  return serializeStickerSummary(row ?? { sticker, systemAsset: null, previewAsset: null });
+}
+
 export async function listStickers(
   db: Database,
   ownerId: string,
@@ -120,13 +147,13 @@ export async function listStickers(
     lt(stickers.updatedAt, new Date(cursor.updatedAt)),
     and(eq(stickers.updatedAt, new Date(cursor.updatedAt)), lt(stickers.id, cursor.id)),
   )!);
-  const rows = await db.select().from(stickers).where(and(...conditions))
+  const rows = await selectStickerSummaries(db).where(and(...conditions))
     .orderBy(desc(stickers.updatedAt), desc(stickers.id)).limit(limit + 1);
   const page = rows.slice(0, limit);
   return {
-    data: await Promise.all(page.map((row) => serializeSticker(db, row))),
+    data: page.map(serializeStickerSummary),
     nextCursor: rows.length > limit && page.length > 0
-      ? encodeCursor({ updatedAt: page.at(-1)!.updatedAt.toISOString(), id: page.at(-1)!.id })
+      ? encodeCursor({ updatedAt: page.at(-1)!.sticker.updatedAt.toISOString(), id: page.at(-1)!.sticker.id })
       : null,
   };
 }
@@ -308,7 +335,7 @@ export async function getSticker(db: Database, ownerId: string, stickerId: strin
       parentRevisionId: revision.parentRevisionId,
       sourceMessageId: revision.sourceMessageId,
       candidateState: revision.candidateState,
-      document: StickerDocumentV1Schema.parse(revision.documentJson),
+      document: StickerDocumentSchema.parse(revision.documentJson),
       masterAssetId: revision.masterAssetId,
       previewAssetId: revision.previewAssetId,
       pngAssetId: revision.pngAssetId,
@@ -334,38 +361,73 @@ function revisionHasPublishedExports(revision: typeof stickerRevisions.$inferSel
     : revision.gifAssetId && revision.mp4AssetId));
 }
 
+/** A play-once export has no repeat to separate, so nothing is held. */
+function exportHoldSeconds(loop: StickerDocument["loop"]): number {
+  return loop === "once" ? 0 : EXPORT_LOOP_HOLD_SECONDS;
+}
+
+/** What an export of `document` occupies on a timeline: the motion cycle plus the loop hold. */
+export function expectedRenditionDuration(document: Extract<StickerDocument, { kind: "animated" }>): number {
+  return document.durationSeconds * (document.loop === "pingPong" ? 2 : 1) + exportHoldSeconds(document.loop);
+}
+
 export function validateAnimatedRenditionTiming(
-  document: Extract<StickerDocumentV1, { kind: "animated" }>,
+  document: Extract<StickerDocument, { kind: "animated" }>,
   rendition: Pick<typeof assets.$inferSelect, "kind" | "frameCount" | "durationSeconds" | "fps">,
 ): void {
   if (!rendition.frameCount || !rendition.durationSeconds || !rendition.fps) {
     throw new ApiError(422, "EXPORT_TIMING_UNVERIFIED", "Every animated rendition must have verified frame timing metadata");
   }
-  const expectedDuration = document.durationSeconds * (document.loop === "pingPong" ? 2 : 1);
-  if (Math.abs(rendition.frameCount - expectedDuration * rendition.fps) > 1.01) {
+  // `speed` divides elapsed time on the way into the interpolator rather than rewriting keyframes,
+  // so a document at 2x plays its authored duration in half the wall clock. Exports are wall clock,
+  // so the cycle they must match is the authored duration divided by speed — missing this rejects
+  // every correctly rendered export of a document that is not playing at 1x.
+  const playbackSeconds = document.durationSeconds / Math.max(document.speed, 0.0001);
+  const cycleSeconds = playbackSeconds * (document.loop === "pingPong" ? 2 : 1);
+  const expectedDuration = cycleSeconds + exportHoldSeconds(document.loop);
+
+  // The hold is extra display time on a frame that already exists, so the frame grid still spans
+  // exactly the motion cycle. Inspection reports fps as frameCount/durationSeconds, which the hold
+  // drags below the grid the frames were rendered on — recover the grid before comparing to it.
+  const gridFps = rendition.frameCount / cycleSeconds;
+
+  // gif and mp4 are rendered at the document's own fps. The system rendition walks a quality ladder
+  // down to 8 fps to fit under 500 KB, so it is a range rather than a value.
+  const fpsMatches = rendition.kind === "system"
+    ? gridFps >= Math.min(document.fps, 8) - 0.5 && gridFps <= document.fps + 0.75
+    : Math.abs(gridFps - document.fps) <= 0.75;
+  if (!fpsMatches) throw new ApiError(422, "EXPORT_FPS_MISMATCH", "Animated rendition FPS does not match the accepted document");
+
+  // Only the ladder renditions get to pick their own grid, so everything else has an exact count to
+  // hit. This is what catches a frame dropped or duplicated at the ends of the cycle.
+  if (rendition.kind !== "system" && Math.abs(rendition.frameCount - Math.ceil(cycleSeconds * document.fps)) > 1.01) {
     throw new ApiError(422, "EXPORT_FRAME_COUNT_MISMATCH", "Animated rendition frame count does not match the accepted document cycle");
   }
-  const durationTolerance = rendition.kind === "system" ? 1 / rendition.fps + 0.01 : 1 / document.fps + 0.01;
+  const durationTolerance = 1 / gridFps + 0.01;
   if (Math.abs(rendition.durationSeconds - expectedDuration) > durationTolerance) {
-    throw new ApiError(422, "EXPORT_DURATION_MISMATCH", "Animated rendition duration does not match the accepted document cycle");
+    throw new ApiError(422, "EXPORT_DURATION_MISMATCH", "Animated rendition duration does not match the accepted document cycle and loop hold");
   }
-  const fpsMatches = rendition.kind === "system"
-    ? rendition.fps >= Math.min(document.fps, 8) - 0.5 && rendition.fps <= document.fps + 0.75
-    : Math.abs(rendition.fps - document.fps) <= 0.75;
-  if (!fpsMatches) throw new ApiError(422, "EXPORT_FPS_MISMATCH", "Animated rendition FPS does not match the accepted document");
 }
 
-async function validateDocumentAssetReferences(
+export async function validateDocumentAssetReferences(
   db: Database,
   ownerId: string,
   stickerId: string,
-  document: StickerDocumentV1,
+  document: StickerDocument,
   additionalAssetIds: string[] = [],
 ): Promise<Map<string, typeof assets.$inferSelect>> {
   const imageLayers = document.layers.filter((layer): layer is Extract<typeof layer, { type: "image" }> => layer.type === "image");
+  // v2 grew two more places a document can name an asset. Both are ownership holes if missed: an
+  // svg layer can reference uploaded artwork, and the artwork background can reference an image.
+  const svgAssetIds = document.layers.flatMap((layer) => (
+    layer.type === "svg" && layer.source.kind === "asset" ? [layer.source.assetId] : []
+  ));
+  const backgroundAssetIds = document.background.type === "image" ? [document.background.assetId] : [];
   const ids = [...new Set([
     ...additionalAssetIds,
     ...imageLayers.flatMap((layer) => [layer.assetId, ...(layer.maskAssetId ? [layer.maskAssetId] : [])]),
+    ...svgAssetIds,
+    ...backgroundAssetIds,
   ])];
   const rows = await getReadyOwnedAssets(db, ownerId, ids);
   const byId = new Map(rows.map((asset) => [asset.id, asset]));
@@ -402,8 +464,19 @@ async function animationBaseRejection(
   baseRevision?: typeof stickerRevisions.$inferSelect,
 ): Promise<{ reason: string; detail?: Record<string, unknown> } | undefined> {
   if (!baseRevision) return { reason: "no_base_revision" };
-  if (!sticker.activeRevisionId) return { reason: "sticker_has_no_active_revision" };
+  if (baseRevision.stickerId !== sticker.id) {
+    return { reason: "base_revision_other_sticker", detail: { baseStickerId: baseRevision.stickerId } };
+  }
   if (baseRevision.kind !== "animated") return { reason: "base_revision_not_animated" };
+  // A version the user already turned down, or one a later accept swept aside. Acceptance is no
+  // longer the gate, so staleness has to be refused in its own right rather than falling out of it.
+  if (baseRevision.candidateState !== "accepted" && baseRevision.candidateState !== "candidate") {
+    return { reason: "base_revision_decided", detail: { candidateState: baseRevision.candidateState } };
+  }
+  // Nothing has been kept yet, so the project is a single live branch and this candidate is all
+  // there is. This is the "generate, look at it, ask for motion" case: waiting for an accept would
+  // make the user decide about the artwork before they are allowed to see it move.
+  if (!sticker.activeRevisionId) return undefined;
   const activeRevisionId = sticker.activeRevisionId;
   const active = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, activeRevisionId),
@@ -416,6 +489,10 @@ async function animationBaseRejection(
   if (active.kind !== "animated") return { reason: "active_revision_not_animated", detail: { activeKind: active.kind } };
   if (baseRevision.id === active.id) return undefined;
 
+  // Walk the parents back to the kept revision. Every hop must still be a live candidate — that is
+  // what stops a request branching off a version the user has already turned down. What produced
+  // each hop no longer matters: a candidate from a generate, an edit, or a plan build is as
+  // animatable as one from an earlier animation turn.
   let current: typeof stickerRevisions.$inferSelect = baseRevision;
   const visited = new Set<string>();
   const walked: string[] = [];
@@ -425,17 +502,8 @@ async function animationBaseRejection(
     if (current.candidateState !== "candidate") {
       return { reason: "chain_revision_not_candidate", detail: { walked, candidateState: current.candidateState } };
     }
-    if (!current.sourceMessageId) return { reason: "chain_revision_has_no_source_message", detail: { walked } };
     if (!current.parentRevisionId) return { reason: "chain_revision_has_no_parent", detail: { walked } };
     visited.add(current.id);
-    const source = await db.select({ kind: chatMessages.kind }).from(chatMessages)
-      .where(eq(chatMessages.id, current.sourceMessageId)).get();
-    if (source?.kind !== "animation") {
-      return {
-        reason: "chain_revision_not_from_animation_message",
-        detail: { walked, sourceMessageId: current.sourceMessageId, sourceMessageKind: source?.kind ?? null },
-      };
-    }
     const parent = await db.select().from(stickerRevisions).where(and(
       eq(stickerRevisions.id, current.parentRevisionId),
       eq(stickerRevisions.stickerId, sticker.id),
@@ -448,8 +516,8 @@ async function animationBaseRejection(
 }
 
 /**
- * Whether animation may build on `baseRevision`: the accepted active revision, or a live animation
- * candidate descended from it.
+ * Whether animation may build on `baseRevision`: the kept revision, or a live candidate descended
+ * from it — including a first generation nothing has been accepted from yet.
  *
  * Exposed as a predicate as well as the assertion below because the chat router decides to animate
  * from the user's words alone, with no view of what has been accepted. A turn it routes that way has
@@ -484,10 +552,12 @@ export async function assertValidAnimationBase(
   baseRevision?: typeof stickerRevisions.$inferSelect,
 ): Promise<void> {
   if (await isValidAnimationBase(db, sticker, baseRevision)) return;
+  // The code is unchanged on purpose: clients key on it, and "not accepted" is still the shape of
+  // the failure even though acceptance itself is no longer what is being asserted.
   throw new ApiError(
     422,
     "ANIMATION_BASE_NOT_ACCEPTED",
-    "Animation must use the accepted active revision or a live animation candidate descended from it",
+    "Animation must build on a live revision of this sticker: the current one, or a candidate descended from it",
   );
 }
 
@@ -518,7 +588,7 @@ export async function createChatTurn(
   if (request.baseRevisionId && !baseRevision) {
     throw new ApiError(422, "INVALID_BASE_REVISION", "The selected base revision does not belong to this sticker");
   }
-  const baseDocument = baseRevision ? StickerDocumentV1Schema.parse(baseRevision.documentJson) : undefined;
+  const baseDocument = baseRevision ? StickerDocumentSchema.parse(baseRevision.documentJson) : undefined;
   if (request.intent === "animate") await assertValidAnimationBase(db, sticker, baseRevision);
   if (request.targetLayerId) {
     const target = baseDocument?.layers.find((layer) => layer.id === request.targetLayerId);
@@ -870,7 +940,7 @@ export async function revertRevision(db: Database, ownerId: string, stickerId: s
       parentRevisionId: sticker.activeRevisionId,
       kind: target.kind,
       candidateState: "accepted",
-      documentJson: StickerDocumentV1Schema.parse(target.documentJson),
+      documentJson: StickerDocumentSchema.parse(target.documentJson),
       masterAssetId: target.masterAssetId,
       previewAssetId: target.previewAssetId,
       pngAssetId: target.pngAssetId,
@@ -895,7 +965,7 @@ export async function createCandidateRevision(
     ownerId: string;
     stickerId: string;
     sourceMessageId: string;
-    document: StickerDocumentV1;
+    document: StickerDocument;
     id?: string;
     parentRevisionId?: string;
     masterAssetId?: string;
@@ -904,7 +974,7 @@ export async function createCandidateRevision(
 ) {
   const sticker = await assertOwnedSticker(db, input.ownerId, input.stickerId);
   const id = input.id ?? crypto.randomUUID();
-  const parsed = StickerDocumentV1Schema.parse(input.document);
+  const parsed = StickerDocumentSchema.parse(input.document);
   if (parsed.kind !== sticker.kind) {
     throw new ApiError(422, "REVISION_KIND_MISMATCH", "Revision document kind must match the sticker project kind");
   }
@@ -942,6 +1012,136 @@ export async function createCandidateRevision(
     createdAt: new Date(),
   });
   return id;
+}
+
+/**
+ * Saves a document edited on the client as a new, already-accepted revision.
+ *
+ * Modelled on `revertRevision` rather than `createCandidateRevision`: both insert a revision that
+ * is decided the moment it exists, keyed on a deterministic id so a retry is a no-op. The
+ * difference from a generated candidate is that there is nothing to review — the user already saw
+ * exactly what they made — so there is no candidate gate to pass through.
+ *
+ * The immutability trigger is never fought: this only inserts, and the only columns it later
+ * updates are `candidate_state`/`decided_at`, which the trigger does not guard.
+ */
+export async function saveEditedRevision(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  request: SaveEditedDocumentRequest,
+  revisionId = crypto.randomUUID(),
+) {
+  const sticker = await assertOwnedSticker(db, ownerId, stickerId);
+
+  // Deterministic-id replay. Callers pass `idempotencyUuid(...)`, so a save retried after a flaky
+  // connection returns the revision it already made instead of forking the chain.
+  const prior = await db.select().from(stickerRevisions).where(and(
+    eq(stickerRevisions.id, revisionId),
+    eq(stickerRevisions.stickerId, stickerId),
+  )).get();
+  if (prior) {
+    return {
+      revisionId: prior.id,
+      parentRevisionId: prior.parentRevisionId,
+      candidateState: prior.candidateState,
+      createdAt: prior.createdAt.toISOString(),
+      stickerStatus: sticker.status,
+    };
+  }
+
+  // Nothing in the schema serialises an edit against a running generation — the one-active-job
+  // index guards jobs, not revisions. Without this, an edit saved mid-generation is superseded by
+  // whatever the workflow lands moments later, with no sign that it happened.
+  const activeJob = await db.select({ id: generationJobs.id }).from(generationJobs).where(and(
+    eq(generationJobs.stickerId, stickerId),
+    inArray(generationJobs.state, ["queued", "running", "waiting"]),
+  )).get();
+  if (activeJob) {
+    throw new ApiError(409, "STICKER_OPERATION_IN_PROGRESS", "Wait for the current sticker operation before saving an edit");
+  }
+
+  const document = StickerDocumentSchema.parse(request.document);
+  if (document.kind !== sticker.kind) {
+    throw new ApiError(422, "REVISION_KIND_MISMATCH", "Revision document kind must match the sticker project kind");
+  }
+
+  const parent = await db.select().from(stickerRevisions).where(and(
+    eq(stickerRevisions.id, request.parentRevisionId),
+    eq(stickerRevisions.stickerId, stickerId),
+  )).get();
+  if (!parent) throw new ApiError(422, "INVALID_PARENT_REVISION", "The revision parent does not belong to this sticker");
+  // Editing forward from a branch that was already turned down would resurrect it silently.
+  if (parent.candidateState === "rejected" || parent.candidateState === "superseded") {
+    throw new ApiError(409, "INVALID_PARENT_REVISION", "That revision was already rejected or superseded");
+  }
+
+  await validateDocumentAssetReferences(db, ownerId, stickerId, document);
+
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    // The edit shows up in the transcript like every other revision, so `StickerChatView` needs no
+    // special case for a revision that no message produced.
+    const thread = await tx.select().from(chatThreads).where(eq(chatThreads.stickerId, stickerId)).get();
+    let sourceMessageId: string | undefined;
+    if (thread) {
+      const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
+        .where(eq(chatMessages.threadId, thread.id)).get();
+      sourceMessageId = crypto.randomUUID();
+      await tx.insert(chatMessages).values({
+        id: sourceMessageId,
+        threadId: thread.id,
+        ownerId,
+        role: "user",
+        kind: "animation",
+        content: request.note?.trim() || "Edited on device",
+        baseRevisionId: request.parentRevisionId,
+        sequence: (sequenceRow?.value ?? 0) + 1,
+        revisionId,
+        status: "complete",
+        createdAt: now,
+      });
+    }
+
+    await tx.insert(stickerRevisions).values({
+      id: revisionId,
+      stickerId,
+      parentRevisionId: request.parentRevisionId,
+      sourceMessageId,
+      kind: document.kind,
+      // Accepted on arrival: the user already saw what they made, so a review gate would only ask
+      // them to confirm their own edit.
+      candidateState: "accepted",
+      documentJson: document,
+      createdAt: now,
+      decidedAt: now,
+    });
+
+    // Mirrors `acceptRevision`: promoting one revision retires any candidate still waiting, or the
+    // chat would keep offering to accept something the edit has already moved past.
+    await tx.update(stickerRevisions).set({ candidateState: "superseded", decidedAt: now }).where(and(
+      eq(stickerRevisions.stickerId, stickerId),
+      eq(stickerRevisions.candidateState, "candidate"),
+      ne(stickerRevisions.id, revisionId),
+    ));
+
+    // An edited revision carries no renditions, so a previously published sticker drops back to
+    // draft. That is correct — the published pixels no longer match the document — but it is
+    // user-visible, which is why the app warns before saving over a published sticker.
+    await tx.update(stickers).set({
+      activeRevisionId: revisionId,
+      status: "draft",
+      updatedAt: now,
+    }).where(eq(stickers.id, stickerId));
+  });
+
+  return {
+    revisionId,
+    parentRevisionId: request.parentRevisionId,
+    candidateState: "accepted" as const,
+    createdAt: now.toISOString(),
+    stickerStatus: "draft" as const,
+  };
 }
 
 export async function bindExports(
@@ -1004,7 +1204,7 @@ export async function bindExports(
     throw new ApiError(422, "MP4_BACKGROUND_NOT_ALLOWED", "Static exports do not use an MP4 background");
   }
   if (revision.kind === "animated") {
-    const document = StickerDocumentV1Schema.parse(revision.documentJson);
+    const document = StickerDocumentSchema.parse(revision.documentJson);
     if (document.kind !== "animated") {
       throw new ApiError(422, "REVISION_KIND_MISMATCH", "Animated revision metadata must contain an animated sticker document");
     }
@@ -1023,12 +1223,12 @@ export async function bindExports(
     }
   }
 
-  const sourceDocument = StickerDocumentV1Schema.parse(revision.documentJson);
+  const sourceDocument = StickerDocumentSchema.parse(revision.documentJson);
   await validateDocumentAssetReferences(db, ownerId, stickerId, sourceDocument, [
     revision.masterAssetId,
     revision.previewAssetId,
   ].filter((value): value is string => Boolean(value)));
-  const publishedDocument = StickerDocumentV1Schema.parse(revision.kind === "animated"
+  const publishedDocument = StickerDocumentSchema.parse(revision.kind === "animated"
     ? { ...sourceDocument, mp4Background: request.mp4Background }
     : sourceDocument);
   await db.transaction(async (tx) => {

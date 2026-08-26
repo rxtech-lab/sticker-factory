@@ -15,7 +15,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [],
@@ -24,7 +28,8 @@
       "scale": [],
       "rotation": [],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -43,7 +48,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [],
@@ -78,7 +87,8 @@
           "easing": "linear"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -97,7 +107,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -124,7 +138,8 @@
           "easing": "easeInOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -143,7 +158,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -170,7 +189,8 @@
           "easing": "easeInOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -189,7 +209,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -230,7 +254,8 @@
           "easing": "easeInOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -249,7 +274,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -290,7 +319,8 @@
           "easing": "easeInOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -309,7 +339,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -351,7 +385,8 @@
           "easing": "easeInOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -370,7 +405,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -412,7 +451,8 @@
           "easing": "easeInOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -431,7 +471,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -462,7 +506,8 @@
       "scale": [],
       "rotation": [],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -481,7 +526,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -512,7 +561,8 @@
       ],
       "rotation": [],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -531,7 +581,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -559,7 +613,8 @@
         }
       ],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -578,7 +633,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -607,7 +666,8 @@
         }
       ],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -626,7 +686,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -710,7 +774,8 @@
         }
       ],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -729,7 +794,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -827,7 +896,8 @@
       ],
       "rotation": [],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -846,7 +916,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -895,7 +969,8 @@
       "scale": [],
       "rotation": [],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -914,7 +989,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -987,7 +1066,8 @@
       "scale": [],
       "rotation": [],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -1006,7 +1086,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1038,7 +1122,8 @@
           "saturation": 1,
           "easing": "easeInOut"
         }
-      ]
+      ],
+      "trim": []
     }
   },
   {
@@ -1057,7 +1142,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1089,7 +1178,8 @@
           "saturation": 1,
           "easing": "easeInOut"
         }
-      ]
+      ],
+      "trim": []
     }
   },
   {
@@ -1108,7 +1198,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1140,7 +1234,8 @@
           "saturation": 1,
           "easing": "easeInOut"
         }
-      ]
+      ],
+      "trim": []
     }
   },
   {
@@ -1159,7 +1254,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1213,7 +1312,8 @@
           "easing": "springBouncy"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -1232,7 +1332,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1287,7 +1391,8 @@
           "easing": "easeOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -1306,7 +1411,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1355,7 +1464,8 @@
           "easing": "linear"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -1374,7 +1484,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1518,7 +1632,8 @@
           "easing": "linear"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -1537,7 +1652,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1678,7 +1797,8 @@
           "easing": "linear"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -1697,7 +1817,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -1801,7 +1925,8 @@
           "easing": "linear"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -1820,7 +1945,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2008,7 +2137,8 @@
           "easing": "linear"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -2027,7 +2157,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2059,6 +2193,568 @@
           "saturation": 1,
           "easing": "easeOut"
         }
+      ],
+      "trim": []
+    }
+  },
+  {
+    "name": "drawOn-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "drawOn",
+        "from": 0
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [],
+      "trim": [
+        {
+          "timeSeconds": 0,
+          "start": 0,
+          "end": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "start": 0,
+          "end": 1,
+          "easing": "easeInOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "drawOff-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "drawOff",
+        "to": 1
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [],
+      "trim": [
+        {
+          "timeSeconds": 0,
+          "start": 0,
+          "end": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "start": 1,
+          "end": 1,
+          "easing": "easeInOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "trimTo-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "trimTo",
+        "start": 0,
+        "end": 1
+      }
+    ],
+    "expected": {
+      "position": [],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [],
+      "trim": [
+        {
+          "timeSeconds": 0,
+          "start": 0,
+          "end": 1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "start": 0,
+          "end": 1,
+          "easing": "easeInOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "drawOn-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8,
+      "trim": {
+        "start": 0.15,
+        "end": 0.85
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.3,
+        "duration": 2.2,
+        "easing": "easeOut",
+        "type": "drawOn",
+        "from": 0.4
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": [],
+      "trim": [
+        {
+          "timeSeconds": 0.3,
+          "start": 0.15,
+          "end": 0.4,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2.5,
+          "start": 0.15,
+          "end": 0.85,
+          "easing": "easeOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "drawOff-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8,
+      "trim": {
+        "start": 0.15,
+        "end": 0.85
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.15,
+        "duration": 1.85,
+        "easing": "springSoft",
+        "type": "drawOff",
+        "to": 0.62
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": [],
+      "trim": [
+        {
+          "timeSeconds": 0.15,
+          "start": 0.15,
+          "end": 0.85,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2,
+          "start": 0.62,
+          "end": 0.85,
+          "easing": "springSoft"
+        }
+      ]
+    }
+  },
+  {
+    "name": "trimTo-explicit",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8,
+      "trim": {
+        "start": 0.15,
+        "end": 0.85
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.4,
+        "duration": 1.1,
+        "easing": "easeInOut",
+        "type": "trimTo",
+        "start": 0.2,
+        "end": 0.55
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": [],
+      "trim": [
+        {
+          "timeSeconds": 0.4,
+          "start": 0.15,
+          "end": 0.85,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.5,
+          "start": 0.2,
+          "end": 0.55,
+          "easing": "easeInOut"
+        }
+      ]
+    }
+  },
+  {
+    "name": "trim-anchor-only",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8,
+      "trim": {
+        "start": 0.15,
+        "end": 0.85
+      }
+    },
+    "cycleCap": null,
+    "specs": [],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": [],
+      "trim": [
+        {
+          "timeSeconds": 0,
+          "start": 0.15,
+          "end": 0.85,
+          "easing": "linear"
+        }
+      ]
+    }
+  },
+  {
+    "name": "drawOn-with-fade",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8,
+      "trim": {
+        "start": 0.15,
+        "end": 0.85
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 2,
+        "easing": "easeInOut",
+        "type": "drawOn",
+        "from": 0
+      },
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "fadeIn"
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "value": 0.8,
+          "easing": "easeInOut"
+        }
+      ],
+      "effects": [],
+      "trim": [
+        {
+          "timeSeconds": 0,
+          "start": 0.15,
+          "end": 0,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2,
+          "start": 0.15,
+          "end": 0.85,
+          "easing": "easeInOut"
+        }
       ]
     }
   },
@@ -2078,7 +2774,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2120,7 +2820,8 @@
           "easing": "easeInOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -2139,7 +2840,11 @@
         "y": 1
       },
       "rotationDegrees": 900,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2168,7 +2873,8 @@
         }
       ],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -2187,7 +2893,11 @@
         "y": 7
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2237,7 +2947,8 @@
       ],
       "rotation": [],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -2256,7 +2967,11 @@
         "y": 1.25
       },
       "rotationDegrees": -18,
-      "opacity": 0.8
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2380,7 +3095,8 @@
           "saturation": 1,
           "easing": "easeInOut"
         }
-      ]
+      ],
+      "trim": []
     }
   },
   {
@@ -2399,7 +3115,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2437,7 +3157,8 @@
           "easing": "easeInOut"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -2456,7 +3177,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2554,7 +3279,8 @@
           "easing": "springBouncy"
         }
       ],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -2573,7 +3299,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": 2,
     "specs": [
@@ -2637,7 +3367,8 @@
         }
       ],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -2656,7 +3387,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": 1,
     "specs": [
@@ -2693,7 +3428,8 @@
       "scale": [],
       "rotation": [],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   },
   {
@@ -2712,7 +3448,11 @@
         "y": 1
       },
       "rotationDegrees": 0,
-      "opacity": 1
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
     },
     "cycleCap": null,
     "specs": [
@@ -2796,7 +3536,8 @@
         }
       ],
       "opacity": [],
-      "effects": []
+      "effects": [],
+      "trim": []
     }
   }
 ]

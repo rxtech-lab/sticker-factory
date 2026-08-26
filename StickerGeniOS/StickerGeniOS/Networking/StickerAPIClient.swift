@@ -15,6 +15,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func cancelGeneration(jobID: String, idempotencyKey: String) async throws -> CancelGenerationResponse
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse
+    func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String
     func assetDownload(assetID: String) async throws -> AssetDownload
     func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error>
@@ -125,6 +126,20 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse {
         try await send(
             path: "api/v1/stickers/\(stickerID)/exports",
+            method: "POST",
+            body: request,
+            idempotencyKey: idempotencyKey
+        )
+    }
+
+    /// Saves an edited document as a new revision.
+    ///
+    /// The caller mints a fresh idempotency key per attempt, not per editing session: the server
+    /// hashes the whole body against the key, so re-sending a *changed* document under a reused key
+    /// is a conflict rather than a save.
+    func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse {
+        try await send(
+            path: "api/v1/stickers/\(stickerID)/revisions",
             method: "POST",
             body: request,
             idempotencyKey: idempotencyKey

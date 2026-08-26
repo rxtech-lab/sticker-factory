@@ -1,3 +1,4 @@
+import AnimatedView
 import Foundation
 import Observation
 import UIKit
@@ -21,8 +22,16 @@ final class StickerExportModel {
     /// the picker silently resets to the default and the user loses their choice on publish.
     func seed(from revision: StickerRevision) {
         guard seededRevisionID != revision.id else { return }
+        // A different revision is a different sticker to ship. Files rendered for the previous one
+        // — and the publish job watching it — would otherwise stay on screen as this one's result,
+        // handing the user a Share button for the version they just edited away.
+        if seededRevisionID != nil { invalidateExports() }
         seededRevisionID = revision.id
-        if let choice = ExportBackgroundChoice.choice(for: revision.document.mp4Background) {
+        // The document stores a full `AnimatedBackground`, but the publish request — and this
+        // picker — only speak the two shapes the server accepts. Anything else leaves the picker on
+        // its default rather than silently mapping a radial gradient onto a linear one.
+        if let stored = StickerMP4BackgroundV1(revision.document.mp4Background),
+           let choice = ExportBackgroundChoice.choice(for: stored) {
             background = choice
         }
     }
@@ -43,7 +52,7 @@ final class StickerExportModel {
         defer { isPublishing = false }
         do {
             var exportRevision = revision
-            exportRevision.document.mp4Background = background.background
+            exportRevision.document.mp4Background = background.background.animatedBackground
             let publisher = StickerPublisher(api: store.api)
             publishJobID = nil
 

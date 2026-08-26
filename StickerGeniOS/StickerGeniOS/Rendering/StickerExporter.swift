@@ -1,3 +1,4 @@
+import AnimatedView
 import AVFoundation
 import CoreImage
 import CoreVideo
@@ -30,23 +31,52 @@ nonisolated enum StickerExportMetadataPolicy {
     static let staticSystemColorLevels: [Int?] = [nil, 64, 32, 16, 8]
 
     static func hasAlpha(for format: StickerExportFormat) -> Bool { format != .mp4 }
-    static func frameCount(document: StickerDocumentV1, fps: Int) -> Int {
-        max(1, Int(ceil(StickerInterpolator.renderedCycleDuration(document) * Double(fps))))
+    static func frameCount(document: AnimatedDocument, fps: Int) -> Int {
+        max(1, Int(ceil(document.renderedCycleDuration * Double(fps))))
+    }
+
+    /// Stillness held on the last frame before a repeating export starts over.
+    ///
+    /// Export-only, and deliberately so: the document still describes nothing but its motion, and
+    /// the in-app preview plays that motion as a seamless loop. A shared sticker is different — it
+    /// autoplays forever in someone else's timeline, where a cycle that restarts the instant it
+    /// ends reads as a stutter rather than a loop. The hold is display time on a frame that already
+    /// exists, so it never changes `frameCount`.
+    ///
+    /// `EXPORT_LOOP_HOLD_SECONDS` in `server/lib/services/stickers.ts` carries the same number; the
+    /// server rejects a rendition whose duration does not account for it.
+    static let loopHoldSeconds = 0.6
+
+    /// Nothing is held on a play-once export: there is no repeat to separate it from.
+    static func holdSeconds(for loop: AnimatedLoop) -> Double {
+        loop == .once ? 0 : loopHoldSeconds
     }
 
     /// GIF frame delays are stored in integer centiseconds by widely used
     /// decoders. Cumulative rounding distributes 30/40 ms frames while
     /// preserving the exact intended cycle instead of shortening 30 FPS to
     /// 33.33 FPS.
-    static func gifFrameDelays(frameCount: Int, fps: Int) -> [Double] {
+    ///
+    /// `holdSeconds` is added to the final frame, so the returned delays sum to the cycle plus the
+    /// hold while the count still matches the motion grid.
+    static func gifFrameDelays(frameCount: Int, fps: Int, holdSeconds: Double = 0) -> [Double] {
         guard frameCount > 0, fps > 0 else { return [] }
         var previousCentiseconds = 0
-        return (0..<frameCount).map { index in
+        var delays = (0..<frameCount).map { index in
             let target = Int((Double(index + 1) * 100 / Double(fps)).rounded())
             let delay = max(1, target - previousCentiseconds)
             previousCentiseconds += delay
             return Double(delay) / 100
         }
+        // Rounded to whole centiseconds like every other delay, or the sum drifts off the duration
+        // the server recomputes from the encoded file.
+        if holdSeconds > 0 { delays[delays.count - 1] += Double(Int((holdSeconds * 100).rounded())) / 100 }
+        return delays
+    }
+
+    /// What an export of `document` actually occupies on a timeline: its motion plus the hold.
+    static func renderedDuration(_ document: AnimatedDocument) -> Double {
+        document.renderedCycleDuration + holdSeconds(for: document.loop)
     }
 }
 
@@ -75,7 +105,7 @@ final class StickerExporter {
 
     init(fileManager: FileManager = .default) { self.fileManager = fileManager }
 
-    func exportStaticPNG(document: StickerDocumentV1, assets: [String: UIImage]) throws -> RenderedStickerExport {
+    func exportStaticPNG(document: AnimatedDocument, assets: [String: UIImage]) throws -> RenderedStickerExport {
         _ = try document.validated()
         guard let image = renderFrame(document: document, time: 0, dimension: 1024, assets: assets),
               let data = UIImage(cgImage: image).pngData()
@@ -88,7 +118,7 @@ final class StickerExporter {
         )
     }
 
-    func exportGIF(document: StickerDocumentV1, assets: [String: UIImage]) throws -> RenderedStickerExport {
+    func exportGIF(document: AnimatedDocument, assets: [String: UIImage]) throws -> RenderedStickerExport {
         _ = try document.validated()
         let data = try animatedImageData(document: document, assets: assets, format: .gif, dimension: 1024, fps: document.fps, colorLevels: nil)
         let url = try outputURL(extension: "gif")
@@ -97,12 +127,12 @@ final class StickerExporter {
             url: url,
             metadata: .init(
                 format: .gif, width: 1024, height: 1024, byteCount: data.count,
-                durationSeconds: StickerInterpolator.renderedCycleDuration(document), fps: document.fps, hasAlpha: true
+                durationSeconds: StickerExportMetadataPolicy.renderedDuration(document), fps: document.fps, hasAlpha: true
             )
         )
     }
 
-    func exportAPNG(document: StickerDocumentV1, assets: [String: UIImage], dimension: Int = 618, fps: Int? = nil) throws -> RenderedStickerExport {
+    func exportAPNG(document: AnimatedDocument, assets: [String: UIImage], dimension: Int = 618, fps: Int? = nil) throws -> RenderedStickerExport {
         _ = try document.validated()
         let frameRate = fps ?? document.fps
         let data = try animatedImageData(document: document, assets: assets, format: .apng, dimension: dimension, fps: frameRate, colorLevels: nil)
@@ -112,12 +142,12 @@ final class StickerExporter {
             url: url,
             metadata: .init(
                 format: .apng, width: dimension, height: dimension, byteCount: data.count,
-                durationSeconds: StickerInterpolator.renderedCycleDuration(document), fps: frameRate, hasAlpha: true
+                durationSeconds: StickerExportMetadataPolicy.renderedDuration(document), fps: frameRate, hasAlpha: true
             )
         )
     }
 
-    func exportMP4(document: StickerDocumentV1, assets: [String: UIImage]) async throws -> RenderedStickerExport {
+    func exportMP4(document: AnimatedDocument, assets: [String: UIImage]) async throws -> RenderedStickerExport {
         _ = try document.validated()
         let dimension = 1024
         let url = try outputURL(extension: "mp4")
@@ -146,7 +176,7 @@ final class StickerExporter {
         guard writer.startWriting() else { throw StickerExportError.videoWriterFailed(writer.error?.localizedDescription ?? "Could not start") }
         writer.startSession(atSourceTime: .zero)
 
-        let cycleDuration = StickerInterpolator.renderedCycleDuration(document)
+        let renderedDuration = StickerExportMetadataPolicy.renderedDuration(document)
         let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps)
         for index in 0..<frameCount {
             while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(4)) }
@@ -160,13 +190,24 @@ final class StickerExporter {
             guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &optionalBuffer) == kCVReturnSuccess,
                   let buffer = optionalBuffer
             else { throw StickerExportError.renderFailed }
-            drawOpaqueVideoFrame(sticker: sticker, background: document.mp4Background, into: buffer, dimension: dimension)
+            // Only the shapes an MP4 fill can actually be: a document could carry a radial
+            // gradient or an image here, and neither has a meaningful flat backdrop, so those fall
+            // through to the default white rather than being approximated.
+            drawOpaqueVideoFrame(
+                sticker: sticker,
+                background: StickerMP4BackgroundV1(document.mp4Background) ?? .solid("#FFFFFF"),
+                into: buffer,
+                dimension: dimension
+            )
             let timestamp = CMTime(value: CMTimeValue(index), timescale: CMTimeScale(document.fps))
             guard adaptor.append(buffer, withPresentationTime: timestamp) else {
                 throw StickerExportError.videoWriterFailed(writer.error?.localizedDescription ?? "Could not append a frame")
             }
         }
         input.markAsFinished()
+        // The last sample is displayed until the session ends, so ending it a hold past the cycle
+        // is what makes that frame linger — no extra frame is written for it.
+        writer.endSession(atSourceTime: CMTime(seconds: renderedDuration, preferredTimescale: 600))
         await writer.finishWriting()
         guard writer.status == .completed else {
             throw StickerExportError.videoWriterFailed(writer.error?.localizedDescription ?? "Writer did not complete")
@@ -176,13 +217,13 @@ final class StickerExporter {
             url: url,
             metadata: .init(
                 format: .mp4, width: dimension, height: dimension, byteCount: bytes,
-                durationSeconds: cycleDuration, fps: document.fps,
+                durationSeconds: renderedDuration, fps: document.fps,
                 hasAlpha: StickerExportMetadataPolicy.hasAlpha(for: .mp4)
             )
         )
     }
 
-    func exportSystemSticker(document: StickerDocumentV1, assets: [String: UIImage]) throws -> RenderedStickerExport {
+    func exportSystemSticker(document: AnimatedDocument, assets: [String: UIImage]) throws -> RenderedStickerExport {
         _ = try document.validated()
         if document.kind == .static {
             for dimension in StickerExportMetadataPolicy.staticSystemDimensions {
@@ -215,7 +256,7 @@ final class StickerExporter {
                         url: url,
                         metadata: .init(
                             format: format, width: preset.dimension, height: preset.dimension,
-                            byteCount: data.count, durationSeconds: StickerInterpolator.renderedCycleDuration(document),
+                            byteCount: data.count, durationSeconds: StickerExportMetadataPolicy.renderedDuration(document),
                             fps: min(document.fps, preset.fps), hasAlpha: true
                         )
                     )
@@ -225,8 +266,12 @@ final class StickerExporter {
         throw StickerExportError.systemStickerTooLarge
     }
 
-    func renderFrame(document: StickerDocumentV1, time: Double, dimension: Int, assets: [String: UIImage]) -> CGImage? {
-        let content = StickerScene(document: document, time: time, assets: assets)
+    func renderFrame(document: AnimatedDocument, time: Double, dimension: Int, assets: [String: UIImage]) -> CGImage? {
+        let content = AnimatedIconFrame(
+            document: document,
+            documentTime: time,
+            assets: AnimatedAssetDictionary(images: assets)
+        )
             .frame(width: CGFloat(dimension), height: CGFloat(dimension))
         let renderer = ImageRenderer(content: content)
         renderer.scale = 1
@@ -235,7 +280,7 @@ final class StickerExporter {
     }
 
     private func animatedImageData(
-        document: StickerDocumentV1,
+        document: AnimatedDocument,
         assets: [String: UIImage],
         format: StickerExportFormat,
         dimension: Int,
@@ -244,8 +289,9 @@ final class StickerExporter {
     ) throws -> Data {
         guard format == .gif || format == .apng, fps > 0 else { throw StickerExportError.invalidDocument }
         let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: fps)
+        let hold = StickerExportMetadataPolicy.holdSeconds(for: document.loop)
         let gifDelays = format == .gif
-            ? StickerExportMetadataPolicy.gifFrameDelays(frameCount: frameCount, fps: fps)
+            ? StickerExportMetadataPolicy.gifFrameDelays(frameCount: frameCount, fps: fps, holdSeconds: hold)
             : []
         let data = NSMutableData()
         let type = format == .gif ? UTType.gif.identifier : UTType.png.identifier
@@ -268,7 +314,10 @@ final class StickerExporter {
                 throw StickerExportError.renderFailed
             }
             if let colorLevels { image = posterized(image, levels: colorLevels) ?? image }
-            let delay = format == .gif ? gifDelays[index] : 1 / Double(fps)
+            // APNG delays are uniform, so the hold is simply the last frame lingering; the GIF
+            // delays already carry it from `gifFrameDelays`.
+            let isLast = index == frameCount - 1
+            let delay = format == .gif ? gifDelays[index] : 1 / Double(fps) + (isLast ? hold : 0)
             let properties: [CFString: Any] = format == .gif
                 ? [kCGImagePropertyGIFDictionary: [
                     kCGImagePropertyGIFDelayTime: delay,
@@ -310,10 +359,10 @@ final class StickerExporter {
         let rect = CGRect(x: 0, y: 0, width: dimension, height: dimension)
         switch background {
         case .solid(let hex):
-            context.setFillColor(UIColor(Color(stickerHex: hex)).cgColor)
+            context.setFillColor(UIColor(Color(animatedHex: hex)).cgColor)
             context.fill(rect)
         case .linearGradient(let colors, let angle):
-            let cgColors = colors.map { UIColor(Color(stickerHex: $0)).cgColor } as CFArray
+            let cgColors = colors.map { UIColor(Color(animatedHex: $0)).cgColor } as CFArray
             if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: cgColors, locations: [0, 1]) {
                 let radians = angle * .pi / 180
                 let delta = CGPoint(x: cos(radians) * Double(dimension) / 2, y: sin(radians) * Double(dimension) / 2)

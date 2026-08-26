@@ -98,7 +98,7 @@ export default async function StickerDetailPage({
                 ? <img src={previewUrls.get(revision.id)} alt={`${sticker.title} revision preview`} />
                 : <span>Preview unavailable</span>}
             </div>
-            <details><summary>StickerDocumentV1</summary><pre>{JSON.stringify(revision.document, null, 2)}</pre></details>
+            <details><summary>StickerDocument</summary><pre>{JSON.stringify(revision.document, null, 2)}</pre></details>
           </article>
         ))}
       </section>

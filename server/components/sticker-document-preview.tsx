@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
-import type { StickerDocumentV1, StickerLayerV1 } from "@/lib/contracts/sticker";
+import type { PaintV2, StickerDocument, StickerLayerV1 } from "@/lib/contracts/sticker";
 
 type Timed = { timeSeconds: number };
 
@@ -43,14 +43,45 @@ function layerStyle(layer: StickerLayerV1, time: number): CSSProperties {
   };
 }
 
+/**
+ * A paint as a CSS value.
+ *
+ * Gradients become real CSS gradients rather than collapsing to a colour, since that is one of the
+ * few places the web preview can match the native renderer exactly. The angle convention differs
+ * though: CSS measures from "to top" clockwise, the document from the positive x-axis, hence the
+ * 90-degree offset.
+ */
+function paintToCss(paint: PaintV2 | undefined): string | undefined {
+  if (!paint) return undefined;
+  switch (paint.type) {
+  case "solid":
+    return paint.color;
+  case "linearGradient":
+    return `linear-gradient(${paint.angleDegrees + 90}deg, ${paint.stops.map((stop) => `${stop.color} ${stop.location * 100}%`).join(", ")})`;
+  case "radialGradient":
+    return `radial-gradient(circle at ${paint.center.x * 100}% ${paint.center.y * 100}%, ${paint.stops.map((stop) => `${stop.color} ${stop.location * 100}%`).join(", ")})`;
+  }
+}
+
+/** A paint's representative colour, for the places CSS takes a colour and not an image. */
+function paintToColor(paint: PaintV2 | undefined): string | undefined {
+  if (!paint) return undefined;
+  return paint.type === "solid" ? paint.color : paint.stops[0]?.color;
+}
+
 function Shape({ layer }: { layer: Extract<StickerLayerV1, { type: "shape" }> }) {
-  const glyph = layer.shape === "star" ? "★" : layer.shape === "heart" ? "♥" : layer.shape === "burst" ? "✦" : "";
-  return glyph ? <span className="scene-shape-glyph" style={{ color: layer.fill }}>{glyph}</span>
-    : <span className={`scene-shape scene-shape-${layer.shape}`} style={{ background: layer.fill, borderColor: layer.stroke }} />;
+  const kind = layer.shape.kind;
+  const glyph = kind === "star" ? "★" : kind === "heart" ? "♥" : kind === "burst" ? "✦" : "";
+  return glyph
+    ? <span className="scene-shape-glyph" style={{ color: paintToColor(layer.fill) }}>{glyph}</span>
+    : <span
+      className={`scene-shape scene-shape-${kind}`}
+      style={{ background: paintToCss(layer.fill), borderColor: paintToColor(layer.stroke?.paint) }}
+    />;
 }
 
 export function StickerDocumentPreview({ document, assetUrls, label, repeats = false }: {
-  document: StickerDocumentV1;
+  document: StickerDocument;
   assetUrls: Record<string, string>;
   label: string;
   repeats?: boolean;
@@ -78,9 +109,14 @@ export function StickerDocumentPreview({ document, assetUrls, label, repeats = f
         // URLs are ownership-checked, short-lived R2 values supplied separately from the document.
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={assetUrls[layer.assetId]} alt="" className={`scene-image scene-image-${layer.contentMode}`} /> : null}
-      {layer.type === "text" && <span className={`scene-text scene-font-${layer.font}`} style={{ color: layer.color, fontWeight: layer.weight }}>{layer.text}</span>}
+      {layer.type === "text" && <span className={`scene-text scene-font-${layer.font}`} style={{ color: paintToColor(layer.paint), fontWeight: layer.weight }}>{layer.text}</span>}
       {layer.type === "shape" && <Shape layer={layer} />}
-      {layer.type === "particle" && <span className="scene-particles">{Array.from({ length: Math.min(layer.count, 24) }, (_, index) => <i style={{ left: `${(layer.seed + index * 37) % 100}%`, top: `${(layer.seed * 3 + index * 61) % 100}%`, color: layer.color }} key={index}>{layer.preset === "hearts" ? "♥" : layer.preset === "bubbles" ? "○" : "✦"}</i>)}</span>}
+      {layer.type === "svg" && layer.source.kind === "inline"
+        // The markup passed `svgMarkupRejectionReason` on the way into the document — no scripts,
+        // no remote references — which is what makes embedding it here safe.
+        ? <span className="scene-svg" dangerouslySetInnerHTML={{ __html: layer.source.markup }} />
+        : null}
+      {layer.type === "particle" && <span className="scene-particles">{Array.from({ length: Math.min(layer.count, 24) }, (_, index) => <i style={{ left: `${(layer.seed + index * 37) % 100}%`, top: `${(layer.seed * 3 + index * 61) % 100}%`, color: paintToColor(layer.paint) }} key={index}>{layer.preset === "hearts" ? "♥" : layer.preset === "bubbles" ? "○" : "✦"}</i>)}</span>}
     </div>)}
   </div>;
 }

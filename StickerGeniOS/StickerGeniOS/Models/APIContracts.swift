@@ -1,3 +1,4 @@
+import AnimatedView
 import Foundation
 
 nonisolated struct Sticker: Codable, Identifiable, Hashable, Sendable {
@@ -47,7 +48,7 @@ nonisolated struct StickerRevision: Codable, Identifiable, Hashable, Sendable {
     var parentRevisionId: String?
     var sourceMessageId: String?
     var candidateState: RevisionCandidateState
-    var document: StickerDocumentV1
+    var document: AnimatedDocument
     var masterAssetId: String?
     var previewAssetId: String?
     var pngAssetId: String?
@@ -502,6 +503,23 @@ nonisolated struct PublishExportsResponse: Codable, Sendable {
     var job: GenerationJobReference
 }
 
+/// A document edited on device, sent back as a new revision.
+nonisolated struct SaveEditedDocumentRequest: Codable, Sendable {
+    var parentRevisionId: String
+    var document: AnimatedDocument
+    var note: String?
+}
+
+/// Deliberately small: the server stores this response verbatim in the request's idempotency row,
+/// so echoing the document back would keep a second copy of it around for a day.
+nonisolated struct SaveEditedDocumentResponse: Codable, Sendable {
+    var revisionId: String
+    var parentRevisionId: String?
+    var candidateState: RevisionCandidateState
+    var createdAt: String
+    var stickerStatus: StickerStatus
+}
+
 nonisolated struct RevisionTransitionResponse: Codable, Sendable {
     var revisionId: String
     var candidateState: RevisionCandidateState?
@@ -540,7 +558,7 @@ nonisolated struct GenerationEventData: Codable, Hashable, Sendable {
     var progress: Double? = nil
     var messageId: String? = nil
     var revisionId: String? = nil
-    var document: StickerDocumentV1? = nil
+    var document: AnimatedDocument? = nil
     var toolCallId: String? = nil
     var toolName: String? = nil
     var toolStatus: ChatMessageStatus? = nil
@@ -565,7 +583,7 @@ nonisolated extension GenerationEventData {
             progress: (try? c.decodeIfPresent(Double.self, forKey: .progress)) ?? nil,
             messageId: (try? c.decodeIfPresent(String.self, forKey: .messageId)) ?? nil,
             revisionId: (try? c.decodeIfPresent(String.self, forKey: .revisionId)) ?? nil,
-            document: (try? c.decodeIfPresent(StickerDocumentV1.self, forKey: .document)) ?? nil,
+            document: (try? c.decodeIfPresent(AnimatedDocument.self, forKey: .document)) ?? nil,
             toolCallId: (try? c.decodeIfPresent(String.self, forKey: .toolCallId)) ?? nil,
             toolName: (try? c.decodeIfPresent(String.self, forKey: .toolName)) ?? nil,
             toolStatus: (try? c.decodeIfPresent(ChatMessageStatus.self, forKey: .toolStatus)) ?? nil,

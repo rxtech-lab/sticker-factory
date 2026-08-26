@@ -1,3 +1,4 @@
+import AnimatedView
 import RxAuthSwift
 import RxAuthSwiftUI
 import SwiftUI

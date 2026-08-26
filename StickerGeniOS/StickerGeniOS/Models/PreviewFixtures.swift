@@ -1,71 +1,39 @@
+import AnimatedView
 import Foundation
 
 nonisolated enum PreviewFixtures {
     static let imageAssetID = "11111111-1111-4111-8111-111111111111"
 
-    static let animatedDocument = StickerDocumentV1(
-        kind: .animated,
-        durationSeconds: 2,
-        fps: 30,
-        loop: .loop,
-        mp4Background: .linearGradient(colors: ["#FFE7A3", "#FF8FA3"], angleDegrees: 35),
-        layers: [
-            .shape(.init(
-                id: "backdrop",
-                name: "Backdrop",
-                shape: .burst,
-                fill: "#FFE7A3"
-            )),
-            .image(.init(
-                id: "hero",
-                name: "Hero",
-                animation: .init(
-                    position: [
-                        .init(timeSeconds: 0, x: 0.5, y: 0.5, easing: .easeOut),
-                        .init(timeSeconds: 1, x: 0.5, y: 0.42, easing: .springBouncy),
-                        .init(timeSeconds: 2, x: 0.5, y: 0.5, easing: .easeIn),
-                    ],
-                    scale: [
-                        .init(timeSeconds: 0, x: 0.92, y: 0.92, easing: .easeOut),
-                        .init(timeSeconds: 1, x: 1.08, y: 1.08, easing: .springSoft),
-                        .init(timeSeconds: 2, x: 0.92, y: 0.92, easing: .easeIn),
-                    ]
-                ),
-                assetId: imageAssetID
-            )),
-            .particle(.init(
-                id: "sparkles",
-                name: "Sparkles",
-                preset: .sparkles,
-                count: 16,
-                color: "#FFFFFF",
-                seed: 42
-            )),
-        ]
-    )
+    /// A moving, multi-layer sticker.
+    ///
+    /// Built from the package's own preview documents rather than hand-assembled here: these are
+    /// only ever used by SwiftUI previews, and a second set of fixtures is a second thing to keep
+    /// in step with the document contract.
+    static let animatedDocument: AnimatedDocument = {
+        var document = AnimatedPreviewDocuments.composite
+        document.mp4Background = .linearGradient("#FFE7A3", "#FF8FA3", angleDegrees: 35)
+        return document
+    }()
 
-    static let staticDocument = StickerDocumentV1(
-        kind: .static,
-        layers: [
-            .shape(.init(id: "bubble", name: "Bubble", shape: .roundedRectangle, fill: "#A88BFF", cornerRadius: 0.2)),
-            .text(.init(id: "caption", name: "Caption", text: "YES!", font: .rounded, weight: .bold, color: "#FFFFFF")),
-        ]
-    )
+    static let staticDocument = AnimatedPreviewDocuments.staticDocument
 
-    /// The accepted first stage of an animated project is still an animated
-    /// document; it simply has no motion keyframes until the user confirms the
-    /// base and describes motion in chat.
-    static let animatedBaseDocument = StickerDocumentV1(
-        kind: .animated,
-        durationSeconds: 2,
-        fps: 30,
-        loop: .loop,
-        mp4Background: .linearGradient(colors: ["#FFE7A3", "#FF8FA3"], angleDegrees: 35),
-        layers: [
-            .shape(.init(id: "backdrop", name: "Backdrop", shape: .burst, fill: "#FFE7A3")),
-            .image(.init(id: "hero", name: "Hero", assetId: imageAssetID)),
-        ]
-    )
+    /// The accepted first stage of an animated project is still an animated document; it simply
+    /// has no motion keyframes until the user confirms the base and describes motion in chat.
+    static let animatedBaseDocument: AnimatedDocument = {
+        var document = AnimatedDocument(
+            kind: .animated,
+            durationSeconds: 2,
+            fps: 30,
+            loop: .loop,
+            mp4Background: .linearGradient("#FFE7A3", "#FF8FA3", angleDegrees: 35),
+            layers: [
+                .shape(.init(base: .init(id: "backdrop", name: "Backdrop"), shape: .burst, fill: .solid("#FFE7A3"))),
+                .image(.init(base: .init(id: "hero", name: "Hero"), assetId: imageAssetID)),
+            ]
+        )
+        document.canvas = .init(square: 1024)
+        return document
+    }()
 
     static let sticker = Sticker(
         id: "sticker-demo",

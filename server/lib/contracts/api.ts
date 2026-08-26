@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Mp4BackgroundV1Schema, StickerDocumentV1Schema } from "@/lib/contracts/sticker";
+import { Mp4BackgroundV1Schema, StickerDocumentSchema } from "@/lib/contracts/sticker";
 
 export const StickerKindSchema = z.enum(["static", "animated"]);
 export const AssetKindSchema = z.enum([
@@ -33,7 +33,7 @@ export const PostChatMessageRequestSchema = z.object({
   imagePlacement: z.enum(["replace", "add"]).default("replace"),
 }).strict().superRefine((value, context) => {
   if (value.intent === "animate" && !value.baseRevisionId) {
-    context.addIssue({ code: "custom", path: ["baseRevisionId"], message: "Animation requires the accepted active base revision" });
+    context.addIssue({ code: "custom", path: ["baseRevisionId"], message: "Animation requires an explicit base revision" });
   }
   if (value.imagePlacement === "add" && value.attachments.some((attachment) => attachment.kind === "mask")) {
     context.addIssue({ code: "custom", path: ["attachments"], message: "Masks can only replace an existing image layer" });
@@ -85,6 +85,19 @@ export const PublishExportsRequestSchema = z.object({
   mp4Background: Mp4BackgroundV1Schema.optional(),
 }).strict();
 
+/**
+ * A document edited on the client, saved as a new revision.
+ *
+ * `parentRevisionId` is the revision the user was looking at when they opened the editor. It is
+ * required rather than inferred from the sticker's active revision so a save that races a
+ * generation is refused rather than silently re-parenting onto whatever landed in the meantime.
+ */
+export const SaveEditedDocumentRequestSchema = z.object({
+  parentRevisionId: z.string().uuid(),
+  document: StickerDocumentSchema,
+  note: z.string().trim().max(200).optional(),
+}).strict();
+
 export const ApiErrorSchema = z.object({
   error: z.object({
     code: z.string(),
@@ -102,8 +115,8 @@ export const GenerationEventV1Schema = z.object({
   data: z.record(z.string(), z.unknown()),
 }).strict().superRefine((event, context) => {
   if (event.type === "document") {
-    const document = StickerDocumentV1Schema.safeParse(event.data.document);
-    if (!document.success) context.addIssue({ code: "custom", message: "document events must contain a complete valid StickerDocumentV1" });
+    const document = StickerDocumentSchema.safeParse(event.data.document);
+    if (!document.success) context.addIssue({ code: "custom", message: "document events must contain a complete valid StickerDocument" });
   }
 });
 
@@ -183,3 +196,4 @@ export type CreateStickerRequest = z.infer<typeof CreateStickerRequestSchema>;
 export type PostChatMessageRequest = z.infer<typeof PostChatMessageRequestSchema>;
 export type CreateUploadRequest = z.infer<typeof CreateUploadRequestSchema>;
 export type PublishExportsRequest = z.infer<typeof PublishExportsRequestSchema>;
+export type SaveEditedDocumentRequest = z.infer<typeof SaveEditedDocumentRequestSchema>;
