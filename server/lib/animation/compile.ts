@@ -1,0 +1,454 @@
+import {
+  ANIMATION_CHANNELS,
+  CYCLIC_SPEC_TYPES,
+  SPEC_CHANNELS,
+  type AnimationAnchorV1,
+  type AnimationChannel,
+  type AnimationSpecV1,
+  type EffectKeyframeV1,
+  type LayerAnimationV1,
+  type OpacityKeyframeV1,
+  type PositionKeyframeV1,
+  type RotationKeyframeV1,
+  type ScaleKeyframeV1,
+} from "@/lib/contracts/animation";
+
+/**
+ * Compiles declarative animation specs into the keyframe tracks the renderer actually plays.
+ *
+ * Everything here is pure and deterministic — the same specs always produce byte-identical
+ * keyframes — because `StickerDocumentV1` stores both representations and asserts they agree. A
+ * non-deterministic compiler would make that invariant unsatisfiable.
+ *
+ * Two renderer facts drive the whole design (see `StickerInterpolator.swift`):
+ *
+ *  1. Easing is read from the *upper* keyframe of the pair being blended, so a segment's easing
+ *     belongs on its end keyframe, never its start.
+ *  2. A channel with no keyframes falls back to a default (position 0.5,0.5 / scale 1,1 /
+ *     rotation 0 / opacity 1), and values clamp outside the first and last keyframe. That is why
+ *     an anchor equal to the default emits nothing, and why a delay simply means "no keyframe
+ *     before this time".
+ */
+
+export type AnimationTiming = {
+  kind: "static" | "animated";
+  durationSeconds: number;
+};
+
+export class AnimationCompileError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnimationCompileError";
+  }
+}
+
+/** Document-wide keyframe ceiling, mirrored from `StickerDocumentV1Schema`. */
+export const MAX_DOCUMENT_KEYFRAMES = 128;
+/** Per-channel keyframe ceiling, mirrored from `LayerAnimationV1Schema`. */
+export const MAX_CHANNEL_KEYFRAMES = 32;
+/** Samples per cycle for the sine-driven specs. Four gives zero/peak/zero/trough. */
+const SAMPLES_PER_CYCLE = 4;
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+/**
+ * Rounds, and normalises negative zero to positive zero.
+ *
+ * Both halves matter for the document invariant. Rounding kills float drift, and the `+ 0` kills
+ * `-0`: `Math.sin(2 * Math.PI)` is a tiny negative number that rounds to `-0`, but `JSON.stringify`
+ * writes `-0` as `"0"`. Without this, a stored track would read back as `0` and never deep-equal a
+ * freshly compiled `-0`.
+ */
+const roundTime = (value: number) => Math.round(value * 10_000) / 10_000 + 0;
+const roundValue = (value: number) => Math.round(value * 100_000) / 100_000 + 0;
+
+type Channels = {
+  position: PositionKeyframeV1[];
+  scale: ScaleKeyframeV1[];
+  rotation: RotationKeyframeV1[];
+  opacity: OpacityKeyframeV1[];
+  effects: EffectKeyframeV1[];
+};
+
+function emptyChannels(): Channels {
+  return { position: [], scale: [], rotation: [], opacity: [], effects: [] };
+}
+
+const position = (t: number, x: number, y: number, easing: PositionKeyframeV1["easing"]): PositionKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  x: roundValue(clamp(x, -1, 2)),
+  y: roundValue(clamp(y, -1, 2)),
+  easing,
+});
+
+const scale = (t: number, x: number, y: number, easing: ScaleKeyframeV1["easing"]): ScaleKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  x: roundValue(clamp(x, 0.05, 8)),
+  y: roundValue(clamp(y, 0.05, 8)),
+  easing,
+});
+
+const rotation = (t: number, degrees: number, easing: RotationKeyframeV1["easing"]): RotationKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  degrees: roundValue(clamp(degrees, -1080, 1080)),
+  easing,
+});
+
+const opacity = (t: number, value: number, easing: OpacityKeyframeV1["easing"]): OpacityKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  value: roundValue(clamp(value, 0, 1)),
+  easing,
+});
+
+const effect = (
+  t: number,
+  parts: { blurRadius?: number; hueDegrees?: number; saturation?: number },
+  easing: EffectKeyframeV1["easing"],
+): EffectKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  blurRadius: roundValue(clamp(parts.blurRadius ?? 0, 0, 20)),
+  hueDegrees: roundValue(clamp(parts.hueDegrees ?? 0, -180, 180)),
+  saturation: roundValue(clamp(parts.saturation ?? 1, 0, 2)),
+  easing,
+});
+
+/**
+ * Rejects two specs that write the same channel over overlapping time.
+ *
+ * There is no meaningful blend of "fade to 0" and "fade to 1" across one instant, and picking a
+ * winner silently produces motion the author never asked for. Touching windows (one ends exactly
+ * where the next begins) are allowed — that is the normal fade-in-then-fade-out shape, and the
+ * duplicate boundary keyframe is reconciled in `mergeChannel`.
+ */
+function assertNoChannelConflicts(specs: readonly AnimationSpecV1[]): void {
+  const windows = new Map<AnimationChannel, Array<{ spec: AnimationSpecV1; start: number; end: number }>>();
+  for (const spec of specs) {
+    for (const channel of SPEC_CHANNELS[spec.type]) {
+      const list = windows.get(channel) ?? [];
+      const start = spec.delay;
+      const end = spec.delay + spec.duration;
+      for (const existing of list) {
+        if (start < existing.end && existing.start < end) {
+          throw new AnimationCompileError(
+            `Animations "${existing.spec.type}" and "${spec.type}" both drive the ${channel} channel `
+            + `between ${Math.max(start, existing.start)}s and ${Math.min(end, existing.end)}s. `
+            + "Give them non-overlapping delay/duration windows, or drop one.",
+          );
+        }
+      }
+      list.push({ spec, start, end });
+      windows.set(channel, list);
+    }
+  }
+}
+
+/**
+ * Folds a spec's keyframes into a channel, reconciling a shared boundary timestamp.
+ *
+ * Two keyframes may not sit on the same `timeSeconds` — the interpolator sorts by time and would
+ * pick one arbitrarily. When windows merely touch and both sides agree on the value (fade in ending
+ * at 1, fade out starting at 1) the duplicate is dropped. When they disagree it is a real
+ * discontinuity that keyframes cannot express, so it is an error rather than a silent jump.
+ */
+function mergeChannel<Frame extends { timeSeconds: number }>(
+  existing: Frame[],
+  incoming: Frame[],
+  channel: AnimationChannel,
+): Frame[] {
+  for (const frame of incoming) {
+    const clash = existing.find((other) => other.timeSeconds === frame.timeSeconds);
+    if (!clash) {
+      existing.push(frame);
+      continue;
+    }
+    const sameValue = JSON.stringify({ ...clash, easing: null }) === JSON.stringify({ ...frame, easing: null });
+    if (!sameValue) {
+      throw new AnimationCompileError(
+        `Two animations set different ${channel} values at ${frame.timeSeconds}s. `
+        + "Separate them in time so one finishes before the other starts.",
+      );
+    }
+  }
+  return existing.sort((a, b) => a.timeSeconds - b.timeSeconds);
+}
+
+/** Phase samples for a cyclic spec: 0, 0.25, ... cycles, inclusive of the closing sample. */
+function cyclePhases(cycles: number): number[] {
+  const phases: number[] = [];
+  for (let step = 0; step <= cycles * SAMPLES_PER_CYCLE; step += 1) {
+    phases.push(step / SAMPLES_PER_CYCLE);
+  }
+  return phases;
+}
+
+function compileSpec(spec: AnimationSpecV1, anchor: AnimationAnchorV1, cycleCap: number, out: Channels): void {
+  const start = spec.delay;
+  const end = spec.delay + spec.duration;
+  const ease = spec.easing;
+  const { position: anchorPosition, scale: anchorScale, rotationDegrees: anchorRotation, opacity: anchorOpacity } = anchor;
+
+  switch (spec.type) {
+  case "fadeIn":
+    mergeChannel(out.opacity, [opacity(start, 0, "linear"), opacity(end, anchorOpacity, ease)], "opacity");
+    return;
+  case "fadeOut":
+    mergeChannel(out.opacity, [opacity(start, anchorOpacity, "linear"), opacity(end, 0, ease)], "opacity");
+    return;
+  case "popIn":
+    mergeChannel(out.scale, [
+      scale(start, anchorScale.x * spec.from, anchorScale.y * spec.from, "linear"),
+      scale(end, anchorScale.x, anchorScale.y, ease),
+    ], "scale");
+    mergeChannel(out.opacity, [opacity(start, 0, "linear"), opacity(end, anchorOpacity, ease)], "opacity");
+    return;
+  case "popOut":
+    mergeChannel(out.scale, [
+      scale(start, anchorScale.x, anchorScale.y, "linear"),
+      scale(end, anchorScale.x * spec.to, anchorScale.y * spec.to, ease),
+    ], "scale");
+    mergeChannel(out.opacity, [opacity(start, anchorOpacity, "linear"), opacity(end, 0, ease)], "opacity");
+    return;
+  case "slideIn":
+  case "slideOut": {
+    const offset = directionOffset(spec.direction, spec.distance);
+    const away = { x: anchorPosition.x + offset.x, y: anchorPosition.y + offset.y };
+    const entering = spec.type === "slideIn";
+    mergeChannel(out.position, [
+      entering
+        ? position(start, away.x, away.y, "linear")
+        : position(start, anchorPosition.x, anchorPosition.y, "linear"),
+      entering
+        ? position(end, anchorPosition.x, anchorPosition.y, ease)
+        : position(end, away.x, away.y, ease),
+    ], "position");
+    mergeChannel(out.opacity, [
+      opacity(start, entering ? 0 : anchorOpacity, "linear"),
+      opacity(end, entering ? anchorOpacity : 0, ease),
+    ], "opacity");
+    return;
+  }
+  case "moveTo":
+    mergeChannel(out.position, [
+      position(start, anchorPosition.x, anchorPosition.y, "linear"),
+      position(end, spec.x, spec.y, ease),
+    ], "position");
+    return;
+  case "scaleTo":
+    mergeChannel(out.scale, [
+      scale(start, anchorScale.x, anchorScale.y, "linear"),
+      scale(end, spec.x, spec.y, ease),
+    ], "scale");
+    return;
+  case "rotateTo":
+    mergeChannel(out.rotation, [
+      rotation(start, anchorRotation, "linear"),
+      rotation(end, spec.degrees, ease),
+    ], "rotation");
+    return;
+  case "spin":
+    mergeChannel(out.rotation, [
+      rotation(start, anchorRotation, "linear"),
+      rotation(end, anchorRotation + 360 * spec.turns * (spec.direction === "cw" ? 1 : -1), ease),
+    ], "rotation");
+    return;
+  case "wiggle": {
+    const cycles = Math.min(spec.cycles, cycleCap);
+    const step = spec.duration / cycles;
+    mergeChannel(out.rotation, cyclePhases(cycles).map((phase) => rotation(
+      start + phase * step,
+      anchorRotation + spec.amplitudeDegrees * Math.sin(2 * Math.PI * phase),
+      ease,
+    )), "rotation");
+    return;
+  }
+  case "pulse": {
+    const cycles = Math.min(spec.cycles, cycleCap);
+    const step = spec.duration / cycles;
+    mergeChannel(out.scale, cyclePhases(cycles).map((phase) => {
+      const wave = Math.sin(2 * Math.PI * phase);
+      const factor = wave >= 0
+        ? 1 + wave * (spec.maxScale - 1)
+        : 1 + wave * (1 - spec.minScale);
+      return scale(start + phase * step, anchorScale.x * factor, anchorScale.y * factor, ease);
+    }), "scale");
+    return;
+  }
+  case "float": {
+    const cycles = Math.min(spec.cycles, cycleCap);
+    const step = spec.duration / cycles;
+    mergeChannel(out.position, cyclePhases(cycles).map((phase) => position(
+      start + phase * step,
+      anchorPosition.x,
+      // Negative y is up: the canvas origin is top-left.
+      anchorPosition.y - spec.amplitude * Math.sin(2 * Math.PI * phase),
+      ease,
+    )), "position");
+    return;
+  }
+  case "bounce": {
+    const bounces = Math.min(spec.bounces, cycleCap);
+    const step = spec.duration / bounces;
+    const frames: PositionKeyframeV1[] = [position(start, anchorPosition.x, anchorPosition.y, "linear")];
+    for (let index = 0; index < bounces; index += 1) {
+      // Each hop is weaker than the last, which is what reads as gravity rather than a sine wave.
+      const height = spec.height * Math.pow(0.6, index);
+      frames.push(position(start + (index + 0.5) * step, anchorPosition.x, anchorPosition.y - height, "easeOut"));
+      frames.push(position(start + (index + 1) * step, anchorPosition.x, anchorPosition.y, "easeIn"));
+    }
+    mergeChannel(out.position, frames, "position");
+    return;
+  }
+  case "blurIn":
+    mergeChannel(out.effects, [
+      effect(start, { blurRadius: spec.radius }, "linear"),
+      effect(end, { blurRadius: 0 }, ease),
+    ], "effects");
+    return;
+  case "blurOut":
+    mergeChannel(out.effects, [
+      effect(start, { blurRadius: 0 }, "linear"),
+      effect(end, { blurRadius: spec.radius }, ease),
+    ], "effects");
+    return;
+  case "hueShift":
+    mergeChannel(out.effects, [
+      effect(start, { hueDegrees: 0 }, "linear"),
+      effect(end, { hueDegrees: spec.degrees }, ease),
+    ], "effects");
+    return;
+  }
+}
+
+function directionOffset(direction: "up" | "down" | "left" | "right", distance: number) {
+  switch (direction) {
+  case "up": return { x: 0, y: distance };      // slides in from below, moving up
+  case "down": return { x: 0, y: -distance };
+  case "left": return { x: distance, y: 0 };    // slides in from the right, moving left
+  case "right": return { x: -distance, y: 0 };
+  }
+}
+
+/**
+ * Emits the resting keyframe for channels no spec drives.
+ *
+ * Only channels whose anchor differs from the renderer's own default get a keyframe. Emitting all
+ * five unconditionally would burn 40 of the 128-keyframe budget on eight layers that mostly just
+ * sit where they were put.
+ */
+function applyAnchors(anchor: AnimationAnchorV1, driven: Set<AnimationChannel>, out: Channels): void {
+  if (!driven.has("position") && (anchor.position.x !== 0.5 || anchor.position.y !== 0.5)) {
+    out.position.push(position(0, anchor.position.x, anchor.position.y, "linear"));
+  }
+  if (!driven.has("scale") && (anchor.scale.x !== 1 || anchor.scale.y !== 1)) {
+    out.scale.push(scale(0, anchor.scale.x, anchor.scale.y, "linear"));
+  }
+  if (!driven.has("rotation") && anchor.rotationDegrees !== 0) {
+    out.rotation.push(rotation(0, anchor.rotationDegrees, "linear"));
+  }
+  if (!driven.has("opacity") && anchor.opacity !== 1) {
+    out.opacity.push(opacity(0, anchor.opacity, "linear"));
+  }
+}
+
+export function countKeyframes(animation: LayerAnimationV1): number {
+  return animation.position.length + animation.scale.length + animation.rotation.length
+    + animation.opacity.length + animation.effects.length;
+}
+
+/**
+ * Compiles one layer's specs against its resting anchor.
+ *
+ * `cycleCap` is the budget lever: reducing the number of cycles degrades a wiggle from three
+ * shakes to one but keeps it a wiggle, whereas reducing samples-per-cycle below four would sample
+ * the sine only at its zero crossings and flatten the motion entirely.
+ */
+export function compileLayerAnimation(
+  specs: readonly AnimationSpecV1[],
+  anchor: AnimationAnchorV1,
+  timing: AnimationTiming,
+  cycleCap = Number.POSITIVE_INFINITY,
+): LayerAnimationV1 {
+  if (specs.length === 0) {
+    const out = emptyChannels();
+    applyAnchors(anchor, new Set(), out);
+    return out;
+  }
+  if (timing.kind === "static") {
+    throw new AnimationCompileError(
+      `A static sticker cannot animate, but ${specs.length} animation(s) were supplied. `
+      + "Create the sticker as animated, or remove the animations.",
+    );
+  }
+
+  for (const spec of specs) {
+    const end = spec.delay + spec.duration;
+    if (end > timing.durationSeconds + 1e-9) {
+      throw new AnimationCompileError(
+        `Animation "${spec.type}" ends at ${roundTime(end)}s but the sticker is only `
+        + `${timing.durationSeconds}s long. Shorten its duration, reduce its delay, or lengthen the sticker.`,
+      );
+    }
+  }
+  assertNoChannelConflicts(specs);
+
+  const out = emptyChannels();
+  const driven = new Set<AnimationChannel>();
+  for (const spec of specs) {
+    for (const channel of SPEC_CHANNELS[spec.type]) driven.add(channel);
+  }
+  for (const spec of specs) {
+    compileSpec(spec, anchor, CYCLIC_SPEC_TYPES.has(spec.type) ? cycleCap : Number.POSITIVE_INFINITY, out);
+  }
+  applyAnchors(anchor, driven, out);
+
+  for (const channel of ANIMATION_CHANNELS) {
+    out[channel].sort((a, b) => a.timeSeconds - b.timeSeconds);
+    if (out[channel].length > MAX_CHANNEL_KEYFRAMES) {
+      throw new AnimationCompileError(
+        `The ${channel} channel compiled to ${out[channel].length} keyframes, over the ${MAX_CHANNEL_KEYFRAMES} limit. `
+        + "Use fewer cycles or fewer animations on this layer.",
+      );
+    }
+  }
+  return out;
+}
+
+export type LayerCompileInput = {
+  layerId: string;
+  specs: readonly AnimationSpecV1[];
+  anchor: AnimationAnchorV1;
+};
+
+/**
+ * Compiles every layer, shrinking cyclic specs until the document fits its keyframe budget.
+ *
+ * The cap is lowered uniformly rather than per-layer so the result stays independent of layer
+ * order — the compiler has to be deterministic for the document invariant to hold.
+ */
+export function compileLayerAnimations(
+  layers: readonly LayerCompileInput[],
+  timing: AnimationTiming,
+): LayerAnimationV1[] {
+  const maxCycles = layers.reduce((highest, layer) => layer.specs.reduce((inner, spec) => (
+    "cycles" in spec ? Math.max(inner, spec.cycles) : "bounces" in spec ? Math.max(inner, spec.bounces) : inner
+  ), highest), 1);
+
+  let lastError: AnimationCompileError | undefined;
+  for (let cap = maxCycles; cap >= 1; cap -= 1) {
+    try {
+      const compiled = layers.map((layer) => compileLayerAnimation(layer.specs, layer.anchor, timing, cap));
+      const total = compiled.reduce((sum, animation) => sum + countKeyframes(animation), 0);
+      if (total <= MAX_DOCUMENT_KEYFRAMES) return compiled;
+      lastError = new AnimationCompileError(
+        `The animations compiled to ${total} keyframes, over the ${MAX_DOCUMENT_KEYFRAMES} limit for a document. `
+        + "Use fewer layers, fewer animations per layer, or fewer cycles.",
+      );
+    } catch (error) {
+      // A per-channel overflow may also clear up at a lower cycle cap, so keep shrinking; any other
+      // failure (conflicts, timing) is invariant to the cap and rethrows immediately.
+      if (!(error instanceof AnimationCompileError)) throw error;
+      lastError = error;
+      if (!error.message.includes("channel compiled to")) throw error;
+    }
+  }
+  throw lastError ?? new AnimationCompileError("Animations could not be compiled within the keyframe budget");
+}
