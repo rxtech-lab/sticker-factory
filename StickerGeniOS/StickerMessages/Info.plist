@@ -23,8 +23,6 @@
 		<string>MSMessagesAppPresentationContextMessages</string>
 		<string>MSMessagesAppPresentationContextMedia</string>
 	</array>
-	<key>NSStickerSharingLevel</key>
-	<string>OS</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -37,6 +35,8 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).MessagesViewController</string>
 	</dict>
+	<key>NSStickerSharingLevel</key>
+	<string>OS</string>
 	<key>StickerFactoryAPIBaseURL</key>
 	<string>$(STICKER_FACTORY_API_BASE_URL)</string>
 	<key>StickerFactoryAuthTokenURL</key>

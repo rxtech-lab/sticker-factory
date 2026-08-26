@@ -13,6 +13,10 @@ struct StickerBackground<Content: View>: View {
             .ignoresSafeArea()
             content
         }
+        // Every screen is wrapped in this shell, so setting the behavior here gives the
+        // whole app one rule: dragging a vertical scroll view puts the keyboard away.
+        // Horizontal strips (attachment chips, thumbnails) opt back out with `.never`.
+        .scrollDismissesKeyboard(.immediately)
     }
 }
 

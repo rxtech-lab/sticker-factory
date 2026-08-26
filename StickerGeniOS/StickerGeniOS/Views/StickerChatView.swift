@@ -324,6 +324,7 @@ struct StickerChatView: View {
                     .padding(.horizontal, 2)
                 }
                 .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.never)
             }
 
             HStack(alignment: .bottom, spacing: 10) {
@@ -555,6 +556,7 @@ private struct ChatBubble: View {
                     }
                 }
                 .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.never)
             }
 
             if let sticker {
