@@ -391,46 +391,104 @@ async function validateDocumentAssetReferences(
   return byId;
 }
 
-export async function assertValidAnimationBase(
+/**
+ * Why animation may not build on a base revision, or `undefined` when it may. Every rejection is a
+ * `reason` code plus the values that produced it, because the user-facing consequence — "accept the
+ * sticker first" — is only correct for one of them, and the rest are indistinguishable from outside.
+ */
+async function animationBaseRejection(
   db: Database,
   sticker: typeof stickers.$inferSelect,
   baseRevision?: typeof stickerRevisions.$inferSelect,
-): Promise<void> {
-  const fail = (): never => {
-    throw new ApiError(
-      422,
-      "ANIMATION_BASE_NOT_ACCEPTED",
-      "Animation must use the accepted active revision or a live animation candidate descended from it",
-    );
-  };
-  if (!baseRevision) return fail();
-  if (!sticker.activeRevisionId) return fail();
-  if (baseRevision.kind !== "animated") return fail();
+): Promise<{ reason: string; detail?: Record<string, unknown> } | undefined> {
+  if (!baseRevision) return { reason: "no_base_revision" };
+  if (!sticker.activeRevisionId) return { reason: "sticker_has_no_active_revision" };
+  if (baseRevision.kind !== "animated") return { reason: "base_revision_not_animated" };
   const activeRevisionId = sticker.activeRevisionId;
   const active = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, activeRevisionId),
     eq(stickerRevisions.stickerId, sticker.id),
   )).get();
-  if (!active) return fail();
-  if (active.candidateState !== "accepted" || active.kind !== "animated") return fail();
-  if (baseRevision.id === active.id) return;
+  if (!active) return { reason: "active_revision_missing", detail: { activeRevisionId } };
+  if (active.candidateState !== "accepted") {
+    return { reason: "active_revision_not_accepted", detail: { activeCandidateState: active.candidateState } };
+  }
+  if (active.kind !== "animated") return { reason: "active_revision_not_animated", detail: { activeKind: active.kind } };
+  if (baseRevision.id === active.id) return undefined;
 
   let current: typeof stickerRevisions.$inferSelect = baseRevision;
   const visited = new Set<string>();
+  const walked: string[] = [];
   for (let depth = 0; depth < 32 && current.id !== active.id; depth += 1) {
-    if (visited.has(current.id) || current.candidateState !== "candidate" || !current.sourceMessageId || !current.parentRevisionId) return fail();
+    walked.push(current.id);
+    if (visited.has(current.id)) return { reason: "parent_chain_cycle", detail: { walked } };
+    if (current.candidateState !== "candidate") {
+      return { reason: "chain_revision_not_candidate", detail: { walked, candidateState: current.candidateState } };
+    }
+    if (!current.sourceMessageId) return { reason: "chain_revision_has_no_source_message", detail: { walked } };
+    if (!current.parentRevisionId) return { reason: "chain_revision_has_no_parent", detail: { walked } };
     visited.add(current.id);
     const source = await db.select({ kind: chatMessages.kind }).from(chatMessages)
       .where(eq(chatMessages.id, current.sourceMessageId)).get();
-    if (source?.kind !== "animation") return fail();
+    if (source?.kind !== "animation") {
+      return {
+        reason: "chain_revision_not_from_animation_message",
+        detail: { walked, sourceMessageId: current.sourceMessageId, sourceMessageKind: source?.kind ?? null },
+      };
+    }
     const parent = await db.select().from(stickerRevisions).where(and(
       eq(stickerRevisions.id, current.parentRevisionId),
       eq(stickerRevisions.stickerId, sticker.id),
     )).get();
-    if (!parent) return fail();
+    if (!parent) return { reason: "parent_revision_missing", detail: { walked, parentRevisionId: current.parentRevisionId } };
     current = parent;
   }
-  if (current.id !== active.id) return fail();
+  if (current.id !== active.id) return { reason: "parent_chain_depth_exceeded", detail: { walked } };
+  return undefined;
+}
+
+/**
+ * Whether animation may build on `baseRevision`: the accepted active revision, or a live animation
+ * candidate descended from it.
+ *
+ * Exposed as a predicate as well as the assertion below because the chat router decides to animate
+ * from the user's words alone, with no view of what has been accepted. A turn it routes that way has
+ * already been committed to the transcript, so it needs to ask the question and answer the user,
+ * where a request carrying an explicit animate intent is simply rejected.
+ */
+export async function isValidAnimationBase(
+  db: Database,
+  sticker: typeof stickers.$inferSelect,
+  baseRevision?: typeof stickerRevisions.$inferSelect,
+): Promise<boolean> {
+  const rejection = await animationBaseRejection(db, sticker, baseRevision);
+  if (!rejection) return true;
+  console.warn("Rejected an animation base", {
+    ...rejection.detail,
+    reason: rejection.reason,
+    stickerId: sticker.id,
+    stickerKind: sticker.kind,
+    activeRevisionId: sticker.activeRevisionId,
+    baseRevisionId: baseRevision?.id,
+    baseRevisionKind: baseRevision?.kind,
+    baseRevisionCandidateState: baseRevision?.candidateState,
+    baseRevisionParentId: baseRevision?.parentRevisionId,
+    baseRevisionSourceMessageId: baseRevision?.sourceMessageId,
+  });
+  return false;
+}
+
+export async function assertValidAnimationBase(
+  db: Database,
+  sticker: typeof stickers.$inferSelect,
+  baseRevision?: typeof stickerRevisions.$inferSelect,
+): Promise<void> {
+  if (await isValidAnimationBase(db, sticker, baseRevision)) return;
+  throw new ApiError(
+    422,
+    "ANIMATION_BASE_NOT_ACCEPTED",
+    "Animation must use the accepted active revision or a live animation candidate descended from it",
+  );
 }
 
 export async function createChatTurn(

@@ -6,14 +6,24 @@ struct RevisionComparisonView: View {
     let stickerID: String
     let assets: [String: UIImage]
     @Environment(\.dismiss) private var dismiss
+    /// Every revision points at its own master asset, and the chat screen only ever loaded the
+    /// working one. Comparing revisions is the one place that needs all of them at once, so it
+    /// loads the rest itself instead of showing older cards as empty.
+    @State private var history = StickerAssetStore()
+
+    private var revisions: [StickerRevision] { store.details[stickerID]?.revisions ?? [] }
+    private var mergedAssets: [String: UIImage] { assets.merging(history.images) { _, loaded in loaded } }
 
     var body: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 16) {
-                ForEach(store.details[stickerID]?.revisions ?? []) { revision in
+                ForEach(revisions) { revision in
                     GlassCard {
                         VStack(spacing: 10) {
-                            StickerScene(document: revision.document, time: revision.document.durationSeconds, assets: assets)
+                            // Played, not sampled at `durationSeconds`: an animation that ends on a
+                            // fade- or scale-out has nothing left in its final frame, which read as
+                            // a blank card next to the revision it was supposed to be compared with.
+                            StickerPlayer(document: revision.document, assets: mergedAssets, repeats: true)
                                 .frame(width: 260, height: 260)
                             Text(revision.state.rawValue.capitalized).font(.headline)
                             Text(revision.createdAt, format: .dateTime.month().day().hour().minute())
@@ -29,6 +39,11 @@ struct RevisionComparisonView: View {
                 }
             }
             .padding()
+        }
+        .task(id: revisions.map(\.id).joined(separator: ":")) {
+            for revision in revisions {
+                await history.preload(document: revision.document, api: store.api)
+            }
         }
         .navigationTitle("Compare revisions")
         .accessibilityIdentifier("revision-comparison")

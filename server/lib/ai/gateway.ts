@@ -28,6 +28,8 @@ export interface AiImageOutput {
 export type AiChatAction =
   | { type: "reply"; message: string }
   | { type: "generate"; instruction: string }
+  /** Draws one new element on a transparent background and adds it as its own image layer. */
+  | { type: "generate_image"; instruction: string }
   | { type: "edit"; instruction: string; imagePlacement: "add" | "replace"; targetLayerId?: string }
   | { type: "animate"; instruction: string; targetLayerId?: string }
   | { type: "plan"; instruction: string }
@@ -82,10 +84,60 @@ export interface AiProvider {
    * contact sheet, which is exactly what a concept board is.
    */
   generateConceptImage(prompt: string): Promise<AiImageOutput>;
-  streamAnimationOperations(document: StickerDocumentV1, instruction: string, history: string): AsyncIterable<StickerOperationV1>;
+  /**
+   * Plans a document's motion as a stream of operations.
+   *
+   * `rejection` carries the error a previous attempt's operations were refused with. The compiler's
+   * messages name the offending specs and say what to change, so handing one back is what turns a
+   * rejected plan into a repaired one — without it the retry is the same call and fails identically.
+   */
+  streamAnimationOperations(
+    document: StickerDocumentV1,
+    instruction: string,
+    history: string,
+    rejection?: string,
+  ): AsyncIterable<StickerOperationV1>;
   routeChatTurn(input: AiChatContext): Promise<AiChatAction>;
   showSticker(revisionId: string, kind: "static" | "animated", instruction: string, history: string): Promise<string>;
   reply(instruction: string, history: string): Promise<string>;
+}
+
+/**
+ * Reconciles a routed action with the document it will actually run against.
+ *
+ * The router is shown the whole document, so every layer id is pickable — including the text, shape,
+ * and particle layers that the image tools cannot touch. Left alone, an `edit` naming one of those
+ * reaches the workflow's image-layer guard and fails the turn over a word the user never typed, so
+ * the routing mistakes are corrected into the tool that can serve the request instead.
+ */
+export function resolveChatAction(action: AiChatAction, document?: StickerDocumentV1): AiChatAction {
+  if (action.type === "animate") {
+    // Animation keyframes any layer type, so only an id naming nothing at all is unusable. Dropping
+    // it animates the document as a whole, which is what an untargeted request asks for anyway.
+    return action.targetLayerId && !document?.layers.some((layer) => layer.id === action.targetLayerId)
+      ? { ...action, targetLayerId: undefined }
+      : action;
+  }
+  if (action.type !== "edit") return action;
+  const named = action.targetLayerId
+    ? document?.layers.find((layer) => layer.id === action.targetLayerId)
+    : undefined;
+  // Text, shape, and particle layers are drawn by the app, not by the image model. Only planning can
+  // change one — including swapping it for drawn artwork, which is what "make the text an image"
+  // asks for — and a plan is proposed for confirmation, so nothing is lost if the guess was wrong.
+  if (named && named.type !== "image") return { type: "plan", instruction: action.instruction };
+  const imageLayers = document?.layers.filter((layer) => layer.type === "image") ?? [];
+  // An id that names no layer at all is a hallucination rather than a choice: forget it and let the
+  // edit fall back to the document's own image layer.
+  const resolved = action.targetLayerId && !named ? { ...action, targetLayerId: undefined } : action;
+  if (imageLayers.length > 0) return resolved;
+  // There is no artwork to edit. Adding one drawn element is a generate-image, and on an empty
+  // canvas a plain generate; anything else means the artwork the user is describing has to be
+  // designed rather than edited.
+  if (!document) return { type: "generate", instruction: action.instruction };
+  return resolved.imagePlacement === "add"
+    ? { type: "generate_image", instruction: action.instruction }
+    : { type: "plan", instruction: action.instruction };
 }
 
 function requireGatewayKey(): void {
@@ -221,7 +273,12 @@ class GatewayAiProvider implements AiProvider {
     return { bytes: normalized.bytes, mimeType: "image/png" };
   }
 
-  async *streamAnimationOperations(document: StickerDocumentV1, instruction: string, history: string): AsyncIterable<StickerOperationV1> {
+  async *streamAnimationOperations(
+    document: StickerDocumentV1,
+    instruction: string,
+    history: string,
+    rejection?: string,
+  ): AsyncIterable<StickerOperationV1> {
     requireGatewayKey();
     const result = streamText({
       model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
@@ -232,15 +289,33 @@ class GatewayAiProvider implements AiProvider {
         "Strongly prefer setLayerAnimations: it takes named effects (fadeIn, popIn, slideIn, spin,",
         "wiggle, pulse, bounce, float, blurIn, hueShift, moveTo, scaleTo, rotateTo) with a delay and a",
         "duration in seconds, and the server compiles them into keyframes for you. Stagger layers by",
-        "giving each a larger delay. Two effects on one layer must not overlap in time if they drive",
-        "the same property, and every effect must finish within the sticker's duration.",
+        "giving each a larger delay.",
+        // The rule was already here in the abstract and was still broken constantly, always the same
+        // way: an entrance and an idle effect both starting at 0. Naming that case and showing the
+        // arithmetic is what makes it stick.
+        "Two effects on one layer must never overlap in time if they drive the same property, and",
+        "every effect must finish within the sticker's duration. An entrance and an idle effect are",
+        "the usual trap: popIn, fadeIn, slideIn, blurIn, scaleTo and pulse, bounce, float, wiggle,",
+        "spin all drive scale or position. Sequence them — popIn with delay 0 and duration 0.5 means",
+        "the pulse after it starts at delay 0.5, not 0. Two effects on different layers, or on the",
+        "same layer driving different properties, may overlap freely.",
         "Fall back to the raw setXKeyframes operations only for motion no named effect can express;",
         "their timeSeconds values are absolute seconds, never percentages or deltas, and they cannot",
         "be used on a layer that already has named animations.",
         "You may add validated text, shape, or allowlisted particle layers. Do not add/remove image layers or replace assets. Do not emit Swift, JavaScript, URLs, shaders, expressions, or external asset identifiers.",
         "Keep total document limits at 8 layers and 128 keyframes, duration 0.5-4s, and FPS <=30.",
       ].join(" "),
-      prompt: `Current StickerDocumentV1:\n${JSON.stringify(document)}\n\nRecoverable chat history:\n${history}\n\nInstruction:\n${instruction}`,
+      prompt: [
+        `Current StickerDocumentV1:\n${JSON.stringify(document)}`,
+        `Recoverable chat history:\n${history}`,
+        `Instruction:\n${instruction}`,
+        // Last, so it is the freshest thing in context: this is a correction, not background.
+        rejection
+          ? "Your previous attempt at this was rejected by the compiler:\n"
+            + `${rejection}\n`
+            + "Plan the same motion again with that fixed. Do not repeat the rejected timing."
+          : undefined,
+      ].filter(Boolean).join("\n\n"),
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(120_000),
     });
@@ -272,12 +347,37 @@ class GatewayAiProvider implements AiProvider {
         inputSchema: z.object({ instruction: z.string().trim().min(1).max(8_000) }).strict(),
         execute: async (value) => value,
       }),
+      "generate-image": tool({
+        description: [
+          "Draw one new element as its own image layer on a transparent background and add it to the",
+          "current sticker, leaving every existing layer untouched.",
+          "This is the only tool that draws new artwork onto an existing sticker, so use it when the",
+          "user asks for something to be added alongside what is already there — a hat on the",
+          "character, a second creature, a prop, a badge — or when the new element must be its own",
+          "layer so it can be moved, scaled, or faded independently later.",
+          "It is also the tool for drawing something the sticker currently fakes with a text, shape,",
+          "or particle layer — 'make the lettering hand-drawn', 'draw that star properly'.",
+          "Prefer generate-sticker when the whole sticker should be redrawn from scratch, and",
+          "edit-sticker when artwork that already exists should change.",
+        ].join(" "),
+        inputSchema: z.object({ instruction: z.string().trim().min(1).max(8_000) }).strict(),
+        execute: async (value) => value,
+      }),
       "edit-sticker": tool({
-        description: "Edit the current sticker image from natural-language instructions. Replace is the default; add creates another ordered image layer.",
+        description: [
+          "Edit artwork that already exists in the current sticker from natural-language instructions.",
+          "It redraws one image layer, so it only applies when the document has an image layer.",
+          "Replace is the default; add creates another ordered image layer.",
+        ].join(" "),
         inputSchema: z.object({
           instruction: z.string().trim().min(1).max(8_000),
           imagePlacement: z.enum(["replace", "add"]),
-          targetLayerId: z.string().min(1).max(64).optional(),
+          targetLayerId: z.string().min(1).max(64).optional()
+            .describe([
+              "Id of the image layer to redraw. Only ids of layers with \"type\": \"image\" in the",
+              "current document are valid — text, shape, and particle layers are drawn by the app and",
+              "cannot be edited here. Omit this unless the user clearly names one of them.",
+            ].join(" ")),
         }).strict(),
         execute: async (value) => value,
       }),
@@ -327,10 +427,17 @@ class GatewayAiProvider implements AiProvider {
         "small talk, or anything you are unsure about — call reply. Questions such as 'who is this?',",
         "'what is that?', 'what can you do?', or 'why does it look like that?' are answered with reply,",
         "never by generating or editing.",
-        "Only pick generate-sticker, edit-sticker, animate-sticker, or compose-sticker when the user is",
-        "actually asking for the artwork to change. Those tools discard the current candidate, so a",
-        "wrong guess loses the user's work; when in doubt, reply and ask what they want.",
+        "Only pick generate-sticker, generate-image, edit-sticker, animate-sticker, or plan-sticker when",
+        "the user is actually asking for the artwork to change. Those tools discard the current candidate,",
+        "so a wrong guess loses the user's work; when in doubt, reply and ask what they want.",
         "Use show-sticker when the user asks to see or preview the current sticker without changing it.",
+        "Separate the three ways artwork can change. generate-sticker redraws the whole sticker and",
+        "keeps nothing. generate-image draws one new element on a transparent background and adds it",
+        "as its own layer, leaving the existing layers alone — this is the right tool for 'add a…',",
+        "'put a… next to it', or 'give it a…'. edit-sticker changes artwork that is already there.",
+        "edit-sticker only redraws image layers. A text, shape, or particle layer is drawn by the app,",
+        "so never pass its id as targetLayerId: use generate-image when the user wants that element",
+        "drawn as artwork instead, and plan-sticker when they want it restyled, reworded, or moved.",
         "Use animate-sticker only for animated projects. Prefer the user's exact instruction and omit targetLayerId unless they clearly name one of the supplied layer ids.",
         "When a reference image is attached and the user requests a change, use edit-sticker.",
         "Decide between animate-sticker and plan-sticker by what the requested motion needs.",
@@ -365,22 +472,29 @@ class GatewayAiProvider implements AiProvider {
       const value = z.object({ instruction: z.string() }).parse(call.input);
       return { type: "generate", instruction: value.instruction };
     }
+    case "generate-image": {
+      const value = z.object({ instruction: z.string() }).parse(call.input);
+      return { type: "generate_image", instruction: value.instruction };
+    }
     case "edit-sticker": {
       const value = z.object({
         instruction: z.string(),
         imagePlacement: z.enum(["replace", "add"]),
         targetLayerId: z.string().optional(),
       }).parse(call.input);
-      return {
+      return resolveChatAction({
         type: "edit",
         instruction: value.instruction,
         imagePlacement: value.imagePlacement,
         targetLayerId: value.targetLayerId,
-      };
+      }, input.document);
     }
     case "animate-sticker": {
       const value = z.object({ instruction: z.string(), targetLayerId: z.string().optional() }).parse(call.input);
-      return { type: "animate", instruction: value.instruction, targetLayerId: value.targetLayerId };
+      return resolveChatAction(
+        { type: "animate", instruction: value.instruction, targetLayerId: value.targetLayerId },
+        input.document,
+      );
     }
     case "plan-sticker": {
       const value = z.object({ instruction: z.string() }).parse(call.input);
@@ -466,13 +580,26 @@ class GatewayAiProvider implements AiProvider {
         "If a tool returns an error, read it and fix the plan with update_plan — the error text says",
         "exactly what was wrong. Do not give up and do not repeat the same invalid plan.",
         "",
-        "Layers. At most 8. Each layer has a source:",
-        "  generate — artwork drawn from a prompt. The prompt must describe a single element filling",
-        "    its frame edge to edge on a transparent background, with no other elements and no text",
-        "    unless that layer IS the text. One generate layer per element that must move on its own:",
-        "    one per letter for a typewriter effect, one per character for a scene.",
-        "  text, shape, particle — drawn by the app, not by an image model. Prefer these over a",
-        "    generate layer when they will do, because they cost nothing and stay crisp.",
+        "Layers. At most 8. Every layer picks its own source, and most good stickers mix drawn",
+        "artwork with app-drawn text and effects. The four options are:",
+        "  generate — artwork drawn from a prompt by an image model onto a transparent background.",
+        "    This is the only source that can draw a subject: a character, creature, face, animal,",
+        "    object, food, prop, scene element, or any illustration at all. Use one generate layer",
+        "    per element that must move on its own — one per letter for a typewriter effect, one per",
+        "    character for a scene. The prompt must describe a single element filling its frame edge",
+        "    to edge on a transparent background, with no other elements and no text unless that",
+        "    layer IS the text.",
+        "  text — words drawn by the app in a system font.",
+        "  shape — one fixed primitive: circle, roundedRectangle, star, heart, or burst.",
+        "  particle — a preset field of sparkles, confetti, hearts, bubbles, or snow.",
+        "Prefer text, shape, and particle for lettering, flat accents, and effects: they cost nothing",
+        "and stay crisp at any size. That preference stops at illustration. A shape is a plain filled",
+        "silhouette and a particle preset is a scatter of dots, so neither is ever a stand-in for",
+        // Left to itself the planner reads "prefer the free sources" as "never generate", and returns
+        // plans made entirely of primitives — a design with no artwork in it at all, which is not
+        // what a user who asked for a sticker of something wants.
+        "drawn artwork. If the request names or implies anything that has to be drawn, at least one",
+        "layer must use generate; do not approximate a subject out of primitives.",
         "",
         "Text layers. Give them equal scaleX and scaleY: a glyph is fitted inside its box without",
         "stretching, so unequal values only shrink it. Size a text layer by the box you want the",
@@ -693,9 +820,14 @@ class MockAiProvider implements AiProvider {
     if (input.stickerKind === "animated" && /\b(animate|bounce|move|motion|rotate|spin|wiggle|wave)\b/.test(normalized)) {
       return { type: "animate", instruction };
     }
+    // Narrower than the edit branch below on purpose: "add" alone still means edit, so the mock only
+    // routes to a new layer when the request says so in as many words.
+    if (input.document && /\b(layer|alongside|next to it|on top of it)\b/.test(normalized)) {
+      return { type: "generate_image", instruction };
+    }
     if (input.attachmentCount > 0 || /\b(add|change|create|draw|edit|generate|make|remove|replace|recolor|turn)\b/.test(normalized)) {
       return input.document
-        ? { type: "edit", instruction, imagePlacement: "replace" }
+        ? resolveChatAction({ type: "edit", instruction, imagePlacement: "replace" }, input.document)
         : { type: "generate", instruction };
     }
     return { type: "reply", message: "Tell me what you would like to change, animate, or preview." };

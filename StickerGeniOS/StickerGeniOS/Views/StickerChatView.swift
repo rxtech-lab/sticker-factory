@@ -22,9 +22,13 @@ struct StickerChatView: View {
     @State private var showingExport = false
     @State private var showingComparison = false
     @State private var confirmingDelete = false
+    @State private var showingCandidate = false
     @State private var isDeciding = false
     @State private var isConfirmingPlan = false
     @State private var presentedDocument: PresentedStickerDocument?
+    /// Measured, not fixed: the bar grows with reference chips, a multi-line draft and the
+    /// candidate banner, and the transcript has to keep exactly that much room free under it.
+    @State private var bottomBarHeight: CGFloat = 0
 
     private var detail: StickerDetail? { store.details[stickerID] }
     private var candidate: StickerRevision? { detail?.revisions.first { $0.state == .candidate } }
@@ -54,11 +58,12 @@ struct StickerChatView: View {
 
     var body: some View {
         StickerBackground {
-            VStack(spacing: 0) {
+            // The composer floats over the transcript rather than sitting in a bar below it:
+            // it carries its own glass and nothing else paints behind it, so the messages
+            // stay full-height and simply scroll under it.
+            ZStack(alignment: .bottom) {
                 transcript
-
-                streamErrorBanner
-                composer
+                bottomBar
             }
         }
         .navigationTitle(detail?.title ?? "Sticker")
@@ -97,6 +102,30 @@ struct StickerChatView: View {
             Button("Not now", role: .cancel) {}
         } message: {
             Text("Reference images are uploaded privately and become part of this sticker’s persistent chat and revision history until project deletion.")
+        }
+        .sheet(isPresented: $showingCandidate) {
+            if let candidate {
+                CandidateReadySheet(
+                    revision: candidate,
+                    assets: assetStore.images,
+                    isBusy: isDeciding,
+                    onAccept: { Task { await acceptCandidate(candidate) } },
+                    // Comparison is a second sheet: let this one finish leaving before it
+                    // arrives, or the presentation lands on a view that is on its way out.
+                    onCompare: {
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(350))
+                            showingComparison = true
+                        }
+                    },
+                    onReject: { Task { await rejectCandidate(candidate) } }
+                )
+            }
+        }
+        // The banner is the only way back into the sheet; leaving it open once the candidate
+        // is gone would offer a decision that no longer exists.
+        .onChange(of: candidate?.id) { _, newValue in
+            if newValue == nil { showingCandidate = false }
         }
         .sheet(isPresented: $showingVersions) {
             NavigationStack {
@@ -171,18 +200,13 @@ struct StickerChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentMargins(.top, 16, for: .scrollContent)
+        .contentMargins(.bottom, bottomBarHeight, for: .scrollContent)
     }
 
     /// Everything that belongs to the newest turn but is not itself a message. It sits
     /// above the reserved tail space, so it is measured as part of the pinned turn.
     @ViewBuilder
     private var transcriptTail: some View {
-        if let candidate {
-            candidateCard(candidate)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-        }
-
         if isComputing {
             AssistantTypingIndicator()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,43 +251,30 @@ struct StickerChatView: View {
         }
     }
 
-    private func candidateCard(_ revision: StickerRevision) -> some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Label("Candidate ready", systemImage: "sparkles")
-                    .font(.headline)
+    // MARK: - Bottom bar
 
-                Button {
-                    Task { await acceptCandidate(revision) }
-                } label: {
-                    HStack(spacing: 10) {
-                        Text("Continue with this sticker").fontWeight(.semibold)
-                        Spacer()
-                        if isDeciding { ProgressView().controlSize(.small) }
-                        else { Image(systemName: "arrow.right") }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(.purple)
-                .controlSize(.large)
-                .disabled(isDeciding)
-                .accessibilityIdentifier("accept-candidate-next")
+    /// Everything that floats over the foot of the transcript: connection trouble, the
+    /// candidate decision, and the composer itself — in that order, closest thing to the
+    /// thumb last. Its measured height becomes the transcript's bottom content margin.
+    private var bottomBar: some View {
+        VStack(spacing: 10) {
+            streamErrorBanner
 
-                HStack(spacing: 10) {
-                    Button("Compare", systemImage: "rectangle.on.rectangle") { showingComparison = true }
-                        .buttonStyle(.glass)
-                        .tint(.purple)
-                    Button("Reject", systemImage: "xmark", role: .destructive) {
-                        Task { await rejectCandidate(revision) }
-                    }
-                    .buttonStyle(.glass)
-                    .tint(.red)
-                }
-                .disabled(isDeciding)
+            if candidate != nil {
+                CandidateReadyBanner(isBusy: isDeciding) { showingCandidate = true }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            composer
         }
-        .accessibilityIdentifier("candidate-card")
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .animation(.easeInOut(duration: 0.25), value: candidate?.id)
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.height
+        } action: { height in
+            bottomBarHeight = height
+        }
     }
 
     @ViewBuilder
@@ -295,7 +306,6 @@ struct StickerChatView: View {
             }
             .padding(12)
             .glassEffect(.regular, in: .rect(cornerRadius: 16))
-            .padding(.horizontal, 16)
             .accessibilityIdentifier("stream-error-banner")
         }
     }
@@ -375,7 +385,6 @@ struct StickerChatView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(16)
     }
 
     private func revisionDocument(for message: ChatMessage) -> StickerDocumentV1? {
@@ -431,18 +440,18 @@ struct StickerChatView: View {
             )
             localError = nil
         } catch {
-            // Giving the text back is only correct when the server refused the send. If it may have
-            // landed, the turn is already running: restoring the composer would show the user their
-            // message twice and invite them to send a duplicate. Refetch instead, so the real
-            // message and its job appear without waiting for the reconciliation poller.
+            // Giving the text back is only correct when the send certainly never became a turn. If
+            // it may have landed, the turn is already running: restoring the composer would show the
+            // user their message twice and invite them to send a duplicate. Refetch instead, so the
+            // real message and its job appear without waiting for the reconciliation poller.
             if (error as? SendMessageFailure)?.mayHaveBeenDelivered == true {
                 await store.loadMessages(stickerID: stickerID)
                 await store.loadDetail(stickerID: stickerID)
-            } else {
-                let currentText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !submittedText.isEmpty {
-                    text = currentText.isEmpty ? submittedText : "\(submittedText)\n\(text)"
-                }
+            } else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Only into a composer still empty from the send. Once the user has started typing
+                // again, the refused message must not shove itself in front of what they are writing
+                // now — losing a rejected draft beats mangling a live one.
+                text = submittedText
                 referenceItems = Array((submittedReferenceItems + referenceItems).prefix(8))
                 references = Array((submittedReferences + references).prefix(8))
             }

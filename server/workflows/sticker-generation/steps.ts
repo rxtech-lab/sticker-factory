@@ -1,4 +1,6 @@
 import { and, asc, desc, eq, max } from "drizzle-orm";
+import { FatalError } from "workflow";
+import { AnimationCompileError } from "@/lib/animation/compile";
 import {
   compilePlanAnimations,
   planLayerAnchor,
@@ -38,12 +40,22 @@ import {
   assertValidAnimationBase,
   bindExports,
   createCandidateRevision,
+  isValidAnimationBase,
   rejectRevision,
   revertRevision,
   serializeChatMessage,
 } from "@/lib/services/stickers";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
+
+/**
+ * How many times the animation planner may be asked for one turn's motion.
+ *
+ * Three: the first plan, plus two repairs carrying the compiler's complaint. Beyond that the model
+ * is not misreading a rule, it is failing to satisfy one, and further attempts only spend a
+ * two-minute streaming call each to hear the same thing.
+ */
+const ANIMATION_REPAIR_ATTEMPTS = 3;
 
 export async function beginJobStep(jobId: string): Promise<void> {
   "use step";
@@ -127,6 +139,7 @@ async function turnResult(assistantMessageId: string, revisionId?: string): Prom
 type StickerToolName =
   | "reply"
   | "generate-sticker"
+  | "generate-image"
   | "edit-sticker"
   | "animate-sticker"
   | "plan-sticker"
@@ -814,17 +827,42 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
       document: activeDocument,
       attachmentCount: attachments.filter((row) => row.attachment.kind === "reference").length,
     });
+    // Motion is keyframed onto the sticker the user has kept, never onto a candidate they are still
+    // deciding about. The router reads their words, not the candidate's state, so it cannot know
+    // that — and by the time it has chosen, the turn is already in the transcript. Say what is
+    // missing instead of failing the job on a rule the user was never shown.
+    if (action.type === "animate" && !await isValidAnimationBase(db, sticker, activeRevision)) {
+      console.warn("Declined a routed animate turn", {
+        jobId: job.id,
+        stickerId: sticker.id,
+        sourceMessageId: sourceMessage.id,
+        sourceMessageBaseRevisionId: sourceMessage.baseRevisionId,
+        stickerActiveRevisionId: sticker.activeRevisionId,
+        resolvedBaseRevisionId: baseRevisionId,
+        targetLayerId: action.targetLayerId,
+      });
+      const declinedCallId = await beginToolCall(job, "reply");
+      await finishToolCall(job, declinedCallId);
+      return turnResult(await insertAssistantMessage(
+        job,
+        "I can only animate the sticker you have kept. Choose “Continue with this sticker” on the"
+        + " latest image first, then ask me to animate it.",
+        "text",
+      ));
+    }
     const toolName: StickerToolName = action.type === "generate"
       ? "generate-sticker"
-      : action.type === "edit"
-        ? "edit-sticker"
-        : action.type === "animate"
-          ? "animate-sticker"
-          : action.type === "plan"
-            ? "plan-sticker"
-            : action.type === "show"
-              ? "show-sticker"
-              : "reply";
+      : action.type === "generate_image"
+        ? "generate-image"
+        : action.type === "edit"
+          ? "edit-sticker"
+          : action.type === "animate"
+            ? "animate-sticker"
+            : action.type === "plan"
+              ? "plan-sticker"
+              : action.type === "show"
+                ? "show-sticker"
+                : "reply";
     primaryToolCallId = await beginToolCall(job, toolName, action.type === "show" ? activeRevision?.id : undefined);
     if (action.type === "plan") {
       return executePlanTurn(job, sticker, thread.id, action.instruction, history, activeDocument, primaryToolCallId);
@@ -844,13 +882,23 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
         activeRevision.id,
       );
     }
-    effectiveKind = action.type === "animate" ? "animation" : action.type === "generate" ? "image" : "edit";
+    // `generate-image` only means "another layer" when there is a document to add one to. On an
+    // empty canvas it is an ordinary generation, and calling it an edit would label the transcript
+    // turn `image_edit` and send the empty-document branch down the replace path for no reason.
+    const addsLayer = action.type === "generate_image" && Boolean(activeDocument);
+    effectiveKind = action.type === "animate"
+      ? "animation"
+      : action.type === "generate" || (action.type === "generate_image" && !addsLayer)
+        ? "image"
+        : "edit";
     instruction = action.instruction;
     targetLayerId = action.type === "edit" || action.type === "animate" ? action.targetLayerId : undefined;
-    imagePlacement = action.type === "edit" ? action.imagePlacement : "replace";
+    imagePlacement = action.type === "edit" ? action.imagePlacement : addsLayer ? "add" : "replace";
     await db.update(chatMessages).set({
       kind: effectiveKind === "animation" ? "animation" : effectiveKind === "edit" ? "image_edit" : "image",
-      targetLayerId,
+      // Explicitly null: an undefined column is one drizzle leaves alone, which would strand the
+      // target a superseded routing of this same message wrote on the row.
+      targetLayerId: targetLayerId ?? null,
       imagePlacement,
     }).where(eq(chatMessages.id, sourceMessage.id));
   } else if (job.kind === "image" && sticker.kind === "animated" && !activeDocument) {
@@ -886,24 +934,52 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
   }
 
   if (effectiveKind === "animation") {
-    if (!activeDocument || activeDocument.kind !== "animated") throw new Error("Accept a base image before adding animation");
+    if (!activeDocument || activeDocument.kind !== "animated") throw new FatalError("Accept a base image before adding animation");
     await assertValidAnimationBase(db, sticker, activeRevision);
     if (targetLayerId && !activeDocument.layers.some((layer) => layer.id === targetLayerId)) {
-      throw new Error("The requested animation layer does not exist");
+      throw new FatalError("The requested animation layer does not exist");
     }
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "planning_animation", progress: 0.35 });
-    let document: StickerDocumentV1 = activeDocument;
+    const base = activeDocument;
+    let document: StickerDocumentV1 = base;
     let snapshot = 0;
     const animationInstruction = targetLayerId
       ? `Target only layer id ${targetLayerId}. ${instruction}`
       : instruction;
-    for await (const operation of getAiProvider().streamAnimationOperations(activeDocument, animationInstruction, history)) {
-      await assertJobStillRunning(job.id);
-      if (targetLayerId) assertTargetedAnimationOperation(operation, targetLayerId);
-      document = applyStickerOperationsV1(document, [operation]);
-      await assertDocumentAssetsOwned(document, job.ownerId, sticker.id);
-      snapshot += 1;
-      await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document });
+    // The compiler's refusals are written as instructions to whoever authored the motion — which
+    // effects clash, on which channel, over which seconds. Handing one back to the planner is the
+    // difference between a repair and a rerun: the step's own retries re-issue the identical call
+    // and earn the identical rejection, three times, before failing the turn.
+    let rejection: string | undefined;
+    for (let attempt = 1; ; attempt += 1) {
+      // Each attempt re-plans the whole animation, so it starts from the accepted document again.
+      // Snapshot numbers keep climbing: the client renders the newest and the abandoned attempt
+      // simply stops being the latest.
+      document = base;
+      try {
+        for await (const operation of getAiProvider().streamAnimationOperations(base, animationInstruction, history, rejection)) {
+          await assertJobStillRunning(job.id);
+          if (targetLayerId) assertTargetedAnimationOperation(operation, targetLayerId);
+          document = applyStickerOperationsV1(document, [operation]);
+          await assertDocumentAssetsOwned(document, job.ownerId, sticker.id);
+          snapshot += 1;
+          await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document });
+        }
+        break;
+      } catch (error) {
+        // Name as well as identity: this step and the compiler are bundled into separate server
+        // chunks, and a duplicated module would break `instanceof` while the name still holds.
+        const rejected = error instanceof AnimationCompileError
+          || (error instanceof Error && error.name === "AnimationCompileError");
+        if (!rejected) throw error;
+        // Out of repairs. Fatal rather than retryable: the step would only replay this same loop.
+        if (attempt >= ANIMATION_REPAIR_ATTEMPTS) throw new FatalError(error.message);
+        rejection = error.message;
+        await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+          stage: "planning_animation",
+          progress: 0.35,
+        });
+      }
     }
     await assertJobStillRunning(job.id);
     const revisionId = await createCandidateRevision(db, {
@@ -935,8 +1011,11 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
   const maskRow = attachments.find((row) => row.attachment.kind === "mask");
   const referenceRows = attachments.filter((row) => row.attachment.kind === "reference");
   targetLayerId = maskRow?.attachment.targetLayerId ?? targetLayerId;
+  // Reached only when the id came from the request, which the chat endpoint has already validated
+  // against this same base revision, or from a provider that did not reconcile its own routing. Both
+  // are deterministic, so retrying replays the identical failure: fail the turn once instead.
   if (targetLayerId && !activeDocument?.layers.some((layer) => layer.type === "image" && layer.id === targetLayerId)) {
-    throw new Error("The requested image layer does not exist");
+    throw new FatalError("The requested image layer does not exist");
   }
   const targetLayer = activeDocument?.layers.find((layer) => layer.type === "image" && (!targetLayerId || layer.id === targetLayerId));
   const targetAsset = targetLayer?.type === "image"
@@ -1116,7 +1195,11 @@ export function assertTargetedAnimationOperation(
   targetLayerId: string,
 ): void {
   if (operation.op === "setTiming") return;
-  if (operation.op === "setPositionKeyframes"
+  // `setLayerAnimations` belongs here for the same reason the keyframe setters do: it names a single
+  // layer and touches nothing else. It is also the operation the planner is told to prefer, so
+  // leaving it out rejected every targeted animation on the planner's first move.
+  if (operation.op === "setLayerAnimations"
+    || operation.op === "setPositionKeyframes"
     || operation.op === "setScaleKeyframes"
     || operation.op === "setRotationKeyframes"
     || operation.op === "setOpacityKeyframes"

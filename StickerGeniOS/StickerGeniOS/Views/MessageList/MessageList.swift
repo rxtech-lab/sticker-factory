@@ -40,6 +40,11 @@ nonisolated extension MessageListItem {
 /// `placesLatestTurnOnAppear` is set, one initial placement when the transcript
 /// first has content.
 ///
+/// **The reservation outlives the session.** It is not a side effect of sending:
+/// a transcript that arrives already answered rebuilds it from its newest user
+/// message, so reopening a chat looks like the moment its last turn was sent
+/// rather than dropping the reader at the raw end of the content.
+///
 /// The bottom spacing is therefore *computed*, never a fixed padding: it is
 /// `viewport - turnHeight`, remeasured whenever the viewport changes (rotation,
 /// keyboard, a growing composer) or the turn grows.
@@ -58,9 +63,23 @@ struct MessageList<
 
     @State private var pinning = MessageListPinningController<Message.MessageID>()
     @State private var scrollPhase: ScrollPhase = .idle
-    @State private var scrollViewHeight: CGFloat = 0
-    @State private var latestUserMinY: CGFloat = 0
-    @State private var tailMarkerMinY: CGFloat = 0
+    /// The height the turn actually gets to occupy — `ScrollGeometry.bounds`, the
+    /// visible region *inside* the content insets, and the same region `scrollTo`
+    /// aligns into.
+    ///
+    /// Two nearby values are both wrong here. The scroll view's frame height counts
+    /// the strip the floating composer and the navigation bar cover (the transcript
+    /// is full-bleed and holds that space with `contentMargins`/safe area), so
+    /// reserving against it pushes the turn off the top by the inset total. And
+    /// `containerSize` is already inset-adjusted — subtracting the insets from it
+    /// double-counts them, which collapses the reservation to nothing.
+    @State private var visibleContentHeight: CGFloat = 0
+    // Optional on purpose: `nil` is "not measured yet", which is a different thing
+    // from a measured 0 (the very top of the content). Collapsing the two lets an
+    // unmeasured user message read as sitting at the top, which makes the turn look
+    // as tall as the whole transcript and permanently ratchets the spacer to zero.
+    @State private var latestUserMinY: CGFloat?
+    @State private var tailMarkerMinY: CGFloat?
     @State private var activeTurnMaxMeasuredHeight: CGFloat = 0
     @State private var canReleasePinnedUserMessageByScroll = false
     @State private var hasPlacedInitialContent = false
@@ -94,7 +113,12 @@ struct MessageList<
                             .onGeometryChange(for: CGFloat.self) { geometry in
                                 geometry.frame(in: .named(MessageListConstants.coordinateSpaceName)).minY
                             } action: { value in
-                                guard messageID == pinning.pinnedUserMessageID else { return }
+                                // Keyed off the transcript, NOT the pin. A row reports its
+                                // geometry when it lays out, and on a reopened chat that
+                                // happens before anything decides to pin — guarding on the
+                                // pin would drop the only report we ever get and leave the
+                                // turn height unmeasurable for the rest of the session.
+                                guard messageID == latestUserMessageID else { return }
                                 updateLatestUserMinY(value)
                             }
                             .id(messageID)
@@ -113,10 +137,10 @@ struct MessageList<
                 }
                 .coordinateSpace(.named(MessageListConstants.coordinateSpaceName))
             }
-            .onGeometryChange(for: CGFloat.self) { geometry in
-                geometry.size.height
-            } action: { height in
-                scrollViewHeight = height
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.bounds.height
+            } action: { _, height in
+                updateVisibleContentHeight(height)
             }
             .onScrollGeometryChange(for: MessageListScrollMetrics.self) { geometry in
                 MessageListScrollMetrics(
@@ -142,6 +166,7 @@ struct MessageList<
             .task {
                 guard placesLatestTurnOnAppear, !hasPlacedInitialContent, !messages.isEmpty else { return }
                 hasPlacedInitialContent = true
+                restoreLatestTurnReservation()
                 scrollLatestTurnIntoView(proxy: proxy, animated: false)
             }
             .onChange(of: isStreaming) { oldValue, newValue in
@@ -212,12 +237,14 @@ struct MessageList<
         // reserved space survives scrolling and the pin "releasing"; it only collapses
         // naturally as the turn grows to fill the viewport, or when the latest user
         // message changes (which resets the measurement to the new turn).
-        guard pinning.pinnedUserMessageID != nil, scrollViewHeight > 0 else { return 0 }
-        return max(0, scrollViewHeight - activeTurnHeight - MessageListConstants.minimumPinnedTailSpacing)
+        guard pinning.pinnedUserMessageID != nil, visibleContentHeight > 0 else { return 0 }
+        return max(0, visibleContentHeight - activeTurnHeight - MessageListConstants.minimumPinnedTailSpacing)
     }
 
-    private var rawActiveTurnMeasuredHeight: CGFloat {
-        max(0, tailMarkerMinY - latestUserMinY)
+    /// `nil` until both ends of the turn have reported — never a guess.
+    private var rawActiveTurnMeasuredHeight: CGFloat? {
+        guard let latestUserMinY, let tailMarkerMinY else { return nil }
+        return max(0, tailMarkerMinY - latestUserMinY)
     }
 
     private var activeTurnHeight: CGFloat {
@@ -228,8 +255,8 @@ struct MessageList<
     }
 
     private var pinnedTurnFillsViewport: Bool {
-        guard scrollViewHeight > 0 else { return false }
-        return activeTurnHeight >= scrollViewHeight - MessageListConstants.minimumPinnedTailSpacing
+        guard visibleContentHeight > 0 else { return false }
+        return activeTurnHeight >= visibleContentHeight - MessageListConstants.minimumPinnedTailSpacing
     }
 
     // MARK: - Derived transcript state
@@ -319,6 +346,15 @@ struct MessageList<
                 isUserMessage: true,
                 isStreaming: isStreaming
             )
+        } else if isInitialPlacement, newToken.latestUserMessageID != nil {
+            // A transcript that arrives already answered has no send to react to,
+            // so the branch above never fires and the reservation would be missing
+            // for the rest of the session. Rebuild it from the newest user message,
+            // then place it — restoring keeps the measurements it already has, so
+            // this deliberately skips the reset the freshly-sent path does below.
+            restoreLatestTurnReservation()
+            scrollLatestTurnIntoView(proxy: proxy, animated: false)
+            return
         } else {
             action = pinning.handleLastMessageChange(
                 id: latestContentItem?.messageID,
@@ -384,6 +420,20 @@ struct MessageList<
         }
     }
 
+    /// Rebuilds the tail reservation for a transcript that was already loaded when
+    /// the list appeared — the `.task` counterpart to the `handleMessageListChange`
+    /// path, for when there is no transcript change to react to at all.
+    private func restoreLatestTurnReservation() {
+        guard let latestUserMessageID else { return }
+        pinning.restoreLatestTurn(id: latestUserMessageID)
+        canReleasePinnedUserMessageByScroll = false
+        // Adopt whatever the rows have already reported rather than resetting. On a
+        // reopened transcript the layout is settled, so a cleared measurement would
+        // never be replaced; re-ratcheting from zero picks up the current turn.
+        activeTurnMaxMeasuredHeight = 0
+        updateActiveTurnMaxMeasuredHeight()
+    }
+
     private func releasePinnedUserMessage() {
         pinTask?.cancel()
         canReleasePinnedUserMessageByScroll = false
@@ -417,9 +467,12 @@ struct MessageList<
         }
     }
 
+    /// Only for a turn that is *about to* lay out — a fresh send. Clearing the
+    /// measurements of a turn that is already on screen would strand them: the
+    /// geometry callbacks fire on change, and nothing is changing.
     private func resetPinnedTurnMeasurements() {
-        latestUserMinY = 0
-        tailMarkerMinY = 0
+        latestUserMinY = nil
+        tailMarkerMinY = nil
         activeTurnMaxMeasuredHeight = 0
     }
 
@@ -429,8 +482,17 @@ struct MessageList<
     // measurement must never animate, or the spacer visibly springs while the
     // turn is still laying out.
 
+    private func updateVisibleContentHeight(_ value: CGFloat) {
+        guard abs(value - visibleContentHeight) > 0.5 else { return }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            visibleContentHeight = value
+        }
+    }
+
     private func updateLatestUserMinY(_ value: CGFloat) {
-        guard abs(value - latestUserMinY) > 0.5 else { return }
+        guard latestUserMinY.map({ abs(value - $0) > 0.5 }) ?? true else { return }
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
@@ -439,7 +501,7 @@ struct MessageList<
     }
 
     private func updateTailMarkerMinY(_ value: CGFloat) {
-        guard abs(value - tailMarkerMinY) > 0.5 else { return }
+        guard tailMarkerMinY.map({ abs(value - $0) > 0.5 }) ?? true else { return }
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
@@ -450,8 +512,7 @@ struct MessageList<
     private func updateActiveTurnMaxMeasuredHeight() {
         // Keep measuring the turn height while a latest user message is tracked, even
         // after the pin "releases", so the persistent tail spacer stays correctly sized.
-        guard pinning.pinnedUserMessageID != nil else { return }
-        let measured = rawActiveTurnMeasuredHeight
+        guard pinning.pinnedUserMessageID != nil, let measured = rawActiveTurnMeasuredHeight else { return }
         // Ratcheted: only ever grows. A transient shrink would grow the spacer
         // and visibly shove the transcript.
         guard measured > activeTurnMaxMeasuredHeight + 0.5 else { return }

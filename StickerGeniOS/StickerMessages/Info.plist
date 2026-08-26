@@ -18,6 +18,11 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>MSSupportedPresentationContexts</key>
+	<array>
+		<string>MSMessagesAppPresentationContextMessages</string>
+		<string>MSMessagesAppPresentationContextMedia</string>
+	</array>
 	<key>NSStickerSharingLevel</key>
 	<string>OS</string>
 	<key>NSAppTransportSecurity</key>
