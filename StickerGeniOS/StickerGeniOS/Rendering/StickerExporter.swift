@@ -17,9 +17,24 @@ nonisolated struct SystemStickerPreset: Equatable, Sendable {
     var fps: Int
     var colorLevels: Int
 
+    /// Spends frame rate and color depth before it spends dimension.
+    ///
+    /// Messages draws a sticker in the transcript at its own pixel size over 3, so `dimension` is
+    /// the only rung that changes how big the sticker arrives: 618 lands at 206 pt, 300 at 100 pt
+    /// — half the sticker. The 618 rungs are worth attempting because flat, poster-like art does
+    /// reach them; dense photographic art does not, and no ordering fixes that. A 618 frame of it
+    /// costs well over the 500 KB budget on its own, and the server's 8 FPS floor for adaptive
+    /// renditions bounds how many frames can be dropped chasing it.
+    ///
+    /// Every rung the previous ladder ended on is still here. Detailed art genuinely needs the
+    /// 300 @ 8 floor, and a ladder that cannot reach it fails the export outright rather than
+    /// shipping a small sticker.
     static let adaptive: [Self] = [
         .init(dimension: 618, fps: 24, colorLevels: 32),
+        .init(dimension: 618, fps: 15, colorLevels: 16),
+        .init(dimension: 618, fps: 10, colorLevels: 8),
         .init(dimension: 408, fps: 18, colorLevels: 24),
+        .init(dimension: 408, fps: 12, colorLevels: 12),
         .init(dimension: 300, fps: 15, colorLevels: 16),
         .init(dimension: 300, fps: 10, colorLevels: 12),
         .init(dimension: 300, fps: 8, colorLevels: 8),
@@ -178,6 +193,7 @@ final class StickerExporter {
 
         let renderedDuration = StickerExportMetadataPolicy.renderedDuration(document)
         let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps)
+        let holdSeconds = StickerExportMetadataPolicy.holdSeconds(for: document.loop)
         for index in 0..<frameCount {
             while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(4)) }
             guard let sticker = renderFrame(
@@ -200,13 +216,23 @@ final class StickerExporter {
                 dimension: dimension
             )
             let timestamp = CMTime(value: CMTimeValue(index), timescale: CMTimeScale(document.fps))
-            guard adaptor.append(buffer, withPresentationTime: timestamp) else {
+            let appended: Bool
+            if index == frameCount - 1 {
+                // The hold has to ride on the final sample's own duration — see `heldSampleBuffer`.
+                let held = try heldSampleBuffer(
+                    buffer,
+                    at: timestamp,
+                    lasting: CMTime(seconds: 1 / Double(document.fps) + holdSeconds, preferredTimescale: 600)
+                )
+                appended = input.append(held)
+            } else {
+                appended = adaptor.append(buffer, withPresentationTime: timestamp)
+            }
+            guard appended else {
                 throw StickerExportError.videoWriterFailed(writer.error?.localizedDescription ?? "Could not append a frame")
             }
         }
         input.markAsFinished()
-        // The last sample is displayed until the session ends, so ending it a hold past the cycle
-        // is what makes that frame linger — no extra frame is written for it.
         writer.endSession(atSourceTime: CMTime(seconds: renderedDuration, preferredTimescale: 600))
         await writer.finishWriting()
         guard writer.status == .completed else {
@@ -328,6 +354,31 @@ final class StickerExporter {
         }
         guard CGImageDestinationFinalize(destination) else { throw StickerExportError.destinationFailed }
         return data as Data
+    }
+
+    /// Wraps a frame so it carries its own display duration instead of inheriting the frame cadence.
+    ///
+    /// `endSession(atSourceTime:)` does not stretch the final sample: AVAssetWriter times it from
+    /// the cadence that preceded it, so a file ended a hold past the cycle still measures exactly
+    /// the cycle in `mdhd`. The server recomputes the duration from the container and rejects an
+    /// export missing the hold, so the hold has to be spelled out on the sample itself. No extra
+    /// frame is written for it — the last frame simply lingers, which is what the hold means.
+    private func heldSampleBuffer(_ pixelBuffer: CVPixelBuffer, at presentationTime: CMTime, lasting duration: CMTime) throws -> CMSampleBuffer {
+        var format: CMVideoFormatDescription?
+        guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pixelBuffer, formatDescriptionOut: &format) == noErr,
+              let format
+        else { throw StickerExportError.videoWriterFailed("The final frame could not be described") }
+        var timing = CMSampleTimingInfo(duration: duration, presentationTimeStamp: presentationTime, decodeTimeStamp: .invalid)
+        var sample: CMSampleBuffer?
+        guard CMSampleBufferCreateReadyWithImageBuffer(
+            allocator: nil,
+            imageBuffer: pixelBuffer,
+            formatDescription: format,
+            sampleTiming: &timing,
+            sampleBufferOut: &sample
+        ) == noErr, let sample
+        else { throw StickerExportError.videoWriterFailed("The final frame could not be timed") }
+        return sample
     }
 
     private func posterized(_ image: CGImage, levels: Int) -> CGImage? {
