@@ -203,7 +203,17 @@ struct StickerRenderingPolicyTests {
     func exportMetadataPolicy() {
         #expect(!StickerExportMetadataPolicy.hasAlpha(for: .mp4))
         #expect(StickerExportMetadataPolicy.hasAlpha(for: .gif))
-        #expect(SystemStickerPreset.adaptive.map(\.dimension) == [618, 408, 300, 300, 300])
+        // Dimension is what the recipient perceives as sticker size, so the ladder spends frame
+        // rate and color depth first and only concedes pixels once those are exhausted.
+        #expect(SystemStickerPreset.adaptive.map(\.dimension) == [618, 618, 618, 408, 408, 300, 300, 300])
+        // Monotonic: a rung never costs more bytes than the one it falls back from.
+        #expect(zip(SystemStickerPreset.adaptive, SystemStickerPreset.adaptive.dropFirst()).allSatisfy {
+            $1.dimension <= $0.dimension && ($1.dimension < $0.dimension || $1.fps <= $0.fps)
+        })
+        // Dense art needs the 300 @ 8 floor; without it the export fails instead of shrinking.
+        #expect(SystemStickerPreset.adaptive.last == .init(dimension: 300, fps: 8, colorLevels: 8))
+        // The server's adaptive floor is 8 FPS; no rung may fall through it.
+        #expect(SystemStickerPreset.adaptive.allSatisfy { $0.fps >= 8 })
     }
 
     @Test("GIF centisecond delays preserve a 30 FPS cycle duration")
