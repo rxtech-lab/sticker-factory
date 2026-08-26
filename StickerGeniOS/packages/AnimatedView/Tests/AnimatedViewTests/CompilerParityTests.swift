@@ -33,9 +33,18 @@ struct CompilerParityTests {
             var scale: AnimatedPoint
             var rotationDegrees: Double
             var opacity: Double
+            /// Optional because fixtures emitted before the server contract grew a trim channel do
+            /// not carry one; a missing value means the whole path, exactly as the schema defaults.
+            var trim: AnimatedTrim?
 
             var animated: AnimatedAnchor {
-                .init(position: position, scale: scale, rotationDegrees: rotationDegrees, opacity: opacity)
+                .init(
+                    position: position,
+                    scale: scale,
+                    rotationDegrees: rotationDegrees,
+                    opacity: opacity,
+                    trim: trim ?? .full
+                )
             }
         }
     }
@@ -55,7 +64,7 @@ struct CompilerParityTests {
         let covered = Set(Self.cases.flatMap { $0.specs.map(\.type) })
         // Every spec type the TypeScript contract knows about must appear, so a newly added effect
         // cannot ship without a parity case.
-        let expected = Set(AnimationEffectType.allCases).subtracting([.drawOn, .drawOff, .trimTo])
+        let expected = Set(AnimationEffectType.allCases)
         #expect(covered == expected, "Missing parity coverage for \(expected.subtracting(covered))")
     }
 
@@ -75,7 +84,9 @@ struct CompilerParityTests {
         #expect(compiled.rotation == testCase.expected.rotation, "\(testCase.name): rotation")
         #expect(compiled.opacity == testCase.expected.opacity, "\(testCase.name): opacity")
         #expect(compiled.effects == testCase.expected.effects, "\(testCase.name): effects")
-        #expect(compiled.trim.isEmpty, "\(testCase.name): trim should be untouched by v1 specs")
+        // Trim used to be asserted empty here, because the channel existed only on the Swift side.
+        // Now that `compile.ts` implements it, it is compared like every other channel.
+        #expect(compiled.trim == testCase.expected.trim, "\(testCase.name): trim")
     }
 
     /// The fixture stores the specs *after* zod applied its defaults, so decoding them back and

@@ -1,3 +1,4 @@
+import AnimatedView
 import CryptoKit
 import Foundation
 import Testing
@@ -21,24 +22,25 @@ struct StickerContractTests {
 
     @Test("Canonical server fixture decodes, validates, and round-trips")
     func canonicalDocumentFixture() throws {
-        let data = try fixtureData("sticker-document-v1")
-        let document = try JSONDecoder.api.decode(StickerDocumentV1.self, from: data)
+        let data = try fixtureData("sticker-document-v2")
+        let document = try JSONDecoder.api.decode(AnimatedDocument.self, from: data)
         let validated = try document.validated()
 
-        #expect(validated.version == 1)
+        #expect(validated.version == AnimatedDocument.currentVersion)
         #expect(validated.canvas.coordinateSpace == "normalized")
         #expect(validated.kind == .animated)
         #expect(validated.layers.count == 2)
-        #expect(try JSONDecoder.api.decode(StickerDocumentV1.self, from: JSONEncoder.api.encode(validated)) == validated)
+        #expect(try JSONDecoder.api.decode(AnimatedDocument.self, from: JSONEncoder.api.encode(validated)) == validated)
     }
 
     /// The server authors motion declaratively and ships both representations: `animations` (the
     /// named effects) alongside `animation` (their compiled keyframes). The renderer only ever
-    /// reads the compiled keyframes, so decoding must ignore the declarative half rather than
-    /// choke on it — this pins that the extra keys stay harmless.
+    /// reads the compiled keyframes. The app used to *drop* the declarative half on decode, which
+    /// was safe only because it never sent a document back; now that it can, both halves round-trip
+    /// and this pins that the compiled keyframes are still what plays.
     @Test("A server-compiled declarative layer decodes into playable keyframes")
     func declarativeLayerCompilesToKeyframes() throws {
-        let document = try JSONDecoder.api.decode(StickerDocumentV1.self, from: fixtureData("sticker-document-v1"))
+        let document = try JSONDecoder.api.decode(AnimatedDocument.self, from: fixtureData("sticker-document-v2"))
         guard case .particle(let layer) = document.layers[1] else {
             #expect(Bool(false), "Fixture must contain its declarative particle layer")
             return
@@ -51,15 +53,15 @@ struct StickerContractTests {
         #expect(layer.animation.position.count == 1)
         #expect(layer.animation.position[0].timeSeconds == 0)
 
-        let state = StickerInterpolator.state(for: document.layers[1], at: 0.2, in: document)
+        let state = AnimationInterpolator.state(for: document.layers[1], atDocumentTime: 0.2)
         #expect(state.opacity == 0)
-        let settled = StickerInterpolator.state(for: document.layers[1], at: 0.9, in: document)
+        let settled = AnimationInterpolator.state(for: document.layers[1], atDocumentTime: 0.9)
         #expect(settled.opacity == 1)
     }
 
     @Test("Validation rejects an out-of-bounds streamed keyframe")
     func rejectsOutOfBoundsKeyframe() throws {
-        var document = try JSONDecoder.api.decode(StickerDocumentV1.self, from: fixtureData("sticker-document-v1"))
+        var document = try JSONDecoder.api.decode(AnimatedDocument.self, from: fixtureData("sticker-document-v2"))
         guard case .image(var layer) = document.layers[0] else {
             #expect(Bool(false), "Fixture must contain its canonical image layer")
             return
@@ -67,7 +69,7 @@ struct StickerContractTests {
         layer.animation.position[0].x = 2.01
         document.layers[0] = .image(layer)
 
-        #expect(throws: StickerDocumentValidationError.self) { try document.validated() }
+        #expect(throws: AnimatedDocumentError.self) { try document.validated() }
     }
 
     @Test("Canonical API fixture preserves system sticker limits and dates")
@@ -188,7 +190,7 @@ struct StickerRenderingPolicyTests {
             .init(timeSeconds: 2, x: 1, y: 0.75, easing: .linear),
         ])
         let layer = StickerLayerV1.shape(.init(id: "shape", name: "Shape", animation: animation, shape: .circle, fill: "#FFFFFF"))
-        let document = StickerDocumentV1(kind: .animated, durationSeconds: 2, fps: 30, loop: .pingPong, layers: [layer])
+        let document = AnimatedDocument(kind: .animated, durationSeconds: 2, fps: 30, loop: .pingPong, layers: [layer])
         let midpoint = StickerInterpolator.state(for: layer, at: 1, in: document)
 
         #expect(abs(midpoint.position.x - 0.5) < 0.000_001)
@@ -211,6 +213,34 @@ struct StickerRenderingPolicyTests {
         #expect(delays.filter { abs($0 - 0.03) < 0.000_001 }.count == 40)
         #expect(delays.filter { abs($0 - 0.04) < 0.000_001 }.count == 20)
         #expect(abs(delays.reduce(0, +) - 2) < 0.000_001)
+    }
+
+    @Test("The loop hold lingers on the last frame without adding one")
+    func loopHoldTiming() {
+        let held = StickerExportMetadataPolicy.gifFrameDelays(frameCount: 60, fps: 30, holdSeconds: 0.6)
+        let plain = StickerExportMetadataPolicy.gifFrameDelays(frameCount: 60, fps: 30)
+        // Same grid: a hold is display time on a frame that already exists, never an extra frame.
+        #expect(held.count == plain.count)
+        #expect(Array(held.dropLast()) == Array(plain.dropLast()))
+        #expect(abs(held[59] - (plain[59] + 0.6)) < 0.000_001)
+        #expect(abs(held.reduce(0, +) - 2.6) < 0.000_001)
+
+        // A play-once export has no repeat to separate, so it is never held.
+        #expect(StickerExportMetadataPolicy.holdSeconds(for: .once) == 0)
+        #expect(StickerExportMetadataPolicy.holdSeconds(for: .loop) == StickerExportMetadataPolicy.loopHoldSeconds)
+        #expect(StickerExportMetadataPolicy.holdSeconds(for: .pingPong) == StickerExportMetadataPolicy.loopHoldSeconds)
+    }
+
+    @Test("Rendered duration is the motion cycle plus the hold, and the frame grid is unchanged")
+    func renderedDurationIncludesHold() {
+        let layer = StickerLayerV1.shape(.init(id: "shape", name: "Shape", shape: .circle, fill: "#FFFFFF"))
+        let pingPong = AnimatedDocument(kind: .animated, durationSeconds: 2, fps: 30, loop: .pingPong, layers: [layer])
+        let once = AnimatedDocument(kind: .animated, durationSeconds: 2, fps: 30, loop: .once, layers: [layer])
+
+        #expect(abs(StickerExportMetadataPolicy.renderedDuration(pingPong) - 4.6) < 0.000_001)
+        #expect(abs(StickerExportMetadataPolicy.renderedDuration(once) - 2) < 0.000_001)
+        // The server recovers the grid by dividing frames by the cycle, so this must not move.
+        #expect(StickerExportMetadataPolicy.frameCount(document: pingPong, fps: 30) == 120)
     }
 
     @Test("Empty resumed terminal SSE responses stop reconnecting")
@@ -754,6 +784,7 @@ private extension StickerAPIClientProtocol {
     func cancelGeneration(jobID: String, idempotencyKey: String) async throws -> CancelGenerationResponse { throw TestFixtureError.stub }
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse { throw TestFixtureError.stub }
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse { throw TestFixtureError.stub }
+    func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse { throw TestFixtureError.stub }
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String { throw TestFixtureError.stub }
     func assetDownload(assetID: String) async throws -> AssetDownload { throw TestFixtureError.stub }
     nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
@@ -917,7 +948,7 @@ private actor FailedTranscriptAPI: StickerAPIClientProtocol {
     }
 }
 
-/// Streams a `candidate` whose document cannot be decoded into `StickerDocumentV1`.
+/// Streams a `candidate` whose document cannot be decoded into `AnimatedDocument`.
 private actor PoisonEventAPI: StickerAPIClientProtocol {
     nonisolated let stickerID = "poison-sticker"
 

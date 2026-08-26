@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { resolveChatAction, validatePlannedAnimationOperation } from "@/lib/ai/gateway";
 import { CreateUploadRequestSchema, PostChatMessageRequestSchema } from "@/lib/contracts/api";
-import { StickerDocumentV1Schema } from "@/lib/contracts/sticker";
+import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { validateAnimatedRenditionTiming } from "@/lib/services/stickers";
 import { inspectImage } from "@/lib/storage/r2";
 import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation/steps";
@@ -24,13 +24,13 @@ describe("media and animation hardening", () => {
         name: "Spark",
         hidden: false,
         type: "shape" as const,
-        shape: "star" as const,
-        fill: "#FFFFFF",
-        strokeWidth: 0,
+        shape: { kind: "star" as const, points: 5, innerRatio: 0.42 },
+        fill: { type: "solid" as const, color: "#FFFFFF" },
         cornerRadius: 0.12,
-        anchor: { position: { x: 0.5, y: 0.5 }, scale: { x: 1, y: 1 }, rotationDegrees: 0, opacity: 1 },
+        blendMode: "normal" as const,
+        anchor: { position: { x: 0.5, y: 0.5 }, scale: { x: 1, y: 1 }, rotationDegrees: 0, opacity: 1, trim: { start: 0, end: 1 } },
         animations: [],
-        animation: { position: [], scale: [], rotation: [], opacity: [], effects: [] },
+        animation: { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] },
       },
     };
     expect(validatePlannedAnimationOperation(shape)).toBe(shape);
@@ -57,21 +57,22 @@ describe("media and animation hardening", () => {
     expect(() => assertTargetedAnimationOperation({
       op: "addLayer",
       layer: {
-        id: "spark", name: "Spark", hidden: false, type: "particle", preset: "sparkles", count: 4, color: "#FFFFFF", seed: 7,
-        anchor: { position: { x: 0.5, y: 0.5 }, scale: { x: 1, y: 1 }, rotationDegrees: 0, opacity: 1 },
+        id: "spark", name: "Spark", hidden: false, type: "particle", preset: "sparkles", count: 4,
+        paint: { type: "solid", color: "#FFFFFF" }, seed: 7, blendMode: "normal",
+        anchor: { position: { x: 0.5, y: 0.5 }, scale: { x: 1, y: 1 }, rotationDegrees: 0, opacity: 1, trim: { start: 0, end: 1 } },
         animations: [],
-        animation: { position: [], scale: [], rotation: [], opacity: [], effects: [] },
+        animation: { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] },
       },
     }, "hero")).toThrow(/outside/);
   });
 
-  it("requires an accepted-base identifier for animation and rejects GIF references at intent time", () => {
-    expect(() => PostChatMessageRequestSchema.parse({ text: "Bounce", intent: "animate", attachments: [], imagePlacement: "replace" })).toThrow(/accepted active base/);
+  it("requires an explicit base identifier for animation and rejects GIF references at intent time", () => {
+    expect(() => PostChatMessageRequestSchema.parse({ text: "Bounce", intent: "animate", attachments: [], imagePlacement: "replace" })).toThrow(/explicit base revision/);
     expect(() => CreateUploadRequestSchema.parse({ kind: "reference", mimeType: "image/gif", byteSize: 100, filename: "bomb.gif" })).toThrow(/PNG, JPEG, or WebP/);
   });
 
   it("accepts a one-frame adaptive system duration tolerance and enforces its FPS floor", () => {
-    const document = StickerDocumentV1Schema.parse({
+    const document = StickerDocumentSchema.parse({
       version: 1,
       canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
       kind: "animated",
@@ -82,13 +83,57 @@ describe("media and animation hardening", () => {
       layers: [],
     });
     if (document.kind !== "animated") throw new Error("Animated timing fixture did not parse as animated");
-    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 5, durationSeconds: 0.625, fps: 8 })).not.toThrow();
-    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 4, durationSeconds: 4 / 7, fps: 7 }))
+    // A 0.51 s cycle plus the 0.6 s loop hold: 1.11 s of wall clock over a 5-frame motion grid.
+    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 5, durationSeconds: 1.11, fps: 5 / 1.11 })).not.toThrow();
+    // One frame of encoder slack on top of that is still accepted.
+    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 5, durationSeconds: 1.21, fps: 5 / 1.21 })).not.toThrow();
+    // The grid is recovered from the cycle, not the held duration, so the floor still bites: three
+    // frames over 0.51 s is 5.9 fps, under the ladder's 8 fps floor.
+    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 3, durationSeconds: 1.11, fps: 3 / 1.11 }))
       .toThrow(/FPS/);
+    // A rendition encoded without the hold is the regression this guards: right frames, short file.
+    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 5, durationSeconds: 0.51, fps: 5 / 0.51 }))
+      .toThrow(/duration/);
+  });
+
+  it("measures an export against wall clock, not the authored duration", () => {
+    // `speed` divides elapsed time on the way into the interpolator rather than rewriting
+    // keyframes, so a 2s document at 2x is a 1s cycle on screen and in every export. Comparing the
+    // rendition against the authored 2s instead would reject every correctly rendered export of a
+    // document not playing at 1x.
+    const atSpeed = (speed: number) => {
+      const document = StickerDocumentSchema.parse({
+        version: 2,
+        canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+        kind: "animated",
+        durationSeconds: 2,
+        fps: 30,
+        loop: "loop",
+        speed,
+        mp4Background: { type: "solid", color: "#FFFFFF" },
+        layers: [],
+      });
+      if (document.kind !== "animated") throw new Error("timing fixture did not parse as animated");
+      return document;
+    };
+
+    const hold = 0.6;
+    // 1x: a 2s cycle, 60 frames at 30fps.
+    expect(() => validateAnimatedRenditionTiming(
+      atSpeed(1), { kind: "gif", frameCount: 60, durationSeconds: 2 + hold, fps: 30 },
+    )).not.toThrow();
+    // 2x: the same document is a 1s cycle, 30 frames.
+    expect(() => validateAnimatedRenditionTiming(
+      atSpeed(2), { kind: "gif", frameCount: 30, durationSeconds: 1 + hold, fps: 30 },
+    )).not.toThrow();
+    // The regression: a 2x document rendered as if it were still 2s long.
+    expect(() => validateAnimatedRenditionTiming(
+      atSpeed(2), { kind: "gif", frameCount: 60, durationSeconds: 2 + hold, fps: 30 },
+    )).toThrow();
   });
 
   it("reconciles a routed edit with the layers the image tools can actually touch", () => {
-    const documentWith = (...layers: unknown[]) => StickerDocumentV1Schema.parse({
+    const documentWith = (...layers: unknown[]) => StickerDocumentSchema.parse({
       version: 1,
       canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
       kind: "static",

@@ -1,27 +1,46 @@
 import Messages
 import UIKit
+import os
 
 /// The Messages root stays an `MSMessagesAppViewController` so Apple can deliver
-/// conversation and activation callbacks. Its child `MSStickerBrowserViewController`
-/// supplies the system tap-to-insert and peel/drag interactions.
+/// conversation and activation callbacks. Its child `StickerGridViewController` keeps
+/// Apple's peel/drag (owned by `MSStickerView`) but routes taps back here so we can call
+/// `MSConversation.insert(_ sticker:)` — the only sticker insertion API that is not
+/// restricted in `MSMessagesAppPresentationContextMedia`, i.e. the system Stickers drawer.
 @MainActor
 final class MessagesViewController: MSMessagesAppViewController {
-    private let browserViewController = StickerBrowserViewController()
+    private let gridViewController = StickerGridViewController()
+    private let legacyBrowserViewController = StickerBrowserViewController()
     private let statusContainer = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let statusLabel = UILabel()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
     private let openAppButton = UIButton(type: .system)
     private let offlineLabel = UILabel()
+    private let hintLabel = UILabel()
+
+    private let logger = Logger(subsystem: "app.rxlab.stickerfactory.message", category: "insert")
+
+    /// Escape hatch for on-device A/B against the stock browser without a rebuild:
+    /// `defaults write group.app.rxlab.stickerfactory StickerFactoryUseLegacyBrowser -bool YES`
+    private let useLegacyBrowser = UserDefaults(suiteName: SharedAuthConfiguration.appGroupIdentifier)?
+        .bool(forKey: "StickerFactoryUseLegacyBrowser") ?? false
 
     private var libraryService: MessagesLibraryService?
     private var loadTask: Task<Void, Never>?
+    private var hintTask: Task<Void, Never>?
+
+    /// `activeConversation` can lag on the first activation in non-Messages hosts, while the
+    /// conversation handed to `willBecomeActive(with:)` is guaranteed valid for that activation.
+    private var lastKnownConversation: MSConversation?
+    private var insertionTarget: MSConversation? { activeConversation ?? lastKnownConversation }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
-        configureBrowser()
+        configureStickerSurface()
         configureStatusView()
         configureOfflineBadge()
+        configureHintLabel()
 
         do {
             libraryService = try MessagesLibraryService()
@@ -33,25 +52,48 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func willBecomeActive(with conversation: MSConversation) {
         super.willBecomeActive(with: conversation)
+        lastKnownConversation = conversation
         refreshLibrary()
+    }
+
+    override func didBecomeActive(with conversation: MSConversation) {
+        super.didBecomeActive(with: conversation)
+        lastKnownConversation = conversation
+        gridViewController.resumeAnimations()
     }
 
     override func didResignActive(with conversation: MSConversation) {
         super.didResignActive(with: conversation)
         loadTask?.cancel()
+        hintTask?.cancel()
+        gridViewController.suspendAnimations()
+        lastKnownConversation = nil
     }
 
-    private func configureBrowser() {
-        addChild(browserViewController)
-        browserViewController.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(browserViewController.view)
+    private func configureStickerSurface() {
+        let child: UIViewController = useLegacyBrowser ? legacyBrowserViewController : gridViewController
+        gridViewController.onSelect = { [weak self] sticker in
+            self?.insertSticker(sticker)
+        }
+
+        addChild(child)
+        child.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(child.view)
         NSLayoutConstraint.activate([
-            browserViewController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            browserViewController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            browserViewController.view.topAnchor.constraint(equalTo: view.topAnchor),
-            browserViewController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            child.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            child.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            child.view.topAnchor.constraint(equalTo: view.topAnchor),
+            child.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        browserViewController.didMove(toParent: self)
+        child.didMove(toParent: self)
+    }
+
+    private func replaceStickers(with stickers: [CachedSticker]) {
+        if useLegacyBrowser {
+            legacyBrowserViewController.replaceStickers(with: stickers)
+        } else {
+            gridViewController.replaceStickers(with: stickers)
+        }
     }
 
     private func configureStatusView() {
@@ -113,6 +155,30 @@ final class MessagesViewController: MSMessagesAppViewController {
         ])
     }
 
+    /// Hosts that reject a programmatic insert still accept Apple's peel/drag, so a failed tap
+    /// tells the user what to do instead of doing nothing.
+    private func configureHintLabel() {
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        hintLabel.font = .preferredFont(forTextStyle: .caption1)
+        hintLabel.adjustsFontForContentSizeCategory = true
+        hintLabel.textColor = .secondaryLabel
+        hintLabel.backgroundColor = .secondarySystemBackground.withAlphaComponent(0.85)
+        hintLabel.layer.cornerRadius = 10
+        hintLabel.clipsToBounds = true
+        hintLabel.textAlignment = .center
+        hintLabel.numberOfLines = 2
+        hintLabel.isHidden = true
+        hintLabel.accessibilityIdentifier = "sticker-factory-drag-hint"
+        view.addSubview(hintLabel)
+        NSLayoutConstraint.activate([
+            hintLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            hintLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            hintLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 16),
+            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
+            hintLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 28),
+        ])
+    }
+
     private func refreshLibrary() {
         guard let libraryService else { return }
         loadTask?.cancel()
@@ -122,7 +188,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             do {
                 let snapshot = try await libraryService.refresh()
                 guard !Task.isCancelled else { return }
-                browserViewController.replaceStickers(with: snapshot.stickers)
+                replaceStickers(with: snapshot.stickers)
                 offlineLabel.isHidden = !snapshot.isOffline
                 if snapshot.stickers.isEmpty {
                     showEmptyLibrary()
@@ -137,6 +203,94 @@ final class MessagesViewController: MSMessagesAppViewController {
             }
         }
     }
+
+    // MARK: - Insertion
+
+    private func insertSticker(_ sticker: MSSticker) {
+        guard let conversation = insertionTarget else {
+            logger.error("insert skipped: no conversation (context=\(self.presentationContext.rawValue))")
+            applyInsertOutcome(.noConversation)
+            return
+        }
+        // MSSticker and MSConversation are not Sendable, so the retry carries only these
+        // scalars across the actor hop and re-resolves the conversation on the main actor.
+        let fileURL = sticker.imageFileURL
+        let filename = sticker.localizedDescription
+
+        conversation.insert(sticker) { [weak self] error in
+            // The imported completion handler is a plain, non-Sendable ObjC block and
+            // `any Error` is not Sendable, so reduce to scalars before the actor hop.
+            let nsError = error as NSError?
+            let domain = nsError?.domain
+            let code = nsError?.code
+            Task { @MainActor in
+                guard let self else { return }
+                let outcome = StickerInsertPolicy.outcome(domain: domain, code: code)
+                self.log(outcome: outcome, domain: domain, code: code, api: "insertSticker")
+                if outcome == .unavailableInContext {
+                    // insertAttachment is permitted in the media context for image types
+                    // supported by MSSticker, which every cached rendition is.
+                    self.insertAsAttachment(fileURL: fileURL, filename: filename)
+                } else {
+                    self.applyInsertOutcome(outcome)
+                }
+            }
+        }
+    }
+
+    private func insertAsAttachment(fileURL: URL, filename: String) {
+        guard let conversation = insertionTarget else {
+            applyInsertOutcome(.noConversation)
+            return
+        }
+        conversation.insertAttachment(
+            fileURL,
+            withAlternateFilename: filename
+        ) { [weak self] error in
+            let nsError = error as NSError?
+            let domain = nsError?.domain
+            let code = nsError?.code
+            Task { @MainActor in
+                guard let self else { return }
+                let outcome = StickerInsertPolicy.outcome(domain: domain, code: code)
+                self.log(outcome: outcome, domain: domain, code: code, api: "insertAttachment")
+                self.applyInsertOutcome(outcome)
+            }
+        }
+    }
+
+    private func applyInsertOutcome(_ outcome: StickerInsertOutcome) {
+        guard let text = StickerInsertPolicy.hint(for: outcome, context: presentationContext) else {
+            hintTask?.cancel()
+            hintLabel.isHidden = true
+            return
+        }
+        showHint(text)
+    }
+
+    private func log(outcome: StickerInsertOutcome, domain: String?, code: Int?, api: String) {
+        logger.log(
+            """
+            \(api, privacy: .public) outcome=\(String(describing: outcome), privacy: .public) \
+            context=\(self.presentationContext.rawValue) \
+            domain=\(domain ?? "-", privacy: .public) code=\(code ?? 0)
+            """
+        )
+    }
+
+    private func showHint(_ text: String) {
+        hintTask?.cancel()
+        hintLabel.text = "  \(text)  "
+        hintLabel.isHidden = false
+        UIAccessibility.post(notification: .announcement, argument: text)
+        hintTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.hintLabel.isHidden = true
+        }
+    }
+
+    // MARK: - Status
 
     private func showLoading() {
         statusContainer.isHidden = false
@@ -169,7 +323,9 @@ final class MessagesViewController: MSMessagesAppViewController {
         extensionContext?.open(url) { [weak self] opened in
             guard !opened else { return }
             Task { @MainActor in
-                self?.statusLabel.text = "Open Sticker Factory from the Home Screen and sign in."
+                guard let self else { return }
+                self.logger.error("extensionContext.open refused (context=\(self.presentationContext.rawValue))")
+                self.statusLabel.text = "Open Sticker Factory from the Home Screen and sign in."
             }
         }
     }

@@ -10,7 +10,7 @@ import {
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
 import type { PlanV1 } from "@/lib/contracts/plan";
-import type { StickerDocumentV1 } from "@/lib/contracts/sticker";
+import type { StickerDocument } from "@/lib/contracts/sticker";
 
 const timestamp = (name: string) => integer(name, { mode: "timestamp_ms" });
 
@@ -125,7 +125,7 @@ export const stickerRevisions = sqliteTable("sticker_revisions", {
   sourceMessageId: text("source_message_id").references(() => chatMessages.id, { onDelete: "set null" }),
   kind: text("kind", { enum: ["static", "animated"] }).notNull(),
   candidateState: text("candidate_state", { enum: ["candidate", "accepted", "rejected", "superseded"] }).notNull().default("candidate"),
-  documentJson: text("document_json", { mode: "json" }).$type<StickerDocumentV1>().notNull(),
+  documentJson: text("document_json", { mode: "json" }).$type<StickerDocument>().notNull(),
   masterAssetId: text("master_asset_id").references(() => assets.id, { onDelete: "set null" }),
   previewAssetId: text("preview_asset_id").references(() => assets.id, { onDelete: "set null" }),
   pngAssetId: text("png_asset_id").references(() => assets.id, { onDelete: "set null" }),

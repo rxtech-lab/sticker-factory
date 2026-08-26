@@ -3,13 +3,14 @@ import fixture from "@/fixtures/sticker-document-v1.json";
 import { compileLayerAnimation } from "@/lib/animation/compile";
 import {
   applyStickerOperationsV1,
-  StickerDocumentV1Schema,
-  type StickerDocumentV1,
+  CURRENT_DOCUMENT_VERSION,
+  StickerDocumentSchema,
+  type StickerDocument,
 } from "@/lib/contracts/sticker";
 
-describe("StickerDocumentV1", () => {
+describe("StickerDocument", () => {
   it("validates the shared fixture and applies safe operations", () => {
-    const source = StickerDocumentV1Schema.parse(fixture);
+    const source = StickerDocumentSchema.parse(fixture);
     const result = applyStickerOperationsV1(source, [
       {
         op: "setRotationKeyframes",
@@ -26,7 +27,7 @@ describe("StickerDocumentV1", () => {
   });
 
   it("rejects executable or URL-shaped layer payloads", () => {
-    expect(() => StickerDocumentV1Schema.parse({
+    expect(() => StickerDocumentSchema.parse({
       ...fixture,
       layers: [{ type: "javascript", source: "alert(1)" }],
     })).toThrow();
@@ -43,12 +44,12 @@ describe("StickerDocumentV1", () => {
         },
       }],
     };
-    expect(() => StickerDocumentV1Schema.parse(invalid)).toThrow(/beyond durationSeconds/);
+    expect(() => StickerDocumentSchema.parse(invalid)).toThrow(/beyond durationSeconds/);
   });
 });
 
 describe("declarative animations on a document", () => {
-  const base = () => StickerDocumentV1Schema.parse(fixture) as StickerDocumentV1;
+  const base = () => StickerDocumentSchema.parse(fixture) as StickerDocument;
 
   it("defaults existing documents to no specs and the resting anchor", () => {
     const document = base();
@@ -58,7 +59,11 @@ describe("declarative animations on a document", () => {
       scale: { x: 1, y: 1 },
       rotationDegrees: 0,
       opacity: 1,
+      // Added in v2 with the trim channel. It defaults to the whole path, so a stored anchor that
+      // predates the field reads back as untrimmed rather than invisible.
+      trim: { start: 0, end: 1 },
     });
+    expect(document.layers[0].animation.trim).toEqual([]);
   });
 
   it("compiles keyframes from setLayerAnimations", () => {
@@ -95,7 +100,7 @@ describe("declarative animations on a document", () => {
     }]);
     const tampered = structuredClone(document);
     tampered.layers[0].animation.opacity[1].value = 0.25;
-    expect(() => StickerDocumentV1Schema.parse(tampered)).toThrow(/do not match its animations/);
+    expect(() => StickerDocumentSchema.parse(tampered)).toThrow(/do not match its animations/);
   });
 
   it("refuses to hand-edit a channel owned by specs", () => {
@@ -133,5 +138,153 @@ describe("declarative animations on a document", () => {
     expect(() => applyStickerOperationsV1(document, [{
       op: "setTiming", durationSeconds: 1, fps: 30, loop: "loop",
     }])).toThrow(/only 1s long/);
+  });
+});
+
+describe("v1 documents upcast to v2 on read", () => {
+  /**
+   * `document_json` is immutable after insert, so stored revisions stay v1 forever and this path
+   * is permanent code rather than a migration step. `getSticker` also re-parses *every* revision of
+   * a sticker on read, so one row that failed to upcast would take out the whole detail endpoint —
+   * which is why totality matters more here than anywhere else in the contract.
+   */
+  it("accepts the stored v1 fixture and reports itself as v2", () => {
+    const document = StickerDocumentSchema.parse(fixture);
+    expect(document.version).toBe(CURRENT_DOCUMENT_VERSION);
+    expect(document.speed).toBe(1);
+    expect(document.background).toEqual({ type: "none" });
+    expect(document.layers[0].blendMode).toBe("normal");
+  });
+
+  it("turns v1's bare hex colours into solid paints", () => {
+    const document = StickerDocumentSchema.parse({
+      ...structuredClone(fixture),
+      layers: [
+        { id: "cap", name: "Cap", type: "text", text: "Hi", font: "rounded", weight: "bold", color: "#FF0055" },
+        { id: "dot", name: "Dot", type: "shape", shape: "circle", fill: "#00FF00", stroke: "#0000FF", strokeWidth: 0.02 },
+        { id: "spark", name: "Spark", type: "particle", preset: "sparkles", count: 8, color: "#FFCC00", seed: 3 },
+      ],
+    });
+    const [text, shape, particle] = document.layers;
+    if (text.type !== "text" || shape.type !== "shape" || particle.type !== "particle") {
+      throw new Error("upcast changed the layer kinds");
+    }
+    expect(text.paint).toEqual({ type: "solid", color: "#FF0055" });
+    expect(particle.paint).toEqual({ type: "solid", color: "#FFCC00" });
+    expect(shape.fill).toEqual({ type: "solid", color: "#00FF00" });
+    expect(shape.shape).toEqual({ kind: "circle" });
+    expect(shape.stroke).toMatchObject({ paint: { type: "solid", color: "#0000FF" }, width: 0.02 });
+  });
+
+  /** A zero stroke width was v1's way of saying "no stroke", not "a hairline one". */
+  it("drops a v1 stroke whose width was zero", () => {
+    const document = StickerDocumentSchema.parse({
+      ...structuredClone(fixture),
+      layers: [{ id: "dot", name: "Dot", type: "shape", shape: "circle", fill: "#00FF00", stroke: "#0000FF", strokeWidth: 0 }],
+    });
+    const shape = document.layers[0];
+    if (shape.type !== "shape") throw new Error("upcast changed the layer kind");
+    expect(shape.stroke).toBeUndefined();
+  });
+
+  it("gives v1's hard-coded star its five points", () => {
+    const document = StickerDocumentSchema.parse({
+      ...structuredClone(fixture),
+      layers: [{ id: "s", name: "S", type: "shape", shape: "star", fill: "#FFFFFF" }],
+    });
+    const shape = document.layers[0];
+    if (shape.type !== "shape") throw new Error("upcast changed the layer kind");
+    expect(shape.shape).toEqual({ kind: "star", points: 5, innerRatio: 0.42 });
+  });
+
+  it("is idempotent: upcast output parses again unchanged", () => {
+    const once = StickerDocumentSchema.parse(fixture);
+    expect(StickerDocumentSchema.parse(once)).toEqual(once);
+  });
+});
+
+describe("v2 widening", () => {
+  const v2 = (overrides: Record<string, unknown>) => StickerDocumentSchema.parse({
+    ...structuredClone(StickerDocumentSchema.parse(fixture)),
+    ...overrides,
+  });
+
+  it("accepts a canvas that is neither square nor 1024", () => {
+    const document = v2({ canvas: { width: 512, height: 192, coordinateSpace: "normalized", transparent: true } });
+    expect(document.canvas).toMatchObject({ width: 512, height: 192 });
+  });
+
+  it("rejects a canvas outside the supported range", () => {
+    expect(() => v2({ canvas: { width: 4, height: 4, coordinateSpace: "normalized", transparent: true } })).toThrow();
+    expect(() => v2({ canvas: { width: 9000, height: 9000, coordinateSpace: "normalized", transparent: true } })).toThrow();
+  });
+
+  it("accepts an svg layer with inline markup", () => {
+    const document = v2({
+      layers: [{
+        id: "art", name: "Art", type: "svg",
+        source: { kind: "inline", markup: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0 L10 10"/></svg>' },
+      }],
+    });
+    expect(document.layers[0].type).toBe("svg");
+  });
+
+  it("rejects svg markup that would script or fetch", () => {
+    const withMarkup = (markup: string) => () => v2({
+      layers: [{ id: "art", name: "Art", type: "svg", source: { kind: "inline", markup } }],
+    });
+    expect(withMarkup("<svg><script>alert(1)</script></svg>")).toThrow(/script/);
+    expect(withMarkup('<svg><image href="https://evil.example/x.png"/></svg>')).toThrow(/remote URL/);
+    expect(withMarkup("<svg><foreignObject/></svg>")).toThrow(/foreignobject/i);
+    // A namespace declaration is not a fetch, and a data URI is self-contained.
+    expect(withMarkup('<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/png;base64,AA"/></svg>')).not.toThrow();
+  });
+
+  it("accepts a gradient fill and rejects a one-stop gradient", () => {
+    const gradient = (stops: unknown[]) => () => v2({
+      layers: [{
+        id: "dot", name: "Dot", type: "shape", shape: { kind: "circle" },
+        fill: { type: "linearGradient", stops, angleDegrees: 45 },
+      }],
+    });
+    expect(gradient([{ color: "#FF0000", location: 0 }, { color: "#0000FF", location: 1 }])).not.toThrow();
+    expect(gradient([{ color: "#FF0000", location: 0 }])).toThrow();
+  });
+
+  it("rejects a shape with neither fill nor stroke, which would draw nothing", () => {
+    expect(() => v2({
+      layers: [{ id: "dot", name: "Dot", type: "shape", shape: { kind: "circle" } }],
+    })).toThrow(/needs a fill or a stroke/);
+  });
+
+  it("carries speed without touching keyframes", () => {
+    const document = v2({ speed: 2.5 });
+    if (document.kind !== "animated") throw new Error("fixture is not animated");
+    expect(document.speed).toBe(2.5);
+    expect(document.layers[0].animation).toEqual(StickerDocumentSchema.parse(fixture).layers[0].animation);
+  });
+});
+
+describe("document size budget", () => {
+  /**
+   * Only reachable through inline SVG: every other field is bounded by its own schema. Twelve
+   * layers at the 200 KB per-layer markup cap is 2.4 MB, which `readJson` (1 MB) would refuse and
+   * which would also land verbatim in an idempotency response row.
+   */
+  it("rejects a document that is individually valid but collectively too large", () => {
+    const filler = "M0 0 L1 1 ".repeat(9000);
+    const layer = (id: string) => ({
+      id, name: id, type: "svg",
+      source: { kind: "inline", markup: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="${filler}"/></svg>` },
+    });
+    const base = structuredClone(StickerDocumentSchema.parse(fixture));
+
+    // One such layer is fine — the per-layer cap has room for it.
+    expect(() => StickerDocumentSchema.parse({ ...base, layers: [layer("a")] })).not.toThrow();
+    // Enough of them is not, even though each one passes on its own.
+    expect(() => StickerDocumentSchema.parse({
+      ...base,
+      layers: ["a", "b", "c", "d", "e", "f"].map(layer),
+    })).toThrow(/over the .*-byte limit/);
   });
 });

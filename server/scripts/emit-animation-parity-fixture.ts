@@ -34,6 +34,19 @@ const offsetAnchor: AnimationAnchorV1 = {
   scale: { x: 0.75, y: 1.25 },
   rotationDegrees: -18,
   opacity: 0.8,
+  trim: { start: 0, end: 1 },
+};
+
+/**
+ * An anchor whose trim is *not* the whole path.
+ *
+ * Kept separate from `offsetAnchor` because it exercises two different things at once: the trim
+ * specs departing from a partial resting window, and `applyAnchors` emitting a resting trim
+ * keyframe for a channel no spec drives.
+ */
+const trimmedAnchor: AnimationAnchorV1 = {
+  ...offsetAnchor,
+  trim: { start: 0.15, end: 0.85 },
 };
 
 /**
@@ -122,6 +135,42 @@ const cases: Case[] = [
     timing: animated(),
     anchor: DEFAULT_ANCHOR,
     specs: [{ type: "blurIn", radius: 17.5, delay: 0.25, duration: 1.75, easing: "easeOut" }],
+  },
+
+  // Path drawing (v2). These are the specs the Swift side had implemented first, so parity here is
+  // what proves the TypeScript port matches rather than the other way round.
+  { name: "drawOn-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "drawOn" }] },
+  { name: "drawOff-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "drawOff" }] },
+  { name: "trimTo-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "trimTo" }] },
+  {
+    name: "drawOn-explicit",
+    timing: animated(),
+    anchor: trimmedAnchor,
+    specs: [{ type: "drawOn", from: 0.4, delay: 0.3, duration: 2.2, easing: "easeOut" }],
+  },
+  {
+    name: "drawOff-explicit",
+    timing: animated(),
+    anchor: trimmedAnchor,
+    specs: [{ type: "drawOff", to: 0.62, delay: 0.15, duration: 1.85, easing: "springSoft" }],
+  },
+  {
+    name: "trimTo-explicit",
+    timing: animated(),
+    anchor: trimmedAnchor,
+    specs: [{ type: "trimTo", start: 0.2, end: 0.55, delay: 0.4, duration: 1.1, easing: "easeInOut" }],
+  },
+  // A trim anchor with no trim spec: `applyAnchors` has to emit the resting window itself.
+  { name: "trim-anchor-only", timing: animated(), anchor: trimmedAnchor, specs: [] },
+  // Trim alongside another channel, to confirm the two are folded independently.
+  {
+    name: "drawOn-with-fade",
+    timing: animated(),
+    anchor: trimmedAnchor,
+    specs: [
+      { type: "drawOn", duration: 2 },
+      { type: "fadeIn", duration: 0.5 },
+    ],
   },
 
   // Clamping: values the compiler must pin to the schema's bounds rather than pass through.

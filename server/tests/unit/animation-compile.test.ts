@@ -27,6 +27,7 @@ const anchorAt = (x: number, y: number, scale = 1): AnimationAnchorV1 => ({
   scale: { x: scale, y: scale },
   rotationDegrees: 0,
   opacity: 1,
+  trim: { start: 0, end: 1 },
 });
 
 describe("delay handling", () => {

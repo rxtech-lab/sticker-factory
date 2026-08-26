@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { CreateUploadRequest } from "@/lib/contracts/api";
+import { MAX_RENDITION_SECONDS } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import { assets, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
@@ -108,8 +109,8 @@ function validateImageForKind(
     if (inspection.mimeType === "image/gif" && inspection.frameCount < 2) {
       throw new ApiError(422, "INVALID_SYSTEM_ANIMATION", "Animated system GIFs must contain multiple frames");
     }
-    if (inspection.frameCount > 1 && (inspection.durationSeconds < 0.5 || inspection.durationSeconds > 8 || inspection.fps > 30.01)) {
-      throw new ApiError(422, "INVALID_SYSTEM_ANIMATION", "Animated system stickers must be 0.5–8 seconds at no more than 30 FPS");
+    if (inspection.frameCount > 1 && (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01)) {
+      throw new ApiError(422, "INVALID_SYSTEM_ANIMATION", `Animated system stickers must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
   if (asset.kind === "gif") {
@@ -117,8 +118,8 @@ function validateImageForKind(
       || !inspection.hasAlpha || !inspection.hasTransparentPixels) {
       throw new ApiError(422, "INVALID_GIF_EXPORT", "Animated sharing GIFs must be animated 1024x1024 GIF files");
     }
-    if (inspection.durationSeconds < 0.5 || inspection.durationSeconds > 8 || inspection.fps > 30.01) {
-      throw new ApiError(422, "INVALID_GIF_TIMING", "Animated sharing GIFs must be 0.5–8 seconds at no more than 30 FPS");
+    if (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01) {
+      throw new ApiError(422, "INVALID_GIF_TIMING", `Animated sharing GIFs must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
 }

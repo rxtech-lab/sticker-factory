@@ -1,3 +1,4 @@
+import AnimatedView
 import Foundation
 
 actor MockStickerAPIClient: StickerAPIClientProtocol {
@@ -155,6 +156,16 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
 
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse {
         .init(job: .init(id: UUID().uuidString, state: .queued, workflowRunId: "mock-export", eventsUrl: "/api/v1/jobs/mock-export/events"))
+    }
+
+    func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse {
+        .init(
+            revisionId: UUID().uuidString,
+            parentRevisionId: request.parentRevisionId,
+            candidateState: .accepted,
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            stickerStatus: .draft
+        )
     }
 
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String { UUID().uuidString }

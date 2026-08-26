@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { StickerDocumentV1Schema } from "@/lib/contracts/sticker";
+import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import {
   assets,
@@ -9,6 +9,7 @@ import {
   generationJobs,
   idempotencyKeys,
   stickerRevisions,
+  stickers,
   users,
 } from "@/lib/db/schema";
 import { createAssetDownload, createAssetPreview, createUpload, completeUpload } from "@/lib/services/assets";
@@ -23,6 +24,7 @@ import {
   listChatMessages,
   retryFailedChatTurn,
   revertRevision,
+  saveEditedRevision,
 } from "@/lib/services/stickers";
 import { MemoryObjectStore, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
 import { cancelGenerationWorkflow } from "@/lib/services/workflows";
@@ -104,7 +106,7 @@ describe("Sticker Factory services", () => {
     });
     // Parsed rather than built as a literal so schema defaults (anchor, animations) fill in and
     // the value is exactly the shape the service expects.
-    const document = StickerDocumentV1Schema.parse({
+    const document = StickerDocumentSchema.parse({
       version: 1,
       canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
       kind: "static",
@@ -294,4 +296,150 @@ describe("Sticker Factory services", () => {
     await store.put(row!.r2Key, { bytes: png, contentType: "image/png" });
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "MASK_REQUIRES_ALPHA" });
   });
+
+  /**
+   * A hand edit saved from the client. Unlike a generated candidate there is nothing to review, so
+   * the revision arrives already accepted and immediately becomes the sticker's active one.
+   */
+  describe("saveEditedRevision", () => {
+    async function setup() {
+      const sticker = await createSticker(db, "owner-a", { title: "Cloud", kind: "static", prompt: "Cloud", referenceAssetIds: [] });
+      const turn = await createChatTurn(db, "owner-a", sticker.stickerId, {
+        text: "Cloud", intent: "generate", attachments: [], imagePlacement: "replace",
+      });
+      await db.update(generationJobs).set({ state: "succeeded", completedAt: new Date() })
+        .where(eq(generationJobs.id, turn.jobId));
+
+      const document = StickerDocumentSchema.parse({
+        version: 2,
+        canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+        kind: "static",
+        durationSeconds: 0,
+        fps: 0,
+        loop: "once",
+        mp4Background: { type: "solid", color: "#FFFFFF" },
+        layers: [{ id: "dot", name: "Dot", type: "shape", shape: { kind: "circle" }, fill: { type: "solid", color: "#FF0000" } }],
+      });
+      const parentId = await createCandidateRevision(db, {
+        ownerId: "owner-a",
+        stickerId: sticker.stickerId,
+        sourceMessageId: turn.messageId,
+        document,
+      });
+      await acceptRevision(db, "owner-a", sticker.stickerId, parentId);
+      return { stickerId: sticker.stickerId, parentId, document };
+    }
+
+    it("inserts an accepted revision and makes it active", async () => {
+      const { stickerId, parentId, document } = await setup();
+      const edited = structuredClone(document);
+      edited.layers[0].name = "Edited Dot";
+
+      const result = await saveEditedRevision(db, "owner-a", stickerId, {
+        parentRevisionId: parentId,
+        document: edited,
+      }, "11111111-1111-4111-8111-111111111111");
+
+      expect(result).toMatchObject({ candidateState: "accepted", parentRevisionId: parentId });
+      const row = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, result.revisionId)).get();
+      expect(row?.candidateState).toBe("accepted");
+      expect(row?.decidedAt).toBeTruthy();
+      expect((row?.documentJson as typeof document).layers[0].name).toBe("Edited Dot");
+      const sticker = await db.select().from(stickers).where(eq(stickers.id, stickerId)).get();
+      expect(sticker?.activeRevisionId).toBe(result.revisionId);
+    });
+
+    it("shows the edit in the transcript so the chat needs no special case for it", async () => {
+      const { stickerId, parentId, document } = await setup();
+      const result = await saveEditedRevision(db, "owner-a", stickerId, {
+        parentRevisionId: parentId, document, note: "Nudged the dot",
+      });
+      const row = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, result.revisionId)).get();
+      expect(row?.sourceMessageId).toBeTruthy();
+      const message = await db.select().from(chatMessages).where(eq(chatMessages.id, row!.sourceMessageId!)).get();
+      expect(message).toMatchObject({ role: "user", kind: "animation", content: "Nudged the dot", revisionId: result.revisionId });
+    });
+
+    /** Retrying a dropped response must replay the same row, not fork the chain. */
+    it("replays a deterministic id instead of creating a second revision", async () => {
+      const { stickerId, parentId, document } = await setup();
+      const id = "22222222-2222-4222-8222-222222222222";
+      const first = await saveEditedRevision(db, "owner-a", stickerId, { parentRevisionId: parentId, document }, id);
+      const second = await saveEditedRevision(db, "owner-a", stickerId, { parentRevisionId: parentId, document }, id);
+      expect(second.revisionId).toBe(first.revisionId);
+      const rows = await db.select().from(stickerRevisions).where(eq(stickerRevisions.stickerId, stickerId));
+      expect(rows).toHaveLength(2);
+    });
+
+    it("retires a candidate the edit has moved past", async () => {
+      const { stickerId, parentId, document } = await setup();
+      const turn = await createChatTurn(db, "owner-a", stickerId, {
+        text: "Again", intent: "generate", attachments: [], imagePlacement: "replace",
+      });
+      await db.update(generationJobs).set({ state: "succeeded", completedAt: new Date() })
+        .where(eq(generationJobs.id, turn.jobId));
+      const candidateId = await createCandidateRevision(db, {
+        ownerId: "owner-a", stickerId, sourceMessageId: turn.messageId, document,
+      });
+
+      await saveEditedRevision(db, "owner-a", stickerId, { parentRevisionId: parentId, document });
+      const candidate = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, candidateId)).get();
+      expect(candidate?.candidateState).toBe("superseded");
+    });
+
+    /** Nothing in the schema serialises an edit against a running generation. */
+    it("refuses to save while a generation is in flight", async () => {
+      const { stickerId, parentId, document } = await setup();
+      await createChatTurn(db, "owner-a", stickerId, {
+        text: "Busy", intent: "generate", attachments: [], imagePlacement: "replace",
+      });
+      await expect(saveEditedRevision(db, "owner-a", stickerId, { parentRevisionId: parentId, document }))
+        .rejects.toMatchObject({ code: "STICKER_OPERATION_IN_PROGRESS" });
+    });
+
+    it("rejects a parent that belongs to another sticker or was already turned down", async () => {
+      const { stickerId, parentId, document } = await setup();
+      await expect(saveEditedRevision(db, "owner-a", stickerId, {
+        parentRevisionId: crypto.randomUUID(), document,
+      })).rejects.toMatchObject({ code: "INVALID_PARENT_REVISION" });
+
+      await db.update(stickerRevisions).set({ candidateState: "rejected" }).where(eq(stickerRevisions.id, parentId));
+      await expect(saveEditedRevision(db, "owner-a", stickerId, { parentRevisionId: parentId, document }))
+        .rejects.toMatchObject({ code: "INVALID_PARENT_REVISION" });
+    });
+
+    it("rejects a document whose kind contradicts the project", async () => {
+      const { stickerId, parentId } = await setup();
+      const animated = StickerDocumentSchema.parse({
+        version: 2,
+        canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+        kind: "animated",
+        durationSeconds: 2,
+        fps: 30,
+        loop: "loop",
+        mp4Background: { type: "solid", color: "#FFFFFF" },
+        layers: [],
+      });
+      await expect(saveEditedRevision(db, "owner-a", stickerId, { parentRevisionId: parentId, document: animated }))
+        .rejects.toMatchObject({ code: "REVISION_KIND_MISMATCH" });
+    });
+
+    it("rejects a document naming an asset the owner does not have", async () => {
+      const { stickerId, parentId, document } = await setup();
+      const withImage = StickerDocumentSchema.parse({
+        ...structuredClone(document),
+        layers: [{ id: "hero", name: "Hero", type: "image", assetId: crypto.randomUUID(), contentMode: "fit" }],
+      });
+      await expect(saveEditedRevision(db, "owner-a", stickerId, { parentRevisionId: parentId, document: withImage }))
+        .rejects.toMatchObject({ code: "INVALID_ASSET_REFERENCE" });
+    });
+
+    it("is invisible to another owner", async () => {
+      const { stickerId, parentId, document } = await setup();
+      await db.insert(users).values({ id: "owner-b", createdAt: new Date(), updatedAt: new Date() });
+      await expect(saveEditedRevision(db, "owner-b", stickerId, { parentRevisionId: parentId, document }))
+        .rejects.toMatchObject({ code: "STICKER_NOT_FOUND" });
+    });
+  });
+
 });

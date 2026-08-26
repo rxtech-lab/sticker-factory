@@ -1,12 +1,12 @@
 import { gateway } from "@ai-sdk/gateway";
 import { getVercelOidcToken } from "@vercel/oidc";
-import { generateImage, generateText, hasToolCall, Output, stepCountIs, streamText, tool } from "ai";
+import { generateImage, generateText, hasToolCall, stepCountIs, tool } from "ai";
 import sharp from "sharp";
 import { z } from "zod";
 import { PlanV1Schema, type PlanV1 } from "@/lib/contracts/plan";
 import {
-  StickerOperationsV1Schema,
-  type StickerDocumentV1,
+  StickerOperationV1Schema,
+  type StickerDocument,
   type StickerOperationV1,
 } from "@/lib/contracts/sticker";
 import { ApiError } from "@/lib/http/errors";
@@ -40,7 +40,7 @@ export interface AiPlanContext {
   instruction: string;
   history: string;
   stickerKind: "static" | "animated";
-  document?: StickerDocumentV1;
+  document?: StickerDocument;
   /** Reasons the user gave for turning down earlier plans, so the agent does not repeat them. */
   rejectedReasons: string[];
 }
@@ -61,11 +61,116 @@ export interface PlanDraftingSession {
 
 export type PlanTurnResult = { planId: string; revision: number; finalized: boolean };
 
+export interface AiAnimationContext {
+  /** The document the motion is planned against. Every revision is applied to this, never to the last attempt. */
+  document: StickerDocument;
+  instruction: string;
+  history: string;
+  /**
+   * When set, every operation must name this layer.
+   *
+   * Enforced by the session rather than the schema, so a stray operation reaches the model as a
+   * tool error it can correct instead of failing the turn.
+   */
+  targetLayerId?: string;
+}
+
+/**
+ * The side effects one animation-drafting turn is allowed to perform.
+ *
+ * Same contract as `PlanDraftingSession`: the provider drives the conversation, the workflow step
+ * owns the working document, the transcript rows, and the snapshot events. Nothing here reaches a
+ * database — an animation draft only ever lives in the step's memory, because unlike a plan it
+ * costs nothing to rebuild and is never handed to the user for a decision until it is finished.
+ */
+export interface AnimationDraftingSession {
+  /** Applies the first operation set to the base document. Retryable until one succeeds. */
+  createAnimation(operations: StickerOperationV1[]): Promise<AnimationDraftState>;
+  /**
+   * Replaces the whole animation with a revised operation set, re-applied to the base document.
+   *
+   * Deliberately not a patch onto the previous attempt: a restatement is what makes each revision
+   * independently reproducible, so a repair cannot inherit half of the timing that was rejected.
+   */
+  updateAnimation(animationId: string, operations: StickerOperationV1[]): Promise<AnimationDraftState>;
+  /** Ends the loop. The caller creates the candidate revision and shows it in chat. */
+  finalizeAnimation(animationId: string): Promise<AnimationDraftState>;
+}
+
+export type AnimationDraftState = {
+  animationId: string;
+  /** How many operation sets have landed. Drives the transcript's `#N` labels. */
+  revision: number;
+  document: StickerDocument;
+};
+
+export type AnimateTurnResult = { animationId: string; revision: number; finalized: boolean };
+
+/**
+ * Wraps a session failure the model cannot repair: cancellation, a vanished asset, a database error.
+ *
+ * The SDK turns every `execute` throw into a tool-error part and keeps looping, so without this
+ * distinction a cancelled turn would spend its whole step budget being told to try again. The
+ * loop stops on it and the original error is rethrown once the loop has unwound.
+ */
+export class AnimationTurnAbort extends Error {
+  constructor(public readonly reason: unknown) {
+    super("The animation turn was aborted");
+    this.name = "AnimationTurnAbort";
+  }
+}
+
+/**
+ * Turns a session failure into text the model can act on.
+ *
+ * A `ZodError`'s own message is a JSON dump of every issue; `z.prettifyError` is one readable line
+ * per problem with the path attached, which is what makes "read the error and fix it" achievable.
+ */
+export function describeAnimationToolError(error: unknown): string {
+  const text = error instanceof z.ZodError
+    ? z.prettifyError(error)
+    : error instanceof Error
+      ? error.message
+      : String(error);
+  return text.slice(0, 1_200);
+}
+
+/**
+ * A compact digest of the working document for the tool result.
+ *
+ * The compiled keyframe tracks are up to 128 objects of purely derived data, so echoing the whole
+ * document back on every step would crowd the conversation out for no gain. The specs the model
+ * authored, plus a count of what they compiled to, is everything it needs to judge its own work.
+ */
+export function summarizeAnimationDocument(document: StickerDocument) {
+  return {
+    durationSeconds: document.durationSeconds,
+    fps: document.fps,
+    loop: document.loop,
+    layers: document.layers.map((layer) => ({
+      layerId: layer.id,
+      type: layer.type,
+      animations: layer.animations.map((spec) => ({ type: spec.type, delay: spec.delay, duration: spec.duration })),
+      keyframes: layer.animation.position.length + layer.animation.scale.length + layer.animation.rotation.length
+        + layer.animation.opacity.length + layer.animation.effects.length,
+    })),
+  };
+}
+
+/**
+ * One tool call's worth of operations.
+ *
+ * Smaller than the document-level `StickerOperationsV1Schema` cap of 32: a single call revises the
+ * motion of an 8-layer document, and a bound that low keeps a runaway restatement from arriving as
+ * one unreviewable wall of JSON.
+ */
+const AnimationOperationsSchema = z.array(StickerOperationV1Schema).min(1).max(16);
+
 export interface AiChatContext {
   instruction: string;
   history: string;
   stickerKind: "static" | "animated";
-  document?: StickerDocumentV1;
+  document?: StickerDocument;
   attachmentCount: number;
 }
 
@@ -86,18 +191,13 @@ export interface AiProvider {
    */
   generateConceptImage(prompt: string): Promise<AiImageOutput>;
   /**
-   * Plans a document's motion as a stream of operations.
+   * Plans a document's motion, revising it as many times as it needs before finalizing.
    *
-   * `rejection` carries the error a previous attempt's operations were refused with. The compiler's
-   * messages name the offending specs and say what to change, so handing one back is what turns a
-   * rejected plan into a repaired one — without it the retry is the same call and fails identically.
+   * Like `planSticker` and unlike everything else here this is a real multi-step tool loop. Compile
+   * and schema failures come back as tool errors, so a rejected timing is repaired in the same
+   * conversation that produced it rather than by re-planning the animation from scratch.
    */
-  streamAnimationOperations(
-    document: StickerDocumentV1,
-    instruction: string,
-    history: string,
-    rejection?: string,
-  ): AsyncIterable<StickerOperationV1>;
+  animateSticker(input: AiAnimationContext, session: AnimationDraftingSession): Promise<AnimateTurnResult | undefined>;
   routeChatTurn(input: AiChatContext): Promise<AiChatAction>;
   showSticker(revisionId: string, kind: "static" | "animated", instruction: string, history: string): Promise<string>;
   reply(instruction: string, history: string): Promise<string>;
@@ -111,7 +211,7 @@ export interface AiProvider {
  * reaches the workflow's image-layer guard and fails the turn over a word the user never typed, so
  * the routing mistakes are corrected into the tool that can serve the request instead.
  */
-export function resolveChatAction(action: AiChatAction, document?: StickerDocumentV1): AiChatAction {
+export function resolveChatAction(action: AiChatAction, document?: StickerDocument): AiChatAction {
   if (action.type === "animate") {
     // Animation keyframes any layer type, so only an id naming nothing at all is unusable. Dropping
     // it animates the document as a whole, which is what an untargeted request asks for anyway.
@@ -284,18 +384,98 @@ class GatewayAiProvider implements AiProvider {
     return { bytes: normalized.bytes, mimeType: "image/png" };
   }
 
-  async *streamAnimationOperations(
-    document: StickerDocumentV1,
-    instruction: string,
-    history: string,
-    rejection?: string,
-  ): AsyncIterable<StickerOperationV1> {
-    const result = streamText({
+  async animateSticker(
+    input: AiAnimationContext,
+    session: AnimationDraftingSession,
+  ): Promise<AnimateTurnResult | undefined> {
+    // Threaded through the tool bodies rather than read off the result, because the model refers to
+    // the animation by id on every subsequent call and only the session knows the id it was given.
+    let state: AnimateTurnResult | undefined;
+    // Set when the session fails for a reason the model cannot fix. Not thrown from the tool body:
+    // the SDK converts every `execute` throw into a tool-error part and keeps going, so the loop has
+    // to be stopped from the outside and the real error rethrown after it unwinds.
+    let fatal: unknown;
+
+    const guard = async (run: () => Promise<AnimationDraftState>) => {
+      try {
+        return await run();
+      } catch (error) {
+        // Name as well as identity: this module and the workflow step are bundled into separate
+        // server chunks, and a duplicated class would break `instanceof` while the name still holds.
+        if (error instanceof AnimationTurnAbort || (error instanceof Error && error.name === "AnimationTurnAbort")) {
+          fatal = (error as AnimationTurnAbort).reason ?? error;
+          throw new Error("This animation turn has been stopped. Do not call any more tools.");
+        }
+        throw new Error(describeAnimationToolError(error));
+      }
+    };
+
+    const requireAnimation = (animationId: string) => {
+      if (!state) throw new Error("Call create_animation before any other animation tool");
+      if (state.animationId !== animationId) {
+        throw new Error(`Unknown animation id ${animationId}; the current animation is ${state.animationId}`);
+      }
+      return state;
+    };
+
+    const tools = {
+      create_animation: tool({
+        description: "Apply your first set of operations to the sticker. Call this once, before any other animation tool.",
+        inputSchema: z.object({ operations: AnimationOperationsSchema }).strict(),
+        execute: async ({ operations }) => {
+          // Only reachable after a *successful* create, so a rejected one may simply be retried.
+          if (state) throw new Error(`An animation already exists (${state.animationId}); use update_animation to change it`);
+          const landed = await guard(() => session.createAnimation(operations));
+          state = { animationId: landed.animationId, revision: landed.revision, finalized: false };
+          return { ...state, sticker: summarizeAnimationDocument(landed.document) };
+        },
+      }),
+      update_animation: tool({
+        description: [
+          "Replace the whole animation with a revised set of operations. Send every operation you",
+          "want the sticker to have, not just the one you are changing: an update is applied to the",
+          "original sticker, never stacked on your previous attempt.",
+          "Use this to fix anything a tool rejected, to act on the user's feedback, or to improve",
+          "the timing after re-reading it.",
+        ].join(" "),
+        inputSchema: z.object({ animationId: z.string().min(1), operations: AnimationOperationsSchema }).strict(),
+        execute: async ({ animationId, operations }) => {
+          const current = requireAnimation(animationId);
+          const landed = await guard(() => session.updateAnimation(current.animationId, operations));
+          state = { animationId: landed.animationId, revision: landed.revision, finalized: false };
+          return { ...state, sticker: summarizeAnimationDocument(landed.document) };
+        },
+      }),
+      finalize_animation: tool({
+        description: [
+          "Finish and show the animation to the user. Call this once you are satisfied with the",
+          "motion. Only the finalized animation is shown, so nothing you did before it is visible.",
+        ].join(" "),
+        inputSchema: z.object({ animationId: z.string().min(1) }).strict(),
+        execute: async ({ animationId }) => {
+          const current = requireAnimation(animationId);
+          const landed = await guard(() => session.finalizeAnimation(current.animationId));
+          state = { animationId: landed.animationId, revision: landed.revision, finalized: true };
+          return { ...state, sticker: summarizeAnimationDocument(landed.document) };
+        },
+      }),
+    };
+
+    await generateText({
       model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
-      output: Output.array({ element: StickerOperationsV1Schema.element }),
       system: [
-        "You plan safe SwiftUI sticker animation changes.",
-        "Return an array of allowlisted StickerOperationV1 operations validated by the provided schema.",
+        "You add motion to an existing sticker by applying operations to its document.",
+        "Work in this order: call create_animation once with your first operations, refine with",
+        "update_animation as many times as you need, and finish by calling finalize_animation. Only",
+        "the finalized animation is shown to the user, so nothing in between is wasted or visible.",
+        "update_animation is a restatement, not a patch: it is applied to the original sticker, so",
+        "send every operation you want the finished animation to have, every time.",
+        "If a tool returns an error, read it and fix it. The compiler names the offending specs, the",
+        "layer, the channel they share, and the seconds involved, so the error text says exactly what",
+        "to change. If create_animation failed there is no animation to update yet — call",
+        "create_animation again with the fix. If it succeeded, fix it with update_animation. Do not",
+        "give up and do not repeat the same rejected operations.",
+        "",
         "Strongly prefer setLayerAnimations: it takes named effects (fadeIn, popIn, slideIn, spin,",
         "wiggle, pulse, bounce, float, blurIn, hueShift, moveTo, scaleTo, rotateTo) with a delay and a",
         "duration in seconds, and the server compiles them into keyframes for you. Stagger layers by",
@@ -313,28 +493,31 @@ class GatewayAiProvider implements AiProvider {
         "their timeSeconds values are absolute seconds, never percentages or deltas, and they cannot",
         "be used on a layer that already has named animations.",
         "You may add validated text, shape, or allowlisted particle layers. Do not add/remove image layers or replace assets. Do not emit Swift, JavaScript, URLs, shaders, expressions, or external asset identifiers.",
-        "Keep total document limits at 8 layers and 128 keyframes, duration 0.5-4s, and FPS <=30.",
+        // Narrower than the document contract allows on purpose: v2 documents can hold 12 layers
+        // and run up to 30s, but those exist for a person editing directly. Handing the planner the
+        // wider ranges would only give it more ways to be wrong.
+        "Keep within the planner's limits of 8 layers and 128 keyframes, duration 0.5-4s, and FPS <=30,",
+        "and at most 16 operations in any one call.",
       ].join(" "),
       prompt: [
-        `Current StickerDocumentV1:\n${JSON.stringify(document)}`,
-        `Recoverable chat history:\n${history}`,
-        `Instruction:\n${instruction}`,
-        // Last, so it is the freshest thing in context: this is a correction, not background.
-        rejection
-          ? "Your previous attempt at this was rejected by the compiler:\n"
-            + `${rejection}\n`
-            + "Plan the same motion again with that fixed. Do not repeat the rejected timing."
-          : undefined,
+        `Base StickerDocument:\n${JSON.stringify(input.document)}`,
+        input.targetLayerId
+          ? `Animate only the layer with id ${input.targetLayerId}. Every operation you send must name it.`
+          : "",
+        `Recoverable chat history:\n${input.history}`,
+        `Instruction:\n${input.instruction}`,
       ].filter(Boolean).join("\n\n"),
+      tools,
+      toolChoice: "required",
+      // The model ends the turn by calling finalize_animation. The step cap is the backstop for a
+      // model that keeps polishing forever; the caller ships whatever landed when it trips.
+      stopWhen: [hasToolCall("finalize_animation"), stepCountIs(10), () => fatal !== undefined],
       maxRetries: 2,
-      abortSignal: AbortSignal.timeout(120_000),
+      abortSignal: AbortSignal.timeout(180_000),
     });
-    let count = 0;
-    for await (const operation of result.elementStream) {
-      count += 1;
-      yield validatePlannedAnimationOperation(operation);
-    }
-    if (count === 0) throw new Error("Animation planner returned no operations");
+
+    if (fatal) throw fatal;
+    return state;
   }
 
   async routeChatTurn(input: AiChatContext): Promise<AiChatAction> {
@@ -392,7 +575,8 @@ class GatewayAiProvider implements AiProvider {
       }),
       "animate-sticker": tool({
         description: [
-          "Add motion to an accepted animated sticker by keyframing the layers it already has.",
+          "Add motion to the current animated sticker by keyframing the layers it already has.",
+          "It works on whatever sticker is on screen, including a candidate the user has not kept yet.",
           "It can move, scale, rotate, fade, and apply effects to existing layers.",
           "It cannot create new artwork, so it cannot reveal elements that are not already separate",
           "layers — a word drawn inside one flat image cannot be typed out letter by letter.",
@@ -461,7 +645,7 @@ class GatewayAiProvider implements AiProvider {
       prompt: [
         `Sticker kind: ${input.stickerKind}`,
         `Attached reference images: ${input.attachmentCount}`,
-        input.document ? `Current StickerDocumentV1: ${JSON.stringify(input.document)}` : "There is no current sticker document.",
+        input.document ? `Current StickerDocument: ${JSON.stringify(input.document)}` : "There is no current sticker document.",
         `Recoverable chat history:\n${input.history}`,
         `Latest user message:\n${input.instruction}`,
       ].join("\n\n"),
@@ -613,7 +797,7 @@ class GatewayAiProvider implements AiProvider {
         "stretching, so unequal values only shrink it. Size a text layer by the box you want the",
         "words to occupy, not by their letter count.",
         "For a staged text reveal, split the phrase into at most 6 chunks and prefer whole words:",
-        "\"Hello World\" is two layers, not eleven. There is a hard ceiling of 8 layers, so one layer",
+        "\"Hello World\" is two layers, not eleven. A plan may use at most 8 layers, so one layer",
         "per letter only works for very short words, and cramming a phrase into it produces uneven",
         "spacing and unreadably small type. Lay the chunks out left to right with each chunk's width",
         "roughly proportional to its length so the spacing between them looks even, and leave a",
@@ -646,7 +830,7 @@ class GatewayAiProvider implements AiProvider {
       prompt: [
         `Sticker kind: ${input.stickerKind}`,
         input.document
-          ? `Current StickerDocumentV1: ${JSON.stringify(input.document)}`
+          ? `Current StickerDocument: ${JSON.stringify(input.document)}`
           : "There is no current sticker document.",
         input.rejectedReasons.length > 0
           ? `The user already turned down earlier plans for these reasons — do not repeat them:\n${
@@ -742,29 +926,47 @@ class MockAiProvider implements AiProvider {
     const normalized = await normalizeTransparentPng(bytes);
     return { bytes: normalized.bytes, mimeType: "image/png" };
   }
-  async *streamAnimationOperations(document: StickerDocumentV1): AsyncIterable<StickerOperationV1> {
-    // Key off the document's real layers so composed documents (part_0, part_1, …) are animated
-    // the same way a single-layer `hero` document is.
-    for (const layer of document.layers) {
-      yield {
-        op: "setScaleKeyframes",
-        layerId: layer.id,
-        keyframes: [
-          { timeSeconds: 0, x: 0.9, y: 0.9, easing: "easeOut" },
-          { timeSeconds: 1, x: 1.08, y: 1.08, easing: "springSoft" },
-          { timeSeconds: 2, x: 0.9, y: 0.9, easing: "easeIn" },
-        ],
-      };
-      yield {
-        op: "setRotationKeyframes",
-        layerId: layer.id,
-        keyframes: [
-          { timeSeconds: 0, degrees: -5, easing: "easeOut" },
-          { timeSeconds: 1, degrees: 5, easing: "easeInOut" },
-          { timeSeconds: 2, degrees: -5, easing: "easeIn" },
-        ],
-      };
-    }
+  /**
+   * Scripts the same create -> update -> finalize shape the real loop produces, so the integration
+   * tests exercise the session callbacks and the transcript rows they write.
+   *
+   * The update restates the scale operations alongside the new rotation ones, because an update is
+   * applied to the base document: sending rotation alone would drop the scale motion the create
+   * landed, which is exactly the mistake the tool description warns the real model about.
+   */
+  async animateSticker(
+    input: AiAnimationContext,
+    session: AnimationDraftingSession,
+  ): Promise<AnimateTurnResult | undefined> {
+    // Key off the document's real layers so composed documents (part_0, part_1, …) are animated the
+    // same way a single-layer `hero` document is, and honour the target so a multi-layer document
+    // asked to animate one layer does not trip the session's own targeting guard.
+    const layers = input.targetLayerId
+      ? input.document.layers.filter((layer) => layer.id === input.targetLayerId)
+      : input.document.layers;
+    const scale = layers.map((layer): StickerOperationV1 => ({
+      op: "setScaleKeyframes",
+      layerId: layer.id,
+      keyframes: [
+        { timeSeconds: 0, x: 0.9, y: 0.9, easing: "easeOut" },
+        { timeSeconds: 1, x: 1.08, y: 1.08, easing: "springSoft" },
+        { timeSeconds: 2, x: 0.9, y: 0.9, easing: "easeIn" },
+      ],
+    }));
+    const rotation = layers.map((layer): StickerOperationV1 => ({
+      op: "setRotationKeyframes",
+      layerId: layer.id,
+      keyframes: [
+        { timeSeconds: 0, degrees: -5, easing: "easeOut" },
+        { timeSeconds: 1, degrees: 5, easing: "easeInOut" },
+        { timeSeconds: 2, degrees: -5, easing: "easeIn" },
+      ],
+    }));
+
+    const created = await session.createAnimation(scale);
+    const updated = await session.updateAnimation(created.animationId, [...scale, ...rotation]);
+    const finalized = await session.finalizeAnimation(updated.animationId);
+    return { animationId: finalized.animationId, revision: finalized.revision, finalized: true };
   }
   async generateConceptImage(prompt: string): Promise<AiImageOutput> {
     const label = prompt.replace(/[<&>]/g, "").slice(0, 24) || "Concept";
@@ -842,7 +1044,7 @@ class MockAiProvider implements AiProvider {
       ? "I updated the animation and attached it here. Tell me what you want to refine next."
       : "I updated the sticker and attached it here. Tell me what you want to refine next.";
   }
-  async reply(): Promise<string> { return "Tell me what you would like to change, or ask me to animate the accepted image."; }
+  async reply(): Promise<string> { return "Tell me what you would like to change, or ask me to animate it."; }
 }
 
 let testProvider: AiProvider | undefined;

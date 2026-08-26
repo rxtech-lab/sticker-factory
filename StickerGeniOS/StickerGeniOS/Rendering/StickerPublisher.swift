@@ -1,3 +1,4 @@
+import AnimatedView
 import Foundation
 import UIKit
 
@@ -78,7 +79,10 @@ final class StickerPublisher {
                 gifAssetId: gifAssetID,
                 mp4AssetId: mp4AssetID,
                 systemAssetId: systemAssetID,
-                mp4Background: document.kind == .animated ? document.mp4Background : nil
+                // The publish request only speaks the two fills the server accepts. A document
+                // carrying a radial gradient or an image here has no equivalent, so the field is
+                // omitted and the server keeps whatever the revision already stored.
+                mp4Background: document.kind == .animated ? StickerMP4BackgroundV1(document.mp4Background) : nil
             ),
             idempotencyKey: UUID().uuidString
         )
@@ -119,7 +123,7 @@ final class StickerPublisher {
         revision: StickerRevision,
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>
-    ) throws -> StickerDocumentV1 {
+    ) throws -> AnimatedDocument {
         guard revision.state == .accepted else { throw StickerPublishError.revisionNotAccepted }
         let document = try revision.document.validated()
         let requiredAssetIDs = Set(document.layers.flatMap { layer -> [String] in

@@ -1,6 +1,5 @@
 import { and, asc, desc, eq, max } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { AnimationCompileError } from "@/lib/animation/compile";
 import {
   compilePlanAnimations,
   planLayerAnchor,
@@ -9,9 +8,11 @@ import {
 } from "@/lib/contracts/plan";
 import {
   applyStickerOperationsV1,
-  StickerDocumentV1Schema,
-  type StickerDocumentV1,
+  CURRENT_DOCUMENT_VERSION,
+  StickerDocumentSchema,
+  type StickerDocument,
   type StickerLayerV1,
+  type StickerOperationV1,
 } from "@/lib/contracts/sticker";
 import { getDatabase } from "@/lib/db/client";
 import {
@@ -25,7 +26,13 @@ import {
   stickerRevisions,
   stickers,
 } from "@/lib/db/schema";
-import { getAiProvider, type PlanDraftingSession } from "@/lib/ai/gateway";
+import {
+  AnimationTurnAbort,
+  getAiProvider,
+  validatePlannedAnimationOperation,
+  type AnimationDraftingSession,
+  type PlanDraftingSession,
+} from "@/lib/ai/gateway";
 import { derivedAssetId } from "@/lib/services/assets";
 import { appendGenerationEvent } from "@/lib/services/events";
 import {
@@ -47,15 +54,6 @@ import {
 } from "@/lib/services/stickers";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
-
-/**
- * How many times the animation planner may be asked for one turn's motion.
- *
- * Three: the first plan, plus two repairs carrying the compiler's complaint. Beyond that the model
- * is not misreading a rule, it is failing to satisfy one, and further attempts only spend a
- * two-minute streaming call each to hear the same thing.
- */
-const ANIMATION_REPAIR_ATTEMPTS = 3;
 
 export async function beginJobStep(jobId: string): Promise<void> {
   "use step";
@@ -148,6 +146,9 @@ type StickerToolName =
   | "update_plan"
   | "show_plan"
   | "finalize_plan"
+  | "create_animation"
+  | "update_animation"
+  | "finalize_animation"
   | "show-sticker";
 
 /**
@@ -268,7 +269,7 @@ function boundedTranscript(messages: Array<typeof chatMessages.$inferSelect>, ma
   return selected.reverse().join("\n");
 }
 
-async function assertDocumentAssetsOwned(document: StickerDocumentV1, ownerId: string, stickerId: string): Promise<void> {
+async function assertDocumentAssetsOwned(document: StickerDocument, ownerId: string, stickerId: string): Promise<void> {
   const db = getDatabase();
   const ids = document.layers.flatMap((layer) => layer.type === "image"
     ? [layer.assetId, ...(layer.maskAssetId ? [layer.maskAssetId] : [])]
@@ -373,19 +374,19 @@ async function generateAndStoreAsset(
 }
 
 /** Wraps layers in the canonical canvas and per-kind default timing. */
-function documentWithLayers(kind: "static" | "animated", layers: unknown[]): StickerDocumentV1 {
+function documentWithLayers(kind: "static" | "animated", layers: unknown[]): StickerDocument {
   const base = {
-    version: 1 as const,
-    canvas: { width: 1024 as const, height: 1024 as const, coordinateSpace: "normalized" as const, transparent: true as const },
+    version: CURRENT_DOCUMENT_VERSION,
+    canvas: { width: 1024, height: 1024, coordinateSpace: "normalized" as const, transparent: true },
     mp4Background: { type: "solid" as const, color: "#FFFFFF" },
     layers,
   };
   return kind === "static"
-    ? StickerDocumentV1Schema.parse({ ...base, kind, durationSeconds: 0, fps: 0, loop: "once" })
-    : StickerDocumentV1Schema.parse({ ...base, kind, durationSeconds: 2, fps: 30, loop: "loop" });
+    ? StickerDocumentSchema.parse({ ...base, kind, durationSeconds: 0, fps: 0, loop: "once" })
+    : StickerDocumentSchema.parse({ ...base, kind, durationSeconds: 2, fps: 30, loop: "loop" });
 }
 
-function emptyDocument(kind: "static" | "animated", assetId: string): StickerDocumentV1 {
+function emptyDocument(kind: "static" | "animated", assetId: string): StickerDocument {
   return documentWithLayers(kind, [{
     id: "hero",
     name: "Hero",
@@ -393,7 +394,7 @@ function emptyDocument(kind: "static" | "animated", assetId: string): StickerDoc
     type: "image" as const,
     assetId,
     contentMode: "fit" as const,
-    animation: { position: [], scale: [], rotation: [], opacity: [], effects: [] },
+    animation: { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] },
   }]);
 }
 
@@ -418,7 +419,7 @@ function generatedLayers(plan: PlanV1, jobId: string) {
  * returns a constant when a channel has one keyframe, and static documents are only allowed
  * keyframes at t=0, so this is the one encoding that works for both kinds.
  */
-function documentFromPlan(plan: PlanV1, jobId: string): StickerDocumentV1 {
+function documentFromPlan(plan: PlanV1, jobId: string): StickerDocument {
   const compiled = compilePlanAnimations(plan);
   const assetIds = new Map(generatedLayers(plan, jobId).map((item) => [item.layer.layerId, item.assetId]));
 
@@ -430,8 +431,13 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocumentV1 {
       anchor: planLayerAnchor(layer),
       animations: layer.animations,
       animation: compiled[index],
+      blendMode: "normal" as const,
     };
     const source = layer.source;
+    // The plan vocabulary stays deliberately narrow — a planner picks a colour, not a gradient —
+    // so each planned colour becomes a solid paint here. Richer paints exist for the editor to
+    // author; widening the plan would only give the model more ways to be wrong.
+    const solid = (color: string) => ({ type: "solid" as const, color });
     switch (source.kind) {
     case "generate":
       return { ...base, type: "image", assetId: assetIds.get(layer.layerId)!, contentMode: "fit" };
@@ -442,17 +448,19 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocumentV1 {
         text: source.text,
         font: source.font,
         weight: source.weight,
-        color: source.color,
+        paint: solid(source.color),
         alignment: source.alignment,
       };
     case "shape":
       return {
         ...base,
         type: "shape",
-        shape: source.shape,
-        fill: source.fill,
-        stroke: source.stroke,
-        strokeWidth: source.strokeWidth,
+        shape: source.shape === "star" ? { kind: "star", points: 5, innerRatio: 0.42 } : { kind: source.shape },
+        fill: solid(source.fill),
+        // A zero width is v1's way of saying "no stroke", and the plan schema kept that shape.
+        stroke: source.stroke && source.strokeWidth > 0
+          ? { paint: solid(source.stroke), width: source.strokeWidth, lineCap: "round", lineJoin: "round", dash: [] }
+          : undefined,
         cornerRadius: source.cornerRadius,
       };
     case "particle":
@@ -461,7 +469,7 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocumentV1 {
         type: "particle",
         preset: source.preset,
         count: source.count,
-        color: source.color,
+        paint: solid(source.color),
         seed: source.seed,
       };
     }
@@ -469,11 +477,11 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocumentV1 {
 
   const canvas = { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true } as const;
   return plan.kind === "static"
-    ? StickerDocumentV1Schema.parse({
-      version: 1, canvas, layers, kind: "static", durationSeconds: 0, fps: 0, loop: "once",
+    ? StickerDocumentSchema.parse({
+      version: CURRENT_DOCUMENT_VERSION, canvas, layers, kind: "static", durationSeconds: 0, fps: 0, loop: "once",
     })
-    : StickerDocumentV1Schema.parse({
-      version: 1,
+    : StickerDocumentSchema.parse({
+      version: CURRENT_DOCUMENT_VERSION,
       canvas,
       layers,
       kind: "animated",
@@ -550,7 +558,7 @@ async function executePlanTurn(
   threadId: string,
   instruction: string,
   history: string,
-  activeDocument: StickerDocumentV1 | undefined,
+  activeDocument: StickerDocument | undefined,
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
   const db = getDatabase();
@@ -651,6 +659,155 @@ async function executePlanTurn(
   await finishToolCall(job, toolCallId);
   const assistantMessageId = await upsertPlanCard(job, latest.planId, latest.revision, latest.plan.summary);
   return turnResult(assistantMessageId);
+}
+
+/**
+ * Runs the agent's animation-drafting loop and ends the turn with a candidate for the user to keep.
+ *
+ * The model applies operations, reads back what they compiled to, and revises until it is happy.
+ * Nothing is persisted until it finishes: the working document lives in this function, so a
+ * rejected timing costs one tool call rather than a whole re-planning run.
+ */
+async function executeAnimationTurn(
+  job: typeof generationJobs.$inferSelect,
+  sticker: typeof stickers.$inferSelect,
+  sourceMessage: typeof chatMessages.$inferSelect,
+  base: StickerDocument,
+  activeRevision: typeof stickerRevisions.$inferSelect,
+  instruction: string,
+  history: string,
+  targetLayerId: string | undefined,
+  toolCallId: string | undefined,
+): Promise<AiTurnResult> {
+  const db = getDatabase();
+  await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "planning_animation", progress: 0.35 });
+
+  // Deterministic, so a workflow replay hands the model the same id it used before. Opaque to the
+  // model, which only ever echoes it back.
+  const animationId = derivedAssetId(job.id, "animation");
+  let working: StickerDocument | undefined;
+  let revision = 0;
+  let snapshot = 0;
+  // One transcript row per call, retries included. `beginToolCall` de-duplicates on the label, so a
+  // bare `create_animation` reused for a retry would find the row it already marked failed, leave it
+  // failed, and show the user a permanently broken step that actually succeeded.
+  const calls = new Map<StickerToolName, number>();
+  const nextLabel = (toolName: StickerToolName) => {
+    const count = (calls.get(toolName) ?? 0) + 1;
+    calls.set(toolName, count);
+    return count === 1 ? toolName : `${toolName} #${count}`;
+  };
+  // Everything the model did not author. Telling it to fix a cancelled job or a vanished asset with
+  // `update_animation` would only spend the loop's step budget, so these stop the loop instead.
+  const abort = (error: unknown): never => { throw new AnimationTurnAbort(error); };
+  // `beginToolCall` refuses to open a row on a job that is no longer running, and it says so with an
+  // ordinary Error. Left unclassified that reads as a repairable complaint, so a cancelled turn
+  // would be answered with advice the model would keep trying to act on.
+  const openCall = async (toolName: StickerToolName): Promise<string> => {
+    try {
+      return await beginToolCall(job, toolName, undefined, nextLabel(toolName));
+    } catch (error) {
+      return abort(error);
+    }
+  };
+
+  const land = async (operations: StickerOperationV1[]) => {
+    await assertJobStillRunning(job.id).catch(abort);
+    // Repairable: everything below is the model's own work, so it throws straight through to the
+    // tool body and comes back as text it can act on.
+    for (const operation of operations) {
+      validatePlannedAnimationOperation(operation);
+      if (targetLayerId) assertTargetedAnimationOperation(operation, targetLayerId);
+    }
+    // Applied to the base, never to the previous attempt: an update restates the whole animation, so
+    // a repair cannot inherit half of the timing that was rejected.
+    const document = applyStickerOperationsV1(base, operations);
+    await assertDocumentAssetsOwned(document, job.ownerId, sticker.id).catch(abort);
+    working = document;
+    revision += 1;
+    snapshot += 1;
+    await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document }).catch(abort);
+    return { animationId, revision, document };
+  };
+
+  const session: AnimationDraftingSession = {
+    createAnimation: async (operations) => {
+      const call = await openCall("create_animation");
+      try {
+        if (working) throw new Error(`An animation already exists (${animationId}); use update_animation to change it`);
+        const state = await land(operations);
+        await finishToolCall(job, call);
+        return state;
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
+    updateAnimation: async (_animationId, operations) => {
+      const call = await openCall("update_animation");
+      try {
+        if (!working) throw new Error("There is no animation to update yet; call create_animation first");
+        const state = await land(operations);
+        await finishToolCall(job, call);
+        return state;
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
+    finalizeAnimation: async () => {
+      const call = await openCall("finalize_animation");
+      try {
+        if (!working) throw new Error("There is no animation to finalize yet; call create_animation first");
+        await finishToolCall(job, call);
+        return { animationId, revision, document: working };
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
+  };
+
+  const result = await getAiProvider().animateSticker(
+    { document: base, instruction, history, targetLayerId },
+    session,
+  );
+
+  // Nothing landed at all: there is no motion to show and no reason to think a replay would find
+  // any, so end the turn rather than publishing the base document back as a candidate.
+  if (!working) throw new FatalError("The animation planner produced no usable motion");
+  // Before the warning below, so a turn the user stopped is not also reported as a model that ran
+  // out of steps.
+  await assertJobStillRunning(job.id);
+  // The loop can also stop on its step cap, or because finalize_animation itself threw. A candidate
+  // the user can look at and reject beats a dead turn, so ship whatever motion actually landed.
+  if (!result?.finalized) {
+    console.warn("Finalizing an unfinished animation loop", { jobId: job.id, stickerId: sticker.id, revision });
+  }
+  const document = working;
+
+  const revisionId = await createCandidateRevision(db, {
+    ownerId: job.ownerId,
+    stickerId: sticker.id,
+    sourceMessageId: sourceMessage.id,
+    document,
+    id: job.id,
+    parentRevisionId: activeRevision.id,
+    // Animation adds no new artwork, so the base revision's images carry over untouched.
+    masterAssetId: activeRevision.masterAssetId ?? undefined,
+    previewAssetId: activeRevision.previewAssetId ?? undefined,
+  });
+  await finishToolCall(job, toolCallId);
+  const content = await showStickerThroughTool(job, revisionId, document.kind, instruction, history);
+  const assistantMessageId = await insertAssistantMessage(job, content, "animation", revisionId);
+  const turn = await turnResult(assistantMessageId, revisionId);
+  await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot: snapshot + 1, revisionId, document });
+  await appendGenerationEvent(db, job.id, job.ownerId, "candidate", {
+    revisionId,
+    assistantMessageId,
+    assistantMessage: turn.assistantMessage,
+  });
+  return turn;
 }
 
 /**
@@ -785,11 +942,11 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
   const activeRevision = baseRevisionId
     ? await db.select().from(stickerRevisions).where(and(eq(stickerRevisions.id, baseRevisionId), eq(stickerRevisions.stickerId, sticker.id))).get()
     : undefined;
-  const activeDocument = activeRevision ? StickerDocumentV1Schema.parse(activeRevision.documentJson) : undefined;
+  const activeDocument = activeRevision ? StickerDocumentSchema.parse(activeRevision.documentJson) : undefined;
   if (activeDocument) await assertDocumentAssetsOwned(activeDocument, job.ownerId, sticker.id);
   const existingRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, job.id)).get();
   if (existingRevision) {
-    const existingDocument = StickerDocumentV1Schema.parse(existingRevision.documentJson);
+    const existingDocument = StickerDocumentSchema.parse(existingRevision.documentJson);
     const kind = existingDocument.kind === "animated" && sourceMessage.kind === "animation"
       ? "animation"
       : sourceMessage.kind === "image"
@@ -827,10 +984,11 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
       document: activeDocument,
       attachmentCount: attachments.filter((row) => row.attachment.kind === "reference").length,
     });
-    // Motion is keyframed onto the sticker the user has kept, never onto a candidate they are still
-    // deciding about. The router reads their words, not the candidate's state, so it cannot know
-    // that — and by the time it has chosen, the turn is already in the transcript. Say what is
-    // missing instead of failing the job on a rule the user was never shown.
+    // Motion is keyframed onto a live revision of this sticker — the one the user kept, or a
+    // candidate descended from it. The router reads their words, not the revision's state, so it
+    // cannot know whether the base still qualifies, and by the time it has chosen the turn is
+    // already in the transcript. Say what is missing instead of failing the job on a rule the user
+    // was never shown.
     if (action.type === "animate" && !await isValidAnimationBase(db, sticker, activeRevision)) {
       console.warn("Declined a routed animate turn", {
         jobId: job.id,
@@ -845,8 +1003,11 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
       await finishToolCall(job, declinedCallId);
       return turnResult(await insertAssistantMessage(
         job,
-        "I can only animate the sticker you have kept. Choose “Continue with this sticker” on the"
-        + " latest image first, then ask me to animate it.",
+        activeDocument
+          ? "That version isn’t the one I’m working from any more. Ask me again and I’ll animate the"
+            + " sticker that’s on screen now."
+          : "There’s no sticker to animate yet. Tell me what you want it to look like and I’ll draw"
+            + " it first.",
         "text",
       ));
     }
@@ -934,75 +1095,24 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
   }
 
   if (effectiveKind === "animation") {
-    if (!activeDocument || activeDocument.kind !== "animated") throw new FatalError("Accept a base image before adding animation");
+    if (!activeDocument || activeDocument.kind !== "animated" || !activeRevision) {
+      throw new FatalError("There is no animated sticker to add motion to");
+    }
     await assertValidAnimationBase(db, sticker, activeRevision);
     if (targetLayerId && !activeDocument.layers.some((layer) => layer.id === targetLayerId)) {
       throw new FatalError("The requested animation layer does not exist");
     }
-    await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "planning_animation", progress: 0.35 });
-    const base = activeDocument;
-    let document: StickerDocumentV1 = base;
-    let snapshot = 0;
-    const animationInstruction = targetLayerId
-      ? `Target only layer id ${targetLayerId}. ${instruction}`
-      : instruction;
-    // The compiler's refusals are written as instructions to whoever authored the motion — which
-    // effects clash, on which channel, over which seconds. Handing one back to the planner is the
-    // difference between a repair and a rerun: the step's own retries re-issue the identical call
-    // and earn the identical rejection, three times, before failing the turn.
-    let rejection: string | undefined;
-    for (let attempt = 1; ; attempt += 1) {
-      // Each attempt re-plans the whole animation, so it starts from the accepted document again.
-      // Snapshot numbers keep climbing: the client renders the newest and the abandoned attempt
-      // simply stops being the latest.
-      document = base;
-      try {
-        for await (const operation of getAiProvider().streamAnimationOperations(base, animationInstruction, history, rejection)) {
-          await assertJobStillRunning(job.id);
-          if (targetLayerId) assertTargetedAnimationOperation(operation, targetLayerId);
-          document = applyStickerOperationsV1(document, [operation]);
-          await assertDocumentAssetsOwned(document, job.ownerId, sticker.id);
-          snapshot += 1;
-          await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document });
-        }
-        break;
-      } catch (error) {
-        // Name as well as identity: this step and the compiler are bundled into separate server
-        // chunks, and a duplicated module would break `instanceof` while the name still holds.
-        const rejected = error instanceof AnimationCompileError
-          || (error instanceof Error && error.name === "AnimationCompileError");
-        if (!rejected) throw error;
-        // Out of repairs. Fatal rather than retryable: the step would only replay this same loop.
-        if (attempt >= ANIMATION_REPAIR_ATTEMPTS) throw new FatalError(error.message);
-        rejection = error.message;
-        await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
-          stage: "planning_animation",
-          progress: 0.35,
-        });
-      }
-    }
-    await assertJobStillRunning(job.id);
-    const revisionId = await createCandidateRevision(db, {
-      ownerId: job.ownerId,
-      stickerId: sticker.id,
-      sourceMessageId: sourceMessage.id,
-      document,
-      id: job.id,
-      parentRevisionId: activeRevision!.id,
-      masterAssetId: activeRevision?.masterAssetId ?? undefined,
-      previewAssetId: activeRevision?.previewAssetId ?? undefined,
-    });
-    await finishToolCall(job, primaryToolCallId);
-    const content = await showStickerThroughTool(job, revisionId, document.kind, instruction, history);
-    const assistantMessageId = await insertAssistantMessage(job, content, "animation", revisionId);
-    const result = await turnResult(assistantMessageId, revisionId);
-    await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot: snapshot + 1, revisionId, document });
-    await appendGenerationEvent(db, job.id, job.ownerId, "candidate", {
-      revisionId,
-      assistantMessageId,
-      assistantMessage: result.assistantMessage,
-    });
-    return result;
+    return executeAnimationTurn(
+      job,
+      sticker,
+      sourceMessage,
+      activeDocument,
+      activeRevision,
+      instruction,
+      history,
+      targetLayerId,
+      primaryToolCallId,
+    );
   }
 
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "preparing_context", progress: 0.15 });
@@ -1046,11 +1156,11 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
     mode: replacesExistingImage ? "conversation_edit" : "generate",
   });
 
-  let document: StickerDocumentV1;
+  let document: StickerDocument;
   if (!activeDocument) {
     document = emptyDocument(sticker.kind, assetId);
   } else if (imagePlacement === "add") {
-    if (activeDocument.layers.length >= 8) throw new Error("StickerDocumentV1 already has the maximum 8 layers");
+    if (activeDocument.layers.length >= 8) throw new Error("StickerDocument already has the maximum 8 layers");
     const layer = emptyDocument(activeDocument.kind, assetId).layers[0];
     layer.id = `image_${assetId.replaceAll("-", "").slice(0, 12)}`;
     layer.name = "Generated layer";

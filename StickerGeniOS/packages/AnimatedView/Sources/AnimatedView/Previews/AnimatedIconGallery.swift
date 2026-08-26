@@ -5,6 +5,9 @@ import SwiftUI
 ///
 /// Public because it is genuinely useful outside previews — an app debugging why a sticker looks
 /// wrong wants exactly this, and rebuilding it per-app is how two renderers start to disagree.
+///
+/// This is a read-mostly inspector, and cross-platform. For actually authoring a document — layers,
+/// keyframes, canvas size, per-kind properties — use `AnimatedIconEditor`, which is iOS-only.
 public struct AnimatedIconGallery: View {
     public var title: String
     @State private var document: AnimatedDocument

@@ -1,3 +1,4 @@
+import AnimatedView
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -52,7 +53,7 @@ struct StickerChatView: View {
 
     /// The revision the sticker actions operate on. Nothing renders it — the assistant attaches
     /// the sticker to its own message — but export needs its assets loaded and verified.
-    private var workingDocument: StickerDocumentV1? {
+    private var workingDocument: AnimatedDocument? {
         candidate?.document ?? activeRevision?.document
     }
 
@@ -145,8 +146,7 @@ struct StickerChatView: View {
                         model: exportModel,
                         stickerID: stickerID,
                         revision: revision,
-                        assets: assetStore.images,
-                        verifiedAssetIDs: assetStore.verifiedAssetIDs
+                        assetStore: assetStore
                     )
                 } else {
                     EmptyStateView(
@@ -158,7 +158,15 @@ struct StickerChatView: View {
             }
         }
         .fullScreenCover(item: $presentedDocument) { presented in
-            FullScreenStickerPlayer(document: presented.document, assets: assetStore.images)
+            FullScreenStickerPlayer(
+                document: presented.document,
+                assets: assetStore.images,
+                // Editing needs a revision to parent the save onto. A bubble whose document came
+                // from a live generation stream has none yet, so that one opens view-only.
+                editing: presented.revisionID.map {
+                    .init(store: store, stickerID: stickerID, revisionID: $0, assetStore: assetStore)
+                }
+            )
         }
         .confirmationDialog("Delete this sticker project?", isPresented: $confirmingDelete) {
             Button("Delete project", role: .destructive) {
@@ -246,7 +254,7 @@ struct StickerChatView: View {
                 message: message,
                 sticker: revisionDocument(for: message),
                 assets: assetStore.images,
-                onOpenSticker: { presentedDocument = .init(document: $0) }
+                onOpenSticker: { presentedDocument = .init(document: $0, revisionID: message.revisionId) }
             )
         }
     }
@@ -388,7 +396,7 @@ struct StickerChatView: View {
         }
     }
 
-    private func revisionDocument(for message: ChatMessage) -> StickerDocumentV1? {
+    private func revisionDocument(for message: ChatMessage) -> AnimatedDocument? {
         guard message.role == .assistant, let revisionID = message.revisionId else { return nil }
         return detail?.revisions.first(where: { $0.id == revisionID })?.document
     }
@@ -516,9 +524,9 @@ struct StickerChatView: View {
 
 private struct ChatBubble: View {
     let message: ChatMessage
-    let sticker: StickerDocumentV1?
+    let sticker: AnimatedDocument?
     let assets: [String: UIImage]
-    let onOpenSticker: (StickerDocumentV1) -> Void
+    let onOpenSticker: (AnimatedDocument) -> Void
 
     @ViewBuilder
     var body: some View {
@@ -671,7 +679,7 @@ private struct ChatAttachmentThumbnail: View {
 }
 
 private struct StickerAttachment: View {
-    let document: StickerDocumentV1
+    let document: AnimatedDocument
     let assets: [String: UIImage]
 
     var body: some View {

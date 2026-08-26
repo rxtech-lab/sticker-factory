@@ -2,6 +2,7 @@ import {
   ANIMATION_CHANNELS,
   CYCLIC_SPEC_TYPES,
   SPEC_CHANNELS,
+  anchorTrim,
   type AnimationAnchorV1,
   type AnimationChannel,
   type AnimationSpecV1,
@@ -11,13 +12,14 @@ import {
   type PositionKeyframeV1,
   type RotationKeyframeV1,
   type ScaleKeyframeV1,
+  type TrimKeyframeV1,
 } from "@/lib/contracts/animation";
 
 /**
  * Compiles declarative animation specs into the keyframe tracks the renderer actually plays.
  *
  * Everything here is pure and deterministic — the same specs always produce byte-identical
- * keyframes — because `StickerDocumentV1` stores both representations and asserts they agree. A
+ * keyframes — because `StickerDocument` stores both representations and asserts they agree. A
  * non-deterministic compiler would make that invariant unsatisfiable.
  *
  * Two renderer facts drive the whole design (see `StickerInterpolator.swift`):
@@ -42,7 +44,7 @@ export class AnimationCompileError extends Error {
   }
 }
 
-/** Document-wide keyframe ceiling, mirrored from `StickerDocumentV1Schema`. */
+/** Document-wide keyframe ceiling, mirrored from `StickerDocumentSchema`. */
 export const MAX_DOCUMENT_KEYFRAMES = 128;
 /** Per-channel keyframe ceiling, mirrored from `LayerAnimationV1Schema`. */
 export const MAX_CHANNEL_KEYFRAMES = 32;
@@ -67,10 +69,11 @@ type Channels = {
   rotation: RotationKeyframeV1[];
   opacity: OpacityKeyframeV1[];
   effects: EffectKeyframeV1[];
+  trim: TrimKeyframeV1[];
 };
 
 function emptyChannels(): Channels {
-  return { position: [], scale: [], rotation: [], opacity: [], effects: [] };
+  return { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] };
 }
 
 const position = (t: number, x: number, y: number, easing: PositionKeyframeV1["easing"]): PositionKeyframeV1 => ({
@@ -108,6 +111,13 @@ const effect = (
   blurRadius: roundValue(clamp(parts.blurRadius ?? 0, 0, 20)),
   hueDegrees: roundValue(clamp(parts.hueDegrees ?? 0, -180, 180)),
   saturation: roundValue(clamp(parts.saturation ?? 1, 0, 2)),
+  easing,
+});
+
+const trim = (t: number, start: number, end: number, easing: TrimKeyframeV1["easing"]): TrimKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  start: roundValue(clamp(start, 0, 1)),
+  end: roundValue(clamp(end, 0, 1)),
   easing,
 });
 
@@ -185,6 +195,7 @@ function compileSpec(spec: AnimationSpecV1, anchor: AnimationAnchorV1, cycleCap:
   const end = spec.delay + spec.duration;
   const ease = spec.easing;
   const { position: anchorPosition, scale: anchorScale, rotationDegrees: anchorRotation, opacity: anchorOpacity } = anchor;
+  const resting = anchorTrim(anchor);
 
   switch (spec.type) {
   case "fadeIn":
@@ -315,6 +326,27 @@ function compileSpec(spec: AnimationSpecV1, anchor: AnimationAnchorV1, cycleCap:
       effect(end, { hueDegrees: spec.degrees }, ease),
     ], "effects");
     return;
+  case "drawOn":
+    // Only `end` moves: the stroke grows from its own beginning to its full length.
+    mergeChannel(out.trim, [
+      trim(start, resting.start, spec.from, "linear"),
+      trim(end, resting.start, resting.end, ease),
+    ], "trim");
+    return;
+  case "drawOff":
+    // Only `start` moves: the stroke is eaten from its beginning, so it reads as erasing rather
+    // than as un-drawing backwards.
+    mergeChannel(out.trim, [
+      trim(start, resting.start, resting.end, "linear"),
+      trim(end, spec.to, resting.end, ease),
+    ], "trim");
+    return;
+  case "trimTo":
+    mergeChannel(out.trim, [
+      trim(start, resting.start, resting.end, "linear"),
+      trim(end, spec.start, spec.end, ease),
+    ], "trim");
+    return;
   }
 }
 
@@ -331,8 +363,8 @@ function directionOffset(direction: "up" | "down" | "left" | "right", distance: 
  * Emits the resting keyframe for channels no spec drives.
  *
  * Only channels whose anchor differs from the renderer's own default get a keyframe. Emitting all
- * five unconditionally would burn 40 of the 128-keyframe budget on eight layers that mostly just
- * sit where they were put.
+ * six unconditionally would burn most of the 128-keyframe budget on layers that mostly just sit
+ * where they were put.
  */
 function applyAnchors(anchor: AnimationAnchorV1, driven: Set<AnimationChannel>, out: Channels): void {
   if (!driven.has("position") && (anchor.position.x !== 0.5 || anchor.position.y !== 0.5)) {
@@ -347,11 +379,15 @@ function applyAnchors(anchor: AnimationAnchorV1, driven: Set<AnimationChannel>, 
   if (!driven.has("opacity") && anchor.opacity !== 1) {
     out.opacity.push(opacity(0, anchor.opacity, "linear"));
   }
+  const resting = anchorTrim(anchor);
+  if (!driven.has("trim") && (resting.start !== 0 || resting.end !== 1)) {
+    out.trim.push(trim(0, resting.start, resting.end, "linear"));
+  }
 }
 
 export function countKeyframes(animation: LayerAnimationV1): number {
   return animation.position.length + animation.scale.length + animation.rotation.length
-    + animation.opacity.length + animation.effects.length;
+    + animation.opacity.length + animation.effects.length + animation.trim.length;
 }
 
 /**
