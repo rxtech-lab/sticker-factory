@@ -99,6 +99,7 @@ struct CreateStickerView: View {
                                     }
                                 }
                                 .scrollIndicators(.hidden)
+                                .scrollDismissesKeyboard(.never)
                             }
                         }
                     }

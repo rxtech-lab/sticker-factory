@@ -1,4 +1,5 @@
 import { gateway } from "@ai-sdk/gateway";
+import { getVercelOidcToken } from "@vercel/oidc";
 import { generateImage, generateText, hasToolCall, Output, stepCountIs, streamText, tool } from "ai";
 import sharp from "sharp";
 import { z } from "zod";
@@ -140,9 +141,21 @@ export function resolveChatAction(action: AiChatAction, document?: StickerDocume
     : { type: "plan", instruction: action.instruction };
 }
 
-function requireGatewayKey(): void {
-  if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
-    throw new ApiError(503, "AI_NOT_CONFIGURED", "Vercel AI Gateway is not configured");
+/**
+ * Resolves the credential the Gateway is called with, without requiring one to be configured.
+ *
+ * An explicit `AI_GATEWAY_API_KEY` is optional: on Vercel the platform mints an OIDC token, which
+ * `getVercelOidcToken` reads from the request context or refreshes from a linked project locally.
+ * Returning undefined is a valid outcome too — the AI SDK runs its own credential resolution, and an
+ * unauthenticated call fails with the Gateway's own 401 instead of a preflight guess about env vars.
+ */
+async function resolveGatewayToken(): Promise<string | undefined> {
+  if (process.env.AI_GATEWAY_API_KEY) return process.env.AI_GATEWAY_API_KEY;
+  if (process.env.VERCEL_OIDC_TOKEN) return process.env.VERCEL_OIDC_TOKEN;
+  try {
+    return await getVercelOidcToken();
+  } catch {
+    return undefined;
   }
 }
 
@@ -175,8 +188,7 @@ function dataUrl(file: { bytes: Uint8Array; mimeType: string }): string {
 }
 
 async function generateThroughResponses(input: AiImageInput): Promise<Uint8Array> {
-  const key = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN;
-  if (!key) throw new ApiError(503, "AI_NOT_CONFIGURED", "AI_GATEWAY_API_KEY is required for conversational edits");
+  const key = await resolveGatewayToken();
   const content: Array<Record<string, unknown>> = [{
     type: "input_text",
     text: [
@@ -192,7 +204,7 @@ async function generateThroughResponses(input: AiImageInput): Promise<Uint8Array
 
   const response = await fetch(`${process.env.AI_GATEWAY_BASE_URL ?? "https://ai-gateway.vercel.sh/v1"}/responses`, {
     method: "POST",
-    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+    headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), "content-type": "application/json" },
     body: JSON.stringify({
       model: process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6",
       input: [{ role: "user", content }],
@@ -241,7 +253,6 @@ async function generateThroughImageModel(input: AiImageInput): Promise<Uint8Arra
 
 class GatewayAiProvider implements AiProvider {
   async generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {
-    requireGatewayKey();
     assertImageInputBounds(input);
     if (input.mask) {
       if (!input.references[0]) throw new ApiError(422, "MASK_TARGET_REQUIRED", "Masked edits require a target image");
@@ -279,7 +290,6 @@ class GatewayAiProvider implements AiProvider {
     history: string,
     rejection?: string,
   ): AsyncIterable<StickerOperationV1> {
-    requireGatewayKey();
     const result = streamText({
       model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
       output: Output.array({ element: StickerOperationsV1Schema.element }),
@@ -328,7 +338,6 @@ class GatewayAiProvider implements AiProvider {
   }
 
   async routeChatTurn(input: AiChatContext): Promise<AiChatAction> {
-    requireGatewayKey();
     const tools = {
       reply: tool({
         description: [
@@ -509,7 +518,6 @@ class GatewayAiProvider implements AiProvider {
   }
 
   async planSticker(input: AiPlanContext, session: PlanDraftingSession): Promise<PlanTurnResult | undefined> {
-    requireGatewayKey();
     // Threaded through the tool bodies rather than read off the result, because the model refers to
     // the plan by id on every subsequent call and only the session knows the id it was given.
     let state: PlanTurnResult | undefined;
@@ -660,7 +668,6 @@ class GatewayAiProvider implements AiProvider {
   }
 
   async generateConceptImage(prompt: string): Promise<AiImageOutput> {
-    requireGatewayKey();
     // Opaque on purpose. A storyboard is a picture *of* a sticker, not a sticker, so it skips both
     // the transparency provider options and the normalize/retry path that enforces an alpha channel.
     const result = await generateImage({
@@ -684,7 +691,6 @@ class GatewayAiProvider implements AiProvider {
   }
 
   async showSticker(revisionId: string, kind: "static" | "animated", instruction: string, history: string): Promise<string> {
-    requireGatewayKey();
     const tools = {
       "show-sticker": tool({
         description: "Attach the completed sticker revision to the assistant's next chat message.",
@@ -708,7 +714,6 @@ class GatewayAiProvider implements AiProvider {
   }
 
   async reply(instruction: string, history: string): Promise<string> {
-    requireGatewayKey();
     const result = await generateText({
       model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
       system: "You are Sticker Factory's concise creative assistant. Help refine the user's private sticker project. Never claim an edit was made unless an image or animation revision was actually created.",
