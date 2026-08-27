@@ -35,7 +35,7 @@ struct CandidateReadySheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient(
-                colors: [Color.purple.opacity(0.12), .clear],
+                colors: [AppColors.accentSoft.opacity(0.5), .clear],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -54,7 +54,7 @@ private extension CandidateReadySheet {
         VStack(spacing: 6) {
             Image(systemName: "sparkles")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(.purple)
+                .foregroundStyle(AppColors.accent)
             Text("Candidate ready")
                 .font(.title2.bold())
             Text("Keep it and it becomes the sticker you build on.")
@@ -96,7 +96,7 @@ private extension CandidateReadySheet {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.purple)
+            .tint(AppColors.accent)
             .controlSize(.large)
             .disabled(isBusy)
             .accessibilityIdentifier("accept-candidate-next")
@@ -109,7 +109,7 @@ private extension CandidateReadySheet {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(.purple)
+            .tint(AppColors.accent)
             .controlSize(.large)
             .disabled(isBusy)
             .accessibilityIdentifier("compare-candidate")
@@ -152,7 +152,7 @@ struct CandidateReadyBanner: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.glassProminent)
-        .tint(.purple)
+        .tint(AppColors.accent)
         .controlSize(.large)
         .accessibilityIdentifier("candidate-banner")
     }

@@ -93,6 +93,7 @@ struct CreateStickerView: View {
                                     HStack(spacing: 10) {
                                         ForEach(references) { reference in
                                             ReferenceThumbnail(reference: reference) {
+                                                Haptics.selection()
                                                 references.removeAll { $0.id == reference.id }
                                             }
                                         }
@@ -107,6 +108,7 @@ struct CreateStickerView: View {
                     if let error = localError ?? store.errorMessage { ErrorBanner(message: error) }
 
                     Button {
+                        Haptics.tap(.medium)
                         Task { await generate() }
                     } label: {
                         HStack {
@@ -116,7 +118,7 @@ struct CreateStickerView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glassProminent)
-                    .tint(.purple)
+                    .tint(AppColors.accent)
                     .controlSize(.large)
                     .disabled(isGenerating || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || prompt.count > 4_000)
                     .accessibilityIdentifier("generate-sticker-button")
@@ -138,15 +140,21 @@ struct CreateStickerView: View {
             catch { localError = error.localizedDescription }
         }
         references = loaded
+        if !loaded.isEmpty { Haptics.selection() }
     }
 
     private func generate() async {
         isGenerating = true
         defer { isGenerating = false }
         do {
-            onCreated(try await store.create(kind: kind, prompt: prompt, references: references))
+            let sticker = try await store.create(kind: kind, prompt: prompt, references: references)
+            Haptics.success()
+            onCreated(sticker)
             localError = nil
-        } catch { localError = error.localizedDescription }
+        } catch {
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
     }
 }
 

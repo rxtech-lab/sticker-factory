@@ -47,6 +47,88 @@ nonisolated enum PreviewFixtures {
         systemSticker: nil
     )
 
+    /// A sticker owned by somebody else — what an installed pack's members look like.
+    static let borrowedSticker = Sticker(
+        id: "sticker-borrowed",
+        title: "Loaf",
+        kind: .static,
+        status: .published,
+        activeRevisionId: "revision-borrowed",
+        createdAt: Date().addingTimeInterval(-7_200),
+        updatedAt: Date().addingTimeInterval(-600),
+        previewAsset: nil,
+        systemSticker: nil
+    )
+
+    static let creator = PackCreator(
+        handle: "mika-lin-4f2a9c",
+        displayName: "Mika Lin",
+        bio: "Draws cats, mostly.",
+        packCount: 3,
+        isSelf: false
+    )
+
+    static let pack = StickerPack(
+        id: "pack-demo",
+        slug: "cozy-cats-9f3a1c8d",
+        title: "Cozy Cats",
+        summary: "Twelve cats being extremely comfortable.",
+        state: .published,
+        creator: creator,
+        itemCount: 1,
+        installCount: 128,
+        installed: false,
+        isMine: false,
+        coverStickers: [borrowedSticker],
+        monetization: .init(kind: "free", priceCents: 0, currency: "USD"),
+        publishedAt: Date().addingTimeInterval(-86_400),
+        createdAt: Date().addingTimeInterval(-172_800),
+        updatedAt: Date().addingTimeInterval(-600)
+    )
+
+    static let packDetail = StickerPackDetail(
+        id: pack.id,
+        slug: pack.slug,
+        title: pack.title,
+        summary: pack.summary,
+        state: pack.state,
+        creator: pack.creator,
+        itemCount: pack.itemCount,
+        installCount: pack.installCount,
+        installed: pack.installed,
+        isMine: pack.isMine,
+        coverStickers: pack.coverStickers,
+        monetization: pack.monetization,
+        publishedAt: pack.publishedAt,
+        createdAt: pack.createdAt,
+        updatedAt: pack.updatedAt,
+        stickers: [borrowedSticker]
+    )
+
+    static let mineSection = LibrarySection(
+        id: "mine",
+        kind: .mine,
+        title: "My Stickers",
+        packId: nil,
+        packSlug: nil,
+        creator: nil,
+        installedAt: nil,
+        updatedAt: Date(),
+        stickers: [sticker]
+    )
+
+    static let installedSection = LibrarySection(
+        id: "pack:\(pack.id)",
+        kind: .pack,
+        title: pack.title,
+        packId: pack.id,
+        packSlug: pack.slug,
+        creator: creator,
+        installedAt: Date().addingTimeInterval(-3_600),
+        updatedAt: Date().addingTimeInterval(-600),
+        stickers: [borrowedSticker]
+    )
+
     static let candidate = StickerRevision(
         id: "revision-candidate",
         parentRevisionId: "revision-accepted",

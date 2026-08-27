@@ -64,7 +64,10 @@ struct FullScreenStickerPlayer: View {
                 }
                 if editing != nil {
                     ToolbarItem(placement: .primaryAction) {
-                        Button("Edit", systemImage: "slider.horizontal.3") { isEditing = true }
+                        Button("Edit", systemImage: "slider.horizontal.3") {
+                            Haptics.tap(.light)
+                            isEditing = true
+                        }
                             .accessibilityIdentifier("edit-sticker-button")
                     }
                 }
@@ -132,6 +135,7 @@ struct StickerEditorSheet: View {
                         ProgressView()
                     } else {
                         Button("Save") {
+                            Haptics.tap(.light)
                             if isPublished { confirmingUnpublish = true } else { Task { await save() } }
                         }
                         .accessibilityIdentifier("save-edited-sticker-button")
@@ -180,10 +184,12 @@ struct StickerEditorSheet: View {
                 parentRevisionID: context.revisionID,
                 document: validated
             )
+            Haptics.success()
             onFinished(true)
         } catch {
             // Deliberately does not dismiss: an edit lost to a flaky connection is unrecoverable.
             errorMessage = error.localizedDescription
+            Haptics.failure()
         }
     }
 
@@ -219,9 +225,13 @@ struct StickerEditorSheet: View {
                 idempotencyKey: UUID().uuidString
             )
             await context.assetStore.load(assetID: assetID, api: context.store.api)
+            // The layer appears in the canvas at this point, which is a change to the document
+            // rather than a finished task — a selection tick, not a success.
+            Haptics.selection()
             resumePicker(with: assetID)
         } catch {
             errorMessage = error.localizedDescription
+            Haptics.failure()
             resumePicker(with: nil)
         }
     }

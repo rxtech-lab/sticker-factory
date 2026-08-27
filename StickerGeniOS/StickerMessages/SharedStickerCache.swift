@@ -2,22 +2,57 @@ import CryptoKit
 import Foundation
 import ImageIO
 
+/// The section a sticker belongs to: the user's own library, or one installed pack.
+///
+/// Sections exist because the same sticker can legitimately appear in two different installed
+/// packs, so `stickerID` alone is no longer a unique key anywhere in this cache.
+struct StickerSection: Equatable, Sendable {
+    /// `"mine"`, or `"pack:<uuid>"`.
+    let id: String
+    let title: String
+    /// The creator byline, for a pack section. Nil for the user's own stickers.
+    let subtitle: String?
+    let stickers: [CachedSticker]
+}
+
+/// Identity of one cached sticker. A sticker in two packs is two entries — pointing at one file.
+struct CacheKey: Hashable, Sendable {
+    let sectionID: String
+    let stickerID: String
+}
+
 struct CachedSticker: Equatable, Sendable {
     let stickerID: String
     let assetID: String
     let title: String
     let fileURL: URL
     let updatedAt: Date
+    var sectionID: String = SharedStickerCache.mineSectionID
+    var sectionTitle: String = SharedStickerCache.mineSectionTitle
+    var sectionSubtitle: String?
+    var sectionPosition: Int = 0
+    var position: Int = 0
+
+    var key: CacheKey { CacheKey(sectionID: sectionID, stickerID: stickerID) }
 }
 
 struct SystemStickerDescriptor: Equatable, Sendable {
     let stickerID: String
     let assetID: String
     let title: String
-    let mimeType: String
+    /// Overwritten with the response's own content type once the bytes arrive, so what is cached
+    /// is what was actually served rather than what the listing claimed.
+    var mimeType: String
     let byteSize: Int?
     let sha256: String?
     let updatedAt: Date
+    var sectionID: String = SharedStickerCache.mineSectionID
+    var sectionTitle: String = SharedStickerCache.mineSectionTitle
+    var sectionSubtitle: String?
+    var sectionPosition: Int = 0
+    var position: Int = 0
+
+    var key: CacheKey { CacheKey(sectionID: sectionID, stickerID: stickerID) }
 }
 
 enum StickerCacheError: Error, LocalizedError, Sendable {
@@ -50,6 +85,11 @@ actor SharedStickerCache {
     static let maximumPixelDimension = 618
     static let allowedPixelDimensions: Set<Int> = [300, 408, 618]
 
+    static let mineSectionID = "mine"
+    static let mineSectionTitle = "My Stickers"
+    /// 2 added sections. A v1 index migrates in place — see `CacheEntry.init(from:)`.
+    static let indexVersion = 2
+
     private let fileManager: FileManager
     private let rootURL: URL
     private let indexURL: URL
@@ -79,7 +119,17 @@ actor SharedStickerCache {
         try persistIndex()
     }
 
+    /// Every cached sticker, flat. Kept for callers that only need the whole set.
     func cachedStickers(for subject: String) throws -> [CachedSticker] {
+        try cachedSections(for: subject).flatMap(\.stickers)
+    }
+
+    /// The cached library, grouped: "My Stickers" first, then one section per installed pack.
+    ///
+    /// Sections are ordered by their server position and stickers by theirs, falling back to
+    /// `updatedAt` descending — which is exactly the ordering this cache had before sections
+    /// existed, so a migrated v1 index reads unchanged.
+    func cachedSections(for subject: String) throws -> [StickerSection] {
         try prepare(for: subject)
         var current = try loadIndex()
         current.entries.removeAll { entry in
@@ -89,16 +139,39 @@ actor SharedStickerCache {
         }
         index = current
         try persistIndex()
-        return current.entries
-            .sorted { $0.updatedAt > $1.updatedAt }
-            .map { entry in
-                CachedSticker(
-                    stickerID: entry.stickerID,
-                    assetID: entry.assetID,
-                    title: entry.title,
-                    fileURL: rootURL.appending(path: entry.filename),
-                    updatedAt: entry.updatedAt
+
+        let stickers = current.entries.map { entry in
+            CachedSticker(
+                stickerID: entry.stickerID,
+                assetID: entry.assetID,
+                title: entry.title,
+                fileURL: rootURL.appending(path: entry.filename),
+                updatedAt: entry.updatedAt,
+                sectionID: entry.sectionID,
+                sectionTitle: entry.sectionTitle,
+                sectionSubtitle: entry.sectionSubtitle,
+                sectionPosition: entry.sectionPosition,
+                position: entry.position
+            )
+        }
+
+        return Dictionary(grouping: stickers, by: \.sectionID)
+            .map { _, members in
+                let ordered = members.sorted {
+                    $0.position != $1.position ? $0.position < $1.position : $0.updatedAt > $1.updatedAt
+                }
+                let first = ordered[0]
+                return StickerSection(
+                    id: first.sectionID,
+                    title: first.sectionTitle,
+                    subtitle: first.sectionSubtitle,
+                    stickers: ordered
                 )
+            }
+            .sorted { left, right in
+                let leftPosition = left.stickers[0].sectionPosition
+                let rightPosition = right.stickers[0].sectionPosition
+                return leftPosition != rightPosition ? leftPosition < rightPosition : left.id < right.id
             }
     }
 
@@ -121,19 +194,28 @@ actor SharedStickerCache {
         try data.write(to: destination, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
 
         var current = try loadIndex()
-        if let oldEntry = current.entries.first(where: { $0.stickerID == descriptor.stickerID }),
-           oldEntry.filename != filename {
-            try? fileManager.removeItem(at: rootURL.appending(path: oldEntry.filename))
-        }
-        current.entries.removeAll { $0.stickerID == descriptor.stickerID }
+        let key = descriptor.key
+        let superseded = current.entries.first { $0.key == key }
+        current.entries.removeAll { $0.key == key }
         let entry = CacheEntry(
             stickerID: descriptor.stickerID,
             assetID: descriptor.assetID,
             title: String(descriptor.title.prefix(150)),
             filename: filename,
-            updatedAt: descriptor.updatedAt
+            updatedAt: descriptor.updatedAt,
+            sectionID: descriptor.sectionID,
+            sectionTitle: descriptor.sectionTitle,
+            sectionSubtitle: descriptor.sectionSubtitle,
+            sectionPosition: descriptor.sectionPosition,
+            position: descriptor.position
         )
         current.entries.append(entry)
+        // Only now, with the new entry in place, is it safe to drop the superseded file — and only
+        // if nothing else still points at it. Files are keyed by asset, entries by (section,
+        // sticker), so the same file legitimately backs a sticker that sits in two packs.
+        if let superseded, superseded.filename != filename {
+            deleteFileIfUnreferenced(superseded.filename, in: current.entries)
+        }
         index = current
         try persistIndex()
         return CachedSticker(
@@ -141,20 +223,38 @@ actor SharedStickerCache {
             assetID: entry.assetID,
             title: entry.title,
             fileURL: destination,
-            updatedAt: entry.updatedAt
+            updatedAt: entry.updatedAt,
+            sectionID: entry.sectionID,
+            sectionTitle: entry.sectionTitle,
+            sectionSubtitle: entry.sectionSubtitle,
+            sectionPosition: entry.sectionPosition,
+            position: entry.position
         )
     }
 
-    func removeEntries(notIn stickerIDs: Set<String>, for subject: String) throws {
+    /// Drops everything the latest server response did not mention.
+    ///
+    /// Keyed on `CacheKey`, not `stickerID`: removing a pack must not evict the same sticker from
+    /// another pack that still contains it.
+    func removeEntries(notIn keys: Set<CacheKey>, for subject: String) throws {
         try prepare(for: subject)
         var current = try loadIndex()
-        let removed = current.entries.filter { !stickerIDs.contains($0.stickerID) }
-        current.entries.removeAll { !stickerIDs.contains($0.stickerID) }
+        let removed = current.entries.filter { !keys.contains($0.key) }
+        current.entries.removeAll { !keys.contains($0.key) }
         for entry in removed {
-            try? fileManager.removeItem(at: rootURL.appending(path: entry.filename))
+            deleteFileIfUnreferenced(entry.filename, in: current.entries)
         }
         index = current
         try persistIndex()
+    }
+
+    /// Deletes a cached file only when no surviving entry references it.
+    ///
+    /// Getting this wrong silently blanks a sticker in whichever pack was not being edited, which
+    /// looks like a corrupt cache rather than a bug.
+    private func deleteFileIfUnreferenced(_ filename: String, in survivors: [CacheEntry]) {
+        guard !survivors.contains(where: { $0.filename == filename }) else { return }
+        try? fileManager.removeItem(at: rootURL.appending(path: filename))
     }
 
     func purge() throws {
@@ -169,8 +269,14 @@ actor SharedStickerCache {
             index = empty
             return empty
         }
-        let data = try Data(contentsOf: indexURL)
-        let decoded = try JSONDecoder.stickerFactory.decode(CacheIndex.self, from: data)
+        // A corrupt index used to throw, which bricked the extension until the app group was
+        // cleared. Every file it describes is re-fetchable, so starting over is strictly better.
+        guard let data = try? Data(contentsOf: indexURL),
+              let decoded = try? JSONDecoder.stickerFactory.decode(CacheIndex.self, from: data) else {
+            let empty = CacheIndex(accountFingerprint: "", entries: [])
+            index = empty
+            return empty
+        }
         index = decoded
         return decoded
     }
@@ -245,8 +351,23 @@ actor SharedStickerCache {
 }
 
 private struct CacheIndex: Codable, Sendable {
+    /// 1 predates sections. Bumped on every write; only read for diagnostics, because
+    /// `CacheEntry` migrates itself field by field.
+    var version: Int = SharedStickerCache.indexVersion
     let accountFingerprint: String
     var entries: [CacheEntry]
+
+    init(accountFingerprint: String, entries: [CacheEntry]) {
+        self.accountFingerprint = accountFingerprint
+        self.entries = entries
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        accountFingerprint = try container.decode(String.self, forKey: .accountFingerprint)
+        entries = try container.decodeIfPresent([CacheEntry].self, forKey: .entries) ?? []
+    }
 }
 
 private struct CacheEntry: Codable, Sendable {
@@ -255,6 +376,53 @@ private struct CacheEntry: Codable, Sendable {
     let title: String
     let filename: String
     let updatedAt: Date
+    let sectionID: String
+    let sectionTitle: String
+    let sectionSubtitle: String?
+    let sectionPosition: Int
+    let position: Int
+
+    var key: CacheKey { CacheKey(sectionID: sectionID, stickerID: stickerID) }
+
+    init(
+        stickerID: String,
+        assetID: String,
+        title: String,
+        filename: String,
+        updatedAt: Date,
+        sectionID: String,
+        sectionTitle: String,
+        sectionSubtitle: String?,
+        sectionPosition: Int,
+        position: Int
+    ) {
+        self.stickerID = stickerID
+        self.assetID = assetID
+        self.title = title
+        self.filename = filename
+        self.updatedAt = updatedAt
+        self.sectionID = sectionID
+        self.sectionTitle = sectionTitle
+        self.sectionSubtitle = sectionSubtitle
+        self.sectionPosition = sectionPosition
+        self.position = position
+    }
+
+    /// A v1 entry has no section fields and describes a sticker the user owns, so it migrates
+    /// straight into "My Stickers" with nothing re-downloaded.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        stickerID = try container.decode(String.self, forKey: .stickerID)
+        assetID = try container.decode(String.self, forKey: .assetID)
+        title = try container.decode(String.self, forKey: .title)
+        filename = try container.decode(String.self, forKey: .filename)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        sectionID = try container.decodeIfPresent(String.self, forKey: .sectionID) ?? SharedStickerCache.mineSectionID
+        sectionTitle = try container.decodeIfPresent(String.self, forKey: .sectionTitle) ?? SharedStickerCache.mineSectionTitle
+        sectionSubtitle = try container.decodeIfPresent(String.self, forKey: .sectionSubtitle)
+        sectionPosition = try container.decodeIfPresent(Int.self, forKey: .sectionPosition) ?? 0
+        position = try container.decodeIfPresent(Int.self, forKey: .position) ?? 0
+    }
 }
 
 private extension JSONEncoder {

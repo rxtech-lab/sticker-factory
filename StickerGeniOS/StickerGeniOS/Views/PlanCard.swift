@@ -37,11 +37,15 @@ struct PlanCard: View {
         }
         .frame(maxWidth: 460, alignment: .leading)
         .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.purple.opacity(0.2), lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(AppColors.accent.opacity(0.2), lineWidth: 0.5))
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("composition-plan-card")
         .confirmationDialog("Build this plan?", isPresented: $confirming, titleVisibility: .visible) {
-            Button("Build") { onConfirm() }
+            Button("Build") {
+                // Heavier than an ordinary tap: this commits to generating images.
+                Haptics.tap(.medium)
+                onConfirm()
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(confirmationMessage)
@@ -51,6 +55,7 @@ struct PlanCard: View {
         .alert("Reject this plan?", isPresented: $rejecting) {
             TextField("What is wrong with it?", text: $rejectionReason, axis: .vertical)
             Button("Reject", role: .destructive) {
+                Haptics.tap(.medium)
                 let reason = rejectionReason.trimmingCharacters(in: .whitespacesAndNewlines)
                 onReject(reason.isEmpty ? nil : reason)
                 rejectionReason = ""
@@ -67,7 +72,7 @@ struct PlanCard: View {
                 Text("PLAN")
                     .font(.caption2.weight(.bold))
                     .tracking(0.8)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(AppColors.accent)
                 if record.revision > 1 {
                     Text("v\(record.revision)")
                         .font(.caption2.monospacedDigit())
@@ -130,10 +135,10 @@ struct PlanCard: View {
             ForEach(Array(animations.enumerated()), id: \.offset) { _, animation in
                 Text(animation.label)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(AppColors.accent)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.purple.opacity(0.12), in: .capsule)
+                    .background(AppColors.accentSoft.opacity(0.55), in: .capsule)
             }
         }
     }
@@ -163,7 +168,7 @@ struct PlanCard: View {
                     .padding(.vertical, 13)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.purple)
+                .foregroundStyle(AppColors.accent)
                 .disabled(isBusy)
                 .accessibilityIdentifier("composition-plan-generate")
 
@@ -254,10 +259,10 @@ private struct PlanLayoutPreview: View {
                 // plan is visible in the picture and not only in the button label.
                 let filled = layer.source.isGenerated
                 let shape = Path(roundedRect: rect, cornerRadius: 4)
-                context.fill(shape, with: .color(.purple.opacity(filled ? 0.16 : 0.06)))
+                context.fill(shape, with: .color(AppColors.accent.opacity(filled ? 0.16 : 0.06)))
                 context.stroke(
                     shape,
-                    with: .color(.purple.opacity(filled ? 0.5 : 0.35)),
+                    with: .color(AppColors.accent.opacity(filled ? 0.5 : 0.35)),
                     style: StrokeStyle(lineWidth: 1, dash: filled ? [] : [3, 2])
                 )
                 // Anchored to the box's top-left corner, not its centre. An accent layer that spans
@@ -270,11 +275,11 @@ private struct PlanLayoutPreview: View {
                 )
                 let chip = Path(ellipseIn: CGRect(x: corner.x - 8, y: corner.y - 8, width: 16, height: 16))
                 context.fill(chip, with: .color(.white.opacity(0.85)))
-                context.stroke(chip, with: .color(.purple.opacity(0.45)), lineWidth: 1)
+                context.stroke(chip, with: .color(AppColors.accent.opacity(0.45)), lineWidth: 1)
                 context.draw(
                     Text("\(index + 1)")
                         .font(.caption2.monospacedDigit().weight(.bold))
-                        .foregroundStyle(.purple),
+                        .foregroundStyle(AppColors.accent),
                     at: corner
                 )
             }

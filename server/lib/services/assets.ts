@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { CreateUploadRequest } from "@/lib/contracts/api";
 import { MAX_RENDITION_SECONDS } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
-import { assets, stickers } from "@/lib/db/schema";
+import { previewAssetIdSql } from "@/lib/db/columns";
+import { assets, stickerPackItems, stickerPacks, stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import {
   getObjectStore,
@@ -205,21 +206,92 @@ export async function getReadyOwnedAssets(db: Database, ownerId: string, assetId
   return rows;
 }
 
-export async function createAssetDownload(db: Database, ownerId: string, assetId: string) {
-  const asset = await getOwnedAsset(db, ownerId, assetId);
+/** How a requester earned the right to read an asset. */
+export type AssetAudience = "owner" | "pack-member";
+
+/**
+ * The only asset kinds a marketplace pack may expose. Everything else — references, masks, the
+ * MP4 sharing rendition — stays owner-only no matter how widely the sticker is published.
+ */
+const PACK_SHARED_ASSET_KINDS = ["system", "preview", "gif", "master"] as const;
+
+/**
+ * Whether `asset` is artwork the marketplace has already made public.
+ *
+ * True only when the asset is the system rendition, or the resolved preview-chain asset, of the
+ * *active* revision of a *published* sticker that belongs to a pack in a publicly visible state.
+ *
+ * Note there is no `pack_installs` term. Browse and pack-detail pages have to render artwork to
+ * people who have not installed anything, and publishing to an open marketplace is consent to
+ * display. Install membership gates which *sections* a user is served, not which bytes they may
+ * read. If private or invite-only packs ever ship, adding the join here is the whole change.
+ */
+async function isPackPublishedAsset(db: Database, asset: typeof assets.$inferSelect): Promise<boolean> {
+  if (!asset.stickerId) return false;
+  if (asset.state !== "ready") return false;
+  if (!PACK_SHARED_ASSET_KINDS.includes(asset.kind as (typeof PACK_SHARED_ASSET_KINDS)[number])) return false;
+  const match = await db.select({ one: sql<number>`1` })
+    .from(stickerPackItems)
+    .innerJoin(stickerPacks, eq(stickerPacks.id, stickerPackItems.packId))
+    .innerJoin(stickers, eq(stickers.id, stickerPackItems.stickerId))
+    .innerJoin(stickerRevisions, eq(stickerRevisions.id, stickers.activeRevisionId))
+    .where(and(
+      eq(stickerPackItems.stickerId, asset.stickerId),
+      inArray(stickerPacks.state, ["published", "unlisted"]),
+      eq(stickers.status, "published"),
+      isNull(stickers.deletedAt),
+      or(
+        eq(stickerRevisions.systemAssetId, asset.id),
+        eq(previewAssetIdSql, asset.id),
+      ),
+    ))
+    .limit(1)
+    .get();
+  return match !== undefined;
+}
+
+/**
+ * The asset the requester may read, and on what grounds.
+ *
+ * Ownership first; failing that, the marketplace rule in `isPackPublishedAsset`. A failure is
+ * always a 404 and never a 403 — confirming that another user's asset id exists is itself a leak.
+ *
+ * `getOwnedAsset` stays for callers that must never widen (uploads, purges, AI inputs).
+ */
+export async function getReadableAsset(
+  db: Database,
+  requesterId: string,
+  assetId: string,
+): Promise<{ asset: typeof assets.$inferSelect; audience: AssetAudience }> {
+  const asset = await db.select().from(assets).where(eq(assets.id, assetId)).get();
+  if (!asset || asset.state === "deleted") throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
+  if (asset.ownerId === requesterId) return { asset, audience: "owner" };
+  if (await isPackPublishedAsset(db, asset)) return { asset, audience: "pack-member" };
+  throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
+}
+
+function assetExtension(mimeType: string): string {
+  return mimeType === "image/png" ? "png"
+    : mimeType === "image/gif" ? "gif"
+      : mimeType === "video/mp4" ? "mp4"
+        : mimeType === "image/webp" ? "webp" : "jpg";
+}
+
+export async function createAssetDownload(db: Database, requesterId: string, assetId: string) {
+  const { asset, audience } = await getReadableAsset(db, requesterId, assetId);
   if (asset.state !== "ready") throw new ApiError(409, "ASSET_NOT_READY", "The asset is not ready");
-  const extension = asset.mimeType === "image/png" ? "png"
-    : asset.mimeType === "image/gif" ? "gif"
-      : asset.mimeType === "video/mp4" ? "mp4"
-        : asset.mimeType === "image/webp" ? "webp" : "jpg";
-  const filename = asset.originalFilename ?? `sticker-${asset.kind}-${asset.id}.${extension}`;
+  const extension = assetExtension(asset.mimeType);
+  const generic = `sticker-${asset.kind}-${asset.id}.${extension}`;
+  // A borrowed asset never carries the creator's own filename — that is their upload, not the
+  // installer's, and it can leak anything they happened to name the file.
+  const filename = audience === "owner" ? asset.originalFilename ?? generic : generic;
   const download = await getObjectStore().signedGet(asset.r2Key, filename);
   return { url: download.url, expiresAt: download.expiresAt.toISOString(), asset: serializeAsset(asset) };
 }
 
-/** Ownership-checked inline media URL for private web previews. */
-export async function createAssetPreview(db: Database, ownerId: string, assetId: string) {
-  const asset = await getOwnedAsset(db, ownerId, assetId);
+/** Inline media URL for web previews: the requester's own art, or published marketplace art. */
+export async function createAssetPreview(db: Database, requesterId: string, assetId: string) {
+  const { asset } = await getReadableAsset(db, requesterId, assetId);
   if (asset.state !== "ready") throw new ApiError(409, "ASSET_NOT_READY", "The asset is not ready");
   const preview = await getObjectStore().signedGet(asset.r2Key);
   return { url: preview.url, expiresAt: preview.expiresAt.toISOString(), asset: serializeAsset(asset) };

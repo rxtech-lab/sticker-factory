@@ -19,7 +19,28 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String
     func assetDownload(assetID: String) async throws -> AssetDownload
     func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error>
+
+    // Marketplace
+    func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
+    func myPacks(cursor: String?) async throws -> Page<StickerPack>
+    func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse
+    func pack(id: String) async throws -> StickerPackDetail
+    func createPack(_ request: CreatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail
+    func updatePack(id: String, request: UpdatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail
+    func setPackItems(id: String, stickerIDs: [String], idempotencyKey: String) async throws -> StickerPackDetail
+    func publishPack(id: String, idempotencyKey: String) async throws -> StickerPackDetail
+    func unpublishPack(id: String, state: PackState, idempotencyKey: String) async throws -> StickerPackDetail
+    func deletePack(id: String, idempotencyKey: String) async throws -> DeletePackResponse
+    func installPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse
+    func uninstallPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse
+    func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse
 }
+
+nonisolated enum PackSort: String, Sendable, CaseIterable { case recent, popular }
+
+/// `published` is what the Messages extension needs; the app's Library also wants drafts, which
+/// are projects in progress rather than junk.
+nonisolated enum LibrarySectionStatus: String, Sendable { case published, all }
 
 nonisolated enum RevisionAction: String, Sendable { case accept, reject, revert }
 
@@ -145,6 +166,83 @@ actor StickerAPIClient: StickerAPIClientProtocol {
             idempotencyKey: idempotencyKey
         )
     }
+
+    // MARK: - Marketplace
+
+    func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        var items = [URLQueryItem(name: "sort", value: sort.rawValue)]
+        if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await send(path: "api/v1/packs", query: items)
+    }
+
+    /// The authoring list. Unlike browse it includes drafts, so it must never back a public view.
+    func myPacks(cursor: String?) async throws -> Page<StickerPack> {
+        var items = [URLQueryItem(name: "mine", value: "true")]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await send(path: "api/v1/packs", query: items)
+    }
+
+    func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse {
+        try await send(
+            path: "api/v1/creators/\(handle)",
+            query: cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? []
+        )
+    }
+
+    /// `id` accepts the uuid or the public slug, so a shared link resolves directly.
+    func pack(id: String) async throws -> StickerPackDetail {
+        try await send(path: "api/v1/packs/\(id)")
+    }
+
+    func createPack(_ request: CreatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail {
+        try await send(path: "api/v1/packs", method: "POST", body: request, idempotencyKey: idempotencyKey)
+    }
+
+    func updatePack(id: String, request: UpdatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail {
+        try await send(path: "api/v1/packs/\(id)", method: "PATCH", body: request, idempotencyKey: idempotencyKey)
+    }
+
+    /// Replaces the whole membership in order — this is both "set items" and "reorder".
+    func setPackItems(id: String, stickerIDs: [String], idempotencyKey: String) async throws -> StickerPackDetail {
+        try await send(
+            path: "api/v1/packs/\(id)/items",
+            method: "PUT",
+            body: ReorderPackItemsRequest(stickerIds: stickerIDs),
+            idempotencyKey: idempotencyKey
+        )
+    }
+
+    func publishPack(id: String, idempotencyKey: String) async throws -> StickerPackDetail {
+        try await send(path: "api/v1/packs/\(id)/publish", method: "POST", idempotencyKey: idempotencyKey)
+    }
+
+    func unpublishPack(id: String, state: PackState, idempotencyKey: String) async throws -> StickerPackDetail {
+        try await send(
+            path: "api/v1/packs/\(id)/unpublish",
+            method: "POST",
+            body: UnpublishPackRequest(state: state == .unlisted ? "unlisted" : "draft"),
+            idempotencyKey: idempotencyKey
+        )
+    }
+
+    func deletePack(id: String, idempotencyKey: String) async throws -> DeletePackResponse {
+        try await send(path: "api/v1/packs/\(id)", method: "DELETE", idempotencyKey: idempotencyKey)
+    }
+
+    func installPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse {
+        try await send(path: "api/v1/packs/\(id)/install", method: "POST", idempotencyKey: idempotencyKey)
+    }
+
+    func uninstallPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse {
+        try await send(path: "api/v1/packs/\(id)/install", method: "DELETE", idempotencyKey: idempotencyKey)
+    }
+
+    func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        try await send(path: "api/v1/library/sections", query: [URLQueryItem(name: "status", value: status.rawValue)])
+    }
+
+    // MARK: - Uploads
 
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String {
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()

@@ -6,29 +6,51 @@ private enum LibraryFilter: String, CaseIterable, Identifiable {
     case `static` = "Static"
     case animated = "Animated"
     var id: Self { self }
+
+    func matches(_ sticker: Sticker) -> Bool {
+        switch self {
+        case .all: true
+        case .static: sticker.kind == .static
+        case .animated: sticker.kind == .animated
+        }
+    }
 }
+
+private let libraryColumns = [GridItem(.adaptive(minimum: 156), spacing: 16)]
 
 struct LibraryView: View {
     @Bindable var store: StickerStore
+    /// Only needed so a pack section header can push that pack's detail without leaving the tab.
+    @Bindable var marketplace: MarketplaceStore
     @State private var filter: LibraryFilter = .all
     @State private var showingCreation = false
     /// Set after creation so a brand-new project lands straight in its chat.
     @State private var openedStickerID: String?
+    /// A pack sticker the viewer tapped. They do not own it, so it opens read-only.
+    @State private var previewedSticker: Sticker?
 
-    private var filtered: [Sticker] {
-        switch filter {
-        case .all: store.stickers
-        case .static: store.stickers.filter { $0.kind == .static }
-        case .animated: store.stickers.filter { $0.kind == .animated }
-        }
+    private var filtered: [Sticker] { store.stickers.filter(filter.matches) }
+
+    private var packSections: [LibrarySection] {
+        store.sections
+            .filter { $0.kind == .pack }
+            .map { section in
+                var copy = section
+                copy.stickers = section.stickers.filter(filter.matches)
+                return copy
+            }
+    }
+
+    private var hasAnything: Bool {
+        !filtered.isEmpty || !packSections.isEmpty
     }
 
     var body: some View {
         StickerBackground {
             Group {
-                if store.isLoading && store.stickers.isEmpty {
+                if store.isLoading && store.stickers.isEmpty && store.sections.isEmpty {
                     ProgressView("Loading your library…")
-                } else if filtered.isEmpty {
+                } else if !hasAnything {
                     EmptyStateView(
                         symbol: "face.smiling.inverse",
                         title: "No stickers yet",
@@ -36,16 +58,60 @@ struct LibraryView: View {
                     )
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: 16)], spacing: 16) {
-                            ForEach(filtered) { sticker in
-                                NavigationLink(value: sticker.id) {
-                                    StickerLibraryCard(sticker: sticker, api: store.api)
+                        // Headers scroll with their section rather than pinning. A pinned header
+                        // needs an opaque backing to stay readable over the content sliding under
+                        // it, and that backing is a light bar across the app's own background.
+                        LazyVStack(alignment: .leading, spacing: 24) {
+                            Section {
+                                if filtered.isEmpty {
+                                    SectionPlaceholder(message: "Nothing of yours matches this filter.")
+                                } else {
+                                    LazyVGrid(columns: libraryColumns, spacing: 16) {
+                                        ForEach(filtered) { sticker in
+                                            NavigationLink(value: sticker.id) {
+                                                StickerLibraryCard(sticker: sticker, api: store.api)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .accessibilityIdentifier("library-sticker-\(sticker.id)")
+                                        }
+                                    }
+                                    .padding(.horizontal)
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("library-sticker-\(sticker.id)")
+                            } header: {
+                                LibrarySectionHeader(title: "My Stickers", subtitle: nil, packID: nil)
+                            }
+
+                            ForEach(packSections) { section in
+                                Section {
+                                    if section.stickers.isEmpty {
+                                        SectionPlaceholder(message: "Nothing published in this pack right now.")
+                                    } else {
+                                        LazyVGrid(columns: libraryColumns, spacing: 16) {
+                                            ForEach(section.stickers) { sticker in
+                                                // Deliberately not a NavigationLink into the chat:
+                                                // the viewer does not own this sticker, so fetching
+                                                // its detail would 404. Tapping previews it instead.
+                                                Button {
+                                                    previewedSticker = sticker
+                                                } label: {
+                                                    StickerLibraryCard(sticker: sticker, api: store.api, showsStatus: false)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .accessibilityIdentifier("library-pack-sticker-\(sticker.id)")
+                                            }
+                                        }
+                                        .padding(.horizontal)
+                                    }
+                                } header: {
+                                    LibrarySectionHeader(
+                                        title: section.title,
+                                        subtitle: section.creator.map { "by \($0.byline)" },
+                                        packID: section.packId
+                                    )
+                                }
                             }
                         }
-                        .padding()
+                        .padding(.vertical)
                     }
                     .refreshable { await store.refresh() }
                 }
@@ -58,9 +124,16 @@ struct LibraryView: View {
         .navigationDestination(item: $openedStickerID) { id in
             StickerChatView(store: store, stickerID: id)
         }
+        .navigationDestination(for: PackRoute.self) { route in
+            PackDetailView(store: marketplace, packID: route.packID)
+        }
+        .navigationDestination(for: CreatorRoute.self) { route in
+            CreatorPacksView(store: marketplace, handle: route.handle)
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Create", systemImage: "wand.and.stars") {
+                    Haptics.tap(.light)
                     showingCreation = true
                 }
                 .accessibilityIdentifier("create-sticker-button")
@@ -88,77 +161,93 @@ struct LibraryView: View {
             }
             .interactiveDismissDisabled()
         }
+        .sheet(item: $previewedSticker) { sticker in
+            NavigationStack {
+                PackStickerPreview(sticker: sticker, api: store.api)
+                    .navigationTitle(sticker.title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { previewedSticker = nil }
+                        }
+                    }
+            }
+        }
         .safeAreaInset(edge: .top) {
             if let error = store.errorMessage { ErrorBanner(message: error).padding(.horizontal) }
         }
-        .task { if store.stickers.isEmpty { await store.refresh() } }
+        .task {
+            if store.stickers.isEmpty { await store.refresh() } else { await store.refreshSections() }
+        }
     }
 }
 
-private struct StickerLibraryCard: View {
+/// A navigation value distinct from `String`, which the library already uses for sticker ids.
+struct PackRoute: Hashable {
+    let packID: String
+}
+
+private struct LibrarySectionHeader: View {
+    let title: String
+    let subtitle: String?
+    let packID: String?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.title3.weight(.semibold))
+                if let subtitle {
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if let packID {
+                NavigationLink(value: PackRoute(packID: packID)) {
+                    Label("Pack details", systemImage: "chevron.right")
+                        .labelStyle(.iconOnly)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                // `.plain`, or the link picks up the default button chrome and the chevron sits
+                // on a filled capsule.
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("library-pack-header-\(packID)")
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+}
+
+private struct SectionPlaceholder: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+    }
+}
+
+/// Read-only artwork for a pack member. There is no editor here by design — the sticker belongs
+/// to its creator, and the viewer only has permission to look at it.
+private struct PackStickerPreview: View {
     let sticker: Sticker
     let api: StickerAPIClientProtocol
 
     var body: some View {
-        GlassCard(padding: 10) {
-            VStack(alignment: .leading, spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(.purple.opacity(0.12).gradient)
-                    // The system rendition first, not the preview: both show the same artwork, but
-                    // the preview for an animated sticker is the 1024² sharing GIF — tens of
-                    // megabytes to fill a thumbnail the system sticker covers in under 500 KB.
-                    if let assetID = sticker.systemSticker?.assetId ?? sticker.previewAsset?.id {
-                        VerifiedAssetImage(
-                            assetID: assetID,
-                            expectedSHA256: sticker.systemSticker?.sha256 ?? sticker.previewAsset?.sha256,
-                            api: api
-                        )
-                    } else {
-                        Image(systemName: sticker.kind.symbol)
-                            .font(.system(size: 42, weight: .medium))
-                            .foregroundStyle(.purple)
-                    }
-                }
-                .aspectRatio(1, contentMode: .fit)
-
-                Text(sticker.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                HStack {
-                    Label(sticker.kind.label, systemImage: sticker.kind.symbol)
-                    Spacer()
-                    if sticker.status == .draft { Text("Draft") }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        StickerBackground {
+            VStack(spacing: 16) {
+                StickerThumbnail(sticker: sticker, api: api)
+                    .aspectRatio(1, contentMode: .fit)
+                    .padding()
+                Label(sticker.kind.label, systemImage: sticker.kind.symbol)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Spacer()
             }
-        }
-    }
-}
-
-private struct VerifiedAssetImage: View {
-    let assetID: String
-    let expectedSHA256: String?
-    let api: StickerAPIClientProtocol
-    @State private var image: UIImage?
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable().scaledToFit()
-            } else {
-                ProgressView()
-            }
-        }
-        .task(id: assetID) {
-            guard image == nil else { return }
-            image = try? await StickerImageCache.load(
-                assetID: assetID,
-                expectedSHA256: expectedSHA256,
-                posterFrame: true,
-                api: api
-            ).image
         }
     }
 }

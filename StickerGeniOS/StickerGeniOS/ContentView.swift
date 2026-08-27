@@ -22,8 +22,8 @@ struct ContentView: View {
                         title: "Sticker Factory",
                         subtitle: "Make expressive stickers from words and photos.",
                         signInButtonTitle: "Sign in with RxLab",
-                        accentColor: .purple,
-                        secondaryColor: .pink,
+                        accentColor: AppColors.accent,
+                        secondaryColor: AppColors.secondaryAccent,
                         showsAnimatedBackground: true
                     ),
                     style: .native,
@@ -43,15 +43,21 @@ struct StickerFactoryTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            NavigationStack { LibraryView(store: environment.store) }
+            // Library stays tag 0 and the default selection: launch lands on the user's own work,
+            // not on a store.
+            NavigationStack { LibraryView(store: environment.store, marketplace: environment.marketplace) }
                 .tabItem { Label("Library", systemImage: "square.grid.2x2") }
                 .tag(0)
 
+            NavigationStack { MarketplaceView(store: environment.marketplace, library: environment.store) }
+                .tabItem { Label("Marketplace", systemImage: "bag") }
+                .tag(1)
+
             NavigationStack { AccountView(environment: environment) }
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
-                .tag(1)
+                .tag(2)
         }
-        .tint(.purple)
+        .tint(AppColors.accent)
         .accessibilityIdentifier("sticker-factory-tabs")
     }
 }

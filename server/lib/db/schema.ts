@@ -202,6 +202,95 @@ export const plans = sqliteTable("plans", {
   index("plans_owner_created_idx").on(table.ownerId, table.createdAt),
 ]);
 
+/**
+ * The creator's public identity in the marketplace.
+ *
+ * Kept out of `users` because `ensureUser()` rewrites `users.display_name` from the OAuth token
+ * whenever it drifts. `handle` is the only creator identifier that appears in URLs and response
+ * bodies — the OAuth `sub` never leaves the server.
+ */
+export const creatorProfiles = sqliteTable("creator_profiles", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  handle: text("handle").notNull(),
+  displayName: text("display_name"),
+  bio: text("bio"),
+  avatarAssetId: text("avatar_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  /** Monetization placeholders. Nothing reads or writes these yet. */
+  payoutStatus: text("payout_status", { enum: ["none", "pending", "active"] }).notNull().default("none"),
+  payoutProvider: text("payout_provider"),
+  payoutAccountRef: text("payout_account_ref"),
+  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("creator_profiles_handle_unique").on(table.handle),
+]);
+
+/**
+ * A published bundle of the creator's own stickers.
+ *
+ * `installCount` is current installs (what the UI shows); `installTotal` is lifetime and never
+ * decremented. Both are trigger-maintained rather than counted per row, because browse sorts by
+ * popularity and shows a count on every card.
+ */
+export const stickerPacks = sqliteTable("sticker_packs", {
+  id: text("id").primaryKey(),
+  creatorId: text("creator_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  /** Immutable once published, so a shared link never rots when the title changes. */
+  slug: text("slug").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary"),
+  state: text("state", { enum: ["draft", "published", "unlisted", "removed"] }).notNull().default("draft"),
+  coverStickerId: text("cover_sticker_id").references(() => stickers.id, { onDelete: "set null" }),
+  itemCount: integer("item_count").notNull().default(0),
+  installCount: integer("install_count").notNull().default(0),
+  installTotal: integer("install_total").notNull().default(0),
+  /** Monetization placeholders. Every pack is free today; nothing charges. */
+  monetization: text("monetization", { enum: ["free", "paid", "subscription"] }).notNull().default("free"),
+  priceCents: integer("price_cents").notNull().default(0),
+  currency: text("currency").notNull().default("USD"),
+  revenueShareBps: integer("revenue_share_bps").notNull().default(0),
+  publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("sticker_packs_slug_unique").on(table.slug),
+  index("sticker_packs_creator_updated_idx").on(table.creatorId, table.updatedAt),
+  index("sticker_packs_state_published_idx").on(table.state, table.publishedAt),
+  index("sticker_packs_state_installs_idx").on(table.state, table.installCount),
+]);
+
+export const stickerPackItems = sqliteTable("sticker_pack_items", {
+  packId: text("pack_id").notNull().references(() => stickerPacks.id, { onDelete: "cascade" }),
+  stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
+  position: integer("position").notNull().default(0),
+  addedAt: timestamp("added_at").notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  primaryKey({ columns: [table.packId, table.stickerId] }),
+  index("sticker_pack_items_pack_position_idx").on(table.packId, table.position),
+  index("sticker_pack_items_sticker_idx").on(table.stickerId),
+]);
+
+/**
+ * Uninstall flips `state`; it never deletes the row. That keeps uninstall/reinstall idempotent and
+ * preserves the (future) entitlement, so a user who paid and later removed a pack never pays twice.
+ */
+export const packInstalls = sqliteTable("pack_installs", {
+  packId: text("pack_id").notNull().references(() => stickerPacks.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  state: text("state", { enum: ["installed", "uninstalled"] }).notNull().default("installed"),
+  position: integer("position").notNull().default(0),
+  /** Entitlement placeholders. Every acquisition is `free` today. */
+  acquisition: text("acquisition", { enum: ["free", "purchase", "gift", "promo"] }).notNull().default("free"),
+  priceCentsPaid: integer("price_cents_paid").notNull().default(0),
+  orderRef: text("order_ref"),
+  installedAt: timestamp("installed_at").notNull().$defaultFn(() => new Date()),
+  uninstalledAt: timestamp("uninstalled_at"),
+}, (table) => [
+  primaryKey({ columns: [table.packId, table.userId] }),
+  index("pack_installs_user_state_idx").on(table.userId, table.state, table.position),
+  index("pack_installs_pack_state_idx").on(table.packId, table.state),
+]);
+
 export const idempotencyKeys = sqliteTable("idempotency_keys", {
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   operation: text("operation").notNull(),
@@ -222,3 +311,8 @@ export type AssetRow = typeof assets.$inferSelect;
 export type ChatMessageRow = typeof chatMessages.$inferSelect;
 export type GenerationJobRow = typeof generationJobs.$inferSelect;
 export type PlanRow = typeof plans.$inferSelect;
+export type UserRow = typeof users.$inferSelect;
+export type CreatorProfileRow = typeof creatorProfiles.$inferSelect;
+export type StickerPackRow = typeof stickerPacks.$inferSelect;
+export type StickerPackItemRow = typeof stickerPackItems.$inferSelect;
+export type PackInstallRow = typeof packInstalls.$inferSelect;

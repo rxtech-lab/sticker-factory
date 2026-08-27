@@ -92,6 +92,12 @@ struct StickerExportSheet: View {
                     : nil
             )
         }
+        .onChange(of: publishSucceeded) { _, succeeded in
+            if succeeded { Haptics.success() }
+        }
+        .onChange(of: publishJob?.isFailed) { _, failed in
+            if failed == true { Haptics.failure() }
+        }
         .onChange(of: model.background) { oldValue, newValue in
             guard oldValue != newValue, !isPublished, !publishIsPending, !model.isPublishing else { return }
             model.invalidateExports()
@@ -291,10 +297,11 @@ struct StickerExportSheet: View {
             }
             .padding(.vertical, 13)
             .frame(maxWidth: .infinity)
-            .background(.purple.opacity(0.08), in: .rect(cornerRadius: 16))
+            .background(AppColors.accentSoft.opacity(0.38), in: .rect(cornerRadius: 16))
             .accessibilityIdentifier("export-progress")
         } else if !actionIsComplete {
             Button {
+                Haptics.tap(.medium)
                 Task {
                     await model.exportOrPublish(
                         store: store,
@@ -303,6 +310,13 @@ struct StickerExportSheet: View {
                         assets: assets,
                         verifiedAssetIDs: verifiedAssetIDs
                     )
+                    if model.errorMessage != nil {
+                        Haptics.failure()
+                    } else if !revision.canPublishExports {
+                        // A local export is finished the moment this returns. A publish is not —
+                        // it hands off to a job, and `publishSucceeded` is what says it landed.
+                        Haptics.success()
+                    }
                 }
             } label: {
                 Label(
@@ -313,7 +327,7 @@ struct StickerExportSheet: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.glassProminent)
-            .tint(.purple)
+            .tint(AppColors.accent)
             .controlSize(.large)
             .accessibilityIdentifier(revision.canPublishExports ? "publish-exports" : "export-files")
         }

@@ -1,5 +1,4 @@
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/sqlite-core";
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or } from "drizzle-orm";
 import type {
   CreateStickerRequest,
   PostChatMessageRequest,
@@ -8,6 +7,7 @@ import type {
 } from "@/lib/contracts/api";
 import { EXPORT_LOOP_HOLD_SECONDS, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
+import { previewAssetIdSql, previewAssets, systemAssets } from "@/lib/db/columns";
 import {
   assets,
   chatAttachments,
@@ -72,16 +72,6 @@ export async function assertOwnedSticker(db: Database, ownerId: string, stickerI
   return sticker;
 }
 
-const systemAssets = alias(assets, "system_assets");
-const previewAssets = alias(assets, "preview_assets");
-
-/**
- * The asset a client shows for a revision, as SQL so the summary join can resolve it in the same
- * round trip. Mirrors the per-kind fallback chain the clients expect: animated prefers the GIF,
- * static prefers the PNG, and both fall back through the preview to the master.
- */
-const previewAssetIdSql = sql`case when ${stickerRevisions.kind} = 'animated' then coalesce(${stickerRevisions.gifAssetId}, ${stickerRevisions.systemAssetId}, ${stickerRevisions.previewAssetId}, ${stickerRevisions.masterAssetId}) else coalesce(${stickerRevisions.pngAssetId}, ${stickerRevisions.previewAssetId}, ${stickerRevisions.masterAssetId}) end`;
-
 /**
  * A sticker plus its active revision's system and preview assets, resolved in one statement.
  *
@@ -89,7 +79,7 @@ const previewAssetIdSql = sql`case when ${stickerRevisions.kind} = 'animated' th
  * function. Walking sticker -> revision -> asset -> asset per row made a 30-item page 90+ chained
  * queries; the joins below keep it at one regardless of page size.
  */
-function selectStickerSummaries(db: Database) {
+export function selectStickerSummaries(db: Database) {
   return db.select({
     sticker: stickers,
     systemAsset: systemAssets,
@@ -103,13 +93,13 @@ function selectStickerSummaries(db: Database) {
     .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql));
 }
 
-type StickerSummaryRow = {
+export type StickerSummaryRow = {
   sticker: typeof stickers.$inferSelect;
   systemAsset: typeof assets.$inferSelect | null;
   previewAsset: typeof assets.$inferSelect | null;
 };
 
-function serializeStickerSummary({ sticker, systemAsset, previewAsset }: StickerSummaryRow) {
+export function serializeStickerSummary({ sticker, systemAsset, previewAsset }: StickerSummaryRow) {
   return {
     id: sticker.id,
     title: sticker.title,

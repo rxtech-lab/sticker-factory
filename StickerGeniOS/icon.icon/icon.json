@@ -1,18 +1,33 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+    "automatic-gradient" : "display-p3:0.87286,0.83196,0.98096,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "image-name" : "Codex Image Aug 26, 2026, 07_20_27 PM.png",
-          "name" : "Codex Image Aug 26, 2026, 07_20_27 PM",
+          "blend-mode" : "hard-light",
+          "fill" : "automatic",
+          "hidden" : false,
+          "image-name" : "eyes.svg",
+          "name" : "eyes",
+          "opacity" : 1,
           "position" : {
-            "scale" : 0.6,
+            "scale" : 0.8,
             "translation-in-points" : [
-              13.799999999999955,
-              6
+              32,
+              -13
+            ]
+          }
+        },
+        {
+          "image-name" : "whole body.svg",
+          "name" : "whole body",
+          "position" : {
+            "scale" : 0.8,
+            "translation-in-points" : [
+              32,
+              -13
             ]
           }
         }
@@ -23,7 +38,7 @@
       },
       "translucency" : {
         "enabled" : true,
-        "value" : 0.5
+        "value" : 0.3
       }
     }
   ],
