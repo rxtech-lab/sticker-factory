@@ -249,10 +249,18 @@ final class StickerExporter {
         )
     }
 
-    func exportSystemSticker(document: AnimatedDocument, assets: [String: UIImage]) throws -> RenderedStickerExport {
+    /// - Parameter size: the rung the ladder starts at. Larger rungs are skipped rather than
+    ///   removed, so a sticker that cannot be squeezed into 500 KB at the requested size still
+    ///   exports — one size down — instead of failing.
+    func exportSystemSticker(
+        document: AnimatedDocument,
+        assets: [String: UIImage],
+        size: SystemStickerSize = .default
+    ) throws -> RenderedStickerExport {
         _ = try document.validated()
         if document.kind == .static {
-            for dimension in StickerExportMetadataPolicy.staticSystemDimensions {
+            for dimension in StickerExportMetadataPolicy.staticSystemDimensions
+                where dimension <= size.dimension {
                 guard let rendered = renderFrame(document: document, time: 0, dimension: dimension, assets: assets) else { continue }
                 for colorLevels in StickerExportMetadataPolicy.staticSystemColorLevels {
                     let image = colorLevels.flatMap { posterized(rendered, levels: $0) } ?? rendered
@@ -266,7 +274,7 @@ final class StickerExporter {
                 }
             }
         } else {
-            for preset in SystemStickerPreset.adaptive {
+            for preset in SystemStickerPreset.adaptive where preset.dimension <= size.dimension {
                 for format in [StickerExportFormat.apng, .gif] {
                     guard let data = try? animatedImageData(
                         document: document,

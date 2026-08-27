@@ -76,7 +76,10 @@ export const chatMessages = sqliteTable("chat_messages", {
   threadId: text("thread_id").notNull().references(() => chatThreads.id, { onDelete: "cascade" }),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   role: text("role", { enum: ["user", "assistant", "system"] }).notNull(),
-  kind: text("kind", { enum: ["text", "image", "image_edit", "animation", "plan", "export", "status"] }).notNull(),
+  /** `device_edit` is the on-device editor saving a revision; the transcript draws it as a marker. */
+  kind: text("kind", {
+    enum: ["text", "image", "image_edit", "animation", "device_edit", "plan", "export", "status"],
+  }).notNull(),
   content: text("content").notNull(),
   targetLayerId: text("target_layer_id"),
   baseRevisionId: text("base_revision_id"),

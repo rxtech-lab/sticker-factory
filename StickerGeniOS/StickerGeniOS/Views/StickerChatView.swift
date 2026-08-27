@@ -36,6 +36,12 @@ struct StickerChatView: View {
     private var activeRevision: StickerRevision? { detail?.activeRevision }
     private var messages: [ChatMessage] { store.messages[stickerID] ?? [] }
     private var isComputing: Bool { store.computingStickerIDs.contains(stickerID) }
+    /// Only for a transcript with nothing in it yet. Every accept, save and stop reloads the
+    /// messages too, and flashing a skeleton over a transcript the reader is already reading
+    /// would be worse than the moment of stale content it replaces.
+    private var isLoadingTranscript: Bool {
+        messages.isEmpty && store.loadingMessageStickerIDs.contains(stickerID)
+    }
     private var canSend: Bool {
         (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !references.isEmpty) && !isComputing
     }
@@ -63,7 +69,18 @@ struct StickerChatView: View {
             // it carries its own glass and nothing else paints behind it, so the messages
             // stay full-height and simply scroll under it.
             ZStack(alignment: .bottom) {
-                transcript
+                ZStack {
+                    transcript
+                        .opacity(isLoadingTranscript ? 0 : 1)
+                    if isLoadingTranscript {
+                        TranscriptSkeleton()
+                            .padding(.top, 16)
+                            .padding(.bottom, bottomBarHeight)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.2), value: isLoadingTranscript)
                 bottomBar
             }
         }
@@ -194,7 +211,20 @@ struct StickerChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
         } leadingContent: {
-            if store.nextMessageBeforeSequence[stickerID] != nil {
+            if store.loadingOlderMessageStickerIDs.contains(stickerID) {
+                // Replaces the button rather than sitting beside it: leaving a tappable control
+                // above a page that is already on its way just invites a second request.
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading earlier messages…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("loading-older-chat-messages")
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            } else if store.nextMessageBeforeSequence[stickerID] != nil {
                 Button("Load earlier messages", systemImage: "clock.arrow.circlepath") {
                     Task { await store.loadOlderMessages(stickerID: stickerID) }
                 }
@@ -242,7 +272,9 @@ struct StickerChatView: View {
 
     @ViewBuilder
     private func transcriptRow(_ message: ChatMessage) -> some View {
-        if let record = message.plan {
+        if message.kind == .deviceEdit {
+            TranscriptDivider(text: message.content)
+        } else if let record = message.plan {
             PlanCard(
                 record: record.id == actionablePlanID ? record : record.readOnly,
                 isBusy: isConfirmingPlan || isComputing,
@@ -575,6 +607,85 @@ private struct ChatBubble: View {
                 .accessibilityIdentifier("show-sticker-attachment")
             }
         }
+    }
+}
+
+/// Placeholder bubbles for a transcript that has not arrived yet.
+///
+/// Laid out like the real thing — alternating sides, uneven widths, one tall row where a sticker
+/// will land — so the transcript settles into place instead of appearing out of a blank screen.
+/// The pulse is staggered per row, which reads as loading rather than as a control.
+private struct TranscriptSkeleton: View {
+    @State private var animate = false
+
+    private struct Row: Identifiable {
+        let id: Int
+        let isUser: Bool
+        let widthFraction: CGFloat
+        let height: CGFloat
+    }
+
+    private static let rows: [Row] = [
+        .init(id: 0, isUser: true, widthFraction: 0.52, height: 40),
+        .init(id: 1, isUser: false, widthFraction: 0.78, height: 58),
+        .init(id: 2, isUser: false, widthFraction: 0.62, height: 190),
+        .init(id: 3, isUser: true, widthFraction: 0.40, height: 40),
+        .init(id: 4, isUser: false, widthFraction: 0.72, height: 58),
+    ]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ForEach(Self.rows) { row in
+                HStack(spacing: 0) {
+                    if row.isUser { Spacer(minLength: 44) }
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.secondary.opacity(animate ? 0.22 : 0.07))
+                        .frame(height: row.height)
+                        .containerRelativeFrame(.horizontal) { width, _ in width * row.widthFraction }
+                        .animation(
+                            .easeInOut(duration: 0.9)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(row.id) * 0.12),
+                            value: animate
+                        )
+                    if !row.isUser { Spacer(minLength: 44) }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .onAppear { animate = true }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading conversation")
+        .accessibilityIdentifier("transcript-loading")
+    }
+}
+
+/// A break in the transcript for something that happened to the sticker rather than something
+/// anyone said — an edit saved in the editor. Centred and ruled on both sides so it reads as a
+/// timeline marker at a glance, and never as a bubble waiting for a reply.
+private struct TranscriptDivider: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            rule
+            Label(text, systemImage: "pencil.and.outline")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .layoutPriority(1)
+            rule
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
+        .accessibilityIdentifier("transcript-divider")
+    }
+
+    private var rule: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.25))
+            .frame(height: 1)
     }
 }
 

@@ -114,6 +114,11 @@ struct StickerEditorSheet: View {
             AnimatedIconEditor(
                 document: $document,
                 assets: context.assetStore,
+                // Canvas resize is off because it cannot keep its promise here: positions are
+                // normalized, so a same-aspect resize moves nothing, and every sticker export
+                // renders a square frame that letterboxes anything else. Size that does reach the
+                // sticker lives in the export sheet, as `SystemStickerSize`.
+                configuration: .init(allowsCanvasResize: false),
                 onPickImageAsset: { await pickImageAsset() }
             )
             .navigationTitle("Edit Sticker")

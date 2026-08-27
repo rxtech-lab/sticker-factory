@@ -170,7 +170,7 @@ export const AssetDownloadResponseV1Schema = z.object({
 export const ChatMessageV1Schema = z.object({
   id: z.string().uuid(),
   role: z.enum(["user", "assistant", "system"]),
-  kind: z.enum(["text", "image", "image_edit", "animation", "export", "status"]),
+  kind: z.enum(["text", "image", "image_edit", "animation", "device_edit", "export", "status"]),
   content: z.string(),
   targetLayerId: z.string().nullable(),
   baseRevisionId: z.string().uuid().nullable(),

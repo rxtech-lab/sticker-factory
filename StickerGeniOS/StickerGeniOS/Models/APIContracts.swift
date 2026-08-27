@@ -130,7 +130,12 @@ nonisolated struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
 }
 
 nonisolated enum ChatRole: String, Codable, Hashable, Sendable { case user, assistant, system }
-nonisolated enum ChatMessageKind: String, Codable, Hashable, Sendable { case text, image, imageEdit = "image_edit", animation, plan, export, status }
+nonisolated enum ChatMessageKind: String, Codable, Hashable, Sendable {
+    case text, image, imageEdit = "image_edit", animation, plan, export, status
+    /// A revision saved from the on-device editor. Sits in the transcript to keep the revision
+    /// chain unbroken, but nobody said it, so it renders as a divider rather than a bubble.
+    case deviceEdit = "device_edit"
+}
 
 nonisolated struct PlanRecord: Codable, Identifiable, Hashable, Sendable {
     var id: String

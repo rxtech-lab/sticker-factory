@@ -349,7 +349,7 @@ describe("Sticker Factory services", () => {
       expect(sticker?.activeRevisionId).toBe(result.revisionId);
     });
 
-    it("shows the edit in the transcript so the chat needs no special case for it", async () => {
+    it("marks the edit in the transcript as a device edit rather than a typed turn", async () => {
       const { stickerId, parentId, document } = await setup();
       const result = await saveEditedRevision(db, "owner-a", stickerId, {
         parentRevisionId: parentId, document, note: "Nudged the dot",
@@ -357,7 +357,7 @@ describe("Sticker Factory services", () => {
       const row = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, result.revisionId)).get();
       expect(row?.sourceMessageId).toBeTruthy();
       const message = await db.select().from(chatMessages).where(eq(chatMessages.id, row!.sourceMessageId!)).get();
-      expect(message).toMatchObject({ role: "user", kind: "animation", content: "Nudged the dot", revisionId: result.revisionId });
+      expect(message).toMatchObject({ role: "user", kind: "device_edit", content: "Nudged the dot", revisionId: result.revisionId });
     });
 
     /** Retrying a dropped response must replay the same row, not fork the chain. */

@@ -22,6 +22,25 @@ nonisolated struct VerifiedStickerImageProcessor: ImageProcessor {
     }
 }
 
+/// Verification plus `StickerPosterFrame`, for the surfaces that show one still frame.
+///
+/// Kingfisher hands a still `UIImage` to SwiftUI's `Image(uiImage:)`, and for GIF or APNG data that
+/// image is frame zero — blank for any sticker that fades or slides in.
+nonisolated struct PosterFrameStickerImageProcessor: ImageProcessor {
+    let verification: VerifiedStickerImageProcessor
+
+    var identifier: String { "\(verification.identifier).poster" }
+
+    func process(item: ImageProcessItem, options: KingfisherParsedOptionsInfo) -> UIImage? {
+        guard case .data(let data) = item else {
+            return verification.process(item: item, options: options)
+        }
+        guard verification.accepts(data) else { return nil }
+        return StickerPosterFrame.image(from: data)
+            ?? DefaultImageProcessor.default.process(item: item, options: options)
+    }
+}
+
 nonisolated struct CachedStickerImage: Sendable {
     let image: UIImage
     let isVerified: Bool
@@ -31,9 +50,13 @@ nonisolated enum StickerImageCache {
     private static let cache = ImageCache(name: "sticker-assets-v1")
     private static let manager = KingfisherManager(downloader: .default, cache: cache)
 
+    /// - Parameter posterFrame: for callers that render one still frame. See
+    ///   `PosterFrameStickerImageProcessor`. The processor's identifier keys the cache, so a poster
+    ///   and a plain decode of the same asset never overwrite each other.
     static func load(
         assetID: String,
         expectedSHA256: String? = nil,
+        posterFrame: Bool = false,
         api: StickerAPIClientProtocol
     ) async throws -> CachedStickerImage {
         let download = try await api.assetDownload(assetID: assetID)
@@ -42,10 +65,14 @@ nonisolated enum StickerImageCache {
             downloadURL: download.url,
             cacheKey: "sticker-asset.\(assetID)"
         )
+        let verification = VerifiedStickerImageProcessor(expectedSHA256: expectedSHA256)
+        let processor: any ImageProcessor = posterFrame
+            ? PosterFrameStickerImageProcessor(verification: verification)
+            : verification
         let result = try await manager.retrieveImage(
             with: resource,
             options: [
-                .processor(VerifiedStickerImageProcessor(expectedSHA256: expectedSHA256)),
+                .processor(processor),
                 .backgroundDecode,
                 .waitForCache,
             ]
