@@ -38,7 +38,7 @@ struct StickerExportSheet: View {
                     GlassCard(padding: 20) {
                         VStack(alignment: .leading, spacing: 18) {
                             statusHeader
-                            if revision.document.kind == .animated && revision.canPublishExports { backgroundPicker }
+                            if revision.canPublishExports { exportSettings }
                             actionRow
                             if !model.publishedURLs.isEmpty {
                                 ShareLink(items: model.publishedURLs) {
@@ -93,6 +93,10 @@ struct StickerExportSheet: View {
             )
         }
         .onChange(of: model.background) { oldValue, newValue in
+            guard oldValue != newValue, !isPublished, !publishIsPending, !model.isPublishing else { return }
+            model.invalidateExports()
+        }
+        .onChange(of: model.stickerSize) { oldValue, newValue in
             guard oldValue != newValue, !isPublished, !publishIsPending, !model.isPublishing else { return }
             model.invalidateExports()
         }
@@ -193,13 +197,47 @@ struct StickerExportSheet: View {
         }
     }
 
-    private var backgroundPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var exportSettings: some View {
+        VStack(alignment: .leading, spacing: 16) {
             Text("EXPORT SETTINGS")
                 .font(.caption2.weight(.semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
 
+            sizePicker
+
+            if revision.document.kind == .animated { backgroundPicker }
+        }
+    }
+
+    /// The one control that changes how big the sticker arrives: Messages draws a sticker at its
+    /// pixel size over three, and nothing in the document can move that number.
+    private var sizePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // The segmented style drops the picker's own label, and "Large/Medium/Small" on its own
+            // reads as a quality setting.
+            Text("Sticker size")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("Sticker size", selection: $model.stickerSize) {
+                ForEach(SystemStickerSize.allCases) { size in
+                    Text(size.label).tag(size)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("sticker-size-picker")
+            .disabled(isPublished || publishIsPending || model.isPublishing)
+
+            Text("\(model.stickerSize.detail). Detailed artwork can still be exported one size down to stay under Apple's 500 KB limit.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var backgroundPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Menu {
                 Picker("MP4 background", selection: $model.background) {
                     ForEach(ExportBackgroundChoice.allCases) { choice in

@@ -26,7 +26,8 @@ final class StickerPublisher {
     func export(
         revision: StickerRevision,
         assets: [String: UIImage],
-        verifiedAssetIDs: Set<String>
+        verifiedAssetIDs: Set<String>,
+        size: SystemStickerSize = .default
     ) async throws -> [RenderedStickerExport] {
         if !revision.canPublishExports {
             let document = try validatedDocument(
@@ -39,7 +40,8 @@ final class StickerPublisher {
         return try await renderExports(
             revision: revision,
             assets: assets,
-            verifiedAssetIDs: verifiedAssetIDs
+            verifiedAssetIDs: verifiedAssetIDs,
+            size: size
         ).all
     }
 
@@ -47,13 +49,15 @@ final class StickerPublisher {
         stickerID: String,
         revision: StickerRevision,
         assets: [String: UIImage],
-        verifiedAssetIDs: Set<String>
+        verifiedAssetIDs: Set<String>,
+        size: SystemStickerSize = .default
     ) async throws -> (jobID: String, localExports: [RenderedStickerExport]) {
         guard revision.canPublishExports else { throw StickerPublishError.animationRequired }
         let rendered = try await renderExports(
             revision: revision,
             assets: assets,
-            verifiedAssetIDs: verifiedAssetIDs
+            verifiedAssetIDs: verifiedAssetIDs,
+            size: size
         )
         let document = revision.document
 
@@ -92,7 +96,8 @@ final class StickerPublisher {
     private func renderExports(
         revision: StickerRevision,
         assets: [String: UIImage],
-        verifiedAssetIDs: Set<String>
+        verifiedAssetIDs: Set<String>,
+        size: SystemStickerSize
     ) async throws -> RenderedExportSet {
         let document = try validatedDocument(
             revision: revision,
@@ -114,7 +119,7 @@ final class StickerPublisher {
             mp4 = try await exporter.exportMP4(document: document, assets: assets)
         }
 
-        let system = try exporter.exportSystemSticker(document: document, assets: assets)
+        let system = try exporter.exportSystemSticker(document: document, assets: assets, size: size)
         guard system.metadata.byteCount < 500_000 else { throw StickerExportError.systemStickerTooLarge }
         return .init(png: png, gif: gif, mp4: mp4, system: system)
     }

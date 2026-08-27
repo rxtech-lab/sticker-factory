@@ -3,6 +3,8 @@ import Foundation
 import Observation
 import UIKit
 
+private let preferredStickerSizeKey = "StickerFactoryPreferredStickerSize"
+
 /// Export/publish state for one sticker.
 ///
 /// Owned by the chat screen rather than the export sheet so that dismissing the sheet mid-publish
@@ -15,6 +17,19 @@ final class StickerExportModel {
     var publishJobID: String?
     var background: ExportBackgroundChoice = .midnight
     var errorMessage: String?
+
+    /// Not part of the document: the canvas is normalized and every export is square, so the
+    /// rendition's pixel size is the only thing that decides how big the sticker arrives. It is
+    /// remembered across stickers rather than per sticker — someone who wants small stickers wants
+    /// them everywhere — and defaults to the largest rung, which is what the ladder did before.
+    var stickerSize: SystemStickerSize = SystemStickerSize(
+        rawValue: UserDefaults.standard.string(forKey: preferredStickerSizeKey) ?? ""
+    ) ?? .default {
+        didSet {
+            guard oldValue != stickerSize else { return }
+            UserDefaults.standard.set(stickerSize.rawValue, forKey: preferredStickerSizeKey)
+        }
+    }
 
     private var seededRevisionID: String?
 
@@ -61,7 +76,8 @@ final class StickerExportModel {
                     stickerID: stickerID,
                     revision: exportRevision,
                     assets: assets,
-                    verifiedAssetIDs: verifiedAssetIDs
+                    verifiedAssetIDs: verifiedAssetIDs,
+                    size: stickerSize
                 )
                 publishedURLs = result.localExports.map(\.url)
                 publishJobID = result.jobID
@@ -70,7 +86,8 @@ final class StickerExportModel {
                 let exports = try await publisher.export(
                     revision: exportRevision,
                     assets: assets,
-                    verifiedAssetIDs: verifiedAssetIDs
+                    verifiedAssetIDs: verifiedAssetIDs,
+                    size: stickerSize
                 )
                 publishedURLs = exports.map(\.url)
             }

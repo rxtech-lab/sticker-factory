@@ -33,6 +33,10 @@ final class StickerStore {
     private(set) var streamingDocuments: [String: AnimatedDocument] = [:]
     private(set) var computingStickerIDs: Set<String> = []
     private(set) var stoppingStickerIDs: Set<String> = []
+    /// Stickers with a transcript fetch in flight. Every operation reloads the transcript, so this
+    /// is only worth showing when there is nothing on screen yet — see `StickerChatView`.
+    private(set) var loadingMessageStickerIDs: Set<String> = []
+    private(set) var loadingOlderMessageStickerIDs: Set<String> = []
     var isLoading = false
     var errorMessage: String?
 
@@ -45,11 +49,21 @@ final class StickerStore {
     @ObservationIgnored private var pollers: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var reattachAttempts: [String: Int] = [:]
 
+    /// The in-flight full-library reload, if any. Launch drives `refresh()` from two places —
+    /// `AppEnvironment.start()` and `LibraryView`'s appearance task — and the library is still
+    /// empty while the first request is in flight, so without this both fire and the server sees
+    /// the list endpoint hit twice per cold start.
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshGeneration = 0
+
     init(api: StickerAPIClientProtocol) { self.api = api }
 
     func reset() {
         for task in observations.values { task.cancel() }
         for task in pollers.values { task.cancel() }
+        // A reload that outlives sign-out would repopulate the library we are clearing here.
+        refreshTask?.cancel()
+        refreshTask = nil
         observations = [:]
         pollers = [:]
         reattachAttempts = [:]
@@ -61,10 +75,30 @@ final class StickerStore {
         streamingDocuments = [:]
         computingStickerIDs = []
         stoppingStickerIDs = []
+        loadingMessageStickerIDs = []
+        loadingOlderMessageStickerIDs = []
         errorMessage = nil
     }
 
     func refresh() async {
+        // Join whatever reload is already running instead of starting a second one. The task is
+        // unstructured on purpose: a caller whose `.task` gets cancelled (a view disappearing)
+        // must not tear the reload out from under the callers still waiting on it.
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+        let generation = refreshGeneration &+ 1
+        refreshGeneration = generation
+        let task = Task { await performRefresh() }
+        refreshTask = task
+        // Only clear the slot if it still holds *our* task — a `reset()` plus a new refresh can
+        // land while this one is finishing, and nilling that one out would un-dedupe its joiners.
+        defer { if refreshGeneration == generation { refreshTask = nil } }
+        await task.value
+    }
+
+    private func performRefresh() async {
         isLoading = true
         defer { isLoading = false }
         do {
@@ -116,6 +150,8 @@ final class StickerStore {
     }
 
     func loadMessages(stickerID: String) async {
+        loadingMessageStickerIDs.insert(stickerID)
+        defer { loadingMessageStickerIDs.remove(stickerID) }
         do {
             let page = try await api.chatMessages(stickerID: stickerID, beforeSequence: nil)
             messages[stickerID] = page.items
@@ -131,6 +167,10 @@ final class StickerStore {
 
     func loadOlderMessages(stickerID: String) async {
         guard let beforeSequence = nextMessageBeforeSequence[stickerID] else { return }
+        // A second page request for the same cursor would prepend the same rows twice over — the
+        // dedupe below saves the transcript, but the wasted round trip and the flicker are real.
+        guard loadingOlderMessageStickerIDs.insert(stickerID).inserted else { return }
+        defer { loadingOlderMessageStickerIDs.remove(stickerID) }
         do {
             let page = try await api.chatMessages(stickerID: stickerID, beforeSequence: beforeSequence)
             // Sort only the fetched page and prepend. Re-sorting the whole array by `sequence`

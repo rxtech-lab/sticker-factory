@@ -7,5 +7,8 @@ import Foundation
 /// rather than as a message.
 nonisolated extension ChatMessage: MessageListItem {
     var messageID: String { id }
-    var isUserMessage: Bool { role == .user }
+    /// A device edit carries `role: .user` so the agent reads it as the user's doing, but it is a
+    /// divider, not a turn. Pinning it to the top would reserve a viewport of empty space under a
+    /// one-line rule and, worse, do it for an edit that nobody is waiting on a reply to.
+    var isUserMessage: Bool { role == .user && kind != .deviceEdit }
 }

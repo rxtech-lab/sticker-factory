@@ -66,6 +66,10 @@ final class StickerGridViewController: UIViewController {
         loadViewIfNeeded()
         // reloadData discards visible cells, so willDisplay re-fires and animations restart.
         collectionView.reloadData()
+        // ...but only for cells the layout has already produced. The library usually lands before
+        // the drawer finishes its first layout pass, so without this the freshly loaded stickers
+        // sit on their first frame — invisible for any sticker that fades or slides in.
+        if isActive { resumeAnimations() }
     }
 
     /// The single funnel every tap goes through.
@@ -76,6 +80,9 @@ final class StickerGridViewController: UIViewController {
 
     func resumeAnimations() {
         isActive = true
+        // `visibleCells` is empty until the layout has run, and a cell that never animates is a
+        // blank square for any sticker whose first frame is transparent.
+        collectionView.layoutIfNeeded()
         for case let cell as StickerCell in collectionView.visibleCells {
             cell.startStickerAnimation()
         }
@@ -93,16 +100,23 @@ final class StickerGridViewController: UIViewController {
     private static func makeLayout() -> UICollectionViewCompositionalLayout {
         UICollectionViewCompositionalLayout { _, environment in
             let spacing: CGFloat = 8
-            // Roughly MSStickerSize.regular, which the stock browser used.
-            let target: CGFloat = 136
-            let available = max(target, environment.container.effectiveContentSize.width - spacing * 2)
-            let columns = max(2, Int((available + spacing) / (target + spacing)))
-            let side = (available - spacing * CGFloat(columns - 1)) / CGFloat(columns)
+            let inset: CGFloat = 12
+            // Close to `MSStickerSize.small`, which is what Apple's own drawer uses: four across on
+            // a standard iPhone. `.regular` (~136pt) fits two, so a library of any size reads as a
+            // couple of posters rather than a grid you can scan.
+            let target: CGFloat = 84
+            let available = max(target, environment.container.effectiveContentSize.width - inset * 2)
+            let columns = max(3, Int((available + spacing) / (target + spacing)))
+            let side = ((available - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+                .rounded(.down)
 
+            // Absolute widths in an explicit `subitems:` array, not `repeatingSubitem:count:`: the
+            // count form divides the group evenly *before* interItemSpacing is applied, so the row
+            // overflows its group by `spacing * (columns - 1)` and clips the last sticker.
             let item = NSCollectionLayoutItem(
                 layoutSize: NSCollectionLayoutSize(
-                    widthDimension: .fractionalWidth(1),
-                    heightDimension: .fractionalHeight(1)
+                    widthDimension: .absolute(side),
+                    heightDimension: .absolute(side)
                 )
             )
             let group = NSCollectionLayoutGroup.horizontal(
@@ -110,15 +124,14 @@ final class StickerGridViewController: UIViewController {
                     widthDimension: .fractionalWidth(1),
                     heightDimension: .absolute(side)
                 ),
-                repeatingSubitem: item,
-                count: columns
+                subitems: Array(repeating: item, count: columns)
             )
             group.interItemSpacing = .fixed(spacing)
 
             let section = NSCollectionLayoutSection(group: group)
             section.interGroupSpacing = spacing
             section.contentInsets = NSDirectionalEdgeInsets(
-                top: spacing, leading: spacing, bottom: spacing, trailing: spacing
+                top: inset, leading: inset, bottom: inset, trailing: inset
             )
             return section
         }

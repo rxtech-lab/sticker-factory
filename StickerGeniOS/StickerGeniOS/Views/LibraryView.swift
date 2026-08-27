@@ -105,8 +105,15 @@ private struct StickerLibraryCard: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(.purple.opacity(0.12).gradient)
-                    if let assetID = sticker.previewAsset?.id ?? sticker.systemSticker?.assetId {
-                        VerifiedAssetImage(assetID: assetID, expectedSHA256: sticker.previewAsset?.sha256 ?? sticker.systemSticker?.sha256, api: api)
+                    // The system rendition first, not the preview: both show the same artwork, but
+                    // the preview for an animated sticker is the 1024² sharing GIF — tens of
+                    // megabytes to fill a thumbnail the system sticker covers in under 500 KB.
+                    if let assetID = sticker.systemSticker?.assetId ?? sticker.previewAsset?.id {
+                        VerifiedAssetImage(
+                            assetID: assetID,
+                            expectedSHA256: sticker.systemSticker?.sha256 ?? sticker.previewAsset?.sha256,
+                            api: api
+                        )
                     } else {
                         Image(systemName: sticker.kind.symbol)
                             .font(.system(size: 42, weight: .medium))
@@ -149,6 +156,7 @@ private struct VerifiedAssetImage: View {
             image = try? await StickerImageCache.load(
                 assetID: assetID,
                 expectedSHA256: expectedSHA256,
+                posterFrame: true,
                 api: api
             ).image
         }

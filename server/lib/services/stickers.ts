@@ -1080,8 +1080,10 @@ export async function saveEditedRevision(
 
   const now = new Date();
   await db.transaction(async (tx) => {
-    // The edit shows up in the transcript like every other revision, so `StickerChatView` needs no
-    // special case for a revision that no message produced.
+    // The edit shows up in the transcript so no revision is orphaned from the history, but it is
+    // posted as `device_edit` rather than as an ordinary turn: the user never said this, and a
+    // bubble quoting words they did not type reads as a message the agent should answer. The app
+    // draws the kind as a divider instead.
     const thread = await tx.select().from(chatThreads).where(eq(chatThreads.stickerId, stickerId)).get();
     let sourceMessageId: string | undefined;
     if (thread) {
@@ -1093,7 +1095,9 @@ export async function saveEditedRevision(
         threadId: thread.id,
         ownerId,
         role: "user",
-        kind: "animation",
+        kind: "device_edit",
+        // Still the message's own text rather than something the client composes: it is what the
+        // agent reads in the transcript on the next turn, and what the divider is labelled with.
         content: request.note?.trim() || "Edited on device",
         baseRevisionId: request.parentRevisionId,
         sequence: (sequenceRow?.value ?? 0) + 1,
