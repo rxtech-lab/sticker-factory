@@ -192,7 +192,134 @@ export const ChatMessagesResponseV1Schema = z.object({
   nextBeforeSequence: z.number().int().positive().nullable(),
 }).strict();
 
+// ---------------------------------------------------------------------------
+// Marketplace
+// ---------------------------------------------------------------------------
+
+export const PackStateSchema = z.enum(["draft", "published", "unlisted", "removed"]);
+export const PackMonetizationSchema = z.enum(["free", "paid", "subscription"]);
+export const PackSortSchema = z.enum(["recent", "popular"]);
+
+/**
+ * The public creator byline.
+ *
+ * `handle` is the only creator identifier that crosses the wire — the OAuth `sub` is every
+ * `ownerId` in this schema and must never appear in a URL or a response. `displayName` is always
+ * a non-empty string so no client ever renders a blank byline.
+ */
+export const CreatorV1Schema = z.object({
+  handle: z.string().min(3).max(40),
+  displayName: z.string().min(1),
+  bio: z.string().nullable(),
+  packCount: z.number().int().nonnegative(),
+  isSelf: z.boolean(),
+}).strict();
+
+/**
+ * Note that pack members reuse `StickerSummaryV1Schema` verbatim rather than getting a narrower
+ * shape of their own. Both clients already decode that type, so a pack sticker needs no new model
+ * on either side.
+ */
+export const PackSummaryV1Schema = z.object({
+  id: z.string().uuid(),
+  slug: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().nullable(),
+  state: PackStateSchema,
+  creator: CreatorV1Schema,
+  itemCount: z.number().int().nonnegative(),
+  installCount: z.number().int().nonnegative(),
+  installed: z.boolean(),
+  isMine: z.boolean(),
+  coverStickers: z.array(StickerSummaryV1Schema).max(4),
+  /** Placeholder only. Every pack is free; nothing charges. */
+  monetization: z.object({
+    kind: PackMonetizationSchema,
+    priceCents: z.number().int().nonnegative(),
+    currency: z.string().length(3),
+  }).strict(),
+  publishedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+}).strict();
+
+export const PackDetailV1Schema = PackSummaryV1Schema.extend({
+  stickers: z.array(StickerSummaryV1Schema),
+}).strict();
+
+export const PackListResponseV1Schema = z.object({
+  data: z.array(PackSummaryV1Schema),
+  nextCursor: z.string().nullable(),
+}).strict();
+
+export const CreatorPacksResponseV1Schema = z.object({
+  creator: CreatorV1Schema,
+  data: z.array(PackSummaryV1Schema),
+  nextCursor: z.string().nullable(),
+}).strict();
+
+export const InstallPackResponseV1Schema = z.object({
+  packId: z.string().uuid(),
+  installed: z.boolean(),
+}).strict();
+
+/**
+ * One group in the sectioned library: the user's own stickers, or an installed pack.
+ *
+ * Sections are never paginated. The Messages extension reconciles its cache by removing whatever
+ * a response did not mention, so a pack split across a page boundary would read as a pack that
+ * lost half its stickers.
+ */
+export const LibrarySectionV1Schema = z.object({
+  /** `"mine"`, or `"pack:<uuid>"`. */
+  id: z.string().min(1),
+  kind: z.enum(["mine", "pack"]),
+  title: z.string().min(1),
+  packId: z.string().uuid().nullable(),
+  packSlug: z.string().nullable(),
+  creator: CreatorV1Schema.nullable(),
+  installedAt: z.string().datetime().nullable(),
+  updatedAt: z.string().datetime(),
+  stickers: z.array(StickerSummaryV1Schema),
+}).strict();
+
+export const LibrarySectionsResponseV1Schema = z.object({
+  sections: z.array(LibrarySectionV1Schema),
+  generatedAt: z.string().datetime(),
+}).strict();
+
+export const CreatePackRequestSchema = z.object({
+  title: z.string().trim().min(1).max(60),
+  summary: z.string().trim().max(200).optional(),
+  stickerIds: z.array(z.string().uuid()).max(60).default([]),
+  state: z.enum(["draft", "published"]).default("draft"),
+}).strict();
+
+export const UpdatePackRequestSchema = z.object({
+  title: z.string().trim().min(1).max(60).optional(),
+  summary: z.string().trim().max(200).nullable().optional(),
+  coverStickerId: z.string().uuid().nullable().optional(),
+}).strict();
+
+export const AddPackItemRequestSchema = z.object({
+  stickerId: z.string().uuid(),
+  position: z.number().int().nonnegative().optional(),
+}).strict();
+
+export const ReorderPackItemsRequestSchema = z.object({
+  stickerIds: z.array(z.string().uuid()).max(60),
+}).strict();
+
+export const UnpublishPackRequestSchema = z.object({
+  state: z.enum(["draft", "unlisted"]).default("draft"),
+}).strict();
+
 export type CreateStickerRequest = z.infer<typeof CreateStickerRequestSchema>;
+export type CreatePackRequest = z.infer<typeof CreatePackRequestSchema>;
+export type UpdatePackRequest = z.infer<typeof UpdatePackRequestSchema>;
+export type AddPackItemRequest = z.infer<typeof AddPackItemRequestSchema>;
+export type ReorderPackItemsRequest = z.infer<typeof ReorderPackItemsRequestSchema>;
+export type UnpublishPackRequest = z.infer<typeof UnpublishPackRequestSchema>;
 export type PostChatMessageRequest = z.infer<typeof PostChatMessageRequestSchema>;
 export type CreateUploadRequest = z.infer<typeof CreateUploadRequestSchema>;
 export type PublishExportsRequest = z.infer<typeof PublishExportsRequestSchema>;

@@ -6,7 +6,11 @@ struct StickerBackground<Content: View>: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.indigo.opacity(0.18), Color.pink.opacity(0.12), Color.clear],
+                colors: [
+                    AppColors.accentSoft.opacity(0.42),
+                    AppColors.secondaryAccentSoft.opacity(0.22),
+                    Color.clear,
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )

@@ -10,7 +10,7 @@ export async function SiteHeader() {
         <span className="brand-mark" aria-hidden="true">✦</span><span>Sticker Factory</span>
       </Link>
       <nav aria-label="Primary navigation">
-        {session?.user ? <><Link href="/library">Library</Link><form action={signOutAction}><button className="text-button" type="submit">Sign out</button></form></> : <Link className="pill-button small" href="/login">Sign in</Link>}
+        {session?.user ? <><Link href="/marketplace">Marketplace</Link><Link href="/library">Library</Link><form action={signOutAction}><button className="text-button" type="submit">Sign out</button></form></> : <Link className="pill-button small" href="/login">Sign in</Link>}
       </nav>
     </header>
   );

@@ -16,6 +16,7 @@ final class StickerGeniOSUITests: XCTestCase {
     func testAuthenticatedTabsAndLibraryAccessibility() {
         XCTAssertTrue(app.tabBars.buttons["Library"].isSelected)
         XCTAssertFalse(app.tabBars.buttons["Create"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Marketplace"].exists)
         XCTAssertTrue(app.tabBars.buttons["Account"].exists)
         XCTAssertTrue(element("create-sticker-button").exists)
         XCTAssertTrue(element("library-filter-menu").exists)
@@ -23,6 +24,9 @@ final class StickerGeniOSUITests: XCTestCase {
 
         app.tabBars.buttons["Account"].tap()
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 3))
+        XCTAssertTrue(element("signed-in-profile").exists)
+        XCTAssertTrue(element("privacy-policy-link").exists)
+        XCTAssertTrue(element("terms-of-service-link").exists)
         XCTAssertTrue(element("sign-out-button").exists)
     }
 

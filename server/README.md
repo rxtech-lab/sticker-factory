@@ -50,12 +50,40 @@ All state-changing endpoints require `Idempotency-Key`. JSON bodies are content-
 - `GET /api/v1/assets/{assetId}/download`
 - `GET /api/v1/jobs/{jobId}/events` (replayable SSE with `Last-Event-ID`)
 
+Marketplace:
+
+- `GET/POST /api/v1/packs` — browse published packs (`?sort=recent|popular&q=&cursor=`), or `?mine=true` for the authoring list, which includes drafts
+- `GET/PATCH/DELETE /api/v1/packs/{packId}` — `packId` accepts the uuid or the public slug
+- `POST /api/v1/packs/{packId}/{publish|unpublish}`
+- `POST/PUT /api/v1/packs/{packId}/items` — add one, or replace-and-reorder the whole membership
+- `DELETE /api/v1/packs/{packId}/items/{stickerId}`
+- `POST/DELETE /api/v1/packs/{packId}/install`
+- `GET /api/v1/creators/{handle}` — a creator's byline plus every pack of theirs the viewer may see
+- `GET /api/v1/library/sections` — "My Stickers" then one section per installed pack
+
 A saved edit arrives already accepted — the user has seen exactly what they made, so there is no
 candidate to review — and its revision id is derived from the idempotency key, so a retried save
 replays rather than forking the revision chain. It carries no renditions, so a previously published
 sticker drops back to `draft` until it is exported again.
 
 The list envelope exposes an ownership-checked `systemSticker` rendition for Messages. Downloads return `{ url, expiresAt, asset }`. SSE emits only persisted schema-valid events and complete document snapshots; terminal reconnects also receive `X-Job-State` so an already-consumed terminal event is never duplicated.
+
+`/api/v1/library/sections` is separate from `GET /api/v1/stickers` rather than a mode of it, and is
+deliberately unpaginated. `GET /api/v1/stickers` stays owner-scoped — every existing caller assumes
+each row is a sticker it may edit — and the Messages extension reconciles its cache by removing
+whatever a response did not mention, so a pack split across a page boundary would read as a pack
+that lost half its stickers. The extension falls back to the flat endpoint on a 404, because it
+ships inside the app binary and can be newer than the server.
+
+## Marketplace invariants
+
+- A pack contains only stickers its creator owns and has published; a DB trigger backs the service check.
+- Packs are live: installers resolve the current membership on every fetch, so there is no version to update.
+- A member that falls back to `draft` (any device edit does this) silently leaves every installer's copy. The creator's edit page names them, since nothing else would.
+- Publishing a pack is what makes its members' `system`/`preview` artwork readable by other users — `getReadableAsset` in `lib/services/assets.ts` is the only place that widens ownership, and it authorizes by publication, not by install, so browse can render art to people who have not installed. A borrowed download never echoes the creator's `originalFilename`.
+- Self-install is refused: the creator's stickers already appear under "My Stickers".
+- A pack slug is immutable once published, so a shared link survives a rename.
+- `install_count`/`item_count` are trigger-maintained. SQLite skips row triggers for FK-cascade deletes, so `bun run db:packs:recount` reconciles them.
 
 ## Media and deletion invariants
 

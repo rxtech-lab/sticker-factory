@@ -2,7 +2,8 @@ import sharp from "sharp";
 import { and, eq } from "drizzle-orm";
 import { start } from "workflow/api";
 import { getDatabase } from "@/lib/db/client";
-import { assets, stickers, users } from "@/lib/db/schema";
+import { assets, creatorProfiles, stickerPacks, stickerRevisions, stickers, users } from "@/lib/db/schema";
+import { createPack } from "@/lib/services/packs";
 import { bindExports, acceptRevision, createChatTurn, createSticker } from "@/lib/services/stickers";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import { stickerGenerationWorkflow } from "@/workflows/sticker-generation";
@@ -10,6 +11,98 @@ import { stickerGenerationWorkflow } from "@/workflows/sticker-generation";
 async function runGeneration(jobId: string): Promise<void> {
   const run = await start(stickerGenerationWorkflow, [jobId]);
   await run.returnValue;
+}
+
+/**
+ * A published pack owned by somebody *other* than the Playwright user.
+ *
+ * `getHealthyWebSession` mocks exactly one user under E2E, so that user can only ever be the
+ * installer — the marketplace's interesting paths (install, creator byline, borrowed artwork)
+ * all need a second owner to exist.
+ */
+async function seedMarketplace(db: ReturnType<typeof getDatabase>, installerId: string) {
+  const creatorId = `${installerId}-creator`;
+  const existing = await db.select({ slug: stickerPacks.slug, creatorId: stickerPacks.creatorId })
+    .from(stickerPacks).where(eq(stickerPacks.creatorId, creatorId)).get();
+  if (existing) {
+    const profile = await db.select({ handle: creatorProfiles.handle }).from(creatorProfiles)
+      .where(eq(creatorProfiles.userId, creatorId)).get();
+    return { packSlug: existing.slug, creatorHandle: profile?.handle ?? "" };
+  }
+
+  await db.insert(users).values({
+    id: creatorId,
+    email: "playwright-creator@example.test",
+    displayName: "Playwright Creator",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }).onConflictDoNothing();
+
+  const stickerId = crypto.randomUUID();
+  const revisionId = crypto.randomUUID();
+  const systemAssetId = crypto.randomUUID();
+  const now = new Date();
+  const bytes = await sharp({ create: { width: 300, height: 300, channels: 4, background: { r: 120, g: 90, b: 220, alpha: 0.7 } } })
+    .png().toBuffer();
+  const inspection = await inspectImage(bytes);
+  const key = objectKey(creatorId, systemAssetId, "image/png");
+  await getObjectStore().put(key, { bytes, contentType: "image/png" });
+
+  await db.insert(stickers).values({
+    id: stickerId,
+    ownerId: creatorId,
+    title: "Playwright Loaf",
+    kind: "static",
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(assets).values({
+    id: systemAssetId,
+    ownerId: creatorId,
+    stickerId,
+    kind: "system",
+    state: "ready",
+    r2Key: key,
+    mimeType: "image/png",
+    byteSize: inspection.byteSize,
+    width: inspection.width,
+    height: inspection.height,
+    frameCount: inspection.frameCount,
+    sha256: inspection.sha256,
+    hasAlpha: inspection.hasAlpha,
+    createdAt: now,
+    readyAt: now,
+  });
+  await db.insert(stickerRevisions).values({
+    id: revisionId,
+    stickerId,
+    kind: "static",
+    candidateState: "accepted",
+    documentJson: {
+      version: 1,
+      canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+      kind: "static",
+      durationSeconds: 0,
+      fps: 0,
+      loop: "once",
+      mp4Background: { type: "solid", color: "#FFFFFF" },
+      layers: [],
+    } as never,
+    systemAssetId,
+    previewAssetId: systemAssetId,
+    createdAt: now,
+    decidedAt: now,
+  });
+  await db.update(stickers).set({ activeRevisionId: revisionId }).where(eq(stickers.id, stickerId));
+
+  const pack = await createPack(db, creatorId, {
+    title: "Playwright Pack",
+    summary: "Seeded for end-to-end tests.",
+    stickerIds: [stickerId],
+    state: "published",
+  });
+  return { packSlug: pack.slug, creatorHandle: pack.creator.handle };
 }
 
 export async function POST(request: Request) {
@@ -28,11 +121,13 @@ export async function POST(request: Request) {
     updatedAt: new Date(),
   }).onConflictDoNothing();
 
+  const marketplace = await seedMarketplace(db, ownerId);
+
   const existing = await db.select({ id: stickers.id }).from(stickers).where(and(
     eq(stickers.ownerId, ownerId),
     eq(stickers.title, "Playwright Cloud"),
   )).get();
-  if (existing) return Response.json({ staticStickerId: existing.id });
+  if (existing) return Response.json({ staticStickerId: existing.id, ...marketplace });
 
   const created = await createSticker(db, ownerId, {
     title: "Playwright Cloud",
@@ -108,5 +203,5 @@ export async function POST(request: Request) {
   await runGeneration(animatedTurn.jobId);
   await acceptRevision(db, ownerId, animated.stickerId, animatedTurn.jobId);
 
-  return Response.json({ staticStickerId: created.stickerId, animatedStickerId: animated.stickerId });
+  return Response.json({ staticStickerId: created.stickerId, animatedStickerId: animated.stickerId, ...marketplace });
 }

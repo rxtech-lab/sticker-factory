@@ -11,6 +11,7 @@ final class AppEnvironment {
     let authManager: OAuthManager
     let tokenBroker: SharedTokenBroker
     let store: StickerStore
+    let marketplace: MarketplaceStore
     private(set) var authenticationState: AuthenticationPresentationState
     private(set) var isUITesting: Bool
 
@@ -19,6 +20,7 @@ final class AppEnvironment {
         authManager: OAuthManager,
         tokenBroker: SharedTokenBroker,
         store: StickerStore,
+        marketplace: MarketplaceStore? = nil,
         authenticationState: AuthenticationPresentationState = .checking,
         isUITesting: Bool = false
     ) {
@@ -26,8 +28,12 @@ final class AppEnvironment {
         self.authManager = authManager
         self.tokenBroker = tokenBroker
         self.store = store
+        self.marketplace = marketplace ?? MarketplaceStore(api: store.api)
         self.authenticationState = authenticationState
         self.isUITesting = isUITesting
+        // Installing or removing a pack changes which sections the Library shows. Wiring it here
+        // rather than having either store reach for the other keeps them independent.
+        self.marketplace.onInstallsChanged = { [store] in await store.refreshSections() }
     }
 
     static func live() -> AppEnvironment {
@@ -108,6 +114,7 @@ final class AppEnvironment {
         await authManager.logout()
         SharedLogoutPurger.purge()
         store.reset()
+        marketplace.reset()
         authenticationState = .signedOut
     }
 
@@ -116,6 +123,7 @@ final class AppEnvironment {
         await authManager.logout()
         SharedLogoutPurger.purge()
         store.reset()
+        marketplace.reset()
         authenticationState = .signedOut
     }
 

@@ -1,6 +1,11 @@
 import Messages
 import UIKit
 
+/// The stock browser, retained only behind the `StickerFactoryUseLegacyBrowser` flag.
+///
+/// `MSStickerBrowserView` renders one flat list and cannot draw section headers, so installed
+/// sticker packs lose their grouping here — the caller flattens them before handing them over.
+/// `StickerGridViewController` is the real UI; this exists as an on-device escape hatch.
 @MainActor
 final class StickerBrowserViewController: MSStickerBrowserViewController {
     private var stickers: [MSSticker] = []

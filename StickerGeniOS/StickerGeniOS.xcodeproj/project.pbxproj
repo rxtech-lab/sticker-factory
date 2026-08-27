@@ -12,7 +12,7 @@
 		A00000000000000000000003 /* StickerMessages.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* StickerMessages.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B00000000000000000000001 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000002 /* Kingfisher */; };
 		DF2A4294303DD070006910C8 /* AnimatedView in Frameworks */ = {isa = PBXBuildFile; productRef = DF2A4293303DD070006910C8 /* AnimatedView */; };
-		DFD4448D303F03AB007C420E /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = DFD4448C303F03AB007C420E /* icon.icon */; };
+		DFD446B430404667007C420E /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = DFD446B330404667007C420E /* icon.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,7 +69,7 @@
 		DF2A3E15303C7709006910C8 /* StickerGeniOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StickerGeniOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF2A3E24303C770A006910C8 /* StickerGeniOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerGeniOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF2A3E2E303C770A006910C8 /* StickerGeniOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerGeniOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		DFD4448C303F03AB007C420E /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
+		DFD446B330404667007C420E /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -179,7 +179,7 @@
 		DF2A3E0C303C7709006910C8 = {
 			isa = PBXGroup;
 			children = (
-				DFD4448C303F03AB007C420E /* icon.icon */,
+				DFD446B330404667007C420E /* icon.icon */,
 				A00000000000000000000035 /* Configuration */,
 				DF2A3E17303C7709006910C8 /* StickerGeniOS */,
 				A00000000000000000000008 /* StickerMessages */,
@@ -401,7 +401,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DFD4448D303F03AB007C420E /* icon.icon in Resources */,
+				DFD446B430404667007C420E /* icon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -726,6 +726,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = StickerGeniOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GenSticker;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -760,6 +762,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = StickerGeniOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GenSticker;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

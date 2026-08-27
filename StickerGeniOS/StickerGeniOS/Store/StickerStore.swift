@@ -37,6 +37,12 @@ final class StickerStore {
     /// is only worth showing when there is nothing on screen yet — see `StickerChatView`.
     private(set) var loadingMessageStickerIDs: Set<String> = []
     private(set) var loadingOlderMessageStickerIDs: Set<String> = []
+    /// Installed sticker packs, as the sections the Library renders under "My Stickers".
+    ///
+    /// Deliberately *alongside* `stickers` rather than replacing it: chat, creation, deletion and
+    /// export all read `stickers`, and the sections endpoint caps its own-sticker list where the
+    /// paged reload does not.
+    private(set) var sections: [LibrarySection] = []
     var isLoading = false
     var errorMessage: String?
 
@@ -77,6 +83,7 @@ final class StickerStore {
         stoppingStickerIDs = []
         loadingMessageStickerIDs = []
         loadingOlderMessageStickerIDs = []
+        sections = []
         errorMessage = nil
     }
 
@@ -120,6 +127,21 @@ final class StickerStore {
         } catch {
             guard !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
+        }
+        await refreshSections()
+    }
+
+    /// Reloads the installed-pack sections.
+    ///
+    /// Kept separate from the paged own-sticker reload so a marketplace outage can never blank the
+    /// user's own library: a failure here leaves the previous sections in place and says nothing.
+    func refreshSections() async {
+        do {
+            sections = try await api.librarySections(status: .all).packSections
+        } catch {
+            guard !Self.isCancellation(error) else { return }
+            // Intentionally silent: the user's own stickers loaded fine, and an error banner over
+            // a working library would be worse than showing yesterday's pack list.
         }
     }
 
@@ -443,7 +465,9 @@ final class StickerStore {
         return values
     }
 
-    private static func isCancellation(_ error: Error) -> Bool {
+    /// A view disappearing cancels its `.task`, which must read as "nothing happened" rather than
+    /// as an error banner. Shared with `MarketplaceStore`, which needs the same distinction.
+    static func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         let nsError = error as NSError
         return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled

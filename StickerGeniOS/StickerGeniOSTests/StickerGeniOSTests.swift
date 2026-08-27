@@ -87,6 +87,49 @@ struct StickerContractTests {
         #expect(root.publishExports.mp4AssetId == "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
     }
 
+    @Test("Marketplace fixtures decode with their creator byline and install count")
+    func marketplaceFixture() throws {
+        let root = try JSONDecoder.api.decode(APIFixture.self, from: fixtureData("api-responses-v1"))
+
+        let pack = try #require(root.packList.items.first)
+        #expect(pack.installCount == 128)
+        #expect(pack.installCountLabel == "128 installs")
+        #expect(pack.installed == false)
+        #expect(pack.isMine == false)
+        #expect(pack.creator.byline == "Mika Lin")
+        #expect(pack.state == .published)
+        #expect(pack.monetization.priceCents == 0)
+
+        #expect(root.packDetail.installed)
+        #expect(root.packDetail.stickers.count == 1)
+        // A pack member is a plain Sticker — the server reuses StickerSummaryV1 verbatim, which is
+        // why no second sticker model exists on this side.
+        #expect(root.packDetail.stickers[0].systemSticker?.assetId == "44444444-4444-4444-8444-444444444444")
+
+        let sections = root.librarySections.sections
+        #expect(sections.map(\.kind) == [.mine, .pack])
+        // "My Stickers" is always first and carries no byline.
+        #expect(sections[0].creator == nil)
+        #expect(sections[0].packId == nil)
+        #expect(sections[1].creator?.handle == "mika-lin-4f2a9c")
+        #expect(sections[1].packId == "11111111-1111-4111-8111-111111111111")
+        #expect(root.librarySections.packSections.count == 1)
+        // The section's system rendition is the same asset the download envelope describes, so a
+        // section can be taken straight to a download without another lookup.
+        #expect(sections[0].stickers[0].systemSticker?.assetId == root.assetDownload.asset.id)
+    }
+
+    @Test("An unrecognized pack state degrades instead of failing the page")
+    func unknownPackStateDecodes() throws {
+        // A newer server adding a state must not poison a whole page of packs.
+        let state = try JSONDecoder.api.decode(PackState.self, from: Data("\"archived\"".utf8))
+        #expect(state == .unknown)
+        let kind = try JSONDecoder.api.decode(LibrarySectionKind.self, from: Data("\"bundle\"".utf8))
+        // Falling back to `.pack` is the safe reading: treating it as "mine" would imply the user
+        // can edit stickers they do not own.
+        #expect(kind == .pack)
+    }
+
     @Test("Async response envelopes and chat pagination match the backend")
     func asyncResponseEnvelopes() throws {
         let job = """
@@ -703,6 +746,9 @@ private struct APIFixture: Decodable {
     var assetDownload: AssetDownload
     var chatMessages: ChatMessagePage
     var publishExports: PublishExportsRequest
+    var packList: Page<StickerPack>
+    var packDetail: StickerPackDetail
+    var librarySections: LibrarySectionsResponse
 }
 
 private final class FixtureBundleToken: NSObject {}
@@ -799,6 +845,25 @@ private extension StickerAPIClientProtocol {
     func assetDownload(assetID: String) async throws -> AssetDownload { throw TestFixtureError.stub }
     nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
         AsyncThrowingStream { $0.finish() }
+    }
+
+    func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
+    func myPacks(cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
+    func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse { throw TestFixtureError.stub }
+    func pack(id: String) async throws -> StickerPackDetail { throw TestFixtureError.stub }
+    func createPack(_ request: CreatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail { throw TestFixtureError.stub }
+    func updatePack(id: String, request: UpdatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail { throw TestFixtureError.stub }
+    func setPackItems(id: String, stickerIDs: [String], idempotencyKey: String) async throws -> StickerPackDetail { throw TestFixtureError.stub }
+    func publishPack(id: String, idempotencyKey: String) async throws -> StickerPackDetail { throw TestFixtureError.stub }
+    func unpublishPack(id: String, state: PackState, idempotencyKey: String) async throws -> StickerPackDetail { throw TestFixtureError.stub }
+    func deletePack(id: String, idempotencyKey: String) async throws -> DeletePackResponse { throw TestFixtureError.stub }
+    func installPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse { throw TestFixtureError.stub }
+    func uninstallPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse { throw TestFixtureError.stub }
+    /// Empty rather than throwing: `StickerStore.refresh()` now reloads sections alongside the
+    /// paged library, and a stub that has nothing to say about packs must not turn every existing
+    /// library test into a failure.
+    func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        .init(sections: [], generatedAt: Date())
     }
 }
 

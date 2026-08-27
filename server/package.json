@@ -14,6 +14,7 @@
     "test:coverage": "vitest run --coverage",
     "db:push": "bun --env-file=.env x drizzle-kit push",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:packs:recount": "tsx scripts/recompute-pack-counters.ts",
     "cleanup:uploads": "tsx scripts/cleanup-stale-uploads.ts",
     "cleanup:retry": "tsx scripts/retry-failed-cleanups.ts",
     "dev:e2e": "tsx scripts/prepare-e2e.ts && next dev -p 3105",

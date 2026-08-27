@@ -30,6 +30,14 @@ struct StickerChatView: View {
     /// Measured, not fixed: the bar grows with reference chips, a multi-line draft and the
     /// candidate banner, and the transcript has to keep exactly that much room free under it.
     @State private var bottomBarHeight: CGFloat = 0
+    @State private var streamHaptics = StreamHaptics()
+    /// Set when the user stops the turn themselves. Stopping already answers the tap with its own
+    /// beat, and the turn ending is that same action arriving — not news.
+    @State private var stoppedByUser = false
+    /// Whether a turn has streamed while this screen has been open. Gates the candidate haptic:
+    /// opening a chat that already had a candidate waiting is not an arrival, and announcing it
+    /// with the same buzz as one that just landed would make the buzz mean nothing.
+    @State private var hasStreamedTurn = false
 
     private var detail: StickerDetail? { store.details[stickerID] }
     private var candidate: StickerRevision? { detail?.revisions.first { $0.state == .candidate } }
@@ -55,6 +63,18 @@ struct StickerChatView: View {
         let revisionIDs = messages.compactMap(\.revisionId)
         let attachmentIDs = messages.flatMap(\.attachments).map(\.assetId)
         return (revisionIDs + attachmentIDs).joined(separator: ":")
+    }
+    /// How much the assistant has written in the turn being streamed, as a haptic trigger only.
+    /// Zero while nothing is computing, so a transcript arriving from a refetch never ticks.
+    private var streamedCharacterCount: Int {
+        guard isComputing else { return 0 }
+        return messages.last(where: { $0.role == .assistant })?.content.count ?? 0
+    }
+    /// The tool rows and their states as one value, so a tool starting or finishing is a change.
+    private var toolCallSignature: String {
+        messages.filter { $0.kind == .status }
+            .map { "\($0.id):\($0.status.rawValue)" }
+            .joined(separator: ",")
     }
 
     /// The revision the sticker actions operate on. Nothing renders it — the assistant attaches
@@ -115,6 +135,28 @@ struct StickerChatView: View {
             if let document = workingDocument { await assetStore.preload(document: document, api: store.api) }
         }
         .onChange(of: referenceItems) { _, items in Task { await loadReferences(items) } }
+        // MARK: Haptics for the live turn
+        .onChange(of: isComputing) { _, computing in
+            if computing {
+                hasStreamedTurn = true
+                streamHaptics.beginTurn()
+            } else {
+                turnEnded()
+            }
+        }
+        .onChange(of: streamedCharacterCount) { _, count in
+            guard isComputing else { return }
+            streamHaptics.typed(characterCount: count)
+        }
+        // A tool starting or landing is a distinct beat in the turn, and rare enough — a handful
+        // per turn — that it needs no throttling of its own.
+        .onChange(of: toolCallSignature) { _, _ in
+            guard isComputing else { return }
+            Haptics.tap(.soft, intensity: 0.5)
+        }
+        .onChange(of: store.jobs[stickerID]?.streamErrorMessage) { oldValue, newValue in
+            if oldValue == nil, newValue != nil { Haptics.warning() }
+        }
         .alert("Using personal photos", isPresented: $showingPrivacy) {
             Button("Continue") { privacyAccepted = true }
             Button("Not now", role: .cancel) {}
@@ -142,8 +184,12 @@ struct StickerChatView: View {
         }
         // The banner is the only way back into the sheet; leaving it open once the candidate
         // is gone would offer a decision that no longer exists.
-        .onChange(of: candidate?.id) { _, newValue in
-            if newValue == nil { showingCandidate = false }
+        .onChange(of: candidate?.id) { oldValue, newValue in
+            if newValue == nil {
+                showingCandidate = false
+            } else if oldValue == nil, hasStreamedTurn {
+                Haptics.success()
+            }
         }
         .sheet(isPresented: $showingVersions) {
             NavigationStack {
@@ -187,7 +233,10 @@ struct StickerChatView: View {
         }
         .confirmationDialog("Delete this sticker project?", isPresented: $confirmingDelete) {
             Button("Delete project", role: .destructive) {
-                Task { if await store.delete(stickerID: stickerID) { dismiss() } }
+                Haptics.tap(.heavy)
+                Task {
+                    if await store.delete(stickerID: stickerID) { dismiss() } else { Haptics.failure() }
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -259,7 +308,10 @@ struct StickerChatView: View {
                 Text(job.message)
                     .font(.callout)
                 Spacer()
-                Button("Retry") { Task { await retryFailedTurn() } }
+                Button("Retry") {
+                    Haptics.tap(.light)
+                    Task { await retryFailedTurn() }
+                }
                     .buttonStyle(.glassProminent)
                     .accessibilityIdentifier("retry-failed-generation")
             }
@@ -286,7 +338,10 @@ struct StickerChatView: View {
                 message: message,
                 sticker: revisionDocument(for: message),
                 assets: assetStore.images,
-                onOpenSticker: { presentedDocument = .init(document: $0, revisionID: message.revisionId) }
+                onOpenSticker: {
+                    Haptics.tap(.light)
+                    presentedDocument = .init(document: $0, revisionID: message.revisionId)
+                }
             )
         }
     }
@@ -301,7 +356,10 @@ struct StickerChatView: View {
             streamErrorBanner
 
             if candidate != nil {
-                CandidateReadyBanner(isBusy: isDeciding) { showingCandidate = true }
+                CandidateReadyBanner(isBusy: isDeciding) {
+                    Haptics.tap(.light)
+                    showingCandidate = true
+                }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -357,6 +415,7 @@ struct StickerChatView: View {
                     HStack(spacing: 8) {
                         ForEach(references) { reference in
                             ComposerMediaChip(media: reference) {
+                                Haptics.selection()
                                 references.removeAll { $0.id == reference.id }
                             }
                         }
@@ -387,7 +446,7 @@ struct StickerChatView: View {
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.purple)
+                .foregroundStyle(AppColors.accent)
                 .accessibilityLabel("Add photos")
                 .accessibilityIdentifier("add-chat-attachment")
 
@@ -397,14 +456,21 @@ struct StickerChatView: View {
                     .accessibilityIdentifier("chat-composer")
 
                 Button {
+                    // Fired here rather than after the request: the tap is what the feel belongs
+                    // to, and the send is a round trip away.
+                    Haptics.tap(isComputing ? .rigid : .light)
                     Task {
-                        if isComputing { await stop() }
-                        else { await send() }
+                        if isComputing {
+                            stoppedByUser = true
+                            await stop()
+                        } else {
+                            await send()
+                        }
                     }
                 } label: {
                     Image(systemName: isComputing ? "stop.circle.fill" : "arrow.up.circle.fill")
                         .font(.title2)
-                        .foregroundStyle(isComputing ? .red : .purple)
+                        .foregroundStyle(isComputing ? Color.red : AppColors.accent)
                 }
                 .buttonStyle(.plain)
                 .disabled(isComputing ? store.stoppingStickerIDs.contains(stickerID) : !canSend)
@@ -452,6 +518,7 @@ struct StickerChatView: View {
             catch { localError = error.localizedDescription }
         }
         references = loaded
+        if !loaded.isEmpty { Haptics.selection() }
     }
 
     private func send() async {
@@ -497,6 +564,19 @@ struct StickerChatView: View {
                 references = Array((submittedReferences + references).prefix(8))
             }
             localError = error.localizedDescription
+            Haptics.failure()
+        }
+    }
+
+    /// The single beat that says the turn is over. A candidate announces itself through
+    /// `candidate`'s own handler, so this stays quiet whenever one arrived with the turn.
+    private func turnEnded() {
+        if stoppedByUser {
+            stoppedByUser = false
+        } else if store.jobs[stickerID]?.isFailed == true {
+            Haptics.failure()
+        } else if candidate == nil {
+            Haptics.tap(.soft)
         }
     }
 
@@ -506,12 +586,16 @@ struct StickerChatView: View {
         do {
             try await store.transition(stickerID: stickerID, revisionID: revision.id, action: .accept)
             exportModel.invalidateExports()
+            Haptics.success()
             localError = nil
             localHint = detail?.kind == .animated && !revision.containsMotion
                 // Nothing to navigate to any more — say what to do next, right where they type it.
                 ? "Accepted. Describe how it should move to add motion before exporting."
                 : nil
-        } catch { localError = error.localizedDescription }
+        } catch {
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
     }
 
     private func rejectCandidate(_ revision: StickerRevision) async {
@@ -519,8 +603,14 @@ struct StickerChatView: View {
         defer { isDeciding = false }
         do {
             try await store.transition(stickerID: stickerID, revisionID: revision.id, action: .reject)
+            // Deliberately not a `success`: the decision went through, but throwing work away is
+            // not the note to end on.
+            Haptics.tap(.medium)
             localError = nil
-        } catch { localError = error.localizedDescription }
+        } catch {
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
     }
 
     private func confirmPlan(_ record: PlanRecord) async {
@@ -529,28 +619,42 @@ struct StickerChatView: View {
         do {
             try await store.confirmPlan(stickerID: stickerID, planID: record.id)
             localError = nil
-        } catch { localError = error.localizedDescription }
+        } catch {
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
     }
 
     private func rejectPlan(_ record: PlanRecord, reason: String?) async {
         do {
             try await store.cancelPlan(stickerID: stickerID, planID: record.id, reason: reason)
             localError = nil
-        } catch { localError = error.localizedDescription }
+        } catch {
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
     }
 
     private func retryFailedTurn() async {
         do {
             try await store.retryFailedMessage(stickerID: stickerID)
             localError = nil
-        } catch { localError = error.localizedDescription }
+        } catch {
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
     }
 
     private func stop() async {
         do {
             try await store.stopGeneration(stickerID: stickerID)
             localError = nil
-        } catch { localError = error.localizedDescription }
+        } catch {
+            // The turn is still running, so the beat that ends it is still worth feeling.
+            stoppedByUser = false
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
     }
 }
 
@@ -569,7 +673,7 @@ private struct ChatBubble: View {
                 Spacer(minLength: 44)
                 messageContent
                     .padding(12)
-                    .background(Color.purple.opacity(0.18), in: .rect(cornerRadius: 18))
+                    .background(AppColors.accentSoft.opacity(0.65), in: .rect(cornerRadius: 18))
             }
             .accessibilityLabel("user: \(message.content)")
         } else {

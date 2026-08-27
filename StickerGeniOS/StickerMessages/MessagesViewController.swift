@@ -22,6 +22,10 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     /// Escape hatch for on-device A/B against the stock browser without a rebuild:
     /// `defaults write group.app.rxlab.stickerfactory StickerFactoryUseLegacyBrowser -bool YES`
+    ///
+    /// `MSStickerBrowserView` has no concept of sections, so this path shows every sticker in one
+    /// flat list — the pack a sticker came from is not visible. Kept only as a fallback if the
+    /// sectioned grid misbehaves on device; retire it once that has shipped.
     private let useLegacyBrowser = UserDefaults(suiteName: SharedAuthConfiguration.appGroupIdentifier)?
         .bool(forKey: "StickerFactoryUseLegacyBrowser") ?? false
 
@@ -88,11 +92,13 @@ final class MessagesViewController: MSMessagesAppViewController {
         child.didMove(toParent: self)
     }
 
-    private func replaceStickers(with stickers: [CachedSticker]) {
+    private func replaceSections(with sections: [StickerSection]) {
         if useLegacyBrowser {
-            legacyBrowserViewController.replaceStickers(with: stickers)
+            // MSStickerBrowserView cannot render sections, so the legacy path flattens them —
+            // "My Stickers" first, then each pack in order. Grouping is silently lost there.
+            legacyBrowserViewController.replaceStickers(with: sections.flatMap(\.stickers))
         } else {
-            gridViewController.replaceStickers(with: stickers)
+            gridViewController.replaceSections(with: sections)
         }
     }
 
@@ -188,10 +194,10 @@ final class MessagesViewController: MSMessagesAppViewController {
             do {
                 let snapshot = try await libraryService.refresh()
                 guard !Task.isCancelled else { return }
-                replaceStickers(with: snapshot.stickers)
+                replaceSections(with: snapshot.sections)
                 offlineLabel.isHidden = !snapshot.isOffline
                 if snapshot.stickers.isEmpty {
-                    showEmptyLibrary()
+                    showEmptyLibrary(hasInstalledPacks: snapshot.sections.contains { $0.id != SharedStickerCache.mineSectionID })
                 } else {
                     statusContainer.isHidden = true
                 }
@@ -300,9 +306,13 @@ final class MessagesViewController: MSMessagesAppViewController {
         offlineLabel.isHidden = true
     }
 
-    private func showEmptyLibrary() {
+    private func showEmptyLibrary(hasInstalledPacks: Bool = false) {
         statusContainer.isHidden = false
-        statusLabel.text = "Create and publish a sticker in Sticker Factory, then return here."
+        // Telling someone to publish a sticker is unhelpful when they added packs and it is the
+        // packs that are currently empty.
+        statusLabel.text = hasInstalledPacks
+            ? "The packs you added have nothing published right now. Open Sticker Factory to add more."
+            : "Create and publish a sticker in Sticker Factory, then return here."
         activityIndicator.stopAnimating()
         openAppButton.isHidden = false
         offlineLabel.isHidden = true

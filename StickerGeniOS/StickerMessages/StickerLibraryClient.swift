@@ -81,6 +81,40 @@ struct StickerLibraryClient: Sendable {
         self.transport = transport
     }
 
+    /// The sectioned library: the user's own published stickers, then each installed pack.
+    ///
+    /// One request, never paginated. The cache reconciles by removing whatever the response did
+    /// not mention, so a pack split across a page boundary would read as a pack that lost half its
+    /// stickers.
+    ///
+    /// Falls back to the legacy flat endpoint on 404: this extension ships inside the app binary
+    /// and can be newer than the server it talks to.
+    func fetchSections(accessToken: String) async throws -> [SystemStickerDescriptor] {
+        var components = URLComponents(
+            url: baseURL.appending(path: "api/v1/library/sections"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [URLQueryItem(name: "status", value: "published")]
+        guard let url = components?.url else {
+            throw StickerLibraryError.invalidConfiguration
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        let result = try await transport.data(for: request)
+        if result.response.statusCode == 404 {
+            return try await fetchLibrary(accessToken: accessToken)
+        }
+        try Self.validate(result.response)
+        guard let payload = try? JSONDecoder().decode(LibrarySectionsDTO.self, from: result.data) else {
+            throw StickerLibraryError.invalidResponse
+        }
+        return payload.descriptors()
+    }
+
+    /// The pre-marketplace flat library. Retained as the `fetchSections` fallback.
     func fetchLibrary(accessToken: String) async throws -> [SystemStickerDescriptor] {
         var cursor: String?
         var seenCursors = Set<String>()
@@ -175,6 +209,81 @@ struct StickerLibraryClient: Sendable {
         }
         guard (200 ..< 300).contains(response.statusCode) else {
             throw StickerLibraryError.server(statusCode: response.statusCode)
+        }
+    }
+}
+
+/// Permissive decoding for the sectioned library.
+///
+/// Reuses `StickerDTO`/`AssetDTO` below: a section's stickers are exactly the shape the flat
+/// endpoint already returns, so there is one sticker decoder in this file, not two.
+private struct LibrarySectionsDTO: Decodable {
+    let sections: [SectionDTO]
+
+    private enum CodingKeys: String, CodingKey { case sections, data }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sections = try container.decodeIfPresent([SectionDTO].self, forKey: .sections)
+            ?? container.decodeIfPresent([SectionDTO].self, forKey: .data)
+            ?? []
+    }
+
+    /// Flattens to the descriptor list the cache stores, stamping section identity and order onto
+    /// each one. A sticker with no system rendition is skipped: there is nothing to insert.
+    func descriptors() -> [SystemStickerDescriptor] {
+        var result: [SystemStickerDescriptor] = []
+        for (sectionIndex, section) in sections.enumerated() {
+            for (itemIndex, sticker) in section.stickers.enumerated() {
+                guard var descriptor = sticker.systemDescriptor else { continue }
+                descriptor.sectionID = section.id
+                descriptor.sectionTitle = section.title
+                descriptor.sectionSubtitle = section.subtitle
+                descriptor.sectionPosition = sectionIndex
+                descriptor.position = itemIndex
+                result.append(descriptor)
+            }
+        }
+        return result
+    }
+}
+
+private struct SectionDTO: Decodable {
+    let id: String
+    let title: String
+    let subtitle: String?
+    let stickers: [StickerDTO]
+
+    private enum CodingKeys: String, CodingKey { case id, kind, title, creator, stickers, data }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+            ?? container.decodeIfPresent(String.self, forKey: .kind)
+            ?? "mine"
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Stickers"
+        // The byline is the only part of the creator this surface shows.
+        let creator = try? container.decodeIfPresent(CreatorDTO.self, forKey: .creator)
+        subtitle = (creator?.displayName).map { "by \($0)" }
+        stickers = try container.decodeIfPresent([StickerDTO].self, forKey: .stickers)
+            ?? container.decodeIfPresent([StickerDTO].self, forKey: .data)
+            ?? []
+    }
+}
+
+private struct CreatorDTO: Decodable {
+    let displayName: String?
+
+    private enum CodingKeys: String, CodingKey { case displayName, handle }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let name = try container.decodeIfPresent(String.self, forKey: .displayName), !name.isEmpty {
+            displayName = name
+        } else if let handle = try container.decodeIfPresent(String.self, forKey: .handle) {
+            displayName = "@\(handle)"
+        } else {
+            displayName = nil
         }
     }
 }

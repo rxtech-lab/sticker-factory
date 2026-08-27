@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { getHealthyWebSession } from "@/lib/auth/session";
 import { getDatabase } from "@/lib/db/client";
 import { createAssetPreview } from "@/lib/services/assets";
+import { listInstalledPacks } from "@/lib/services/packs";
 import { listStickers } from "@/lib/services/stickers";
 
 export const metadata = { title: "Library" };
@@ -18,6 +19,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   const db = getDatabase();
   const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
   const result = await listStickers(db, ownerId, { kind, cursor, limit: 24 });
+  const installedPacks = await listInstalledPacks(db, ownerId);
   const previewUrls = new Map<string, string>();
   await Promise.all(result.data.map(async (sticker) => {
     const assetId = sticker.kind === "animated" ? sticker.systemSticker?.assetId ?? sticker.previewAsset?.id : sticker.previewAsset?.id;
@@ -35,6 +37,21 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         <Link className={kind === "static" ? "filter active" : "filter"} href="/library?kind=static">Static</Link>
         <Link className={kind === "animated" ? "filter active" : "filter"} href="/library?kind=animated">Animated</Link>
       </nav>
+      {/*
+        The grid below is this user's own stickers only. Added packs stay their own sections in the
+        iOS library and the Messages grid; here they are links, so the web page keeps its single
+        meaning of "projects you can open and edit".
+      */}
+      {installedPacks.length > 0 && (
+        <nav className="library-section-strip" aria-label="Added sticker packs">
+          <span>Added packs:</span>
+          {installedPacks.map((pack) => (
+            <Link href={`/marketplace/${pack.slug}`} key={pack.id}>
+              {pack.title} <span aria-hidden="true">·</span> {pack.itemCount}
+            </Link>
+          ))}
+        </nav>
+      )}
       {result.data.length === 0 ? (
         <section className="empty-state glass-panel"><div className="empty-icon">✦</div><h2>No stickers yet</h2><p>Open Sticker Factory on iPhone or iPad to create your first {kind ?? ""} sticker.</p></section>
       ) : (

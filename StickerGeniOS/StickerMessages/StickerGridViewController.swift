@@ -10,18 +10,32 @@ import UIKit
 /// `MSConversation.insert(_ sticker:)`, the one sticker API without a media-context restriction.
 @MainActor
 final class StickerGridViewController: UIViewController {
+    /// Identity of one grid item. `MSSticker` is not `Hashable`, so the diffable snapshot carries
+    /// ids and the controller keeps the stickers themselves alongside.
+    struct StickerItemID: Hashable, Sendable {
+        let sectionID: String
+        let stickerID: String
+    }
+
     /// Injection seam: the grid never touches `MSConversation`, so tests can drive selection.
     var onSelect: ((MSSticker) -> Void)?
 
-    private(set) var stickers: [MSSticker] = []
+    private(set) var sections: [StickerSection] = []
+    private var stickersByID: [StickerItemID: MSSticker] = [:]
+    /// Flat display order, so a global index still maps to an item.
+    private var orderedIDs: [StickerItemID] = []
+    private var sectionHeaders: [String: (title: String, subtitle: String?)] = [:]
+
     private(set) lazy var collectionView = UICollectionView(
         frame: .zero,
         collectionViewLayout: Self.makeLayout()
     )
+    private var dataSource: UICollectionViewDiffableDataSource<String, StickerItemID>!
 
     private var isActive = false
 
-    var stickerCount: Int { stickers.count }
+    var stickers: [MSSticker] { orderedIDs.compactMap { stickersByID[$0] } }
+    var stickerCount: Int { orderedIDs.count }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -38,12 +52,51 @@ final class StickerGridViewController: UIViewController {
         collectionView.delaysContentTouches = false
         collectionView.contentInsetAdjustmentBehavior = .always
         collectionView.register(StickerCell.self, forCellWithReuseIdentifier: StickerCell.reuseIdentifier)
-        collectionView.dataSource = self
+        collectionView.register(
+            StickerSectionHeaderView.self,
+            forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
+            withReuseIdentifier: StickerSectionHeaderView.reuseIdentifier
+        )
+        configureDataSource()
         collectionView.delegate = self
 
         collectionView.frame = view.bounds
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(collectionView)
+    }
+
+    private func configureDataSource() {
+        dataSource = UICollectionViewDiffableDataSource<String, StickerItemID>(
+            collectionView: collectionView
+        ) { [weak self] collectionView, indexPath, itemID in
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: StickerCell.reuseIdentifier,
+                for: indexPath
+            )
+            guard let self, let stickerCell = cell as? StickerCell, let sticker = stickersByID[itemID] else {
+                return cell
+            }
+            // Captures the item id, never the index path: index paths go stale the moment a
+            // snapshot is applied, and a stale one inserts the wrong sticker.
+            stickerCell.configure(with: sticker) { [weak self] in
+                self?.select(itemID)
+            }
+            return stickerCell
+        }
+
+        dataSource.supplementaryViewProvider = { [weak self] collectionView, kind, indexPath in
+            guard kind == UICollectionView.elementKindSectionHeader else { return nil }
+            let view = collectionView.dequeueReusableSupplementaryView(
+                ofKind: kind,
+                withReuseIdentifier: StickerSectionHeaderView.reuseIdentifier,
+                for: indexPath
+            )
+            guard let self, let header = view as? StickerSectionHeaderView else { return view }
+            let sectionID = dataSource.snapshot().sectionIdentifiers[indexPath.section]
+            let content = sectionHeaders[sectionID]
+            header.configure(title: content?.title ?? "", subtitle: content?.subtitle)
+            return header
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -56,26 +109,78 @@ final class StickerGridViewController: UIViewController {
         suspendAnimations()
     }
 
+    /// A single flat list, shown as one unnamed section. Used by the legacy browser bridge and by
+    /// tests that do not care about grouping.
     func replaceStickers(with cachedStickers: [CachedSticker]) {
-        stickers = cachedStickers.compactMap { cached in
-            try? MSSticker(
-                contentsOfFileURL: cached.fileURL,
-                localizedDescription: String(cached.title.prefix(150))
-            )
+        replaceSections(with: [
+            StickerSection(
+                id: SharedStickerCache.mineSectionID,
+                title: SharedStickerCache.mineSectionTitle,
+                subtitle: nil,
+                stickers: cachedStickers
+            ),
+        ])
+    }
+
+    func replaceSections(with sections: [StickerSection]) {
+        // An empty section would draw a header over nothing.
+        let populated = sections.filter { !$0.stickers.isEmpty }
+        self.sections = populated
+
+        stickersByID = [:]
+        orderedIDs = []
+        sectionHeaders = [:]
+        var snapshot = NSDiffableDataSourceSnapshot<String, StickerItemID>()
+
+        for section in populated {
+            var itemIDs: [StickerItemID] = []
+            for cached in section.stickers {
+                guard let sticker = try? MSSticker(
+                    contentsOfFileURL: cached.fileURL,
+                    localizedDescription: String(cached.title.prefix(150))
+                ) else { continue }
+                let id = StickerItemID(sectionID: section.id, stickerID: cached.stickerID)
+                // The same sticker in two packs is two items; a duplicate within one section
+                // would crash the diffable data source.
+                guard stickersByID[id] == nil else { continue }
+                stickersByID[id] = sticker
+                itemIDs.append(id)
+                orderedIDs.append(id)
+            }
+            guard !itemIDs.isEmpty else { continue }
+            sectionHeaders[section.id] = (section.title, section.subtitle)
+            snapshot.appendSections([section.id])
+            snapshot.appendItems(itemIDs, toSection: section.id)
         }
+
         loadViewIfNeeded()
-        // reloadData discards visible cells, so willDisplay re-fires and animations restart.
-        collectionView.reloadData()
-        // ...but only for cells the layout has already produced. The library usually lands before
-        // the drawer finishes its first layout pass, so without this the freshly loaded stickers
-        // sit on their first frame — invisible for any sticker that fades or slides in.
+        // Without animation: the drawer is small, and a cross-fade on a full library reload reads
+        // as flicker rather than as motion.
+        dataSource.applySnapshotUsingReloadData(snapshot)
+        // Cells the layout has already produced do not re-fire `willDisplay`. The library usually
+        // lands before the drawer finishes its first layout pass, so without this the freshly
+        // loaded stickers sit on their first frame — invisible for any sticker that fades in.
         if isActive { resumeAnimations() }
     }
 
     /// The single funnel every tap goes through.
+    func select(_ itemID: StickerItemID) {
+        guard let sticker = stickersByID[itemID] else { return }
+        onSelect?(sticker)
+    }
+
+    func selectSticker(at indexPath: IndexPath) {
+        let snapshot = dataSource.snapshot()
+        guard snapshot.sectionIdentifiers.indices.contains(indexPath.section) else { return }
+        let items = snapshot.itemIdentifiers(inSection: snapshot.sectionIdentifiers[indexPath.section])
+        guard items.indices.contains(indexPath.item) else { return }
+        select(items[indexPath.item])
+    }
+
+    /// Selection by global position across every section — "insert the Nth sticker".
     func selectSticker(at index: Int) {
-        guard stickers.indices.contains(index) else { return }
-        onSelect?(stickers[index])
+        guard orderedIDs.indices.contains(index) else { return }
+        select(orderedIDs[index])
     }
 
     func resumeAnimations() {
@@ -133,31 +238,19 @@ final class StickerGridViewController: UIViewController {
             section.contentInsets = NSDirectionalEdgeInsets(
                 top: inset, leading: inset, bottom: inset, trailing: inset
             )
+            // Not pinned: pinning would need an opaque backing to keep the label readable over
+            // the stickers sliding under it, and that backing is a light bar across the drawer.
+            let header = NSCollectionLayoutBoundarySupplementaryItem(
+                layoutSize: NSCollectionLayoutSize(
+                    widthDimension: .fractionalWidth(1),
+                    heightDimension: .estimated(38)
+                ),
+                elementKind: UICollectionView.elementKindSectionHeader,
+                alignment: .top
+            )
+            section.boundarySupplementaryItems = [header]
             return section
         }
-    }
-}
-
-extension StickerGridViewController: UICollectionViewDataSource {
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        stickers.count
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        cellForItemAt indexPath: IndexPath
-    ) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(
-            withReuseIdentifier: StickerCell.reuseIdentifier,
-            for: indexPath
-        )
-        guard let stickerCell = cell as? StickerCell, stickers.indices.contains(indexPath.item) else {
-            return cell
-        }
-        stickerCell.configure(with: stickers[indexPath.item]) { [weak self] in
-            self?.selectSticker(at: indexPath.item)
-        }
-        return stickerCell
     }
 }
 
@@ -177,6 +270,69 @@ extension StickerGridViewController: UICollectionViewDelegate {
         forItemAt indexPath: IndexPath
     ) {
         (cell as? StickerCell)?.stopStickerAnimation()
+    }
+}
+
+/// The pack name, plus its creator byline, above one group of stickers.
+@MainActor
+final class StickerSectionHeaderView: UICollectionReusableView {
+    static let reuseIdentifier = "sticker-section-header"
+
+    private let titleLabel = UILabel()
+    private let subtitleLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+
+        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withWeight(.semibold)
+        titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.textColor = .label
+
+        subtitleLabel.font = .preferredFont(forTextStyle: .caption2)
+        subtitleLabel.adjustsFontForContentSizeCategory = true
+        subtitleLabel.textColor = .secondaryLabel
+
+        let stack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
+        stack.axis = .vertical
+        stack.spacing = 1
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        // No fill and no blur: the header scrolls with its section rather than pinning, so it
+        // never has content sliding under it and needs nothing to stay legible against. Matches
+        // the app's Library headers.
+        backgroundColor = .clear
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+        ])
+
+        accessibilityIdentifier = "sticker-section-header"
+        isAccessibilityElement = true
+        accessibilityTraits = [.header]
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func configure(title: String, subtitle: String?) {
+        titleLabel.text = title
+        subtitleLabel.text = subtitle
+        subtitleLabel.isHidden = subtitle?.isEmpty ?? true
+        accessibilityLabel = [title, subtitle].compactMap { $0 }.joined(separator: ", ")
+    }
+}
+
+private extension UIFont {
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        let descriptor = fontDescriptor.addingAttributes([
+            .traits: [UIFontDescriptor.TraitKey.weight: weight],
+        ])
+        return UIFont(descriptor: descriptor, size: pointSize)
     }
 }
 

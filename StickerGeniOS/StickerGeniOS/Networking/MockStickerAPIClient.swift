@@ -5,6 +5,8 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     private var stickers = [PreviewFixtures.sticker]
     private var detail = PreviewFixtures.detail
     private var messages = PreviewFixtures.messages
+    private var packs = [PreviewFixtures.pack]
+    private var packDetails = [PreviewFixtures.packDetail.id: PreviewFixtures.packDetail]
     private let failCreationAsUpload: Bool
 
     init(failCreationAsUpload: Bool = false) {
@@ -156,6 +158,153 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
 
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse {
         .init(job: .init(id: UUID().uuidString, state: .queued, workflowRunId: "mock-export", eventsUrl: "/api/v1/jobs/mock-export/events"))
+    }
+
+    // MARK: - Marketplace
+
+    func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        let matched = query.flatMap { needle in
+            needle.isEmpty ? nil : packs.filter { $0.title.localizedCaseInsensitiveContains(needle) }
+        } ?? packs
+        let visible = matched.filter { !$0.isMine || $0.state == .published }
+        return .init(
+            data: sort == .popular ? visible.sorted { $0.installCount > $1.installCount } : visible,
+            nextCursor: nil
+        )
+    }
+
+    func myPacks(cursor: String?) async throws -> Page<StickerPack> {
+        .init(data: packs.filter(\.isMine), nextCursor: nil)
+    }
+
+    func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse {
+        .init(
+            creator: PreviewFixtures.creator,
+            data: packs.filter { $0.creator.handle == handle },
+            nextCursor: nil
+        )
+    }
+
+    func pack(id: String) async throws -> StickerPackDetail {
+        if let stored = packDetails[id] { return stored }
+        if let stored = packDetails.values.first(where: { $0.slug == id }) { return stored }
+        throw StickerAPIError.invalidResponse
+    }
+
+    func createPack(_ request: CreatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail {
+        let id = UUID().uuidString
+        let members = stickers.filter { request.stickerIds.contains($0.id) }
+        let detail = StickerPackDetail(
+            id: id,
+            slug: "\(request.title.lowercased().replacingOccurrences(of: " ", with: "-"))-mock",
+            title: request.title,
+            summary: request.summary,
+            state: request.state == "published" ? .published : .draft,
+            creator: .init(handle: "you-000000", displayName: "You", bio: nil, packCount: 1, isSelf: true),
+            itemCount: members.count,
+            installCount: 0,
+            installed: false,
+            isMine: true,
+            coverStickers: Array(members.prefix(4)),
+            monetization: .init(kind: "free", priceCents: 0, currency: "USD"),
+            publishedAt: request.state == "published" ? Date() : nil,
+            createdAt: Date(),
+            updatedAt: Date(),
+            stickers: members
+        )
+        packDetails[id] = detail
+        packs.insert(detail.pack, at: 0)
+        return detail
+    }
+
+    func updatePack(id: String, request: UpdatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail {
+        var detail = try await pack(id: id)
+        if let title = request.title { detail.title = title }
+        detail.summary = request.summary
+        detail.updatedAt = Date()
+        return store(detail)
+    }
+
+    func setPackItems(id: String, stickerIDs: [String], idempotencyKey: String) async throws -> StickerPackDetail {
+        var detail = try await pack(id: id)
+        // Preserve the caller's order rather than the library's — that is the whole point of the call.
+        detail.stickers = stickerIDs.compactMap { wanted in stickers.first { $0.id == wanted } }
+        detail.itemCount = detail.stickers.count
+        detail.coverStickers = Array(detail.stickers.prefix(4))
+        return store(detail)
+    }
+
+    func publishPack(id: String, idempotencyKey: String) async throws -> StickerPackDetail {
+        var detail = try await pack(id: id)
+        detail.state = .published
+        detail.publishedAt = detail.publishedAt ?? Date()
+        return store(detail)
+    }
+
+    func unpublishPack(id: String, state: PackState, idempotencyKey: String) async throws -> StickerPackDetail {
+        var detail = try await pack(id: id)
+        detail.state = state == .unlisted ? .unlisted : .draft
+        return store(detail)
+    }
+
+    func deletePack(id: String, idempotencyKey: String) async throws -> DeletePackResponse {
+        packDetails[id] = nil
+        packs.removeAll { $0.id == id }
+        return .init(packId: id)
+    }
+
+    func installPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse {
+        try setInstalled(id: id, installed: true)
+        return .init(packId: id, installed: true)
+    }
+
+    func uninstallPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse {
+        try setInstalled(id: id, installed: false)
+        return .init(packId: id, installed: false)
+    }
+
+    func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        let mine = LibrarySection(
+            id: "mine",
+            kind: .mine,
+            title: "My Stickers",
+            packId: nil,
+            packSlug: nil,
+            creator: nil,
+            installedAt: nil,
+            updatedAt: Date(),
+            stickers: status == .all ? stickers : stickers.filter { $0.status == .published }
+        )
+        let installed = packs.filter(\.installed).map { pack in
+            LibrarySection(
+                id: "pack:\(pack.id)",
+                kind: .pack,
+                title: pack.title,
+                packId: pack.id,
+                packSlug: pack.slug,
+                creator: pack.creator,
+                installedAt: Date(),
+                updatedAt: pack.updatedAt,
+                stickers: packDetails[pack.id]?.stickers ?? pack.coverStickers
+            )
+        }
+        return .init(sections: [mine] + installed, generatedAt: Date())
+    }
+
+    @discardableResult
+    private func store(_ detail: StickerPackDetail) -> StickerPackDetail {
+        packDetails[detail.id] = detail
+        if let index = packs.firstIndex(where: { $0.id == detail.id }) {
+            packs[index] = detail.pack
+        }
+        return detail
+    }
+
+    private func setInstalled(id: String, installed: Bool) throws {
+        guard var detail = packDetails[id] else { throw StickerAPIError.invalidResponse }
+        detail.installed = installed
+        detail.installCount = max(0, detail.installCount + (installed ? 1 : -1))
+        store(detail)
     }
 
     func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse {
