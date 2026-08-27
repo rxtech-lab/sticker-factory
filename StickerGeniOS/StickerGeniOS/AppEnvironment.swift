@@ -14,6 +14,12 @@ final class AppEnvironment {
     let marketplace: MarketplaceStore
     private(set) var authenticationState: AuthenticationPresentationState
     private(set) var isUITesting: Bool
+    /// A sticker the user asked for from outside the UI — today, by tapping a "sticker ready"
+    /// banner. Held here rather than in a view so it survives whichever screen happens to be up;
+    /// `StickerFactoryTabView` consumes it and clears it.
+    var pendingStickerID: String?
+    /// Strong-held: `UNUserNotificationCenter` keeps only a weak reference to its delegate.
+    @ObservationIgnored private let notifier: GenerationNotifier?
 
     init(
         configuration: AppConfiguration,
@@ -22,8 +28,10 @@ final class AppEnvironment {
         store: StickerStore,
         marketplace: MarketplaceStore? = nil,
         authenticationState: AuthenticationPresentationState = .checking,
-        isUITesting: Bool = false
+        isUITesting: Bool = false,
+        notifier: GenerationNotifier? = nil
     ) {
+        self.notifier = notifier
         self.configuration = configuration
         self.authManager = authManager
         self.tokenBroker = tokenBroker
@@ -72,16 +80,25 @@ final class AppEnvironment {
         let api: StickerAPIClientProtocol = isUITesting
             ? MockStickerAPIClient(failCreationAsUpload: simulatesUploadFailure)
             : StickerAPIClient(baseURL: configuration.apiBaseURL, tokenBroker: broker)
-        return .init(
+        // UI tests run with no notifier at all: a system permission alert over the app would fail
+        // every test that follows it, and the mock generations are watched, never walked away from.
+        let notifier = isUITesting ? nil : GenerationNotifier.live()
+        let environment = AppEnvironment(
             configuration: configuration,
             authManager: manager,
             tokenBroker: broker,
-            store: StickerStore(api: api),
+            store: StickerStore(api: api, notifier: notifier),
             authenticationState: isUITesting
                 ? (simulatesExpiredAuthentication ? .signedOut : .signedIn)
                 : .checking,
-            isUITesting: isUITesting
+            isUITesting: isUITesting,
+            notifier: notifier
         )
+        notifier?.onOpenSticker = { [weak environment] id in environment?.pendingStickerID = id }
+        // Hand the registry a client to upload with. The device token may already be waiting — APNs
+        // answers on its own schedule — or may arrive long after this; whichever lands second sends.
+        if !isUITesting { PushDeviceRegistry.shared.attach(api: api) }
+        return environment
     }
 
     func start() async {
@@ -106,6 +123,9 @@ final class AppEnvironment {
     }
 
     func sessionExpired() async {
+        // Before the token is gone: dropping this device is an authenticated call, and a device
+        // left registered would announce the departing account's stickers to whoever signs in next.
+        await PushDeviceRegistry.shared.signedOut()
         // A rejected broker refresh has already invalidated the shared bundle,
         // but RxAuth still owns its in-memory state and refresh timer. Drive
         // both stores through their normal logout paths before presenting the
@@ -115,15 +135,20 @@ final class AppEnvironment {
         SharedLogoutPurger.purge()
         store.reset()
         marketplace.reset()
+        // A banner tapped on the way out points at a library this account no longer has.
+        pendingStickerID = nil
         authenticationState = .signedOut
     }
 
     func signOut() async {
+        await PushDeviceRegistry.shared.signedOut()
         try? await tokenBroker.logout()
         await authManager.logout()
         SharedLogoutPurger.purge()
         store.reset()
         marketplace.reset()
+        // A banner tapped on the way out points at a library this account no longer has.
+        pendingStickerID = nil
         authenticationState = .signedOut
     }
 

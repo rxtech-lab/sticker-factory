@@ -40,12 +40,17 @@ struct ContentView: View {
 struct StickerFactoryTabView: View {
     @Bindable var environment: AppEnvironment
     @State private var selection = 0
+    /// Driven only from outside the UI — a tapped "sticker ready" banner. Tapping around the
+    /// Library still pushes through its own `NavigationLink`s, which this path also records.
+    @State private var libraryPath = NavigationPath()
 
     var body: some View {
         TabView(selection: $selection) {
             // Library stays tag 0 and the default selection: launch lands on the user's own work,
             // not on a store.
-            NavigationStack { LibraryView(store: environment.store, marketplace: environment.marketplace) }
+            NavigationStack(path: $libraryPath) {
+                LibraryView(store: environment.store, marketplace: environment.marketplace)
+            }
                 .tabItem { Label("Library", systemImage: "square.grid.2x2") }
                 .tag(0)
 
@@ -59,6 +64,16 @@ struct StickerFactoryTabView: View {
         }
         .tint(AppColors.accent)
         .accessibilityIdentifier("sticker-factory-tabs")
+        .onChange(of: environment.pendingStickerID) { _, stickerID in
+            guard let stickerID else { return }
+            environment.pendingStickerID = nil
+            selection = 0
+            // Replace the stack rather than push onto it: the banner is an instruction to be *at*
+            // that sticker, not to go one level deeper into wherever the user already was.
+            var path = NavigationPath()
+            path.append(stickerID)
+            libraryPath = path
+        }
     }
 }
 

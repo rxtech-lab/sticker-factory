@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlanV1Schema, type PlanV1 } from "@/lib/contracts/plan";
 import type { Database } from "@/lib/db/client";
-import { plans, users } from "@/lib/db/schema";
+import { chatMessages, generationJobs, plans, users } from "@/lib/db/schema";
 import {
   cancelPlan,
   confirmPlan,
@@ -61,6 +61,17 @@ describe("plan service", () => {
 
   const create = (value: PlanV1, planId?: string) =>
     createPlan(db, { ownerId: "owner-a", stickerId, threadId, messageId, plan: value, planId });
+
+  /**
+   * Ends the turn the fixture opened.
+   *
+   * A sticker may only have one active job, and in production the turn that drafted a plan has
+   * always finished by the time the user can act on the card. Anything that starts a follow-up turn
+   * has to be tested from that state rather than from mid-turn.
+   */
+  const settleFixtureTurn = () => db.update(generationJobs)
+    .set({ state: "succeeded", completedAt: new Date() })
+    .where(eq(generationJobs.stickerId, stickerId));
 
   it("creates a draft at revision 1", async () => {
     const created = await create(plan("First"));
@@ -129,12 +140,40 @@ describe("plan service", () => {
     expect(await db.select().from(plans).where(eq(plans.stickerId, stickerId))).toHaveLength(1);
   });
 
-  it("records a rejection reason and feeds it back", async () => {
+  it("records a rejection reason and redrafts against it", async () => {
     const created = await create(plan("First"));
     await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: created.planId });
-    await cancelPlan(db, "owner-a", stickerId, created.planId, "  The letters overlap  ");
+    await settleFixtureTurn();
+    const cancelled = await cancelPlan(db, "owner-a", stickerId, created.planId, "  The letters overlap  ");
     const rejected = await recentlyRejectedPlans(db, "owner-a", stickerId);
     expect(rejected.map((row) => row.decisionReason)).toEqual(["The letters overlap"]);
+
+    // The reason is not just filed away: it becomes the user's next message and starts a planning
+    // turn, so the agent answers a rejection with a better plan instead of nothing at all.
+    expect(cancelled.jobId).toBeTruthy();
+    const job = await db.select().from(generationJobs).where(eq(generationJobs.id, cancelled.jobId!)).get();
+    expect(job).toMatchObject({ kind: "plan", state: "queued", sourceMessageId: cancelled.messageId });
+    const message = await db.select().from(chatMessages).where(eq(chatMessages.id, cancelled.messageId!)).get();
+    expect(message).toMatchObject({ role: "user", content: "The letters overlap", status: "streaming" });
+  });
+
+  it("dismisses without a reason and starts nothing", async () => {
+    const created = await create(plan("First"));
+    await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: created.planId });
+    await settleFixtureTurn();
+    const cancelled = await cancelPlan(db, "owner-a", stickerId, created.planId);
+    expect(cancelled).toEqual({ planId: created.planId, state: "cancelled" });
+    expect(await db.select().from(generationJobs).where(eq(generationJobs.kind, "plan"))).toHaveLength(0);
+  });
+
+  it("refuses to redraft while another turn is still running", async () => {
+    const created = await create(plan("First"));
+    await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: created.planId });
+    // The fixture turn is deliberately left active here.
+    await expect(cancelPlan(db, "owner-a", stickerId, created.planId, "Too cramped"))
+      .rejects.toMatchObject({ code: "AI_TURN_IN_PROGRESS" });
+    // And the plan is untouched, so the user can try again rather than losing the card.
+    expect((await db.select().from(plans).where(eq(plans.id, created.planId)).get())?.state).toBe("finalized");
   });
 
   it("cannot cancel a plan that is still a draft", async () => {

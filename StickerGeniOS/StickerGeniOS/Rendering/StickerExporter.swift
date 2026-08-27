@@ -38,6 +38,18 @@ nonisolated struct SystemStickerPreset: Equatable, Sendable {
         .init(dimension: 300, fps: 15, colorLevels: 16),
         .init(dimension: 300, fps: 10, colorLevels: 12),
         .init(dimension: 300, fps: 8, colorLevels: 8),
+        // Below this point only color is left to spend. 300 is Apple's smallest sticker size
+        // class — `SharedStickerCache.allowedPixelDimensions` and Messages itself reject anything
+        // under it — and 8 FPS is the floor the server accepts for an adaptive rendition, so a
+        // long cycle cannot be answered by shrinking or by dropping more frames. A 4 s ping-pong
+        // of photographic art writes 32 frames at this rung and lands around 500 KB at 8 levels;
+        // the same frames posterize to roughly 290 KB at 4 and 227 KB at 3. Flat art never gets
+        // here, so the banding these rungs cause is only ever paid by art that would otherwise
+        // fail the export outright.
+        .init(dimension: 300, fps: 8, colorLevels: 6),
+        .init(dimension: 300, fps: 8, colorLevels: 4),
+        .init(dimension: 300, fps: 8, colorLevels: 3),
+        .init(dimension: 300, fps: 8, colorLevels: 2),
     ]
 }
 
@@ -100,7 +112,9 @@ nonisolated enum StickerExportError: Error, LocalizedError {
     case renderFailed
     case destinationFailed
     case videoWriterFailed(String)
-    case systemStickerTooLarge
+    /// `smallestByteCount` is what the bottom rung actually produced, so the message can say how
+    /// far over Apple's ceiling the sticker landed instead of only that it did.
+    case systemStickerTooLarge(smallestByteCount: Int)
 
     var errorDescription: String? {
         switch self {
@@ -108,7 +122,12 @@ nonisolated enum StickerExportError: Error, LocalizedError {
         case .renderFailed: "A sticker frame could not be rendered."
         case .destinationFailed: "The export file could not be created."
         case .videoWriterFailed(let reason): "The MP4 export failed: \(reason)"
-        case .systemStickerTooLarge: "The sticker could not be reduced below 500 KB."
+        case .systemStickerTooLarge(let bytes):
+            """
+            The sticker could not be reduced below Apple's 500 KB limit — the smallest rendition \
+            was \(bytes / 1000) KB. Shorten the animation, or switch a ping-pong loop to a plain \
+            loop, which halves the exported frames.
+            """
         }
     }
 }
@@ -258,13 +277,20 @@ final class StickerExporter {
         size: SystemStickerSize = .default
     ) throws -> RenderedStickerExport {
         _ = try document.validated()
+        // Every rung that encodes but overshoots, so a ladder that runs out can say how close it
+        // came. A ladder where *nothing* encoded never reached the ceiling at all — that is a
+        // rendering failure wearing a size error's message, and it reports itself as one below.
+        var smallestByteCount: Int?
+        func record(_ count: Int) { smallestByteCount = min(smallestByteCount ?? count, count) }
+
         if document.kind == .static {
             for dimension in StickerExportMetadataPolicy.staticSystemDimensions
                 where dimension <= size.dimension {
                 guard let rendered = renderFrame(document: document, time: 0, dimension: dimension, assets: assets) else { continue }
                 for colorLevels in StickerExportMetadataPolicy.staticSystemColorLevels {
                     let image = colorLevels.flatMap { posterized(rendered, levels: $0) } ?? rendered
-                    guard let data = UIImage(cgImage: image).pngData(), data.count < 500_000 else { continue }
+                    guard let data = UIImage(cgImage: image).pngData() else { continue }
+                    guard data.count < 500_000 else { record(data.count); continue }
                     let url = try outputURL(extension: "png")
                     try data.write(to: url, options: .atomic)
                     return .init(
@@ -283,7 +309,8 @@ final class StickerExporter {
                         dimension: preset.dimension,
                         fps: min(document.fps, preset.fps),
                         colorLevels: preset.colorLevels
-                    ), data.count < 500_000 else { continue }
+                    ) else { continue }
+                    guard data.count < 500_000 else { record(data.count); continue }
                     let url = try outputURL(extension: format == .gif ? "gif" : "png")
                     try data.write(to: url, options: .atomic)
                     return .init(
@@ -297,7 +324,8 @@ final class StickerExporter {
                 }
             }
         }
-        throw StickerExportError.systemStickerTooLarge
+        guard let smallestByteCount else { throw StickerExportError.renderFailed }
+        throw StickerExportError.systemStickerTooLarge(smallestByteCount: smallestByteCount)
     }
 
     func renderFrame(document: AnimatedDocument, time: Double, dimension: Int, assets: [String: UIImage]) -> CGImage? {

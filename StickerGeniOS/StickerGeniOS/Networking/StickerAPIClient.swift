@@ -20,6 +20,10 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func assetDownload(assetID: String) async throws -> AssetDownload
     func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error>
 
+    // Push
+    func registerDevice(token: String, environment: PushEnvironment, bundleID: String?, appVersion: String?) async throws
+    func unregisterDevice(token: String) async throws
+
     // Marketplace
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
     func myPacks(cursor: String?) async throws -> Page<StickerPack>
@@ -134,6 +138,28 @@ actor StickerAPIClient: StickerAPIClientProtocol {
             method: "POST",
             idempotencyKey: idempotencyKey
         )
+    }
+
+    /// Tells the server where to push this install's "sticker ready" banners.
+    ///
+    /// No idempotency key: the token is a better one than anything the client could invent, and the
+    /// server upserts on it.
+    func registerDevice(token: String, environment: PushEnvironment, bundleID: String?, appVersion: String?) async throws {
+        let _: EmptyResponse = try await send(
+            path: "api/v1/devices",
+            method: "POST",
+            body: RegisterDeviceRequest(
+                token: token,
+                platform: "ios",
+                environment: environment.rawValue,
+                bundleId: bundleID,
+                appVersion: appVersion
+            )
+        )
+    }
+
+    func unregisterDevice(token: String) async throws {
+        let _: EmptyResponse = try await send(path: "api/v1/devices/\(token)", method: "DELETE")
     }
 
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse {

@@ -285,6 +285,15 @@ export async function confirmPlan(
   return { messageId, jobId };
 }
 
+/**
+ * Turns down a finalized plan.
+ *
+ * A bare dismissal ends there. A dismissal with a reason keeps the conversation going instead: the
+ * reason becomes the user's next message and starts a planning turn on the spot, because "the
+ * letters are too cramped" is a request for a better plan, and making the user retype it as a chat
+ * message to get one is the kind of dead end that reads as the app ignoring them. The turn is a
+ * `plan` job rather than a `chat` one so those words are never re-read as a request to redraw.
+ */
 export async function cancelPlan(
   db: Database,
   ownerId: string,
@@ -296,12 +305,77 @@ export async function cancelPlan(
   if (!isActionablePlanState(row.state)) {
     throw new ApiError(409, "PLAN_NOT_ACTIONABLE", `This plan is ${row.state}`);
   }
+  const trimmed = reason?.trim();
   const now = new Date();
   // Stored rather than discarded so the next planning turn can be told what the user turned down.
-  await db.update(plans)
-    .set({ state: "cancelled", decisionReason: reason?.trim() || null, updatedAt: now, decidedAt: now })
-    .where(and(eq(plans.id, planId), eq(plans.state, "finalized")));
-  return { planId, state: "cancelled" as const };
+  const cancel = (tx: Pick<Database, "update">) => tx.update(plans)
+    .set({ state: "cancelled", decisionReason: trimmed || null, updatedAt: now, decidedAt: now })
+    .where(and(eq(plans.id, planId), eq(plans.state, "finalized")))
+    .returning({ id: plans.id });
+
+  if (!trimmed) {
+    await cancel(db);
+    return { planId, state: "cancelled" as const };
+  }
+
+  const sticker = await db.select().from(stickers).where(and(
+    eq(stickers.id, stickerId),
+    eq(stickers.ownerId, ownerId),
+  )).get();
+  if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
+  if (sticker.status === "deleting") throw new ApiError(409, "STICKER_DELETING", "Sticker deletion is in progress");
+
+  const jobId = crypto.randomUUID();
+  const messageId = crypto.randomUUID();
+  await db.transaction(async (tx) => {
+    const claimed = await cancel(tx);
+    if (claimed.length === 0) {
+      throw new ApiError(409, "PLAN_NOT_ACTIONABLE", "This plan was already decided");
+    }
+    try {
+      await tx.insert(generationJobs).values({
+        id: jobId,
+        ownerId,
+        stickerId,
+        sourceMessageId: messageId,
+        kind: "plan",
+        state: "queued",
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (error) {
+      if (isActiveJobConstraint(error)) {
+        throw new ApiError(409, "AI_TURN_IN_PROGRESS", "This sticker already has an active AI turn");
+      }
+      throw error;
+    }
+    const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
+      .where(eq(chatMessages.threadId, row.threadId)).get();
+    await tx.insert(chatMessages).values({
+      id: messageId,
+      threadId: row.threadId,
+      ownerId,
+      role: "user",
+      kind: "text",
+      // The reason verbatim: it is what the user typed, and the planning turn reads it as the
+      // instruction for the next draft.
+      content: trimmed,
+      sequence: (sequenceRow?.value ?? 0) + 1,
+      jobId,
+      status: "streaming",
+      createdAt: now,
+    });
+    await tx.update(chatThreads).set({ updatedAt: now }).where(eq(chatThreads.id, row.threadId));
+    await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
+    await tx.insert(generationEvents).values({
+      jobId,
+      ownerId,
+      type: "queued",
+      dataJson: { intent: "plan", messageId, planId },
+      createdAt: now,
+    });
+  });
+  return { planId, state: "cancelled" as const, messageId, jobId };
 }
 
 /** Plans the user turned down, newest first, for feeding back into the next planning turn. */

@@ -5,7 +5,7 @@ import {
   type LayerCompileInput,
 } from "@/lib/animation/compile";
 import { AnimationSpecV1Schema, type AnimationAnchorV1 } from "@/lib/contracts/animation";
-import { LayerIdSchema } from "@/lib/contracts/sticker";
+import { LayerIdSchema, type StickerDocument } from "@/lib/contracts/sticker";
 
 const HexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/);
 
@@ -13,13 +13,30 @@ const HexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/);
  * Where a planned layer's content comes from.
  *
  * Only `generate` costs an image generation. Text, shape, and particle layers are assembled
- * directly from the plan, which is why a plan can be far cheaper than its layer count suggests.
+ * directly from the plan, and `existing` reuses artwork the sticker already has, which is why a plan
+ * can be far cheaper than its layer count suggests.
  */
 export const PlanLayerSourceV1Schema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("generate"),
     /** Describes one element filling its frame on a transparent background. */
     prompt: z.string().trim().min(1).max(2_000),
+  }).strict(),
+  z.object({
+    kind: z.literal("existing"),
+    /**
+     * Artwork the sticker already has, reused pixel for pixel and free.
+     *
+     * This is what makes revising a planned sticker cheap: a plan that moves one layer and drops
+     * another keeps every other layer's `assetId` instead of paying to redraw art the user already
+     * approved — which would also come back looking different.
+     *
+     * The id is copied from an image layer of the current document. Nothing in this schema can tell
+     * whether it names one, so the planning turn checks it against that document before the plan is
+     * stored; a hallucinated id has to reach the model as a repairable tool error, not as a build
+     * that fails after the user has confirmed it.
+     */
+    assetId: z.string().uuid(),
   }).strict(),
   z.object({
     kind: z.literal("text"),
@@ -165,4 +182,39 @@ export function compilePlanAnimations(plan: Pick<PlanV1, "kind" | "timing" | "la
 /** How many image generations executing this plan will cost. */
 export function planGenerationCount(plan: Pick<PlanV1, "layers">): number {
   return plan.layers.filter((layer) => layer.source.kind === "generate").length;
+}
+
+/** The artwork a plan may reuse: every image layer the sticker on screen already has. */
+export function reusableAssetIds(document?: Pick<StickerDocument, "layers">): string[] {
+  return document?.layers.flatMap((layer) => (layer.type === "image" ? [layer.assetId] : [])) ?? [];
+}
+
+/**
+ * Rejects a plan that reuses artwork this sticker does not have.
+ *
+ * Enforced here rather than in the schema because only the drafting turn knows which document the
+ * plan is being written against. The message names the ids that would have worked, so the model can
+ * repair the plan in the same conversation instead of the reuse failing at build time — long after
+ * the user confirmed it.
+ */
+export function assertPlanReuseIsResolvable(
+  plan: Pick<PlanV1, "layers">,
+  document?: Pick<StickerDocument, "layers">,
+): void {
+  const available = new Set(reusableAssetIds(document));
+  const unknown = plan.layers.filter(
+    (layer) => layer.source.kind === "existing" && !available.has(layer.source.assetId),
+  );
+  if (unknown.length === 0) return;
+  const named = unknown
+    .map((layer) => `${layer.layerId} (${(layer.source as { assetId: string }).assetId})`)
+    .join(", ");
+  throw new Error(
+    available.size > 0
+      ? `These layers reuse artwork the current sticker does not have: ${named}. `
+        + `The assetIds you may reuse are: ${[...available].join(", ")}. `
+        + "Use them exactly as written, or draw the layer with a generate source instead."
+      : `These layers reuse artwork that does not exist: ${named}. The current sticker has no `
+        + "image layers, so every drawn layer must use a generate source.",
+  );
 }

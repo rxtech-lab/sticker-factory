@@ -847,6 +847,11 @@ private extension StickerAPIClientProtocol {
         AsyncThrowingStream { $0.finish() }
     }
 
+    /// Silent rather than throwing: enrolling for push is something the app does alongside every
+    /// other request, and a stub with no opinion about it must not fail a test about the library.
+    func registerDevice(token: String, environment: PushEnvironment, bundleID: String?, appVersion: String?) async throws {}
+    func unregisterDevice(token: String) async throws {}
+
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
     func myPacks(cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
     func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse { throw TestFixtureError.stub }

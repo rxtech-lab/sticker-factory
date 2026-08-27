@@ -1,5 +1,7 @@
 import AnimatedView
+import CryptoKit
 import Foundation
+import UniformTypeIdentifiers
 import UIKit
 
 @MainActor
@@ -93,6 +95,55 @@ final class StickerPublisher {
         return (response.job.id, rendered.all)
     }
 
+    /// The files a published revision already has on the server, back on disk to be shared.
+    ///
+    /// A sheet opened on a revision that was published in an earlier session holds no local
+    /// renders, and re-rendering them would spend an MP4 encode reproducing bytes the server is
+    /// already keeping. Files land under the same temporary directory the exporter writes to,
+    /// named for the asset, so sharing one revision twice in a session downloads once.
+    func publishedExports(for revision: StickerRevision) async throws -> [URL] {
+        var assetIDs: [String] = []
+        for assetID in [revision.pngAssetId, revision.gifAssetId, revision.mp4AssetId, revision.systemAssetId] {
+            // A static sticker can register the same file as both its master and its system
+            // sticker; sharing it twice would put two identical items in the share sheet.
+            guard let assetID, !assetIDs.contains(assetID) else { continue }
+            assetIDs.append(assetID)
+        }
+        guard !assetIDs.isEmpty else { throw StickerPublishError.publishedExportsUnavailable }
+
+        var urls: [URL] = []
+        for assetID in assetIDs {
+            urls.append(try await downloadExport(assetID: assetID))
+        }
+        return urls
+    }
+
+    private func downloadExport(assetID: String) async throws -> URL {
+        let download = try await api.assetDownload(assetID: assetID)
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appending(path: "StickerFactoryExports", directoryHint: .isDirectory)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileExtension = UTType(mimeType: download.asset.mimeType)?.preferredFilenameExtension ?? "dat"
+        let url = directory.appending(path: assetID).appendingPathExtension(fileExtension)
+        if fileManager.fileExists(atPath: url.path(percentEncoded: false)) { return url }
+
+        let (data, response) = try await URLSession.shared.data(from: download.url)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw StickerPublishError.exportDownloadFailed
+        }
+        // The same digest check the image cache makes: a file that does not match what the server
+        // recorded is not the sticker that was published, and it is not what should be shared.
+        if let expected = download.asset.sha256 {
+            let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            guard actual.caseInsensitiveCompare(expected) == .orderedSame else {
+                throw StickerPublishError.exportDownloadFailed
+            }
+        }
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
     private func renderExports(
         revision: StickerRevision,
         assets: [String: UIImage],
@@ -120,7 +171,9 @@ final class StickerPublisher {
         }
 
         let system = try exporter.exportSystemSticker(document: document, assets: assets, size: size)
-        guard system.metadata.byteCount < 500_000 else { throw StickerExportError.systemStickerTooLarge }
+        guard system.metadata.byteCount < 500_000 else {
+            throw StickerExportError.systemStickerTooLarge(smallestByteCount: system.metadata.byteCount)
+        }
         return .init(png: png, gif: gif, mp4: mp4, system: system)
     }
 
@@ -162,11 +215,15 @@ nonisolated enum StickerPublishError: Error, LocalizedError {
     case revisionNotAccepted
     case animationRequired
     case missingVerifiedAssets([String])
+    case publishedExportsUnavailable
+    case exportDownloadFailed
     var errorDescription: String? {
         switch self {
         case .revisionNotAccepted: "Accept this revision before publishing exports."
         case .animationRequired: "Add motion before publishing this animated sticker. You can still export the current image locally."
         case .missingVerifiedAssets: "All image and mask assets must finish verified download before export. Try again when the preview is ready."
+        case .publishedExportsUnavailable: "This version has no published files to share yet."
+        case .exportDownloadFailed: "Couldn't fetch the published files. Check your connection and try again."
         }
     }
 }

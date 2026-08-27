@@ -583,9 +583,10 @@ export async function createChatTurn(
   if (request.targetLayerId) {
     const target = baseDocument?.layers.find((layer) => layer.id === request.targetLayerId);
     if (!target) throw new ApiError(422, "INVALID_TARGET_LAYER", "The selected target layer does not exist in the base revision");
-    if (request.intent === "edit" && target.type !== "image") {
-      throw new ApiError(422, "INVALID_TARGET_LAYER", "Image edits must target an image layer");
-    }
+    // Any layer type is a legal edit target: an edit turn owns the whole layer stack, not just the
+    // drawn artwork, so pointing at a caption to have it removed or reworded is an ordinary edit.
+    // A masked edit is the one that still needs artwork underneath it, and the mask block below
+    // enforces that on its own.
   }
   for (const attachment of request.attachments) {
     const asset = byId.get(attachment.assetId)!;

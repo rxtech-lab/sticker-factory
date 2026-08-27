@@ -139,6 +139,36 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testComposerClearsWhenTheMessageIsSent() {
+        // The transcript is read below, and in landscape the keyboard covers it. The simulator keeps
+        // whatever orientation the last run left it in, so this asks for one rather than assuming.
+        XCUIDevice.shared.orientation = .portrait
+
+        let card = element("library-sticker-sticker-demo")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        card.tap()
+
+        let composer = element("chat-composer")
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        composer.typeText("Try again")
+        XCTAssertEqual(composer.value as? String, "Try again")
+
+        XCTAssertTrue(element("send-chat-message").isEnabled, "send stayed disabled while the field showed a draft")
+        element("send-chat-message").tap()
+
+        // The transcript is what says the draft was sent rather than dropped. Matched on a
+        // substring: a message row's label is the whole bubble, speaker prefix and all.
+        let sent = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Try again")).firstMatch
+        XCTAssertTrue(sent.waitForExistence(timeout: 10), "the draft never reached the transcript")
+        // A focused field that has been emptied reports an empty value, not its placeholder. The
+        // draft belongs to the tap, so it is gone from the moment the send starts — not when the
+        // turn it started comes back.
+        expectation(for: NSPredicate(format: "value == %@", ""), evaluatedWith: composer)
+        waitForExpectations(timeout: 5)
+    }
+
+    @MainActor
     func testAdaptiveLayoutKeepsPrimaryActionsVisible() {
         openCreateSheet()
         XCTAssertTrue(element("sticker-kind-picker").waitForExistence(timeout: 3))

@@ -198,13 +198,15 @@ nonisolated struct PlanLayer: Codable, Identifiable, Hashable, Sendable {
 /// What a planned layer is made of. Only `.generate` costs an image generation.
 nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
     case generate(prompt: String)
+    /// Artwork this sticker already has, carried into the revised plan untouched and for free.
+    case existing(assetId: String)
     case text(text: String, color: String)
     case shape(shape: String, fill: String)
     case particle(preset: String, color: String)
     /// A layer kind this build does not know about, kept so the card still renders.
     case unknown(kind: String)
 
-    private enum CodingKeys: String, CodingKey { case kind, prompt, text, color, shape, fill, preset }
+    private enum CodingKeys: String, CodingKey { case kind, prompt, assetId, text, color, shape, fill, preset }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -212,6 +214,8 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
         switch kind {
         case "generate":
             self = .generate(prompt: (try? container.decode(String.self, forKey: .prompt)) ?? "")
+        case "existing":
+            self = .existing(assetId: (try? container.decode(String.self, forKey: .assetId)) ?? "")
         case "text":
             self = .text(
                 text: (try? container.decode(String.self, forKey: .text)) ?? "",
@@ -238,6 +242,9 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
         case .generate(let prompt):
             try container.encode("generate", forKey: .kind)
             try container.encode(prompt, forKey: .prompt)
+        case .existing(let assetId):
+            try container.encode("existing", forKey: .kind)
+            try container.encode(assetId, forKey: .assetId)
         case .text(let text, let color):
             try container.encode("text", forKey: .kind)
             try container.encode(text, forKey: .text)
@@ -258,6 +265,7 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
     var label: String {
         switch self {
         case .generate: "Generated"
+        case .existing: "Kept"
         case .text(let text, _): "Text “\(text)”"
         case .shape(let shape, _): Self.humanized(shape)
         case .particle(let preset, _): Self.humanized(preset)
@@ -283,6 +291,15 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
     }
 
     var isGenerated: Bool { if case .generate = self { true } else { false } }
+
+    /// Whether the layer is drawn artwork rather than something the app renders. Reused artwork
+    /// counts: it costs nothing, but on the canvas it is a picture, not a glyph or a primitive.
+    var isArtwork: Bool {
+        switch self {
+        case .generate, .existing: true
+        default: false
+        }
+    }
 }
 
 /// One named motion effect on a planned layer.
@@ -327,6 +344,10 @@ nonisolated struct CancelPlanRequest: Codable, Sendable {
 nonisolated struct CancelPlanResponse: Codable, Sendable {
     var planId: String
     var state: PlanState
+    /// The turn a rejection with a reason starts, so the agent can redraft against it right away.
+    /// Absent when the plan was dismissed without one — then nothing follows the rejection.
+    var message: AcceptedMessageReference?
+    var job: GenerationJobReference?
 }
 nonisolated enum ChatMessageStatus: String, Codable, Hashable, Sendable { case complete, streaming, failed }
 
@@ -439,6 +460,18 @@ nonisolated struct RetryChatMessageResponse: Codable, Sendable {
 nonisolated struct CancelGenerationResponse: Codable, Sendable {
     var jobId: String
     var state: GenerationJobState
+}
+
+/// The APNs device token, uploaded so the server can announce a turn the user walked away from.
+///
+/// `environment` travels with it because a sandbox token is rejected by the production APNs host
+/// and vice versa, and only the build knows which one it was signed for.
+nonisolated struct RegisterDeviceRequest: Codable, Sendable {
+    var token: String
+    var platform: String
+    var environment: String
+    var bundleId: String?
+    var appVersion: String?
 }
 
 nonisolated struct DeleteStickerResponse: Codable, Sendable {
