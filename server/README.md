@@ -49,6 +49,7 @@ All state-changing endpoints require `Idempotency-Key`. JSON bodies are content-
 - `POST /api/v1/uploads/{assetId}/complete`
 - `GET /api/v1/assets/{assetId}/download`
 - `GET /api/v1/jobs/{jobId}/events` (replayable SSE with `Last-Event-ID`)
+- `POST /api/v1/devices` — registers this install's APNs token; `DELETE /api/v1/devices/{token}` drops it on sign-out. Neither takes an `Idempotency-Key`: the token is the key, and registration is an upsert on it.
 
 Marketplace:
 
@@ -84,6 +85,31 @@ ships inside the app binary and can be newer than the server.
 - Self-install is refused: the creator's stickers already appear under "My Stickers".
 - A pack slug is immutable once published, so a shared link survives a rename.
 - `install_count`/`item_count` are trigger-maintained. SQLite skips row triggers for FK-cascade deletes, so `bun run db:packs:recount` reconciles them.
+
+## Push notifications
+
+A finished turn is announced from here, not from the phone. Generation runs on the server and the
+client's SSE stream dies the moment iOS suspends the app — which is exactly the case a "your sticker
+is ready" banner exists for — so the local notification it used to post could only ever fire for a
+turn the user was still watching.
+
+- `lib/notifications/apns.ts` talks to APNs over `node:http2` with a token-based (`.p8`) provider
+  JWT. HTTP/2 is the only transport APNs accepts and `fetch` will not negotiate it, which is the
+  whole reason the file is not a thin wrapper. Provider tokens are cached for 45 minutes, inside
+  Apple's one-hour validity and well clear of `TooManyProviderTokenUpdates`.
+- `completeJobStep`/`failJobStep` push after the terminal transition commits, so a step that re-runs
+  over an already-finished job cannot announce it twice. Cleanup and export jobs stay silent.
+- Sending is best-effort and never throws: a sticker that generated must not be reported as failed
+  because Apple timed out. A 410/`BadDeviceToken` disables that `device_tokens` row rather than
+  deleting it, so a dead token is not retried every turn and a later re-registration revives it.
+- `device_tokens` is keyed on the token, not on `(user, token)`. A token names an app install, so a
+  second account signing in on the same phone takes the row over instead of leaving the first one
+  pushing to a device it no longer owns.
+- Set `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, and `APNS_BUNDLE_ID`. Missing credentials
+  are a supported state: nothing is sent and the skip is logged. The `.p8` auth key is issued per
+  Apple *team*, not per app, so the RxLab team key already in use elsewhere signs for this topic
+  too; `APNS_PRIVATE_KEY` takes the PEM or its base64. The topic is the app's bundle id,
+  `app.rxlab.stickerfactory` — not the Messages extension's.
 
 ## Media and deletion invariants
 

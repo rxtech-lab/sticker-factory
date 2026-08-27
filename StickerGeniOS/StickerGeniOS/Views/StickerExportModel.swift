@@ -13,6 +13,7 @@ private let preferredStickerSizeKey = "StickerFactoryPreferredStickerSize"
 @Observable
 final class StickerExportModel {
     var isPublishing = false
+    var isPreparingShare = false
     var publishedURLs: [URL] = []
     var publishJobID: String?
     var background: ExportBackgroundChoice = .midnight
@@ -54,6 +55,28 @@ final class StickerExportModel {
     func invalidateExports() {
         publishedURLs = []
         publishJobID = nil
+    }
+
+    /// Puts the published files on disk so a revision published in an earlier session — one this
+    /// run never rendered anything for — can still be shared.
+    ///
+    /// - Returns: whether `publishedURLs` now holds files to share.
+    func prepareShareFiles(store: StickerStore, revision: StickerRevision) async -> Bool {
+        guard publishedURLs.isEmpty else { return true }
+        isPreparingShare = true
+        defer { isPreparingShare = false }
+        do {
+            let urls = try await StickerPublisher(api: store.api).publishedExports(for: revision)
+            // An edit landed while the download was in flight: these files are the version the user
+            // just moved off, and `seed` has already cleared this sheet's state for the new one.
+            guard seededRevisionID == revision.id else { return false }
+            publishedURLs = urls
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 
     func exportOrPublish(

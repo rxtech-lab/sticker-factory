@@ -26,6 +26,9 @@ struct StickerChatView: View {
     @State private var showingCandidate = false
     @State private var isDeciding = false
     @State private var isConfirmingPlan = false
+    /// A retry is in flight. Held here rather than read off the job, because the job only stops
+    /// looking failed once the replacement stream opens — well after the tap.
+    @State private var isRetrying = false
     @State private var presentedDocument: PresentedStickerDocument?
     /// Measured, not fixed: the bar grows with reference chips, a multi-line draft and the
     /// candidate banner, and the transcript has to keep exactly that much room free under it.
@@ -38,9 +41,15 @@ struct StickerChatView: View {
     /// opening a chat that already had a candidate waiting is not an arrival, and announcing it
     /// with the same buzz as one that just landed would make the buzz mean nothing.
     @State private var hasStreamedTurn = false
+    /// Candidates the user has already turned down, hidden from the moment they tap rather than
+    /// when the round trip lands. The banner and the sheet are a decision waiting to be made;
+    /// leaving either up after it has been made reads as the tap not registering.
+    @State private var rejectedRevisionIDs: Set<String> = []
 
     private var detail: StickerDetail? { store.details[stickerID] }
-    private var candidate: StickerRevision? { detail?.revisions.first { $0.state == .candidate } }
+    private var candidate: StickerRevision? {
+        detail?.revisions.first { $0.state == .candidate && !rejectedRevisionIDs.contains($0.id) }
+    }
     private var activeRevision: StickerRevision? { detail?.activeRevision }
     private var messages: [ChatMessage] { store.messages[stickerID] ?? [] }
     private var isComputing: Bool { store.computingStickerIDs.contains(stickerID) }
@@ -191,6 +200,13 @@ struct StickerChatView: View {
                 Haptics.success()
             }
         }
+        // A turn only starts because the user asked for one — by sending a message, or by turning a
+        // plan down with a reason. Their attention is on the transcript at that point, so an
+        // undecided candidate's sheet must get out of the way. The banner stays: the decision is
+        // still theirs to make, just not on top of the work they just asked for.
+        .onChange(of: isComputing) { _, newValue in
+            if newValue { showingCandidate = false }
+        }
         .sheet(isPresented: $showingVersions) {
             NavigationStack {
                 StickerVersionsSheet(store: store, stickerID: stickerID, assets: assetStore.images)
@@ -308,13 +324,28 @@ struct StickerChatView: View {
                 Text(job.message)
                     .font(.callout)
                 Spacer()
-                Button("Retry") {
-                    Haptics.tap(.light)
-                    Task { await retryFailedTurn() }
+                // The retry request itself takes a moment, and until the new job's stream opens
+                // nothing else on screen moves — so the button becomes the progress it started.
+                if isRetrying {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Retrying…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityIdentifier("retrying-failed-generation")
+                    .transition(.opacity)
+                } else {
+                    Button("Retry") {
+                        Haptics.tap(.light)
+                        Task { await retryFailedTurn() }
+                    }
+                        .buttonStyle(.glassProminent)
+                        .accessibilityIdentifier("retry-failed-generation")
+                        .transition(.opacity)
                 }
-                    .buttonStyle(.glassProminent)
-                    .accessibilityIdentifier("retry-failed-generation")
             }
+            .animation(.easeInOut(duration: 0.2), value: isRetrying)
             .padding(12)
             .glassEffect(.regular, in: .rect(cornerRadius: 16))
             .padding(.horizontal, 16)
@@ -325,7 +356,30 @@ struct StickerChatView: View {
     @ViewBuilder
     private func transcriptRow(_ message: ChatMessage) -> some View {
         if message.kind == .deviceEdit {
-            TranscriptDivider(text: message.content)
+            // The divider says an edit happened; the sticker under it says what the edit produced,
+            // so the transcript reads the same for a hand edit as for a generated turn.
+            VStack(alignment: .leading, spacing: 10) {
+                TranscriptDivider(text: message.content)
+
+                if let document = revisionDocument(for: message) {
+                    HStack(spacing: 0) {
+                        Button {
+                            Haptics.tap(.light)
+                            presentedDocument = .init(document: document, revisionID: message.revisionId)
+                        } label: {
+                            // Sized outright rather than left to `aspectRatio` inside a full-width
+                            // row: an unbounded height proposal there resolves to the row's width,
+                            // which reserves a screenful of empty space under the sticker.
+                            StickerAttachment(document: document, assets: assetStore.images)
+                                .frame(width: 200, height: 200)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("show-sticker-attachment")
+
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
         } else if let record = message.plan {
             PlanCard(
                 record: record.id == actionablePlanID ? record : record.readOnly,
@@ -459,13 +513,15 @@ struct StickerChatView: View {
                     // Fired here rather than after the request: the tap is what the feel belongs
                     // to, and the send is a round trip away.
                     Haptics.tap(isComputing ? .rigid : .light)
-                    Task {
-                        if isComputing {
-                            stoppedByUser = true
-                            await stop()
-                        } else {
-                            await send()
-                        }
+                    if isComputing {
+                        stoppedByUser = true
+                        Task { await stop() }
+                    } else {
+                        // Emptied in the tap's own update rather than inside the send: the composer
+                        // is answering the tap, and nothing about when it clears should depend on
+                        // where the request happens to suspend.
+                        let draft = takeComposerDraft()
+                        Task { await send(draft) }
                     }
                 } label: {
                     Image(systemName: isComputing ? "stop.circle.fill" : "arrow.up.circle.fill")
@@ -494,8 +550,11 @@ struct StickerChatView: View {
         }
     }
 
+    /// A device edit is authored as `role: .user` so the agent reads it as the user's doing, but it
+    /// still owns the revision it saved — so it gets the same attachment an assistant turn would.
     private func revisionDocument(for message: ChatMessage) -> AnimatedDocument? {
-        guard message.role == .assistant, let revisionID = message.revisionId else { return nil }
+        guard message.role == .assistant || message.kind == .deviceEdit else { return nil }
+        guard let revisionID = message.revisionId else { return nil }
         return detail?.revisions.first(where: { $0.id == revisionID })?.document
     }
 
@@ -521,17 +580,32 @@ struct StickerChatView: View {
         if !loaded.isEmpty { Haptics.selection() }
     }
 
-    private func send() async {
-        let submittedText = text
-        let submittedReferenceItems = referenceItems
-        let submittedReferences = references
+    /// What the composer held, taken out of it.
+    ///
+    /// Sending empties the composer before it has anywhere to put what it took, so the draft travels
+    /// with the request that is trying to deliver it — and comes back if that request is refused.
+    private struct ComposerDraft {
+        var text: String
+        var referenceItems: [PhotosPickerItem]
+        var references: [PendingMediaAttachment]
+    }
+
+    private func takeComposerDraft() -> ComposerDraft {
+        let draft = ComposerDraft(text: text, referenceItems: referenceItems, references: references)
+        text = ""
+        referenceItems = []
+        references = []
+        return draft
+    }
+
+    private func send(_ draft: ComposerDraft) async {
+        let submittedText = draft.text
+        let submittedReferenceItems = draft.referenceItems
+        let submittedReferences = draft.references
         let value = submittedText.trimmingCharacters(in: .whitespacesAndNewlines)
         let content = value.isEmpty ? "Use these reference images for the sticker." : value
         let baseRevisionID = detail?.revisions.first(where: { $0.state == .candidate })?.id ?? detail?.activeRevisionId
 
-        text = ""
-        referenceItems = []
-        references = []
         localError = nil
         localHint = nil
 
@@ -601,6 +675,10 @@ struct StickerChatView: View {
     private func rejectCandidate(_ revision: StickerRevision) async {
         isDeciding = true
         defer { isDeciding = false }
+        // The decision is made the moment they tap, so the sheet leaves and the banner goes with
+        // it — not a round trip later, when the reloaded detail happens to drop the candidate.
+        rejectedRevisionIDs.insert(revision.id)
+        showingCandidate = false
         do {
             try await store.transition(stickerID: stickerID, revisionID: revision.id, action: .reject)
             // Deliberately not a `success`: the decision went through, but throwing work away is
@@ -608,6 +686,9 @@ struct StickerChatView: View {
             Haptics.tap(.medium)
             localError = nil
         } catch {
+            // It is still a candidate, so put the banner back rather than stranding a decision the
+            // user can no longer reach.
+            rejectedRevisionIDs.remove(revision.id)
             localError = error.localizedDescription
             Haptics.failure()
         }
@@ -636,6 +717,9 @@ struct StickerChatView: View {
     }
 
     private func retryFailedTurn() async {
+        guard !isRetrying else { return }
+        isRetrying = true
+        defer { isRetrying = false }
         do {
             try await store.retryFailedMessage(stickerID: stickerID)
             localError = nil
@@ -689,7 +773,15 @@ private struct ChatBubble: View {
 
     private var messageContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !message.content.isEmpty { Text(message.content) }
+            if !message.content.isEmpty {
+                // Assistant prose is written as Markdown; what the user typed is taken literally,
+                // so an underscore in their own words never turns into italics behind their back.
+                if message.role == .user {
+                    Text(message.content)
+                } else {
+                    MarkdownText(markdown: message.content)
+                }
+            }
 
             if !message.attachments.isEmpty {
                 ScrollView(.horizontal) {

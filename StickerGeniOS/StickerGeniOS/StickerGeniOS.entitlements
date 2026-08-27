@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Push notifications. `development` is what a locally signed build needs; TestFlight and
+	     App Store distribution re-sign this to `production`, which is why `PushEnvironment.current`
+	     keys off the build configuration rather than reading this back. -->
+	<key>aps-environment</key>
+	<string>development</string>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.app.rxlab.stickerfactory</string>

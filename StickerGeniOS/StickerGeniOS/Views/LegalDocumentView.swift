@@ -84,7 +84,7 @@ struct LegalDocumentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .loaded(let markdown):
                 ScrollView {
-                    MarkdownView(markdown)
+                    MarkdownText(markdown: markdown, style: .document)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 24)
                         .frame(maxWidth: 720, alignment: .leading)
@@ -127,126 +127,5 @@ private extension LegalDocumentView {
         case loading
         case loaded(String)
         case failed(String)
-    }
-}
-
-private struct MarkdownView: View {
-    private let blocks: [MarkdownBlock]
-
-    init(_ markdown: String) {
-        blocks = MarkdownBlock.parse(markdown)
-    }
-
-    var body: some View {
-        LazyVStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private func blockView(_ block: MarkdownBlock) -> some View {
-        switch block {
-        case .heading(let level, let content):
-            Text(attributed(content))
-                .font(headingFont(level))
-                .padding(.top, level == 1 ? 0 : 10)
-        case .paragraph(let content):
-            Text(attributed(content))
-                .font(.body)
-                .foregroundStyle(.primary)
-                .lineSpacing(4)
-        case .bullet(let content):
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("•")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                Text(attributed(content))
-                    .lineSpacing(3)
-            }
-            .padding(.leading, 4)
-        case .quote(let content):
-            Text(attributed(content))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 14)
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(.secondary.opacity(0.35))
-                        .frame(width: 3)
-                }
-        case .rule:
-            Divider()
-                .padding(.vertical, 4)
-        }
-    }
-
-    private func attributed(_ source: String) -> AttributedString {
-        (try? AttributedString(
-            markdown: source,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(source)
-    }
-
-    private func headingFont(_ level: Int) -> Font {
-        switch level {
-        case 1: .title.bold()
-        case 2: .title2.bold()
-        default: .headline
-        }
-    }
-}
-
-private enum MarkdownBlock {
-    case heading(Int, String)
-    case paragraph(String)
-    case bullet(String)
-    case quote(String)
-    case rule
-
-    static func parse(_ markdown: String) -> [Self] {
-        var blocks: [Self] = []
-        var paragraph: [String] = []
-
-        func flushParagraph() {
-            guard !paragraph.isEmpty else { return }
-            blocks.append(.paragraph(paragraph.joined(separator: " ")))
-            paragraph.removeAll(keepingCapacity: true)
-        }
-
-        for rawLine in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            guard !line.isEmpty else {
-                flushParagraph()
-                continue
-            }
-
-            if line == "---" {
-                flushParagraph()
-                blocks.append(.rule)
-            } else if line.hasPrefix("### ") {
-                flushParagraph()
-                blocks.append(.heading(3, String(line.dropFirst(4))))
-            } else if line.hasPrefix("## ") {
-                flushParagraph()
-                blocks.append(.heading(2, String(line.dropFirst(3))))
-            } else if line.hasPrefix("# ") {
-                flushParagraph()
-                blocks.append(.heading(1, String(line.dropFirst(2))))
-            } else if line.hasPrefix("- ") {
-                flushParagraph()
-                blocks.append(.bullet(String(line.dropFirst(2))))
-            } else if line.hasPrefix("> ") {
-                flushParagraph()
-                blocks.append(.quote(String(line.dropFirst(2))))
-            } else {
-                paragraph.append(line)
-            }
-        }
-
-        flushParagraph()
-        return blocks
     }
 }

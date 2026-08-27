@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { setAiProviderForTests, type AiProvider } from "@/lib/ai/gateway";
+import { setAiProviderForTests, type AiProvider, type AiTitleContext } from "@/lib/ai/gateway";
 import { StickerDocumentSchema, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { setDatabaseForTests } from "@/lib/db/client";
 import { assets, chatAttachments, chatMessages, generationEvents, generationJobs, plans as planRows, stickerRevisions, stickers, users } from "@/lib/db/schema";
@@ -21,9 +21,14 @@ const unusedAiProvider: AiProvider = {
   planSticker: () => { throw new Error("Unexpected planSticker"); },
   generateConceptImage: () => { throw new Error("Unexpected generateConceptImage"); },
   animateSticker: () => { throw new Error("Unexpected animateSticker"); },
+  editSticker: () => { throw new Error("Unexpected editSticker"); },
   routeChatTurn: () => { throw new Error("Unexpected routeChatTurn"); },
   showSticker: () => { throw new Error("Unexpected showSticker"); },
   reply: () => { throw new Error("Unexpected reply"); },
+  // The exception to the rule above: every successful turn ends by naming the sticker, so a stub
+  // that threw here would only prove the naming step swallows its errors. Keeping the current name
+  // is a real provider answer, and it leaves each test's own title assertions alone.
+  summarizeStickerTitle: async ({ currentTitle }) => currentTitle,
 };
 
 describe("durable sticker workflow", () => {
@@ -176,7 +181,7 @@ describe("durable sticker workflow", () => {
     expect((await db.select().from(chatMessages).where(eq(chatMessages.id, editTurn.messageId)).get())?.kind).toBe("image_edit");
     const editReply = await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId));
     expect(editReply.filter((message) => message.role === "system").map((message) => message.content))
-      .toEqual(["edit-sticker", "show-sticker"]);
+      .toEqual(["edit-sticker", "edit_image_layer", "finalize_edit", "show-sticker"]);
     expect(editReply.filter((message) => message.role === "system").every((message) => message.status === "complete")).toBe(true);
     const streamedTools = (await db.select().from(generationEvents).where(eq(generationEvents.jobId, editTurn.jobId)))
       .map((event) => event.dataJson)
@@ -184,6 +189,10 @@ describe("durable sticker workflow", () => {
       .map((data) => ({ name: data.toolName, status: data.toolStatus }));
     expect(streamedTools).toEqual([
       { name: "edit-sticker", status: "streaming" },
+      { name: "edit_image_layer", status: "streaming" },
+      { name: "edit_image_layer", status: "complete" },
+      { name: "finalize_edit", status: "streaming" },
+      { name: "finalize_edit", status: "complete" },
       { name: "edit-sticker", status: "complete" },
       { name: "show-sticker", status: "streaming" },
       { name: "show-sticker", status: "complete" },
@@ -480,7 +489,7 @@ describe("durable sticker workflow", () => {
 
     const turn = await animateTurnOn(db, "owner-cancel", stickerId, baseRevisionId);
     expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).not.toBe("succeeded");
-    expect(secondCallFailedWith).toBe("AnimationTurnAbort");
+    expect(secondCallFailedWith).toBe("TurnAbort");
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get()).toBeUndefined();
     await close();
   }, 30_000);
@@ -564,7 +573,7 @@ describe("durable sticker workflow", () => {
     await close();
   }, 30_000);
 
-  it("plans instead of failing when an edit lands on a document the image tools cannot touch", async () => {
+  it("removes an app-drawn layer through the edit tool instead of handing it to the planner", async () => {
     const { db, close } = await createTestDatabase();
     setDatabaseForTests(db);
     setObjectStoreForTests(new MemoryObjectStore());
@@ -604,7 +613,7 @@ describe("durable sticker workflow", () => {
     await acceptRevision(db, "owner-text", sticker.stickerId, textOnlyRevisionId);
 
     const editTurn = await createChatTurn(db, "owner-text", sticker.stickerId, {
-      text: "Make the OMG lettering cartoon-like artwork",
+      text: "Remove the OMG lettering",
       intent: "chat",
       baseRevisionId: textOnlyRevisionId,
       attachments: [],
@@ -612,14 +621,92 @@ describe("durable sticker workflow", () => {
     });
     expect((await stickerGenerationWorkflow(editTurn.jobId)).workflowStatus).toBe("succeeded");
 
-    // Redrawing app-drawn lettering is a redesign, so the turn proposes a plan and destroys nothing.
+    // The point of the loop: deleting a layer the app draws is an edit, served in one turn by the
+    // free operation. It used to be rewritten into a plan card the user then had to confirm.
     const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)))
       .filter((message) => message.role === "system").map((message) => message.content);
-    expect(toolRows[0]).toBe("plan-sticker");
-    expect(await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId))).toHaveLength(1);
-    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get()).toBeUndefined();
+    expect(toolRows).toEqual(["edit-sticker", "edit_layers", "finalize_edit", "show-sticker"]);
+    expect(await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId))).toHaveLength(0);
+
+    // Nothing was drawn and nothing else was touched: the confetti survives exactly as it was.
+    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
+    expect(edited?.candidateState).toBe("candidate");
+    expect(StickerDocumentSchema.parse(edited!.documentJson).layers).toEqual([
+      StickerDocumentSchema.parse(textOnly).layers[1],
+    ]);
+    // Still the user's decision to make, so the sticker on screen has not changed underneath them.
     expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.activeRevisionId)
       .toBe(textOnlyRevisionId);
+    await close();
+  }, 30_000);
+
+  it("adds, renames, and reorders layers in one edit turn without drawing anything", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-crud", createdAt: new Date(), updatedAt: new Date() });
+
+    const sticker = await createSticker(db, "owner-crud", { title: "Cloud", kind: "static", prompt: "Happy cloud", referenceAssetIds: [] });
+    const baseTurn = await createChatTurn(db, "owner-crud", sticker.stickerId, {
+      text: "Happy cloud",
+      intent: "generate",
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    await stickerGenerationWorkflow(baseTurn.jobId);
+    await acceptRevision(db, "owner-crud", sticker.stickerId, baseTurn.jobId);
+
+    let refused: string | undefined;
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      showSticker: async () => "Added the caption above the cloud.",
+      async editSticker(_input, session) {
+        // The free tool cannot conjure artwork: an assetId is only real once a redraw has bought it,
+        // and the model is told so in an error it can act on rather than by the turn failing.
+        await session.applyOperations([
+          { op: "replaceAsset", layerId: "hero", assetId: crypto.randomUUID() },
+        ]).catch((error: Error) => { refused = error.message; });
+        await session.applyOperations([
+          {
+            op: "addLayer",
+            layer: {
+              id: "caption", name: "Caption", type: "text", text: "OMG",
+              font: "rounded", weight: "bold", paint: { type: "solid", color: "#FF0055" },
+            },
+          },
+          { op: "renameLayer", layerId: "hero", name: "Cloud" },
+          { op: "reorderLayer", layerId: "caption", index: 0 },
+        ] as StickerOperationV1[]);
+        const finalized = await session.finalizeEdit();
+        return { revision: finalized.revision, finalized: true };
+      },
+    });
+
+    const editTurn = await createChatTurn(db, "owner-crud", sticker.stickerId, {
+      text: "Put an OMG caption above the cloud",
+      intent: "edit",
+      baseRevisionId: baseTurn.jobId,
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(editTurn.jobId)).workflowStatus).toBe("succeeded");
+    expect(refused).toMatch(/edit_image_layer/);
+
+    const turnRows = await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId));
+    expect(turnRows.filter((message) => message.role === "system").map((message) => message.content))
+      .toEqual(["edit-sticker", "edit_layers", "edit_layers #2", "finalize_edit", "show-sticker"]);
+    // The rejected call keeps its own failed row rather than poisoning the one that succeeded.
+    expect(turnRows.find((message) => message.content === "edit_layers")?.status).toBe("failed");
+    expect(turnRows.find((message) => message.content === "edit_layers #2")?.status).toBe("complete");
+
+    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
+    const document = StickerDocumentSchema.parse(edited!.documentJson);
+    expect(document.layers.map((layer) => [layer.id, layer.type, layer.name]))
+      .toEqual([["caption", "text", "Caption"], ["hero", "image", "Cloud"]]);
+    // Nothing was drawn, so the sticker still carries the artwork the base revision paid for.
+    expect(edited).toMatchObject({ candidateState: "candidate", masterAssetId: baseTurn.jobId });
+    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(1);
     await close();
   }, 30_000);
 
@@ -759,6 +846,59 @@ describe("durable sticker workflow", () => {
     await close();
   });
 
+  it("revises a built sticker by reusing its artwork instead of paying to redraw it", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-f", createdAt: new Date(), updatedAt: new Date() });
+
+    const sticker = await createSticker(db, "owner-f", { title: "HI", kind: "animated", prompt: "HI", referenceAssetIds: [] });
+    const first = await createChatTurn(db, "owner-f", sticker.stickerId, {
+      text: "Compose the word HI letter by letter", intent: "chat", attachments: [], imagePlacement: "replace",
+    });
+    await stickerGenerationWorkflow(first.jobId);
+    const drafted = (await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId))).at(0)!;
+    const built = await confirmPlan(db, "owner-f", sticker.stickerId, drafted.id);
+    await stickerGenerationWorkflow(built.jobId);
+    await acceptRevision(db, "owner-f", sticker.stickerId, built.jobId);
+
+    const originalAssetIds = (await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId)))
+      .map((asset) => asset.id).sort();
+    expect(originalAssetIds.length).toBeGreaterThan(0);
+
+    // A second planning turn against the sticker that now exists. Nothing about it is new artwork,
+    // so the plan carries the layers it already has rather than describing them again.
+    const revise = await createChatTurn(db, "owner-f", sticker.stickerId, {
+      text: "Plan it tighter", intent: "chat", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(revise.jobId)).workflowStatus).toBe("succeeded");
+
+    const revised = (await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId)))
+      .find((row) => row.state === "finalized")!;
+    const reusedIds = revised.planJson.layers.map((layer) => (layer.source as { assetId?: string }).assetId);
+    expect(revised.planJson.layers.every((layer) => layer.source.kind === "existing")).toBe(true);
+    expect(reusedIds.every((assetId) => originalAssetIds.includes(assetId!))).toBe(true);
+
+    // The card says as much: nothing to generate, so the user is asked to build rather than to pay.
+    const card = (await listChatMessages(db, "owner-f", sticker.stickerId)).data
+      .filter((message) => message.kind === "plan").at(-1);
+    expect(card?.plan?.generationCount).toBe(0);
+
+    const rebuilt = await confirmPlan(db, "owner-f", sticker.stickerId, revised.id);
+    expect((await stickerGenerationWorkflow(rebuilt.jobId)).workflowStatus).toBe("succeeded");
+
+    // The whole point: building the revision cost no image generations and the sticker still points
+    // at exactly the artwork the user already approved.
+    expect((await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).map((asset) => asset.id).sort())
+      .toEqual(originalAssetIds);
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, rebuilt.jobId)).get();
+    const document = StickerDocumentSchema.parse(revision!.documentJson);
+    expect(document.layers.flatMap((layer) => (layer.type === "image" ? [layer.assetId] : [])).sort())
+      .toEqual(reusedIds.sort());
+    await close();
+  });
+
   it("refuses to act on a plan that is no longer actionable", async () => {
     const { db, close } = await createTestDatabase();
     setDatabaseForTests(db);
@@ -847,6 +987,97 @@ describe("durable sticker workflow", () => {
     expect(await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId)))
       .toHaveLength(0);
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get()).toBeTruthy();
+    await close();
+  });
+
+  it("renames the sticker from its transcript when the turn finishes", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    await db.insert(users).values({ id: "owner-title", createdAt: new Date(), updatedAt: new Date() });
+
+    const summarized: AiTitleContext[] = [];
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: async () => ({ type: "reply", message: "Tell me what to draw." }),
+      summarizeStickerTitle: async (input) => {
+        summarized.push(input);
+        // Quoted and padded, the way a model that ignored half the instruction answers.
+        return ' "Sunglasses Cat" ';
+      },
+    });
+
+    const prompt = "make me a cat sticker wearing tiny sunglasses please";
+    const sticker = await createSticker(db, "owner-title", {
+      title: prompt, kind: "static", prompt, referenceAssetIds: [],
+    });
+    const turn = await createChatTurn(db, "owner-title", sticker.stickerId, {
+      text: prompt, intent: "chat", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
+
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.title)
+      .toBe("Sunglasses Cat");
+    expect(summarized).toHaveLength(1);
+    expect(summarized[0].currentTitle).toBe(prompt);
+    expect(summarized[0].history).toContain(`user: ${prompt}`);
+    // Tool-call rows are the turn's machinery. `reply` is the one this turn opened, and naming the
+    // sticker after it is exactly what filtering them out prevents.
+    expect(summarized[0].history).not.toContain("system: reply");
+    await close();
+  });
+
+  it("keeps the old name, and the finished turn, when naming fails", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    await db.insert(users).values({ id: "owner-title-fail", createdAt: new Date(), updatedAt: new Date() });
+
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: async () => ({ type: "reply", message: "Tell me what to draw." }),
+      summarizeStickerTitle: async () => { throw new Error("naming timed out"); },
+    });
+
+    const sticker = await createSticker(db, "owner-title-fail", {
+      title: "Wave", kind: "static", prompt: "Wave", referenceAssetIds: [],
+    });
+    const turn = await createChatTurn(db, "owner-title-fail", sticker.stickerId, {
+      text: "Hello", intent: "chat", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
+
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, turn.jobId)).get())?.state)
+      .toBe("succeeded");
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.title)
+      .toBe("Wave");
+    await close();
+  });
+
+  it("clips a name too long for a library row at a word boundary", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    await db.insert(users).values({ id: "owner-title-long", createdAt: new Date(), updatedAt: new Date() });
+
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: async () => ({ type: "reply", message: "Tell me what to draw." }),
+      summarizeStickerTitle: async () =>
+        "A Very Enthusiastic Cat Wearing Tiny Mirrored Sunglasses On A Skateboard",
+    });
+
+    const sticker = await createSticker(db, "owner-title-long", {
+      title: "Cat", kind: "static", prompt: "Cat", referenceAssetIds: [],
+    });
+    const turn = await createChatTurn(db, "owner-title-long", sticker.stickerId, {
+      text: "Cat on a skateboard", intent: "chat", attachments: [], imagePlacement: "replace",
+    });
+    await stickerGenerationWorkflow(turn.jobId);
+
+    const title = (await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.title;
+    expect(title).toBe("A Very Enthusiastic Cat Wearing Tiny Mirrored");
+    expect(title!.length).toBeLessThanOrEqual(48);
     await close();
   });
 });

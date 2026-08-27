@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { resolveChatAction, validatePlannedAnimationOperation } from "@/lib/ai/gateway";
+import { resolveChatAction, validateEditOperation, validatePlannedAnimationOperation } from "@/lib/ai/gateway";
 import { CreateUploadRequestSchema, PostChatMessageRequestSchema } from "@/lib/contracts/api";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { validateAnimatedRenditionTiming } from "@/lib/services/stickers";
@@ -38,6 +38,19 @@ describe("media and animation hardening", () => {
       op: "addLayer",
       layer: { ...shape.layer, type: "image", assetId: crypto.randomUUID(), contentMode: "fit" },
     } as never)).toThrow(/ownership/);
+
+    // The edit loop's free tool draws the same line: it may restructure the stack however it likes,
+    // but artwork has to come from a redraw that was generated, stored, and paid for.
+    expect(validateEditOperation(shape)).toBe(shape);
+    expect(validateEditOperation({ op: "removeLayer", layerId: "omg_text" }))
+      .toEqual({ op: "removeLayer", layerId: "omg_text" });
+    expect(() => validateEditOperation({
+      op: "addLayer",
+      layer: { ...shape.layer, type: "image", assetId: crypto.randomUUID(), contentMode: "fit" },
+    } as never)).toThrow(/add_image_layer/);
+    expect(() => validateEditOperation({
+      op: "replaceAsset", layerId: "hero", assetId: crypto.randomUUID(),
+    })).toThrow(/edit_image_layer/);
   });
 
   it("prevents structural operations from escaping a targeted animation", () => {
@@ -132,7 +145,7 @@ describe("media and animation hardening", () => {
     )).toThrow();
   });
 
-  it("reconciles a routed edit with the layers the image tools can actually touch", () => {
+  it("reconciles a routed edit with the layers the document actually has", () => {
     const documentWith = (...layers: unknown[]) => StickerDocumentSchema.parse({
       version: 1,
       canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
@@ -147,19 +160,21 @@ describe("media and animation hardening", () => {
     const hero = { id: "hero", name: "Hero", type: "image", assetId: crypto.randomUUID(), contentMode: "fit" };
     const edit = { type: "edit" as const, instruction: "Make the OMG cartoon-like", imagePlacement: "replace" as const };
 
-    // The bug this guards: the router sees `omg_text` in the document and targets it, and the
-    // workflow then fails the turn on a layer the image model was never able to redraw.
+    // The edit tool owns the whole layer stack, so an app-drawn layer is a legitimate target and is
+    // left alone rather than rewritten into a plan the user then has to confirm.
     expect(resolveChatAction({ ...edit, targetLayerId: "omg_text" }, documentWith(text, hero)))
-      .toEqual({ type: "plan", instruction: edit.instruction });
-    // An id that names nothing is dropped rather than obeyed, so the edit finds the image itself.
+      .toEqual({ ...edit, targetLayerId: "omg_text" });
+    // An id that names nothing is dropped rather than obeyed, so the edit picks its own target.
     expect(resolveChatAction({ ...edit, targetLayerId: "invented" }, documentWith(hero)))
       .toEqual({ ...edit, targetLayerId: undefined });
     expect(resolveChatAction({ ...edit, targetLayerId: "hero" }, documentWith(text, hero)))
       .toEqual({ ...edit, targetLayerId: "hero" });
-    // Nothing drawn to edit: adding one element is a generation, changing the rest needs a plan.
+    // A sticker with no drawn artwork in it is still editable: its text layer can be removed,
+    // reworded, moved, or replaced with artwork, all of which is an edit.
     expect(resolveChatAction({ ...edit, imagePlacement: "add" }, documentWith(text)))
-      .toEqual({ type: "generate_image", instruction: edit.instruction });
-    expect(resolveChatAction(edit, documentWith(text))).toEqual({ type: "plan", instruction: edit.instruction });
+      .toEqual({ ...edit, imagePlacement: "add" });
+    expect(resolveChatAction(edit, documentWith(text))).toEqual(edit);
+    // Nothing to edit at all, though, is a first generation.
     expect(resolveChatAction(edit, undefined)).toEqual({ type: "generate", instruction: edit.instruction });
     // Animation keyframes any layer type, so only an id naming nothing at all is unusable.
     const animate = { type: "animate" as const, instruction: "Pulse it" };

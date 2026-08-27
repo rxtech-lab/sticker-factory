@@ -98,6 +98,20 @@ export const SaveEditedDocumentRequestSchema = z.object({
   note: z.string().trim().max(200).optional(),
 }).strict();
 
+/**
+ * An APNs device token, as the hex string iOS hands the app.
+ *
+ * Length is bounded rather than fixed at 64 characters: Apple has changed it before (32 bytes to
+ * 32-or-more), and rejecting a longer token would silently turn off notifications for a future OS.
+ */
+export const RegisterDeviceRequestSchema = z.object({
+  token: z.string().trim().regex(/^[0-9a-fA-F]{64,256}$/, "Expected a hex APNs device token"),
+  platform: z.literal("ios").default("ios"),
+  environment: z.enum(["sandbox", "production"]).default("production"),
+  bundleId: z.string().trim().min(1).max(200).optional(),
+  appVersion: z.string().trim().min(1).max(50).optional(),
+}).strict();
+
 export const ApiErrorSchema = z.object({
   error: z.object({
     code: z.string(),
@@ -315,6 +329,7 @@ export const UnpublishPackRequestSchema = z.object({
 }).strict();
 
 export type CreateStickerRequest = z.infer<typeof CreateStickerRequestSchema>;
+export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceRequestSchema>;
 export type CreatePackRequest = z.infer<typeof CreatePackRequestSchema>;
 export type UpdatePackRequest = z.infer<typeof UpdatePackRequestSchema>;
 export type AddPackItemRequest = z.infer<typeof AddPackItemRequestSchema>;

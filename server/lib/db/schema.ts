@@ -291,6 +291,33 @@ export const packInstalls = sqliteTable("pack_installs", {
   index("pack_installs_pack_state_idx").on(table.packId, table.state),
 ]);
 
+/**
+ * Where to reach a user who is not looking at the app.
+ *
+ * Generation runs on the server, so the server is the only party that reliably sees a turn end: the
+ * client's event stream is gone the moment iOS suspends it, which is precisely when a banner is
+ * worth sending. The APNs device token is the primary key because it names an app install, not a
+ * person — re-registering after a different account signs in on the same phone must move the row
+ * rather than leave the old owner pushing to it.
+ */
+export const deviceTokens = sqliteTable("device_tokens", {
+  token: text("token").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  platform: text("platform", { enum: ["ios"] }).notNull().default("ios"),
+  /** A sandbox token is rejected by the production APNs host and vice versa. */
+  environment: text("environment", { enum: ["sandbox", "production"] }).notNull().default("production"),
+  bundleId: text("bundle_id"),
+  appVersion: text("app_version"),
+  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
+  lastSeenAt: timestamp("last_seen_at").notNull().$defaultFn(() => new Date()),
+  /** Set when APNs says the token is gone. Registering the same token again clears it. */
+  disabledAt: timestamp("disabled_at"),
+  disabledReason: text("disabled_reason"),
+}, (table) => [
+  index("device_tokens_user_active_idx").on(table.userId, table.disabledAt),
+]);
+
 export const idempotencyKeys = sqliteTable("idempotency_keys", {
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   operation: text("operation").notNull(),
@@ -316,3 +343,4 @@ export type CreatorProfileRow = typeof creatorProfiles.$inferSelect;
 export type StickerPackRow = typeof stickerPacks.$inferSelect;
 export type StickerPackItemRow = typeof stickerPackItems.$inferSelect;
 export type PackInstallRow = typeof packInstalls.$inferSelect;
+export type DeviceTokenRow = typeof deviceTokens.$inferSelect;

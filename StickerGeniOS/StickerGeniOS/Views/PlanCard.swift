@@ -50,8 +50,8 @@ struct PlanCard: View {
         } message: {
             Text(confirmationMessage)
         }
-        // The reason is optional but asked for every time, because it is the only thing that stops
-        // the agent from proposing the same design again — the server feeds it into the next turn.
+        // The reason is optional but asked for every time: given one, the assistant drafts again
+        // straight away with it in hand. Without one the rejection is the end of the thread.
         .alert("Reject this plan?", isPresented: $rejecting) {
             TextField("What is wrong with it?", text: $rejectionReason, axis: .vertical)
             Button("Reject", role: .destructive) {
@@ -62,7 +62,7 @@ struct PlanCard: View {
             }
             Button("Keep it", role: .cancel) { rejectionReason = "" }
         } message: {
-            Text("Telling the assistant what to change helps it plan something better next time.")
+            Text("Say what is wrong and the assistant will draft a new plan right away. Leave it blank to just dismiss this one.")
         }
     }
 
@@ -255,9 +255,10 @@ private struct PlanLayoutPreview: View {
                     width: width,
                     height: height
                 )
-                // Generated layers read as solid; app-drawn layers are outlined, so the cost of the
-                // plan is visible in the picture and not only in the button label.
-                let filled = layer.source.isGenerated
+                // Artwork reads as solid; app-drawn layers are outlined, so the picture shows what
+                // the sticker is actually made of. What it costs is in the heading and the button:
+                // artwork the plan keeps from the current sticker is drawn but not paid for.
+                let filled = layer.source.isArtwork
                 let shape = Path(roundedRect: rect, cornerRadius: 4)
                 context.fill(shape, with: .color(AppColors.accent.opacity(filled ? 0.16 : 0.06)))
                 context.stroke(

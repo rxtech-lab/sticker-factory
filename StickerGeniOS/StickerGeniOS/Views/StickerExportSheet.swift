@@ -13,6 +13,7 @@ struct StickerExportSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var isPresentingFullScreen = false
+    @State private var isPresentingShareSheet = false
 
     private var assets: [String: UIImage] { assetStore.images }
     private var verifiedAssetIDs: Set<String> { assetStore.verifiedAssetIDs }
@@ -40,14 +41,7 @@ struct StickerExportSheet: View {
                             statusHeader
                             if revision.canPublishExports { exportSettings }
                             actionRow
-                            if !model.publishedURLs.isEmpty {
-                                ShareLink(items: model.publishedURLs) {
-                                    Label("Share", systemImage: "square.and.arrow.up")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.glass)
-                                .controlSize(.large)
-                            }
+                            shareRow
                         }
                     }
 
@@ -78,6 +72,9 @@ struct StickerExportSheet: View {
         // sheet: the background picker has to pick that document's setting back up, and anything
         // rendered for the version being replaced is stale.
         .task(id: revision.id) { model.seed(from: revision) }
+        .sheet(isPresented: $isPresentingShareSheet) {
+            ShareSheet(items: model.publishedURLs)
+        }
         .fullScreenCover(isPresented: $isPresentingFullScreen) {
             FullScreenStickerPlayer(
                 document: revision.document,
@@ -282,6 +279,52 @@ struct StickerExportSheet: View {
         }
     }
 
+    /// Share is offered for anything that has files to hand over — including a revision published
+    /// in an earlier session, which this run rendered nothing for. Publishing is the point of the
+    /// sheet, so reaching the published state and finding no way to send the sticker anywhere
+    /// reads as the publish having gone nowhere.
+    @ViewBuilder
+    private var shareRow: some View {
+        if !model.publishedURLs.isEmpty {
+            ShareLink(items: model.publishedURLs) {
+                Label("Share", systemImage: "square.and.arrow.up")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+            .controlSize(.large)
+            .accessibilityIdentifier("share-exports")
+        } else if isPublished {
+            // The files are on the server, not on this device, so the share sheet cannot be handed
+            // its items up front the way `ShareLink` needs them.
+            Button {
+                Haptics.tap()
+                Task {
+                    if await model.prepareShareFiles(store: store, revision: revision) {
+                        isPresentingShareSheet = true
+                    } else {
+                        Haptics.failure()
+                    }
+                }
+            } label: {
+                Group {
+                    if model.isPreparingShare {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Preparing files…")
+                        }
+                    } else {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+            .controlSize(.large)
+            .disabled(model.isPreparingShare)
+            .accessibilityIdentifier("share-exports")
+        }
+    }
+
     @ViewBuilder
     private var actionRow: some View {
         if model.isPublishing || publishIsPending {
@@ -332,4 +375,16 @@ struct StickerExportSheet: View {
             .accessibilityIdentifier(revision.canPublishExports ? "publish-exports" : "export-files")
         }
     }
+}
+
+/// The system share sheet for files that only exist once a download finishes — the case
+/// `ShareLink`, which takes its items at construction, cannot cover.
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [URL]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

@@ -52,6 +52,10 @@ final class StickerStore {
     /// id: a finished stream must be re-attachable, otherwise a turn that dies once can never
     /// recover and the chat stays silent until the user leaves and comes back.
     @ObservationIgnored private var observations: [String: Task<Void, Never>] = [:]
+    /// Which observation is the current one, per sticker. The job id cannot serve as this: a
+    /// re-attach to the *same* job supersedes a live stream, and without a generation the cancelled
+    /// one's teardown would tear down the stream that replaced it.
+    @ObservationIgnored private var observationGenerations: [String: Int] = [:]
     @ObservationIgnored private var pollers: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var reattachAttempts: [String: Int] = [:]
 
@@ -62,7 +66,14 @@ final class StickerStore {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshGeneration = 0
 
-    init(api: StickerAPIClientProtocol) { self.api = api }
+    /// Asked to request notification permission when a turn starts. The banners themselves come
+    /// from the server, which is the only side still watching once iOS suspends the app.
+    @ObservationIgnored private let notifier: (any GenerationNotifying)?
+
+    init(api: StickerAPIClientProtocol, notifier: (any GenerationNotifying)? = nil) {
+        self.api = api
+        self.notifier = notifier
+    }
 
     func reset() {
         for task in observations.values { task.cancel() }
@@ -71,6 +82,7 @@ final class StickerStore {
         refreshTask?.cancel()
         refreshTask = nil
         observations = [:]
+        observationGenerations = [:]
         pollers = [:]
         reattachAttempts = [:]
         stickers = []
@@ -161,9 +173,22 @@ final class StickerStore {
         return detail.sticker
     }
 
+    /// Records a freshly fetched detail, and keeps the library's own summary of the same sticker in
+    /// step with it.
+    ///
+    /// The two are separate copies, and a turn can change what they disagree about: the server
+    /// summarizes the finished chat into a new title, so a detail stored on its own would leave the
+    /// renamed project sitting under its old name on the shelf until the whole library reloaded.
+    private func absorb(detail: StickerDetail) {
+        details[detail.id] = detail
+        if let index = stickers.firstIndex(where: { $0.id == detail.id }) {
+            stickers[index] = detail.sticker
+        }
+    }
+
     func loadDetail(stickerID: String) async {
         do {
-            details[stickerID] = try await api.sticker(id: stickerID)
+            absorb(detail: try await api.sticker(id: stickerID))
             errorMessage = nil
         } catch {
             guard !Self.isCancellation(error) else { return }
@@ -336,20 +361,34 @@ final class StickerStore {
             planID: planID,
             idempotencyKey: UUID().uuidString
         )
-        await loadMessages(stickerID: stickerID)
+        // Attach before reloading the transcript, not after: the reload sees a user message that is
+        // already streaming and would otherwise open its own stream for the same job, which this
+        // call would then immediately supersede.
         reattachAttempts[stickerID] = 0
         observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, force: true)
+        await loadMessages(stickerID: stickerID)
     }
 
-    /// Rejects a plan. The reason is optional but worth asking for: the server stores it and feeds
-    /// it into the next planning turn, so the agent knows what to avoid instead of re-proposing it.
+    /// Rejects a plan. The reason is optional but worth asking for: given one, the server keeps the
+    /// conversation going — it posts the reason as the next message and the agent redrafts against
+    /// it, which is why this attaches to the turn that comes back.
     func cancelPlan(stickerID: String, planID: String, reason: String? = nil) async throws {
-        _ = try await api.cancelPlan(
+        // A reason starts a turn, and the server allows only one at a time. Say so here rather than
+        // letting it come back as a 409 that would also have thrown the plan away.
+        let hasReason = !(reason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        if hasReason, computingStickerIDs.contains(stickerID) { throw StickerStoreError.turnAlreadyComputing }
+        let response = try await api.cancelPlan(
             stickerID: stickerID,
             planID: planID,
             reason: reason,
             idempotencyKey: UUID().uuidString
         )
+        // Attached before the transcript reload for the same reason as `confirmPlan`: the reload
+        // would otherwise see a streaming user message and open a second stream for one job.
+        if let job = response.job, let message = response.message {
+            reattachAttempts[stickerID] = 0
+            observe(jobID: job.id, stickerID: stickerID, sourceMessageID: message.id, force: true)
+        }
         await loadMessages(stickerID: stickerID)
     }
 
@@ -489,20 +528,28 @@ final class StickerStore {
         state.sourceMessageID = sourceMessageID ?? state.sourceMessageID
         state.streamErrorMessage = nil
         state.isTerminal = false
+        // A re-attach to a job id that previously failed is a fresh attempt, not the old failure
+        // still standing — otherwise the failure banner sits over a turn that is already streaming.
+        state.isFailed = false
         jobs[stickerID] = state
         computingStickerIDs.insert(stickerID)
+        // Ask for permission — and enrol with APNs — as the first turn starts, so the prompt
+        // arrives with its own reason already on screen rather than as a launch-time interrogation.
+        notifier?.prepare()
 
+        let generation = (observationGenerations[stickerID] ?? 0) &+ 1
+        observationGenerations[stickerID] = generation
         observations[stickerID] = Task {
             var streamError: Error?
             do {
                 for try await event in api.generationEvents(jobID: jobID, after: jobs[stickerID]?.lastEventID) {
-                    guard jobs[stickerID]?.jobID == jobID else { break }
+                    guard jobs[stickerID]?.jobID == jobID, observationGenerations[stickerID] == generation else { break }
                     await apply(event: event, stickerID: stickerID, jobID: jobID)
                 }
             } catch {
                 if !Self.isCancellation(error) { streamError = error }
             }
-            await finishObservation(stickerID: stickerID, jobID: jobID, error: streamError)
+            await finishObservation(stickerID: stickerID, jobID: jobID, generation: generation, error: streamError)
         }
     }
 
@@ -527,7 +574,7 @@ final class StickerStore {
         }
         if event.type == .candidate || event.type == .completed {
             streamingDocuments[stickerID] = nil
-            details[stickerID] = try? await api.sticker(id: stickerID)
+            if let detail = try? await api.sticker(id: stickerID) { absorb(detail: detail) }
             await loadMessages(stickerID: stickerID)
         }
         if event.type == .failed || event.data.cancelled == true {
@@ -546,7 +593,10 @@ final class StickerStore {
     /// The stream is a latency optimisation, never the source of truth — so this always
     /// reconciles against the server. Without it, a stream that dies before the terminal event
     /// leaves the chat showing nothing at all until the user navigates away and back.
-    private func finishObservation(stickerID: String, jobID: String, error: Error?) async {
+    private func finishObservation(stickerID: String, jobID: String, generation: Int, error: Error?) async {
+        // A superseded stream finishing says nothing about the one that replaced it — even when
+        // both are on the same job id, as a re-attach mid-turn is.
+        guard observationGenerations[stickerID] == generation else { return }
         guard jobs[stickerID]?.jobID == jobID else { return }
         observations[stickerID] = nil
         streamingDocuments[stickerID] = nil
@@ -561,6 +611,7 @@ final class StickerStore {
 
         if let error, !hasAssistantTurn(stickerID: stickerID, jobID: jobID) {
             jobs[stickerID]?.streamErrorMessage = error.localizedDescription
+            return
         }
     }
 
@@ -601,7 +652,7 @@ final class StickerStore {
     /// Ends a turn the server has already answered but whose stream never said so.
     private func settleIfResolved(stickerID: String, jobID: String) async {
         guard observations[stickerID] == nil, hasAssistantTurn(stickerID: stickerID, jobID: jobID) else { return }
-        details[stickerID] = try? await api.sticker(id: stickerID)
+        if let detail = try? await api.sticker(id: stickerID) { absorb(detail: detail) }
         computingStickerIDs.remove(stickerID)
         jobs[stickerID]?.isTerminal = true
     }
@@ -619,7 +670,10 @@ final class StickerStore {
         let hasAssistant = hasAssistantTurn(stickerID: stickerID, jobID: jobID)
         switch source.status {
         case .streaming:
-            guard !hasAssistant else { return }
+            // `streaming` is the server's own word for "this job has not finished": it flips the
+            // source message to complete or failed when the turn ends, cancellation included. An
+            // assistant message already in the transcript does not contradict that — a plan card is
+            // posted mid-turn — so the status alone decides whether to re-attach.
             resume(jobID: jobID, stickerID: stickerID, sourceMessageID: source.id)
         case .failed:
             observations[stickerID]?.cancel()

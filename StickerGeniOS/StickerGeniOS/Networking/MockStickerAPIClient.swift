@@ -7,6 +7,8 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     private var messages = PreviewFixtures.messages
     private var packs = [PreviewFixtures.pack]
     private var packDetails = [PreviewFixtures.packDetail.id: PreviewFixtures.packDetail]
+    /// Readable so a test can assert the app enrolled this device for push.
+    private(set) var registeredDeviceTokens: [String] = []
     private let failCreationAsUpload: Bool
 
     init(failCreationAsUpload: Bool = false) {
@@ -126,11 +128,46 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             messages[index].plan?.actionable = false
             messages[index].plan?.decisionReason = reason
         }
-        return .init(planId: planID, state: .cancelled)
+        // A reason is a request for a better plan, so the mock starts the redraft the server would.
+        let trimmed = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty else {
+            return .init(planId: planID, state: .cancelled)
+        }
+        let messageID = UUID().uuidString
+        let jobID = "55555555-5555-4555-8555-555555555555"
+        messages.append(.init(
+            id: messageID,
+            role: .user,
+            kind: .text,
+            content: trimmed,
+            targetLayerId: nil,
+            imagePlacement: .replace,
+            baseRevisionId: nil,
+            sequence: (messages.map(\.sequence).max() ?? 0) + 1,
+            revisionId: nil,
+            jobId: jobID,
+            status: .streaming,
+            createdAt: Date(),
+            attachments: []
+        ))
+        return .init(
+            planId: planID,
+            state: .cancelled,
+            message: .init(id: messageID, status: .streaming),
+            job: .init(id: jobID, state: .queued, workflowRunId: "mock-replan", eventsUrl: "/api/v1/jobs/mock-replan/events")
+        )
     }
 
     func cancelGeneration(jobID: String, idempotencyKey: String) async throws -> CancelGenerationResponse {
         .init(jobId: jobID, state: .cancelled)
+    }
+
+    func registerDevice(token: String, environment: PushEnvironment, bundleID: String?, appVersion: String?) async throws {
+        registeredDeviceTokens.append(token)
+    }
+
+    func unregisterDevice(token: String) async throws {
+        registeredDeviceTokens.removeAll { $0 == token }
     }
 
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse {

@@ -219,7 +219,6 @@ export const BackgroundSchema = z.discriminatedUnion("type", [
 
 export const CANVAS_MIN_DIMENSION = 16;
 export const CANVAS_MAX_DIMENSION = 4096;
-export const MAX_LAYERS = 12;
 
 const DocumentBaseSchema = z.object({
   version: z.literal(CURRENT_DOCUMENT_VERSION),
@@ -231,7 +230,11 @@ const DocumentBaseSchema = z.object({
     coordinateSpace: z.literal("normalized"),
     transparent: z.boolean().default(true),
   }).strict(),
-  layers: z.array(StickerLayerV1Schema).max(MAX_LAYERS),
+  // Deliberately unbounded. The cap used to be a fixed count, which turned "add one more layer" into
+  // a hard failure — after the image for that layer had already been generated and paid for. Nothing
+  // downstream is written against a layer count; rendering, export, and the operation log are all
+  // linear in it, so the request body limit is the only bound that needs to exist.
+  layers: z.array(StickerLayerV1Schema),
   background: BackgroundSchema.default({ type: "none" }),
   mp4Background: Mp4BackgroundV1Schema.default({ type: "solid", color: "#FFFFFF" }),
 }).strict();
