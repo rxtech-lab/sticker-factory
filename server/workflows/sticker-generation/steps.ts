@@ -37,8 +37,10 @@ import {
   validatePlannedAnimationOperation,
   type AnimationDraftingSession,
   type EditDraftingSession,
+  type LayoutDraftingSession,
   type PlanDraftingSession,
 } from "@/lib/ai/gateway";
+import { applyLayoutAdjustment, layoutDiagnostics } from "@/lib/layout/composition";
 import {
   isNotifiableJobKind,
   notifyGenerationFinished,
@@ -182,6 +184,8 @@ type StickerToolName =
   | "edit_image_layer"
   | "add_image_layer"
   | "finalize_edit"
+  | "adjust_layout"
+  | "finalize_layout"
   | "view_sticker"
   | "show-sticker";
 
@@ -1248,6 +1252,108 @@ async function executeEditTurn(
 }
 
 /**
+ * Reviews the assembled pixels and lands layout-only corrections before a candidate is created.
+ *
+ * The generated assets are immutable here. The session accepts a narrow placement/order contract,
+ * applies it with the layer's existing animation specs, and rejects any adjusted document whose
+ * conservative layer boxes leave the canvas. A render marks a revision as reviewed; if the model
+ * runs out of steps after another change, the last actually viewed revision wins rather than an
+ * uninspected draft leaking out as the candidate.
+ */
+async function refineBuiltLayout(
+  job: typeof generationJobs.$inferSelect,
+  document: StickerDocument,
+  instruction: string,
+  history: string,
+): Promise<StickerDocument> {
+  // One layer has no inter-layer composition to repair. Skipping it also avoids adding a vision
+  // round trip to plans whose only reason to exist is structured motion.
+  if (document.layers.length < 2) return document;
+
+  let working = document;
+  let reviewed: StickerDocument | undefined;
+  let revision = 0;
+  let viewedRevision = -1;
+  const nextLabel = toolCallLabeller();
+  const abort = (error: unknown): never => { throw new TurnAbort(error); };
+  const openCall = async (toolName: StickerToolName): Promise<string> => {
+    try {
+      return await beginToolCall(job, toolName, undefined, nextLabel(toolName));
+    } catch (error) {
+      return abort(error);
+    }
+  };
+
+  const session: LayoutDraftingSession = {
+    renderSticker: async () => {
+      const call = await openCall("view_sticker");
+      try {
+        const render = await renderWorkingDocument(working, job.ownerId);
+        reviewed = working;
+        viewedRevision = revision;
+        await finishToolCall(job, call);
+        return render;
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        return abort(error);
+      }
+    },
+    applyLayout: async (adjustment) => {
+      const call = await openCall("adjust_layout");
+      try {
+        if (viewedRevision < 0) {
+          throw new Error("Call view_sticker before making the first layout adjustment");
+        }
+        await assertJobStillRunning(job.id).catch(abort);
+        const landed = applyLayoutAdjustment(working, adjustment);
+        await assertDocumentAssetsOwned(landed, job.ownerId, job.stickerId).catch(abort);
+        working = landed;
+        revision += 1;
+        await finishToolCall(job, call);
+        return { revision, document: working };
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
+    finalizeLayout: async () => {
+      const call = await openCall("finalize_layout");
+      try {
+        if (viewedRevision !== revision) {
+          throw new Error("Call view_sticker on the current layout before finalizing it");
+        }
+        const diagnostics = layoutDiagnostics(working);
+        if (diagnostics.offCanvasLayerIds.length > 0) {
+          throw new Error(
+            `Keep every complete layer box on canvas. Fix: ${diagnostics.offCanvasLayerIds.join(", ")}`,
+          );
+        }
+        await finishToolCall(job, call);
+        return { revision, document: working };
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
+  };
+
+  const result = await getAiProvider().refineStickerLayout(
+    { document, instruction, history },
+    session,
+  );
+  await assertJobStillRunning(job.id);
+  if (!result?.finalized) {
+    console.warn("Using the last viewed layout from an unfinished review loop", {
+      jobId: job.id,
+      stickerId: job.stickerId,
+      revision,
+      viewedRevision,
+    });
+  }
+  return result?.finalized ? working : (reviewed ?? document);
+}
+
+/**
  * Builds a confirmed plan: one image per generate layer, then the document the plan describes.
  *
  * Motion is no longer a second AI pass. The plan already carries structured animation specs that
@@ -1311,10 +1417,16 @@ async function executePlanBuildTurn(
     });
   }
 
-  const document = documentFromPlan(plan, job.id);
+  let document = documentFromPlan(plan, job.id);
   // Covers the reused layers too: an `existing` source names an asset by id, and this is what stops
   // a plan from pointing at another sticker's artwork, or at one that has since been swept.
   await assertDocumentAssetsOwned(document, job.ownerId, sticker.id);
+  document = await refineBuiltLayout(
+    job,
+    document,
+    `${plan.title}. ${plan.summary}`,
+    history,
+  );
   const firstImageAssetId = document.layers.find((layer) => layer.type === "image")?.assetId;
   let snapshot = 0;
   await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document });
