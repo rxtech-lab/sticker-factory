@@ -38,13 +38,19 @@ struct StickerContractTests {
         #expect(!VerifiedStickerImageProcessor(expectedSHA256: String(repeating: "0", count: 64)).accepts(data))
     }
 
+    /// The v2 fixture, which is what every already-stored revision looks like.
+    ///
+    /// `document_json` is immutable, so v2 rows outlive every version bump and the client has to
+    /// keep reading them forever. It is *not* rewritten to v3 on the way in — v3 only added a layer
+    /// kind, so a v2 document is already a valid v3 one and `validated()` simply accepts both.
     @Test("Canonical server fixture decodes, validates, and round-trips")
     func canonicalDocumentFixture() throws {
         let data = try fixtureData("sticker-document-v2")
         let document = try JSONDecoder.api.decode(AnimatedDocument.self, from: data)
         let validated = try document.validated()
 
-        #expect(validated.version == AnimatedDocument.currentVersion)
+        #expect(validated.version == 2)
+        #expect(AnimatedDocument.readableVersions.contains(validated.version))
         #expect(validated.canvas.coordinateSpace == "normalized")
         #expect(validated.kind == .animated)
         #expect(validated.layers.count == 2)
@@ -60,6 +66,74 @@ struct StickerContractTests {
         #expect(mp4Background["colors"] as? [String] == ["#FFE7A3", "#FF8FA3"])
         #expect(mp4Background["stops"] == nil)
         #expect(try JSONDecoder.api.decode(AnimatedDocument.self, from: reencoded) == validated)
+    }
+
+    /// The v3 fixture, which is what the server writes today.
+    ///
+    /// The round trip is the load-bearing half: the client sends whole documents back through
+    /// `saveEditedDocument`, so a sequence layer that decoded but re-encoded wrong would be rejected
+    /// by the server on save — or worse, silently saved with the wrong footage layout.
+    @Test("Current server fixture decodes its sequence layer and round-trips")
+    func currentDocumentFixture() throws {
+        let data = try fixtureData("sticker-document-v3")
+        let document = try JSONDecoder.api.decode(AnimatedDocument.self, from: data)
+        let validated = try document.validated()
+
+        #expect(validated.version == AnimatedDocument.currentVersion)
+        #expect(validated.kind == .animated)
+        #expect(validated.loop == .pingPong)
+        guard case .sequence(let hero) = validated.layers[0] else {
+            #expect(Bool(false), "Fixture must lead with its capture layer")
+            return
+        }
+        #expect(hero.columns == 4)
+        #expect(hero.rows == 3)
+        #expect(hero.frameCount == 12)
+        #expect(hero.frameRate == 10)
+        #expect(hero.playback == .loop)
+        #expect(hero.posterAssetId != nil)
+
+        let reencoded = try JSONEncoder.api.encode(validated)
+        #expect(try JSONDecoder.api.decode(AnimatedDocument.self, from: reencoded) == validated)
+        let wire = try #require(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+        let layers = try #require(wire["layers"] as? [[String: Any]])
+        #expect(layers[0]["type"] as? String == "sequence")
+        #expect(layers[0]["frameCount"] as? Int == 12)
+    }
+
+    /// A layer kind from a future version must not take the whole document down with it.
+    ///
+    /// Before `AnimatedLayer.unsupported` existed, an unknown `type` threw out of the layer decoder,
+    /// which failed the document, which failed the enclosing `StickerDetail` — leaving the user with
+    /// a project they could not open at all. Round-tripping the raw object is the other half: saving
+    /// an edit must not silently delete the layer either.
+    @Test("An unknown layer kind is carried, not fatal")
+    func unknownLayerKindSurvives() throws {
+        var wire = try #require(
+            JSONSerialization.jsonObject(with: try fixtureData("sticker-document-v3")) as? [String: Any]
+        )
+        var layers = try #require(wire["layers"] as? [[String: Any]])
+        layers[0]["type"] = "hologram"
+        layers[0]["depthMetres"] = 4
+        wire["layers"] = layers
+        let data = try JSONSerialization.data(withJSONObject: wire)
+
+        let document = try JSONDecoder.api.decode(AnimatedDocument.self, from: data)
+        #expect(document.layers.count == 2)
+        guard case .unsupported = document.layers[0] else {
+            #expect(Bool(false), "An unknown layer kind should decode as unsupported")
+            return
+        }
+        // Reported so the editor can block publishing, rather than quietly shipping a sticker with
+        // a layer this build could not draw.
+        #expect(!document.layers[0].isValid)
+        #expect(document.editorIssues.contains { $0.severity == .blocking })
+
+        let reencoded = try JSONEncoder.api.encode(document)
+        let roundTripped = try #require(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+        let outLayers = try #require(roundTripped["layers"] as? [[String: Any]])
+        #expect(outLayers[0]["type"] as? String == "hologram")
+        #expect(outLayers[0]["depthMetres"] as? Int == 4)
     }
 
     /// The server authors motion declaratively and ships both representations: `animations` (the
@@ -250,6 +324,35 @@ struct StickerContractTests {
         }
         #expect(issues.count == 1)
         #expect(details["retryable"] == .bool(false))
+    }
+
+    /// The server's message has to survive the trip to a banner.
+    ///
+    /// `Error.localizedDescription` on a type that is only `Error` synthesises "The operation
+    /// couldn't be completed. (StickerGeniOS.APIErrorEnvelope error 1.)" — so every message the API
+    /// took care to write was discarded at the very last step, and every failure looked identical.
+    /// Nothing about that is visible at the throw site, which is why it needs a test rather than a
+    /// reading.
+    @Test("An API error reaches the user in the server's own words")
+    func apiErrorDescribesItself() throws {
+        let envelope = try JSONDecoder.api.decode(APIErrorEnvelope.self, from: Data("""
+        {"error":{"code":"SEQUENCE_INVALID","message":"frameCount must not exceed rows × columns","requestId":"request-7"}}
+        """.utf8))
+
+        #expect(envelope.localizedDescription == "frameCount must not exceed rows × columns")
+        #expect(!envelope.localizedDescription.contains("couldn’t be completed"))
+        #expect(!envelope.localizedDescription.contains("couldn't be completed"))
+
+        // Thrown and caught as an opaque `Error`, which is how every call site actually sees it.
+        let caught: String
+        do { throw envelope } catch { caught = error.localizedDescription }
+        #expect(caught == "frameCount must not exceed rows × columns")
+    }
+
+    @Test("A rejected upload says which status it was rejected with")
+    func uploadFailureCarriesItsStatus() {
+        let error: Error = StickerAPIError.uploadFailed(status: 403)
+        #expect(error.localizedDescription.contains("403"))
     }
 }
 
@@ -1023,7 +1126,7 @@ private extension StickerAPIClientProtocol {
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse { throw TestFixtureError.stub }
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse { throw TestFixtureError.stub }
     func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse { throw TestFixtureError.stub }
-    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String { throw TestFixtureError.stub }
+    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String { throw TestFixtureError.stub }
     func assetDownload(assetID: String) async throws -> AssetDownload { throw TestFixtureError.stub }
     nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
         AsyncThrowingStream { $0.finish() }

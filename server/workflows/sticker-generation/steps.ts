@@ -6,12 +6,14 @@ import {
   assertPlanReuseIsResolvable,
   compilePlanAnimations,
   planLayerAnchor,
+  planRequiresConcept,
   PlanV1Schema,
   type PlanV1,
 } from "@/lib/contracts/plan";
 import {
   applyStickerOperationsV1,
   CURRENT_DOCUMENT_VERSION,
+  layerImageAssetIds,
   StickerDocumentSchema,
   type StickerDocument,
   type StickerLayerV1,
@@ -40,6 +42,7 @@ import {
   type EditDraftingSession,
   type LayoutDraftingSession,
   type PlanDraftingSession,
+  type AiSequenceAsset,
 } from "@/lib/ai/gateway";
 import { applyLayoutAdjustment, layoutDiagnostics } from "@/lib/layout/composition";
 import {
@@ -357,9 +360,12 @@ async function renderWorkingDocument(document: StickerDocument, ownerId: string)
 
 async function assertDocumentAssetsOwned(document: StickerDocument, ownerId: string, stickerId: string): Promise<void> {
   const db = getDatabase();
-  const ids = document.layers.flatMap((layer) => layer.type === "image"
-    ? [layer.assetId, ...(layer.maskAssetId ? [layer.maskAssetId] : [])]
-    : []);
+  const ids = document.layers.flatMap((layer) => [
+    ...layerImageAssetIds(layer),
+    // The poster is derived from the atlas and belongs to the same sticker, so an unowned one is
+    // the same ownership hole as an unowned atlas — and it is the asset older clients are served.
+    ...(layer.type === "sequence" && layer.posterAssetId ? [layer.posterAssetId] : []),
+  ]);
   if (ids.length === 0) return;
   const rows = await db.select().from(assets).where(and(eq(assets.ownerId, ownerId), eq(assets.stickerId, stickerId)));
   const byId = new Map(rows.filter((asset) => asset.state === "ready").map((asset) => [asset.id, asset]));
@@ -619,10 +625,33 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocument {
         paint: solid(source.color),
         seed: source.seed,
       };
+    // Captured footage carries straight through: the grid was fixed when the atlas was encoded on
+    // device, and nothing here is allowed to reinterpret it. `posterAssetId` is filled in later, by
+    // `ensureSequencePosters`, on the way into the revision.
+    case "sequence":
+      return {
+        ...base,
+        type: "sequence",
+        assetId: source.assetId,
+        columns: source.columns,
+        rows: source.rows,
+        frameCount: source.frameCount,
+        frameRate: source.frameRate,
+        playback: source.playback,
+        startSeconds: 0,
+        contentMode: "fit",
+      };
     }
   });
 
   const canvas = { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true } as const;
+  // The document must sample at least as fast as the fastest capture in it, or the contract refuses
+  // the document outright — and a plan the user already confirmed would fail at build time with an
+  // error about frame rates. Raising the fps is both the fix and what the user meant: they asked for
+  // their footage, not for a slower version of it.
+  const captureRate = Math.max(0, ...plan.layers.map(
+    (layer) => (layer.source.kind === "sequence" ? layer.source.frameRate : 0),
+  ));
   return plan.kind === "static"
     ? StickerDocumentSchema.parse({
       version: CURRENT_DOCUMENT_VERSION, canvas, layers, kind: "static", durationSeconds: 0, fps: 0, loop: "once",
@@ -633,7 +662,7 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocument {
       layers,
       kind: "animated",
       durationSeconds: plan.timing.durationSeconds,
-      fps: plan.timing.fps,
+      fps: Math.min(60, Math.max(plan.timing.fps, Math.ceil(captureRate))),
       loop: plan.timing.loop,
     });
 }
@@ -667,6 +696,7 @@ async function upsertPlanCard(
 }
 
 function planReferencePrompt(plan: PlanV1): string | undefined {
+  if (!planRequiresConcept(plan)) return undefined;
   if (plan.conceptPrompt) return plan.conceptPrompt;
   if (plan.kind !== "animated") return undefined;
 
@@ -680,7 +710,9 @@ function planReferencePrompt(plan: PlanV1): string | undefined {
           ? `the text "${source.text}" in ${source.color}`
           : source.kind === "shape"
             ? `a ${source.fill} ${source.shape}`
-            : `${source.color} ${source.preset}`;
+            : source.kind === "particle"
+              ? `${source.color} ${source.preset}`
+              : `the person or subject the user captured, named ${layer.name}`;
     return `${layer.name}: ${description}, centred near (${layer.x}, ${layer.y})`;
   });
   return [
@@ -748,7 +780,11 @@ async function executePlanTurn(
   instruction: string,
   history: string,
   activeDocument: StickerDocument | undefined,
+  /** Everything a concept render draws from: the user's attachments, padded with existing artwork. */
   references: Array<{ bytes: Uint8Array; mimeType: string }>,
+  /** The subset the planner itself is shown — only what the user attached this turn. */
+  attachedImages: Array<{ bytes: Uint8Array; mimeType: string }>,
+  sequenceAssets: AiSequenceAsset[],
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
   const db = getDatabase();
@@ -766,7 +802,7 @@ async function executePlanTurn(
       const call = await beginToolCall(job, "create_plan");
       try {
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
-        assertPlanReuseIsResolvable(plan, activeDocument);
+        assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const created = await createPlan(db, {
           ownerId: job.ownerId,
           stickerId: sticker.id,
@@ -792,7 +828,7 @@ async function executePlanTurn(
       const call = await beginToolCall(job, "update_plan", undefined, `update_plan #${updates}`);
       try {
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
-        assertPlanReuseIsResolvable(plan, activeDocument);
+        assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const updated = await updatePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId, plan });
         latest = { planId: updated.planId, revision: updated.revision, plan };
         await finishToolCall(job, call);
@@ -837,6 +873,8 @@ async function executePlanTurn(
     stickerKind: sticker.kind,
     document: activeDocument,
     rejectedReasons: rejected.map((row) => row.decisionReason).filter((reason): reason is string => Boolean(reason)),
+    sequenceAssets,
+    references: attachedImages,
   }, session);
 
   if (!latest) throw new Error("The planner finished without drafting a plan");
@@ -874,6 +912,8 @@ async function executeAnimationTurn(
   instruction: string,
   history: string,
   targetLayerId: string | undefined,
+  /** The images the user attached to this turn. Shown to the model; nothing here is drawn. */
+  attachedImages: Array<{ bytes: Uint8Array; mimeType: string }>,
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
   const db = getDatabase();
@@ -1013,7 +1053,7 @@ async function executeAnimationTurn(
   };
 
   const result = await getAiProvider().animateSticker(
-    { document: base, instruction, history, targetLayerId },
+    { document: base, instruction, history, targetLayerId, references: attachedImages },
     session,
   );
 
@@ -1086,8 +1126,10 @@ async function executeEditTurn(
   options: {
     targetLayerId?: string;
     imagePlacement: "add" | "replace";
-    /** Reference images the user attached to this turn. Every redraw is shown all of them. */
+    /** Everything every redraw is shown: the user's attachments, padded with existing artwork. */
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
+    /** The subset the model itself is shown — only what the user attached this turn. */
+    attachedImages: Array<{ bytes: Uint8Array; mimeType: string }>;
   },
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
@@ -1253,6 +1295,7 @@ async function executeEditTurn(
     targetLayerId: options.targetLayerId,
     imagePlacement: options.imagePlacement,
     attachmentCount: options.references.length,
+    references: options.attachedImages,
   }, session);
 
   // Before anything below reports on the model, so a turn the user stopped is not also blamed on it.
@@ -1451,7 +1494,7 @@ async function executePlanBuildTurn(
   if (!planRow) throw new Error("Plan not found for this job");
   const plan = PlanV1Schema.parse(planRow.planJson);
   const generated = generatedLayers(plan, job.id);
-  const visualReference = plan.kind === "animated"
+  const visualReference = planRequiresConcept(plan)
     ? await loadPlanVisualReference(planRow, job.ownerId, sticker.id)
     : undefined;
 
@@ -1608,13 +1651,41 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   if (activeDocument) await assertDocumentAssetsOwned(activeDocument, job.ownerId, sticker.id);
   const objectStore = getObjectStore();
   const referenceRows = attachments.filter((row) => row.attachment.kind === "reference");
+  // Captures ride in as ordinary `reference` attachments — the atlas is a PNG, so nothing about the
+  // wire format needed widening — and are told apart here by their asset kind. The grid comes off
+  // the asset row rather than out of the image, because a sprite sheet cannot describe itself.
+  const sequenceAssets: AiSequenceAsset[] = referenceRows.flatMap((row) => (
+    row.asset.kind === "sequence"
+      && row.asset.frameCount && row.asset.fps
+      && row.asset.sequenceColumns && row.asset.sequenceRows
+      ? [{
+        assetId: row.asset.id,
+        columns: row.asset.sequenceColumns,
+        rows: row.asset.sequenceRows,
+        frameCount: row.asset.frameCount,
+        frameRate: row.asset.fps,
+      }]
+      : []
+  ));
+  let attachedImagesPromise: Promise<Array<{ bytes: Uint8Array; mimeType: string }>> | undefined;
+  /**
+   * What the user actually attached to this turn, and nothing else.
+   *
+   * Kept apart from `loadReferenceImages` below because the two answer different questions. This is
+   * the set the reasoning models are *shown* — so it has to mean "the pictures the user handed over",
+   * not "the pictures a redraw happens to be given".
+   */
+  const loadAttachedImages = () => {
+    attachedImagesPromise ??= Promise.all(referenceRows.map(async (row) => {
+      const object = await objectStore.get(row.asset.r2Key);
+      return { bytes: object.bytes, mimeType: row.asset.mimeType };
+    }));
+    return attachedImagesPromise;
+  };
   let referenceImagesPromise: Promise<Array<{ bytes: Uint8Array; mimeType: string }>> | undefined;
   const loadReferenceImages = () => {
     referenceImagesPromise ??= (async () => {
-      const userReferenceImages = await Promise.all(referenceRows.map(async (row) => {
-        const object = await objectStore.get(row.asset.r2Key);
-        return { bytes: object.bytes, mimeType: row.asset.mimeType };
-      }));
+      const userReferenceImages = await loadAttachedImages();
       // A re-plan should preserve the artwork already on screen as faithfully as a newly attached
       // photo. Fill any reference slots the user did not occupy with the current document's image
       // layers, in layer order, and never send the same asset twice.
@@ -1676,6 +1747,8 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       history,
       activeDocument,
       await loadReferenceImages(),
+      await loadAttachedImages(),
+      sequenceAssets,
       await beginToolCall(job, "plan-sticker"),
     );
   }
@@ -1708,13 +1781,17 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   const mustPlanFirst = sticker.kind === "animated" && !activeDocument && !hasPlan;
 
   if (job.kind === "chat") {
+    // Fetched before the span rather than inside it, so the router's own latency stays the model's
+    // and not the object store's.
+    const attachedImages = await loadAttachedImages();
     const action = await traceSpan("routeChatTurn", { jobId }, () => getAiProvider().routeChatTurn({
       instruction: sourceMessage.content,
       history,
       stickerKind: sticker.kind,
       document: activeDocument,
       hasPlan,
-      attachmentCount: attachments.filter((row) => row.attachment.kind === "reference").length,
+      attachmentCount: referenceRows.length,
+      references: attachedImages,
     }));
     traceEvent("routeChatTurn:routed", { jobId, action: action.type });
     // Motion is keyframed onto a live revision of this sticker — the one the user kept, or a
@@ -1758,6 +1835,8 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         history,
         undefined,
         await loadReferenceImages(),
+        await loadAttachedImages(),
+        sequenceAssets,
         await beginToolCall(job, "plan-sticker"),
       );
     }
@@ -1784,6 +1863,8 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         history,
         activeDocument,
         await loadReferenceImages(),
+        await loadAttachedImages(),
+        sequenceAssets,
         primaryToolCallId,
       );
     }
@@ -1837,6 +1918,8 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       history,
       undefined,
       await loadReferenceImages(),
+      await loadAttachedImages(),
+      sequenceAssets,
       await beginToolCall(job, "plan-sticker"),
     );
   } else {
@@ -1863,6 +1946,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       instruction,
       history,
       targetLayerId,
+      await loadAttachedImages(),
       primaryToolCallId,
     );
   }
@@ -1885,7 +1969,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       activeRevision,
       instruction,
       history,
-      { targetLayerId, imagePlacement, references: referenceImages },
+      { targetLayerId, imagePlacement, references: referenceImages, attachedImages: await loadAttachedImages() },
       primaryToolCallId,
     );
   }

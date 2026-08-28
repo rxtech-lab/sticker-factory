@@ -175,6 +175,10 @@ struct AnimatedAddLayerMenu: View {
 
     private var availableTypes: [AnimatedLayerType] {
         AnimatedLayerType.allCases.filter { type in
+            // Captured footage comes from the picker and an unsupported layer comes from a newer
+            // build; neither is something this menu could create. Filtered here rather than left out
+            // of `allCases`, so the enum keeps meaning what `CaseIterable` says it means.
+            guard type.isAuthorable else { return false }
             guard allowedLayerTypes.contains(type) else { return false }
             // A document carries no pixels, so an image layer is meaningless unless the host can
             // resolve an asset for it.

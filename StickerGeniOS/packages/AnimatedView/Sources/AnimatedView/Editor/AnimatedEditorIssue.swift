@@ -150,6 +150,36 @@ extension AnimatedDocument {
                 add("count", .blocking, "\(trimmedName) must have between 1 and 64 particles.")
             }
             if !particle.paint.isValid { add("paint", .blocking, "\(trimmedName)'s colour is not valid.") }
+        case .sequence(let sequence):
+            if !sequence.assetId.isAnimatedUUID {
+                add("asset", .blocking, "\(trimmedName) has no valid capture.")
+            }
+            if let poster = sequence.posterAssetId, !poster.isAnimatedUUID {
+                add("poster", .blocking, "\(trimmedName)'s still frame is not a valid image.")
+            }
+            if sequence.frameCount > sequence.rows * sequence.columns || sequence.frameCount < 1 {
+                add("frames", .blocking, "\(trimmedName) claims more frames than its capture holds.")
+            }
+            if !(1...60).contains(sequence.frameRate) {
+                add("rate", .blocking, "\(trimmedName) must play between 1 and 60 frames per second.")
+            }
+            // Advisory rather than blocking, unlike the server's identical rule: someone lowering
+            // the document's frame rate mid-edit should be told what it costs, not stopped dead.
+            if kind == .animated, Double(fps) < sequence.frameRate {
+                add(
+                    "rate-mismatch",
+                    .warning,
+                    "\(trimmedName) was captured at \(Int(sequence.frameRate)) fps but this sticker "
+                        + "renders at \(fps), so some frames will be dropped."
+                )
+            }
+        case .unsupported:
+            add(
+                "unsupported",
+                .blocking,
+                "\(trimmedName) was made with a newer version of Sticker Factory and cannot be shown here. "
+                    + "Update the app to edit this sticker."
+            )
         }
 
         // Warnings: legal documents that almost certainly are not what the author meant.

@@ -1,7 +1,27 @@
 import Foundation
 
 public enum AnimatedLayerType: String, Codable, CaseIterable, Hashable, Sendable {
-    case image, text, shape, svg, particle
+    case image, text, shape, svg, particle, sequence
+    /// Not a wire type. Stands for a layer a newer build wrote and this one cannot draw; the layer
+    /// re-encodes its own original `type` string, so this raw value never reaches JSON.
+    case unsupported
+
+    /// Whether the editor may offer this as a layer the user can add.
+    ///
+    /// `sequence` is authorable only in the sense that a document can contain one — the footage
+    /// comes from lifting a subject out of a Live Photo in the picker, and there is nothing
+    /// meaningful to create from an empty editor menu. `unsupported` is never authorable at all.
+    public var isAuthorable: Bool {
+        switch self {
+        case .image, .text, .shape, .svg, .particle: true
+        case .sequence, .unsupported: false
+        }
+    }
+}
+
+/// How captured footage repeats inside its own layer, independent of the document's `loop`.
+public enum AnimatedSequencePlayback: String, Codable, CaseIterable, Hashable, Sendable {
+    case loop, once, pingPong
 }
 
 public enum AnimatedFontFamily: String, Codable, CaseIterable, Hashable, Sendable {
@@ -339,6 +359,142 @@ public struct AnimatedParticleLayer: Codable, Hashable, Sendable {
     }
 }
 
+/// Real frames the user captured, packed into one image and played back on the timeline.
+///
+/// The frames arrive as a single transparent PNG holding a `rows` x `columns` grid of equally sized
+/// tiles. Slicing one out costs nothing — `CGImage.cropping(to:)` shares the backing store — which
+/// is what lets the renderer resolve a tile per frame without a second decode. `FrameAtlasCache`
+/// does that; nothing here holds pixels.
+///
+/// `frameRate` is the footage's own rate and has nothing to do with the document's `fps`, which
+/// only governs how densely the exporter samples the timeline. `AnimationInterpolator
+/// .sequenceFrameIndex` is where the two meet.
+public struct AnimatedSequenceLayer: Codable, Hashable, Sendable {
+    public var base: AnimatedLayerBase
+    /// The frame-atlas image. One asset, whatever the frame count.
+    public var assetId: String
+    public var columns: Int
+    public var rows: Int
+    /// Tiles actually used, read row-major from the top-left. Trailing cells of the grid may be empty.
+    public var frameCount: Int
+    public var frameRate: Double
+    public var playback: AnimatedSequencePlayback
+    /// When on the document timeline the first tile appears. Before it, the first tile is held.
+    public var startSeconds: Double
+    public var contentMode: AnimatedContentMode
+    /// Tile 0 as its own asset, present on documents the server has processed. The renderer never
+    /// needs it — it exists so a client that predates this layer type can be served a still.
+    public var posterAssetId: String?
+
+    public init(
+        base: AnimatedLayerBase,
+        assetId: String,
+        columns: Int,
+        rows: Int,
+        frameCount: Int,
+        frameRate: Double,
+        playback: AnimatedSequencePlayback = .loop,
+        startSeconds: Double = 0,
+        contentMode: AnimatedContentMode = .fit,
+        posterAssetId: String? = nil
+    ) {
+        self.base = base
+        self.assetId = assetId
+        self.columns = columns
+        self.rows = rows
+        self.frameCount = frameCount
+        self.frameRate = frameRate
+        self.playback = playback
+        self.startSeconds = startSeconds
+        self.contentMode = contentMode
+        self.posterAssetId = posterAssetId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, assetId, columns, rows, frameCount, frameRate, playback, startSeconds, contentMode, posterAssetId
+    }
+
+    public init(from decoder: Decoder) throws {
+        base = try AnimatedLayerBase(from: decoder)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        assetId = try c.decode(String.self, forKey: .assetId)
+        columns = try c.decode(Int.self, forKey: .columns)
+        rows = try c.decode(Int.self, forKey: .rows)
+        frameCount = try c.decode(Int.self, forKey: .frameCount)
+        frameRate = try c.decode(Double.self, forKey: .frameRate)
+        playback = try c.value(.playback, default: .loop)
+        startSeconds = try c.value(.startSeconds, default: 0)
+        contentMode = try c.value(.contentMode, default: .fit)
+        posterAssetId = try c.decodeIfPresent(String.self, forKey: .posterAssetId)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        try base.encode(to: encoder)
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(AnimatedLayerType.sequence, forKey: .type)
+        try c.encode(assetId, forKey: .assetId)
+        try c.encode(columns, forKey: .columns)
+        try c.encode(rows, forKey: .rows)
+        try c.encode(frameCount, forKey: .frameCount)
+        try c.encode(frameRate, forKey: .frameRate)
+        try c.encode(playback, forKey: .playback)
+        try c.encode(startSeconds, forKey: .startSeconds)
+        try c.encode(contentMode, forKey: .contentMode)
+        try c.encodeIfPresent(posterAssetId, forKey: .posterAssetId)
+    }
+
+    public var isValid: Bool {
+        base.isValid
+            && assetId.isAnimatedUUID
+            && (posterAssetId.map(\.isAnimatedUUID) ?? true)
+            && (1...8).contains(columns)
+            && (1...8).contains(rows)
+            && (1...64).contains(frameCount)
+            && frameCount <= rows * columns
+            && (1...60).contains(frameRate)
+            && (0...30).contains(startSeconds)
+    }
+}
+
+/// A layer written by a newer build, carried through untouched.
+///
+/// Without this, an unknown `type` throws out of `AnimatedLayer.init(from:)`, which fails the whole
+/// document decode, which fails the whole sticker decode — and the user is left with a project they
+/// cannot open at all. Rendering nothing is a far better failure than that, and re-encoding the raw
+/// object means saving an edit does not silently delete the layer either.
+///
+/// `isValid` is false on purpose: the editor should surface a blocking issue rather than let someone
+/// publish a sticker with a layer this build could not draw.
+public struct AnimatedUnsupportedLayer: Codable, Hashable, Sendable {
+    public var base: AnimatedLayerBase
+    /// The layer's original JSON, including its own `type`. Re-encoded verbatim.
+    public var raw: [String: AnimatedRawJSON]
+
+    public init(base: AnimatedLayerBase, raw: [String: AnimatedRawJSON]) {
+        self.base = base
+        self.raw = raw
+    }
+
+    public init(from decoder: Decoder) throws {
+        raw = try [String: AnimatedRawJSON](from: decoder)
+        // A future layer kind will still carry the shared base, but this type's whole purpose is
+        // surviving what we did not anticipate, so a base that fails to decode falls back to a
+        // placeholder rather than throwing and taking the document with it.
+        if let decoded = try? AnimatedLayerBase(from: decoder) {
+            base = decoded
+        } else {
+            let id = if case .string(let value) = raw["id"] ?? .null { value } else { "unsupported" }
+            base = AnimatedLayerBase(id: id, name: "Unsupported layer")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        try raw.encode(to: encoder)
+    }
+
+    public var isValid: Bool { false }
+}
+
 /// The type-discriminated layer union, encoded as one flat object with a `type` key.
 public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     case image(AnimatedImageLayer)
@@ -346,17 +502,29 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     case shape(AnimatedShapeLayer)
     case svg(AnimatedSVGLayer)
     case particle(AnimatedParticleLayer)
+    case sequence(AnimatedSequenceLayer)
+    /// A layer this build does not understand. See `AnimatedUnsupportedLayer`.
+    case unsupported(AnimatedUnsupportedLayer)
 
     private enum CodingKeys: String, CodingKey { case type }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        switch try container.decode(AnimatedLayerType.self, forKey: .type) {
+        // Decoded as a raw string rather than straight into the enum: an unknown `type` must land on
+        // `.unsupported`, not throw. Throwing here fails the document, then the sticker, and the
+        // user cannot open the project at all — which is precisely what a version bump would
+        // otherwise do to every build already in the field.
+        let raw = try container.decode(String.self, forKey: .type)
+        switch AnimatedLayerType(rawValue: raw) {
         case .image: self = .image(try AnimatedImageLayer(from: decoder))
         case .text: self = .text(try AnimatedTextLayer(from: decoder))
         case .shape: self = .shape(try AnimatedShapeLayer(from: decoder))
         case .svg: self = .svg(try AnimatedSVGLayer(from: decoder))
         case .particle: self = .particle(try AnimatedParticleLayer(from: decoder))
+        case .sequence: self = .sequence(try AnimatedSequenceLayer(from: decoder))
+        // `unsupported` is not a wire type, so a document that literally spells it is as unknown as
+        // anything else — and falls into the same bucket rather than round-tripping as a real case.
+        case .unsupported, nil: self = .unsupported(try AnimatedUnsupportedLayer(from: decoder))
         }
     }
 
@@ -367,6 +535,8 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .shape(let value): try value.encode(to: encoder)
         case .svg(let value): try value.encode(to: encoder)
         case .particle(let value): try value.encode(to: encoder)
+        case .sequence(let value): try value.encode(to: encoder)
+        case .unsupported(let value): try value.encode(to: encoder)
         }
     }
 
@@ -378,6 +548,8 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
             case .shape(let v): v.base
             case .svg(let v): v.base
             case .particle(let v): v.base
+            case .sequence(let v): v.base
+            case .unsupported(let v): v.base
             }
         }
         set {
@@ -387,6 +559,10 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
             case .shape(var v): v.base = newValue; self = .shape(v)
             case .svg(var v): v.base = newValue; self = .svg(v)
             case .particle(var v): v.base = newValue; self = .particle(v)
+            case .sequence(var v): v.base = newValue; self = .sequence(v)
+            // Deliberately a no-op. `raw` is what gets encoded, so writing the base here would
+            // change what the editor shows without changing what is saved.
+            case .unsupported: break
             }
         }
     }
@@ -406,6 +582,8 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .shape: .shape
         case .svg: .svg
         case .particle: .particle
+        case .sequence: .sequence
+        case .unsupported: .unsupported
         }
     }
 
@@ -414,10 +592,15 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     public var isText: Bool { type == .text }
 
     /// Whether trim keyframes do anything to this layer. Images and particles have no path to trim.
+    ///
+    /// A sequence layer joins them rather than reusing `trim` to mean "which slice of the footage
+    /// plays". Overloading it that way would make this property lie, collide with the server's rule
+    /// that a declaratively animated layer's keyframes may not be hand-edited, and break compiler
+    /// parity. `startSeconds` and `playback` express the same intent without touching a channel.
     public var supportsTrim: Bool {
         switch self {
         case .shape, .svg: true
-        case .image, .text, .particle: false
+        case .image, .text, .particle, .sequence, .unsupported: false
         }
     }
 
@@ -428,6 +611,28 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .shape(let v): v.isValid
         case .svg(let v): v.isValid
         case .particle(let v): v.isValid
+        case .sequence(let v): v.isValid
+        case .unsupported(let v): v.isValid
+        }
+    }
+
+    /// Every bitmap this layer needs before it can draw.
+    ///
+    /// Exists so the two places that gather a document's assets — the app's preloader and the
+    /// publisher's pre-flight check — cannot disagree, and cannot quietly miss a layer kind. Both
+    /// used to pattern-match `.image` inline, which compiled perfectly well after `sequence` was
+    /// added and would have shipped a sticker of placeholders. The exhaustive switch here turns that
+    /// class of mistake into a build error at one site instead of a silent failure at two.
+    ///
+    /// `posterAssetId` is deliberately absent: nothing on this client renders it, and fetching it
+    /// would cost a download per sequence layer to hold an image only older clients are served.
+    /// SVG asset sources are absent for the same reason — they resolve through `svgMarkup(for:)`,
+    /// not through the image store.
+    public var referencedImageAssetIDs: [String] {
+        switch self {
+        case .image(let v): [v.assetId, v.maskAssetId].compactMap { $0 }
+        case .sequence(let v): [v.assetId]
+        case .text, .shape, .svg, .particle, .unsupported: []
         }
     }
 }

@@ -755,6 +755,9 @@
         }
       }
     },
+    "Balanced" : {
+
+    },
     "Be the first to publish a sticker pack." : {
       "localizations" : {
         "zh-CN" : {
@@ -1266,6 +1269,9 @@
           }
         }
       }
+    },
+    "Could not read this photo. Close to keep it as it is." : {
+
     },
     "Could not start" : {
       "localizations" : {
@@ -2243,6 +2249,18 @@
         }
       }
     },
+    "Lift subject" : {
+
+    },
+    "Lifted subject. Tap to choose a different one." : {
+
+    },
+    "Lifting the subject from every frame…" : {
+
+    },
+    "Lifting the subject…" : {
+
+    },
     "Load earlier messages" : {
       "localizations" : {
         "zh-CN" : {
@@ -2403,6 +2421,9 @@
         }
       }
     },
+    "Looking for subjects…" : {
+
+    },
     "Loop" : {
       "localizations" : {
         "zh-CN" : {
@@ -2498,6 +2519,9 @@
           }
         }
       }
+    },
+    "Maximum" : {
+
     },
     "Medium" : {
       "localizations" : {
@@ -2771,6 +2795,12 @@
         }
       }
     },
+    "No subject could be lifted out of that photo. Try one with a clearer foreground." : {
+
+    },
+    "No subject found here. Close to keep the whole photo." : {
+
+    },
     "Not now" : {
       "localizations" : {
         "zh-CN" : {
@@ -2898,6 +2928,9 @@
           }
         }
       }
+    },
+    "Only the subject you lift is uploaded. The rest of the photo stays on your device." : {
+
     },
     "Open %@ from the Messages app drawer to send published stickers, or share the exported files anywhere." : {
       "localizations" : {
@@ -3058,6 +3091,9 @@
           }
         }
       }
+    },
+    "Photo. Touch and hold a subject to lift it out." : {
+
     },
     "Pick the sticker size and formats, then export and publish this accepted version to your Library." : {
       "localizations" : {
@@ -3410,6 +3446,9 @@
           }
         }
       }
+    },
+    "Reference photo. Tap to lift a subject out of it." : {
+
     },
     "Reject" : {
       "localizations" : {
@@ -4585,6 +4624,9 @@
         }
       }
     },
+    "That photo could not be read." : {
+
+    },
     "The animation document is invalid." : {
       "localizations" : {
         "zh-CN" : {
@@ -4697,7 +4739,11 @@
         }
       }
     },
+    "The media upload could not be completed (HTTP %lld)." : {
+
+    },
     "The media upload could not be completed." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -4712,6 +4758,9 @@
           }
         }
       }
+    },
+    "The motion from that Live Photo could not be read." : {
+
     },
     "The MP4 export failed: %@" : {
       "localizations" : {
@@ -5087,6 +5136,12 @@
         }
       }
     },
+    "Touch and hold another subject to switch" : {
+
+    },
+    "Touch and hold the subject" : {
+
+    },
     "Try a different search or filter." : {
       "localizations" : {
         "zh-CN" : {
@@ -5230,6 +5285,12 @@
           }
         }
       }
+    },
+    "Use Live Subject" : {
+
+    },
+    "Use Subject" : {
+
     },
     "Use these reference images for the sticker." : {
       "localizations" : {

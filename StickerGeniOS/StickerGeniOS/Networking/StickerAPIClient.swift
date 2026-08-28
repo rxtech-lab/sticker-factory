@@ -1,3 +1,4 @@
+import AnimatedView
 import CryptoKit
 import Foundation
 import os
@@ -18,7 +19,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse
     func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse
-    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String
+    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String
     func assetDownload(assetID: String) async throws -> AssetDownload
     func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error>
 
@@ -53,6 +54,12 @@ nonisolated enum RevisionAction: String, Sendable { case accept, reject, revert 
 
 actor StickerAPIClient: StickerAPIClientProtocol {
     nonisolated static let log = Logger(subsystem: "app.rxlab.sticker-factory", category: "events")
+    /// Every way a request can fail, said out loud.
+    ///
+    /// These are error paths only, and they log the server's message and the offending response
+    /// body verbatim — which is the entire point, since the alternative is a banner that says an
+    /// operation could not be completed and nothing anywhere that says why.
+    nonisolated static let networkLog = Logger(subsystem: "app.rxlab.sticker-factory", category: "api")
 
     private let baseURL: URL
     private let tokenBroker: SharedTokenBroker
@@ -295,12 +302,20 @@ actor StickerAPIClient: StickerAPIClientProtocol {
 
     // MARK: - Uploads
 
-    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String {
+    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String {
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let intent: UploadIntentResponse = try await send(
             path: "api/v1/uploads",
             method: "POST",
-            body: UploadIntentRequest(stickerId: stickerID, kind: kind, mimeType: mimeType, byteSize: data.count, filename: filename, sha256: digest),
+            body: UploadIntentRequest(
+                stickerId: stickerID,
+                kind: kind,
+                mimeType: mimeType,
+                byteSize: data.count,
+                filename: filename,
+                sha256: digest,
+                sequence: sequence
+            ),
             idempotencyKey: idempotencyKey
         )
 
@@ -309,9 +324,18 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         upload.httpBody = data
         upload.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         for (name, value) in intent.upload.headers { upload.setValue(value, forHTTPHeaderField: name) }
-        let (_, response) = try await session.data(for: upload)
-        guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else {
-            throw StickerAPIError.uploadFailed
+        let (uploadBody, uploadResponse) = try await session.data(for: upload)
+        guard let http = uploadResponse as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            // Storage rejects for reasons the app can do something about — an expired presign, a
+            // content type that disagrees with what was declared, a body larger than the policy
+            // allows — and every one of them arrived as the same blank "upload could not be
+            // completed" until the status and body were written down.
+            let body = String(data: uploadBody.prefix(1_024), encoding: .utf8) ?? "<\(uploadBody.count) bytes>"
+            Self.networkLog.error(
+                "PUT storage → \(http.statusCode, privacy: .public) asset=\(intent.asset.id, privacy: .public) kind=\(kind.rawValue, privacy: .public) mime=\(mimeType, privacy: .public) bytes=\(data.count, privacy: .public), body: \(body, privacy: .public)"
+            )
+            throw StickerAPIError.uploadFailed(status: http.statusCode)
         }
 
         let _: AssetRecord = try await send(
@@ -479,14 +503,29 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         if bodyData != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let idempotencyKey { request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key") }
 
-        let (data, response) = try await session.data(for: request)
+        let context = "\(method) \(path)"
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            // Transport failures never reach `decode`, so without this a dropped connection or a
+            // TLS refusal leaves no trace at all. A cancelled request is a view going away, not a
+            // fault, and logging it as one would bury the failures that matter.
+            let cancelled = error is CancellationError
+                || (error as NSError).code == NSURLErrorCancelled
+            if !cancelled {
+                Self.networkLog.error("\(context, privacy: .public): transport failure — \(String(describing: error), privacy: .public)")
+            }
+            throw error
+        }
         guard let response = response as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
         if response.statusCode == 401 {
             request.setValue("Bearer \(try await tokenBroker.validAccessToken(forceRefresh: true))", forHTTPHeaderField: "Authorization")
             let (retryData, retryResponse) = try await session.data(for: request)
-            return try decode(retryData, response: retryResponse)
+            return try decode(retryData, response: retryResponse, context: "\(context) (retried after 401)")
         }
-        return try decode(data, response: response)
+        return try decode(data, response: response, context: context)
     }
 
     private func authorizedRequest(path: String, query: [URLQueryItem] = []) async throws -> URLRequest {
@@ -495,17 +534,43 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(try await tokenBroker.validAccessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // Announces which document contract this build can decode. Without it the server assumes the
+        // oldest shipped one and degrades any newer layer kind to something this client can draw —
+        // which is what keeps a version bump from bricking builds already in the field. Sent on
+        // every request rather than only the ones that return documents, so a new endpoint that
+        // starts returning one cannot forget.
+        request.setValue(String(AnimatedDocument.currentVersion), forHTTPHeaderField: "X-Sticker-Contract")
         return request
     }
 
-    private func decode<Response: Decodable>(_ data: Data, response: URLResponse) throws -> Response {
-        guard let response = response as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
+    private func decode<Response: Decodable>(_ data: Data, response: URLResponse, context: String) throws -> Response {
+        guard let response = response as? HTTPURLResponse else {
+            Self.networkLog.error("\(context, privacy: .public): no HTTP response")
+            throw StickerAPIError.invalidResponse
+        }
         guard (200...299).contains(response.statusCode) else {
-            if let envelope = try? decoder.decode(APIErrorEnvelope.self, from: data) { throw envelope }
+            if let envelope = try? decoder.decode(APIErrorEnvelope.self, from: data) {
+                Self.networkLog.error(
+                    "\(context, privacy: .public) → \(response.statusCode, privacy: .public) \(envelope.error.code, privacy: .public): \(envelope.error.message, privacy: .public) [request \(envelope.error.requestId, privacy: .public)] details=\(String(describing: envelope.error.details), privacy: .public)"
+                )
+                throw envelope
+            }
+            // Not an envelope, so the raw body is the only account of what went wrong — usually a
+            // proxy or an auth layer that never reached the app's error format.
+            let body = String(data: data.prefix(2_048), encoding: .utf8) ?? "<\(data.count) bytes>"
+            Self.networkLog.error("\(context, privacy: .public) → \(response.statusCode, privacy: .public), body: \(body, privacy: .public)")
             throw StickerAPIError.http(response.statusCode)
         }
         if Response.self == EmptyResponse.self, data.isEmpty { return EmptyResponse() as! Response }
-        return try decoder.decode(Response.self, from: data)
+        do {
+            return try decoder.decode(Response.self, from: data)
+        } catch {
+            // `DecodingError.localizedDescription` is "The data couldn't be read because it isn't in
+            // the correct format" and never names the key. `String(describing:)` prints the coding
+            // path, which is the entire answer to a contract drift.
+            Self.networkLog.error("\(context, privacy: .public): undecodable \(String(describing: Response.self), privacy: .public) — \(String(describing: error), privacy: .public)")
+            throw error
+        }
     }
 }
 
@@ -521,13 +586,15 @@ nonisolated struct EmptyResponse: Codable, Sendable {}
 nonisolated enum StickerAPIError: Error, LocalizedError, Equatable {
     case invalidResponse
     case http(Int)
-    case uploadFailed
+    /// Carries the status, because "upload failed" alone cannot distinguish an expired presign
+    /// from a rejected content type, and those are fixed in different places.
+    case uploadFailed(status: Int)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: String(localized: "The server returned an invalid response.")
         case .http(let code): String(localized: "The request failed (HTTP \(code)).")
-        case .uploadFailed: String(localized: "The media upload could not be completed.")
+        case .uploadFailed(let status): String(localized: "The media upload could not be completed (HTTP \(status)).")
         }
     }
 }

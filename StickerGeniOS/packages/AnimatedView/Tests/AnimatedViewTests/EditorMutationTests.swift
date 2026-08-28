@@ -21,13 +21,22 @@ struct EditorMutationTests {
 
     // MARK: - Starter layers
 
-    @Test(arguments: AnimatedLayerType.allCases)
+    @Test(arguments: AnimatedLayerType.allCases.filter(\.isAuthorable))
     func everyStarterLayerProducesAValidDocument(type: AnimatedLayerType) throws {
         let (document, id) = try staticDocument().addingStarterLayer(type, assetID: assetID)
         #expect(document.layers.count == 1)
         #expect(document.layer(id: id) != nil)
         #expect(try document.validated().layers.count == 1)
         #expect(document.editorIssues.filter { $0.severity == .blocking }.isEmpty)
+    }
+
+    /// The add menu is driven by `isAuthorable`, so a type that reports itself authorable but has no
+    /// starter would put a dead button in the menu — and one with a starter that the menu hides
+    /// would be unreachable. This pins the two halves together.
+    @Test(arguments: AnimatedLayerType.allCases)
+    func onlyAuthorableTypesHaveAStarter(type: AnimatedLayerType) {
+        let starter = AnimatedEditorDefaults.layer(type, id: "probe", assetID: assetID)
+        #expect((starter != nil) == type.isAuthorable)
     }
 
     /// `AnimatedShapeLayer.isValid` rejects a shape with neither fill nor stroke, because it draws

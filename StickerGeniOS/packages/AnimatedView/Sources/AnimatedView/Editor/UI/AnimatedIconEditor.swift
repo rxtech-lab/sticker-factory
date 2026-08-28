@@ -42,6 +42,7 @@ public struct AnimatedIconEditor: View {
     @State private var backdrop = AnimatedEditorBackdrop.checkerboard
     @State private var showsSettings = false
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     public init(
         document: Binding<AnimatedDocument>,
@@ -72,6 +73,8 @@ public struct AnimatedIconEditor: View {
         Group {
             if sizeClass == .regular {
                 regularLayout
+            } else if verticalSizeClass == .compact {
+                landscapeLayout
             } else {
                 compactLayout
             }
@@ -107,19 +110,53 @@ public struct AnimatedIconEditor: View {
 
             if editor.document.kind == .animated, pane == .motion {
                 AnimatedEditorTimeline(editor: editor)
-                    .frame(height: 150)
+                    .frame(height: AnimatedEditorTimeline.compactHeight)
             }
 
-            Picker("Pane", selection: $pane) {
-                ForEach(Pane.allCases) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            panePicker
 
             paneContent
                 .frame(height: 280)
         }
+    }
+
+    /// iPhone in landscape: two columns.
+    ///
+    /// Stacking works on a tall screen and nowhere else — in landscape the canvas, the timeline, and
+    /// a 280pt pane add up to more than the screen is tall, so the canvas takes the left half and
+    /// everything that edits it moves to a column on the right.
+    private var landscapeLayout: some View {
+        HStack(spacing: 0) {
+            AnimatedEditorStage(editor: editor, assets: assets, backdrop: backdrop)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(8)
+
+            Divider()
+
+            VStack(spacing: 0) {
+                transport
+
+                if editor.document.kind == .animated, pane == .motion {
+                    AnimatedEditorTimeline(editor: editor)
+                        .frame(maxHeight: AnimatedEditorTimeline.compactHeight)
+                }
+
+                panePicker
+
+                paneContent
+                    .frame(maxHeight: .infinity)
+            }
+            .frame(width: 380)
+        }
+    }
+
+    private var panePicker: some View {
+        Picker("Pane", selection: $pane) {
+            ForEach(Pane.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     /// iPad: sidebar for the stack, detail for the canvas, inspector for properties.

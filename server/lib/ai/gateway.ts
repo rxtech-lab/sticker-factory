@@ -6,6 +6,7 @@ import {
   hasToolCall,
   stepCountIs,
   tool,
+  type ModelMessage,
 } from "ai";
 import sharp from "sharp";
 import { z } from "zod";
@@ -25,7 +26,24 @@ import {
   type LayoutAdjustment,
 } from "@/lib/layout/composition";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
-import { inspectImage, normalizeTransparentPng } from "@/lib/storage/r2";
+import {
+  downscaleForModelInput,
+  inspectImage,
+  normalizeTransparentPng,
+} from "@/lib/storage/r2";
+
+/**
+ * One image a turn carries: a photo the user attached, a capture's frame atlas, or artwork the
+ * sticker already has.
+ *
+ * The same shape reaches two very different consumers. An image model is given these as the thing
+ * to draw from, and the reasoning loops are *shown* them, so they can decide what to do about a
+ * picture rather than being told a number of pictures exists.
+ */
+export interface AiReferenceImage {
+  bytes: Uint8Array;
+  mimeType: string;
+}
 
 export interface AiImageInput {
   prompt: string;
@@ -56,6 +74,22 @@ export type AiChatAction =
   | { type: "plan"; instruction: string }
   | { type: "show"; caption: string };
 
+/**
+ * A frame atlas the user attached to this turn: real frames of themselves, already cut out.
+ *
+ * Handed to the planner as data rather than left for it to infer, because the grid and the capture
+ * rate were fixed on device and nothing the model writes may reinterpret them. The atlas itself
+ * arrives separately, in `AiPlanContext.references`, so the planner also sees the motion as a
+ * contact sheet and can design around what the subject actually does.
+ */
+export interface AiSequenceAsset {
+  assetId: string;
+  columns: number;
+  rows: number;
+  frameCount: number;
+  frameRate: number;
+}
+
 export interface AiPlanContext {
   instruction: string;
   history: string;
@@ -63,6 +97,15 @@ export interface AiPlanContext {
   document?: StickerDocument;
   /** Reasons the user gave for turning down earlier plans, so the agent does not repeat them. */
   rejectedReasons: string[];
+  /** Captures attached to this turn. Empty for every turn that is not capture-led. */
+  sequenceAssets: AiSequenceAsset[];
+  /**
+   * The images the user attached to this turn, shown to the planner.
+   *
+   * Includes the atlas of any capture in `sequenceAssets`, so the same attachment arrives twice:
+   * once as the numbers the plan has to copy, and once as a contact sheet the planner can look at.
+   */
+  references: AiReferenceImage[];
 }
 
 /**
@@ -100,6 +143,14 @@ export interface AiAnimationContext {
    * tool error it can correct instead of failing the turn.
    */
   targetLayerId?: string;
+  /**
+   * The images the user attached to this turn, shown to the animator.
+   *
+   * Motion is the one thing a picture can carry that the document cannot: "make it wave like this"
+   * is a request about the attachment, and a capture's atlas is a contact sheet of the movement
+   * itself. Usually empty — most animate turns are words about artwork that already exists.
+   */
+  references: AiReferenceImage[];
 }
 
 /**
@@ -263,6 +314,8 @@ function describeLayer(layer: StickerDocument["layers"][number]): string {
     return "vector artwork";
   case "particle":
     return `${layer.count} ${layer.preset}`;
+  case "sequence":
+    return `${layer.frameCount}-frame live capture ${layer.assetId}`;
   }
 }
 
@@ -319,8 +372,15 @@ export interface AiEditContext {
   targetLayerId?: string;
   /** The router's read of whether new artwork is wanted alongside the old, or in place of it. */
   imagePlacement: "add" | "replace";
-  /** Reference images the user attached to this turn. Every redraw is shown them. */
+  /**
+   * How many reference images every redraw this turn asks for will be given.
+   *
+   * Wider than `references` below: a redraw is also shown the artwork the sticker already has, so
+   * that a re-drawn layer still looks like the sticker it belongs to.
+   */
   attachmentCount: number;
+  /** The images the user attached to this turn, shown to the model that decides what to redraw. */
+  references: AiReferenceImage[];
 }
 
 /**
@@ -385,6 +445,14 @@ export interface AiChatContext {
   stickerKind: "static" | "animated";
   document?: StickerDocument;
   attachmentCount: number;
+  /**
+   * The images the user attached to this turn, shown to the router.
+   *
+   * What was attached is often the whole of the request — a photo with "make this a sticker" reads
+   * completely differently from the same words with nothing attached — and the router used to see
+   * only the count.
+   */
+  references: AiReferenceImage[];
   /**
    * Whether this project has ever been planned.
    *
@@ -559,6 +627,89 @@ function assertImageInputBounds(input: AiImageInput): void {
       );
     }
   }
+}
+
+/**
+ * How many of a turn's attachments the reasoning loops are shown.
+ *
+ * The image models take up to eight, because a redraw wants every scrap of likeness it can get and
+ * pays for them once. A tool loop is the opposite case: its first message is re-sent on every step,
+ * so each attached image is billed ten or fourteen times over a turn. Four covers what a person
+ * actually attaches — a subject, a couple of angles, a style — and the rest still reach the artwork.
+ */
+const VIEWABLE_REFERENCE_LIMIT = 4;
+
+/**
+ * Prepares a turn's attachments for a model that is going to *look* at them.
+ *
+ * Not the same job as feeding an image model: those are given the originals, because the likeness
+ * they draw from is the whole point. Here the picture is evidence, so it is downscaled to a single
+ * tile first — see `downscaleForModelInput` for what that costs and why.
+ *
+ * An attachment that cannot be decoded is dropped rather than thrown. The turn's actual work does
+ * not depend on the model seeing it, and failing a plan because one of three photos is a malformed
+ * PNG would be a worse trade than planning from the other two.
+ */
+async function viewableReferences(
+  references: AiReferenceImage[],
+): Promise<AiReferenceImage[]> {
+  const prepared = await Promise.all(
+    references.slice(0, VIEWABLE_REFERENCE_LIMIT).map(async (reference) => {
+      try {
+        return [await downscaleForModelInput(reference.bytes)];
+      } catch (error) {
+        traceEvent("ai.reference.undecodable", {
+          mimeType: reference.mimeType,
+          byteSize: reference.bytes.byteLength,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return [];
+      }
+    }),
+  );
+  return prepared.flat();
+}
+
+/**
+ * The one user message a loop starts from: its instructions, and the pictures they are about.
+ *
+ * `generateText` takes either a `prompt` string or a `messages` list, and an image can only travel
+ * in the second — so a turn with attachments becomes a single user message with the text first and
+ * the images after it, which is the order every provider's own guidance asks for.
+ */
+function userTurn(text: string, images: AiReferenceImage[]): ModelMessage[] {
+  if (images.length === 0) return [{ role: "user", content: text }];
+  return [
+    {
+      role: "user",
+      content: [
+        { type: "text", text },
+        ...images.map((image) => ({
+          type: "image" as const,
+          image: image.bytes,
+          mediaType: image.mimeType,
+        })),
+      ],
+    },
+  ];
+}
+
+/**
+ * The line that tells a model what the images at the end of its message are.
+ *
+ * Without it an attachment reads as part of the sticker rather than as something the user handed
+ * over this turn, and a plan comes back describing the photo's background as a layer.
+ */
+function attachedImagesNote(count: number, extra?: string): string {
+  if (count === 0) return "";
+  return [
+    `The user attached ${count} image${count === 1 ? "" : "s"} to this turn, shown to you at the`,
+    "end of this message. They are reference material the user handed over, not the sticker itself,",
+    "so never treat their background, framing, or surroundings as something the sticker contains.",
+    extra ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 const transparentProviderOptions = {
@@ -857,6 +1008,7 @@ class GatewayAiProvider implements AiProvider {
     // Threaded through the tool bodies rather than read off the result, because the model refers to
     // the animation by id on every subsequent call and only the session knows the id it was given.
     let state: AnimateTurnResult | undefined;
+    const viewable = await viewableReferences(input.references);
     // Set when the session fails for a reason the model cannot fix. Not thrown from the tool body:
     // the SDK converts every `execute` throw into a tool-error part and keeps going, so the loop has
     // to be stopped from the outside and the real error rethrown after it unwinds.
@@ -1137,8 +1289,14 @@ class GatewayAiProvider implements AiProvider {
         "Keep within the planner's limits of 8 layers and 128 keyframes, duration 0.5-4s, and FPS <=30,",
         "and at most 16 operations in any one call.",
       ].join(" "),
-      prompt: [
+      messages: userTurn([
         `Base StickerDocument:\n${JSON.stringify(input.document)}`,
+        attachedImagesNote(
+          viewable.length,
+          "They are about the motion, not the artwork: you cannot draw anything this turn, so read"
+          + " them for how the user wants the sticker to move and keyframe the layers you have to"
+          + " match.",
+        ),
         input.targetLayerId
           ? `Animate only the layer with id ${input.targetLayerId}. Every operation you send must name it.`
           : "",
@@ -1146,7 +1304,7 @@ class GatewayAiProvider implements AiProvider {
         `Instruction:\n${input.instruction}`,
       ]
         .filter(Boolean)
-        .join("\n\n"),
+        .join("\n\n"), viewable),
       tools,
       toolChoice: "required",
       // Every step appends a restatement of the whole animation and a layer-by-layer summary of what
@@ -1180,6 +1338,7 @@ class GatewayAiProvider implements AiProvider {
     // the SDK converts every `execute` throw into a tool-error part and keeps going, so the loop has
     // to be stopped from the outside and the real error rethrown after it unwinds.
     let fatal: unknown;
+    const viewable = await viewableReferences(input.references);
 
     const guard = async (run: () => Promise<EditDraftState>) => {
       try {
@@ -1217,6 +1376,9 @@ class GatewayAiProvider implements AiProvider {
           "operation that sets it.",
           "You cannot add an image layer or point one at a different asset here; artwork has to be",
           "drawn, so use add_image_layer and edit_image_layer for that.",
+          "A sequence layer is real frames the user captured of themselves. You can move, resize,",
+          "rotate, reorder, rename, retime, and animate one, and setSequencePlayback changes how the",
+          "footage repeats. No tool can redraw it and you cannot add one — decorate around it.",
         ].join(" "),
         inputSchema: z.object({ operations: EditOperationsSchema }).strict(),
         execute: async ({ operations }) => guard(() => session.applyOperations(operations)),
@@ -1313,8 +1475,14 @@ class GatewayAiProvider implements AiProvider {
         "If a tool returns an error, read it and fix it — the error text says exactly what was wrong.",
         "Do not give up and do not send the same rejected operation again.",
       ].join(" "),
-      prompt: [
+      messages: userTurn([
         `Current StickerDocument:\n${JSON.stringify(input.document)}`,
+        attachedImagesNote(
+          viewable.length,
+          "Read them for the subject, likeness, style, and colours the user wants. Every redraw you"
+          + " ask for is shown them as well, so write its prompt around what you can see in them"
+          + " rather than restating that a reference exists.",
+        ),
         input.targetLayerId
           ? `The user is pointing at the layer with id ${input.targetLayerId}. Start there, and touch`
             + " another layer only if their words are about it."
@@ -1323,15 +1491,17 @@ class GatewayAiProvider implements AiProvider {
           ? "The request reads as wanting something new alongside what is already there, rather than a"
             + " change to existing artwork."
           : "",
-        input.attachmentCount > 0
-          ? `The user attached ${input.attachmentCount} reference image(s). Every redraw you ask for`
-            + " is shown them, so say how they should be used."
+        // Wider than the images above: a redraw also gets the sticker's own artwork back, which is
+        // what keeps a re-drawn layer looking like the sticker it belongs to.
+        input.attachmentCount > viewable.length
+          ? `Each redraw is given ${input.attachmentCount} reference images in total: the ones above,`
+            + " and the artwork this sticker already has."
           : "",
         `Recoverable chat history:\n${input.history}`,
         `Instruction:\n${input.instruction}`,
       ]
         .filter(Boolean)
-        .join("\n\n"),
+        .join("\n\n"), viewable),
       tools,
       toolChoice: "required",
       // This loop's calls stack and two of them buy images, so its tool history is the one part of
@@ -1356,6 +1526,7 @@ class GatewayAiProvider implements AiProvider {
   }
 
   async routeChatTurn(input: AiChatContext): Promise<AiChatAction> {
+    const viewable = await viewableReferences(input.references);
     const tools = {
       reply: tool({
         description: [
@@ -1520,16 +1691,22 @@ class GatewayAiProvider implements AiProvider {
         "So when an animated project has no plan yet, design it with plan-sticker rather than drawing it",
         "with generate-sticker: one flat image has no separate parts and can never be animated afterwards.",
       ].join(" "),
-      prompt: [
+      messages: userTurn([
         `Sticker kind: ${input.stickerKind}`,
         `Planned as layers already: ${input.hasPlan ? "yes" : "no"}`,
         `Attached reference images: ${input.attachmentCount}`,
+        attachedImagesNote(
+          viewable.length,
+          "Route on what they actually are: a photo of a person or a pet is a subject to build the"
+          + " sticker from, a screenshot of a sticker is a style to match, and a picture attached to"
+          + " a question is usually still a question.",
+        ),
         input.document
           ? `Current StickerDocument: ${JSON.stringify(input.document)}`
           : "There is no current sticker document.",
         `Recoverable chat history:\n${input.history}`,
         `Latest user message:\n${input.instruction}`,
-      ].join("\n\n"),
+      ].filter(Boolean).join("\n\n"), viewable),
       tools,
       toolChoice: "required",
       maxRetries: 2,
@@ -1605,6 +1782,7 @@ class GatewayAiProvider implements AiProvider {
     // the plan by id on every subsequent call and only the session knows the id it was given.
     let state: PlanTurnResult | undefined;
     const reusable = reusableAssetIds(input.document);
+    const viewable = await viewableReferences(input.references);
 
     const requirePlan = (planId: string) => {
       if (!state)
@@ -1690,7 +1868,7 @@ class GatewayAiProvider implements AiProvider {
         "approves this image before the generated artwork is separated into independent parts, so",
         "it is the visual source of truth for style, colour, proportions, and composition.",
         "",
-        "Layers. At most 8. Every layer picks its own source. The five options are:",
+        "Layers. At most 8. Every layer picks its own source. The six options are:",
         "  generate — artwork drawn from a prompt by an image model onto a transparent background.",
         "    This is the only source that can draw a subject: a character, creature, face, animal,",
         "    object, food, prop, scene element, or any illustration at all. Use one generate layer",
@@ -1703,12 +1881,21 @@ class GatewayAiProvider implements AiProvider {
         "  text — words drawn by the app in a system font.",
         "  shape — one fixed primitive: circle, roundedRectangle, star, heart, or burst.",
         "  particle — a preset field of sparkles, confetti, hearts, bubbles, or snow.",
+        "  sequence — real frames the user captured from a Live Photo, with the subject already cut",
+        "    out on their device. Free, and the only source that carries genuine motion: the subject",
+        "    actually moves the way they moved. You may only use this when the turn supplies one, and",
+        "    you must copy its assetId, columns, rows, frameCount, and frameRate exactly as given.",
+        "    Never invent those numbers and never describe a capture with a generate prompt — an",
+        "    image model cannot draw this person as well as their own camera already did.",
         "Animated visual fidelity. In an animated plan, every new visible element must use generate,",
         "including styled lettering, bursts, stars, underlines, badges, and decorative accents. The",
         "approved static image is later separated into these generated layers, which is how the final",
         "sticker keeps its exact silhouettes, outlines, bevels, shadows, highlights, and texture.",
         "Never use text, shape, or particle in an animated plan: those are generic app-rendered",
-        "primitives and will not match the approved image. Keep a word or phrase together in one",
+        "primitives and will not match the approved image. That rule is lifted entirely for a plan",
+        "led by a sequence layer: there is no generated image for anything to match, so text, shape,",
+        "and particle layers are welcome around a capture and are usually what makes it a sticker.",
+        "Keep a word or phrase together in one",
         "generated layer unless parts of it genuinely need independent motion. Existing image layers",
         "may still be reused when revising artwork that must remain pixel-identical.",
         "For static plans, prefer text, shape, and particle for simple lettering, flat accents, and",
@@ -1801,8 +1988,18 @@ class GatewayAiProvider implements AiProvider {
         "",
         "The summary is shown to the user as your chat message: one or two friendly sentences.",
       ].join("\n"),
-      prompt: [
+      messages: userTurn([
         `Sticker kind: ${input.stickerKind}`,
+        attachedImagesNote(
+          viewable.length,
+          "Read them for the subject, likeness, style, and colours the user wants, and write the"
+          + " layer prompts around what you can actually see in them."
+          + (input.sequenceAssets.length > 0
+            ? " One of them is the capture named below, laid out as a contact sheet: its frames read"
+              + " left to right, top to bottom. Look at what the subject actually does across them"
+              + " and design the sticker around that movement."
+            : ""),
+        ),
         input.document
           ? `Current StickerDocument: ${JSON.stringify(input.document)}`
           : "There is no current sticker document.",
@@ -1811,6 +2008,17 @@ class GatewayAiProvider implements AiProvider {
         reusable.length > 0
           ? `Artwork you can reuse with an existing source — copy these assetIds exactly:\n${reusable
               .map((assetId) => `- ${assetId}`)
+              .join("\n")}`
+          : "",
+        // Spelled out as fields rather than left for the model to read off the contact sheet it can
+        // see: the grid was fixed when the atlas was encoded on device, and a plan that guesses it
+        // wrong slices the footage into the wrong frames.
+        input.sequenceAssets.length > 0
+          ? "The user attached captured footage of themselves, already cut out. Make it the hero "
+            + "layer with a sequence source and build the sticker around it. Copy these fields "
+            + `exactly:\n${input.sequenceAssets
+              .map((asset) => `- assetId ${asset.assetId}, columns ${asset.columns}, rows ${asset.rows}, `
+                + `frameCount ${asset.frameCount}, frameRate ${asset.frameRate}`)
               .join("\n")}`
           : "",
         input.rejectedReasons.length > 0
@@ -1822,7 +2030,7 @@ class GatewayAiProvider implements AiProvider {
         `Latest user request:\n${input.instruction}`,
       ]
         .filter(Boolean)
-        .join("\n\n"),
+        .join("\n\n"), viewable),
       tools,
       toolChoice: "required",
       // The heaviest of the three loops: `update_plan` is a complete `PlanV1` every time, so twelve
@@ -1981,6 +2189,17 @@ export function validateEditOperation(
       "An image layer has to be drawn; add it with add_image_layer instead",
     );
   }
+  // Captured footage enters a sticker exactly one way: the user lifts a subject out of a Live Photo
+  // and attaches it. Letting the edit loop conjure a sequence layer would mean pointing one at an
+  // atlas the user did not choose for this sticker, which is their own face — not something a model
+  // gets to place on its own initiative.
+  if (operation.op === "addLayer" && operation.layer.type === "sequence") {
+    throw new ApiError(
+      422,
+      "UNSAFE_EDIT_OPERATION",
+      "Captured footage can only be added by the user; it cannot be introduced by an edit",
+    );
+  }
   return operation;
 }
 
@@ -2003,7 +2222,7 @@ export function validatePlannedAnimationOperation(
   if (
     operation.op === "replaceAsset" ||
     operation.op === "removeLayer" ||
-    (operation.op === "addLayer" && operation.layer.type === "image")
+    (operation.op === "addLayer" && (operation.layer.type === "image" || operation.layer.type === "sequence"))
   ) {
     throw new ApiError(
       422,

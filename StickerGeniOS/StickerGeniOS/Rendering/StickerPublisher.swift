@@ -228,10 +228,7 @@ final class StickerPublisher {
     ) throws -> AnimatedDocument {
         guard revision.state == .accepted else { throw StickerPublishError.revisionNotAccepted }
         let document = try revision.document.validated()
-        let requiredAssetIDs = Set(document.layers.flatMap { layer -> [String] in
-            guard case .image(let image) = layer else { return [] }
-            return [image.assetId, image.maskAssetId].compactMap { $0 }
-        })
+        let requiredAssetIDs = Set(document.layers.flatMap(\.referencedImageAssetIDs))
         let missing = requiredAssetIDs.filter { assets[$0]?.cgImage == nil || !verifiedAssetIDs.contains($0) }
         guard missing.isEmpty else { throw StickerPublishError.missingVerifiedAssets(missing.sorted()) }
         return document
@@ -250,6 +247,7 @@ final class StickerPublisher {
             kind: kind,
             filename: export.url.lastPathComponent,
             mimeType: mimeType,
+            sequence: nil,
             idempotencyKey: UUID().uuidString
         )
     }

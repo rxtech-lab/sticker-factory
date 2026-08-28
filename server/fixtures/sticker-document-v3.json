@@ -1,0 +1,152 @@
+{
+  "version": 3,
+  "canvas": {
+    "width": 1024,
+    "height": 1024,
+    "coordinateSpace": "normalized",
+    "transparent": true
+  },
+  "layers": [
+    {
+      "id": "hero",
+      "name": "Live capture",
+      "hidden": false,
+      "anchor": {
+        "position": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "rotationDegrees": 0,
+        "opacity": 1,
+        "trim": {
+          "start": 0,
+          "end": 1
+        }
+      },
+      "animations": [],
+      "animation": {
+        "position": [],
+        "scale": [],
+        "rotation": [],
+        "opacity": [],
+        "effects": [],
+        "trim": [],
+        "wipe": [],
+        "sheen": [],
+        "glow": []
+      },
+      "blendMode": "normal",
+      "type": "sequence",
+      "assetId": "33333333-3333-4333-8333-333333333333",
+      "columns": 4,
+      "rows": 3,
+      "frameCount": 12,
+      "frameRate": 10,
+      "playback": "loop",
+      "startSeconds": 0,
+      "contentMode": "fit",
+      "posterAssetId": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "id": "spark",
+      "name": "Spark",
+      "hidden": false,
+      "anchor": {
+        "position": {
+          "x": 0.72,
+          "y": 0.28
+        },
+        "scale": {
+          "x": 0.34,
+          "y": 0.34
+        },
+        "rotationDegrees": 0,
+        "opacity": 1,
+        "trim": {
+          "start": 0,
+          "end": 1
+        }
+      },
+      "animations": [
+        {
+          "delay": 0.2,
+          "duration": 0.45,
+          "easing": "springBouncy",
+          "type": "popIn",
+          "from": 0.55
+        }
+      ],
+      "animation": {
+        "position": [
+          {
+            "timeSeconds": 0,
+            "easing": "linear",
+            "x": 0.72,
+            "y": 0.28
+          }
+        ],
+        "scale": [
+          {
+            "timeSeconds": 0.2,
+            "easing": "linear",
+            "x": 0.187,
+            "y": 0.187
+          },
+          {
+            "timeSeconds": 0.65,
+            "easing": "springBouncy",
+            "x": 0.34,
+            "y": 0.34
+          }
+        ],
+        "rotation": [],
+        "opacity": [
+          {
+            "timeSeconds": 0.2,
+            "easing": "linear",
+            "value": 0
+          },
+          {
+            "timeSeconds": 0.65,
+            "easing": "springBouncy",
+            "value": 1
+          }
+        ],
+        "effects": [],
+        "trim": [],
+        "wipe": [],
+        "sheen": [],
+        "glow": []
+      },
+      "blendMode": "normal",
+      "type": "particle",
+      "preset": "sparkles",
+      "count": 14,
+      "paint": {
+        "type": "solid",
+        "color": "#FFD166"
+      },
+      "seed": 11
+    }
+  ],
+  "background": {
+    "type": "none"
+  },
+  "mp4Background": {
+    "type": "linearGradient",
+    "colors": [
+      "#FFE7A3",
+      "#FF8FA3"
+    ],
+    "angleDegrees": 35
+  },
+  "kind": "animated",
+  "durationSeconds": 1.2,
+  "fps": 30,
+  "loop": "pingPong",
+  "speed": 1
+}

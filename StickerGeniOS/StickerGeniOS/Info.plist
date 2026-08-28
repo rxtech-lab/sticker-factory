@@ -36,7 +36,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Winky Sticker House uses the photos you choose as private references for sticker generation and editing.</string>
+	<string>Winky Sticker House uses the photos and Live Photos you choose as private references for sticker generation and editing, including lifting a subject out of them.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

@@ -11,7 +11,24 @@ export const AssetKindSchema = z.enum([
   "mp4",
   "system",
   "chat_attachment",
+  /** A frame atlas: one transparent PNG holding a grid of frames lifted from a Live Photo. */
+  "sequence",
 ]);
+
+/**
+ * How a frame atlas is packed, declared by the client because the file cannot say.
+ *
+ * The atlas is a single still PNG — that is the whole point of the transport, since it means no
+ * animated-format decoder is needed anywhere — so nothing on the server can infer the grid or the
+ * capture rate by inspecting it. These values are persisted on the asset row and cross-checked
+ * against the document's sequence layer whenever one references the asset.
+ */
+export const SequenceMetadataSchema = z.object({
+  columns: z.number().int().min(1).max(8),
+  rows: z.number().int().min(1).max(8),
+  frameCount: z.number().int().min(1).max(64),
+  frameRate: z.number().min(1).max(60),
+}).strict();
 
 export const CreateStickerRequestSchema = z.object({
   title: z.string().trim().min(1).max(100),
@@ -51,7 +68,25 @@ export const CreateUploadRequestSchema = z.object({
   byteSize: z.number().int().positive().max(25 * 1024 * 1024),
   filename: z.string().trim().min(1).max(180),
   sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+  /** Required for, and only for, `kind: "sequence"`. */
+  sequence: SequenceMetadataSchema.optional(),
 }).strict().superRefine((value, context) => {
+  if (value.kind === "sequence") {
+    if (!value.sequence) {
+      context.addIssue({ code: "custom", path: ["sequence"], message: "A frame atlas must declare its grid and capture rate" });
+    } else if (value.sequence.frameCount > value.sequence.rows * value.sequence.columns) {
+      context.addIssue({
+        code: "custom",
+        path: ["sequence", "frameCount"],
+        message: "A frame atlas cannot declare more frames than its grid holds",
+      });
+    }
+    if (value.mimeType !== "image/png") {
+      context.addIssue({ code: "custom", path: ["mimeType"], message: "Frame atlases must be transparent PNGs" });
+    }
+  } else if (value.sequence) {
+    context.addIssue({ code: "custom", path: ["sequence"], message: "Only a frame atlas carries sequence metadata" });
+  }
   if (value.kind === "mask" && value.mimeType !== "image/png" && value.mimeType !== "image/webp") {
     context.addIssue({ code: "custom", message: "Masks must be PNG or WebP with an alpha channel" });
   }

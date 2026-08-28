@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import sharp from "sharp";
 import { setAiProviderForTests, type AiProvider, type AiTitleContext } from "@/lib/ai/gateway";
+import { PlanV1Schema } from "@/lib/contracts/plan";
 import { StickerDocumentSchema, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { setDatabaseForTests } from "@/lib/db/client";
 import { assets, chatAttachments, chatMessages, generationEvents, generationJobs, plans as planRows, stickerRevisions, stickers, users } from "@/lib/db/schema";
@@ -971,6 +973,136 @@ describe("durable sticker workflow", () => {
 
     await close();
   });
+
+  /**
+   * The turn's attachments, as the agents are given them.
+   *
+   * Compared by bytes rather than by identity: the point of these tests is that the pixels the user
+   * uploaded reach the model, not that some array of the right length was constructed.
+   */
+  const attachedBytes = (references: Array<{ bytes: Uint8Array }>) =>
+    references.map((reference) => [...reference.bytes]);
+
+  async function attachablePhoto(
+    db: Awaited<ReturnType<typeof createTestDatabase>>["db"],
+    store: MemoryObjectStore,
+    ownerId: string,
+  ) {
+    const id = crypto.randomUUID();
+    const key = objectKey(ownerId, id, "image/png");
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    await db.insert(assets).values({
+      id, ownerId, kind: "reference", state: "ready", r2Key: key, mimeType: "image/png",
+      byteSize: bytes.byteLength, createdAt: new Date(), readyAt: new Date(),
+    });
+    await store.put(key, { bytes, contentType: "image/png" });
+    return { id, bytes: [...bytes] };
+  }
+
+  it("shows the router and the planner the photo the user attached", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-sees", createdAt: new Date(), updatedAt: new Date() });
+    const photo = await attachablePhoto(db, store, "owner-sees");
+
+    let routed: number[][] | undefined;
+    let planned: number[][] | undefined;
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: async (input) => {
+        routed = attachedBytes(input.references);
+        return { type: "plan", instruction: input.instruction };
+      },
+      generateConceptImage: async () => ({
+        bytes: new Uint8Array(await sharp({
+          create: { width: 1024, height: 1024, channels: 4, background: { r: 200, g: 120, b: 60, alpha: 1 } },
+        }).png().toBuffer()),
+        mimeType: "image/png",
+      }),
+      planSticker: async (input, session) => {
+        planned = attachedBytes(input.references);
+        const created = await session.createPlan(PlanV1Schema.parse({
+          title: "Me", summary: "A sticker of you.", kind: "animated",
+          conceptPrompt: "A polished sticker of the person in the attached photo, waving, filling the frame.",
+          timing: { durationSeconds: 2, fps: 30, loop: "loop" },
+          layers: [{
+            layerId: "hero", name: "Me",
+            source: { kind: "generate", prompt: "The person from the photo as a sticker on a transparent background." },
+            x: 0.5, y: 0.5, scaleX: 0.8, scaleY: 0.8,
+          }],
+        }));
+        const finalized = await session.finalizePlan(created.planId);
+        return { ...finalized, finalized: true };
+      },
+    });
+
+    const sticker = await createSticker(db, "owner-sees", { title: "Me", kind: "animated", prompt: "Me", referenceAssetIds: [photo.id] });
+    const turn = await createChatTurn(db, "owner-sees", sticker.stickerId, {
+      text: "Make a sticker of me",
+      intent: "chat",
+      attachments: [{ assetId: photo.id, kind: "reference" }],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
+
+    // Both models used to be told a number of attachments and nothing else, which is how a design
+    // for "a sticker of me" got drafted without anyone having looked at the person.
+    expect(routed).toEqual([photo.bytes]);
+    expect(planned).toEqual([photo.bytes]);
+    await close();
+  });
+
+  it("shows the animator the photo the user attached", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-animates", createdAt: new Date(), updatedAt: new Date() });
+    const photo = await attachablePhoto(db, store, "owner-animates");
+
+    const sticker = await createSticker(db, "owner-animates", { title: "Wave", kind: "animated", prompt: "Happy cloud", referenceAssetIds: [] });
+    const baseTurn = await drawnAnimatedBase(db, "owner-animates", sticker.stickerId, "Happy cloud");
+    expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
+    await acceptRevision(db, "owner-animates", sticker.stickerId, baseTurn.jobId);
+
+    let animated: number[][] | undefined;
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      animateSticker: async (input, session) => {
+        animated = attachedBytes(input.references);
+        const created = await session.createAnimation([{
+          op: "setScaleKeyframes",
+          layerId: "hero",
+          keyframes: [
+            { timeSeconds: 0, x: 1, y: 1, easing: "easeOut" },
+            { timeSeconds: 1, x: 1.1, y: 1.1, easing: "easeIn" },
+          ],
+        }]);
+        const finalized = await session.finalizeAnimation(created.animationId);
+        return { animationId: finalized.animationId, revision: finalized.revision, finalized: true };
+      },
+      showSticker: async () => "Here is the motion.",
+    });
+
+    const turn = await createChatTurn(db, "owner-animates", sticker.stickerId, {
+      text: "Make it wave like the person in this photo",
+      intent: "animate",
+      targetLayerId: "hero",
+      baseRevisionId: baseTurn.jobId,
+      attachments: [{ assetId: photo.id, kind: "reference" }],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
+
+    // The animation loop draws nothing, so an attachment on an animate turn is only ever there to
+    // be looked at — and until now it was the one turn that never loaded it at all.
+    expect(animated).toEqual([photo.bytes]);
+    await close();
+  }, 30_000);
 
   it("revises a built sticker by reusing its artwork instead of paying to redraw it", async () => {
     const { db, close } = await createTestDatabase();

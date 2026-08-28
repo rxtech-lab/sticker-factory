@@ -1,4 +1,9 @@
 import { and, asc, eq, gt } from "drizzle-orm";
+import {
+  CURRENT_DOCUMENT_VERSION,
+  downcastForClient,
+  StickerDocumentSchema,
+} from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import { generationEvents, generationJobs } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
@@ -36,12 +41,38 @@ export async function listGenerationEvents(db: Database, ownerId: string, jobId:
   return { job, events };
 }
 
-export function serializeGenerationEvent(event: typeof generationEvents.$inferSelect) {
+/**
+ * @param clientVersion The document contract the reader announced. `document` and `candidate`
+ * payloads carry a whole `StickerDocument`, so this is a client-facing read seam exactly like
+ * `getSticker` and has to degrade the same way — a v3 layer streamed to a v2 client would fail the
+ * decode of the event, and with it the turn the user is watching.
+ */
+export function serializeGenerationEvent(
+  event: typeof generationEvents.$inferSelect,
+  clientVersion: number = CURRENT_DOCUMENT_VERSION,
+) {
   return {
     id: event.id,
     jobId: event.jobId,
     type: event.type,
     createdAt: event.createdAt.toISOString(),
-    data: event.dataJson,
+    data: downcastEventData(event.dataJson, clientVersion),
   };
+}
+
+/**
+ * Rewrites an event payload's embedded document, if it has one.
+ *
+ * Parsing through `StickerDocumentSchema` rather than reaching into the raw JSON, because stored
+ * payloads may hold a document from any version this table has ever seen and the downcast is
+ * defined over the current shape. A payload whose document does not parse is passed through
+ * untouched: this is a streaming read on a live turn, and dropping the event the user is waiting on
+ * would be worse than sending one an old client might not draw.
+ */
+function downcastEventData(data: unknown, clientVersion: number): unknown {
+  if (clientVersion >= CURRENT_DOCUMENT_VERSION) return data;
+  if (!data || typeof data !== "object" || !("document" in data)) return data;
+  const parsed = StickerDocumentSchema.safeParse((data as { document: unknown }).document);
+  if (!parsed.success) return data;
+  return { ...data, document: downcastForClient(parsed.data, clientVersion) };
 }

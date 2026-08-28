@@ -43,8 +43,16 @@ export * from "@/lib/contracts/paint";
 const AssetIdSchema = z.string().uuid();
 export const LayerIdSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
 
-/** The document version this module writes. Anything older is upcast on read. */
-export const CURRENT_DOCUMENT_VERSION = 2;
+/**
+ * The document version this module writes. Anything older is upcast on read.
+ *
+ * v3 adds the `sequence` layer: real frames lifted from a Live Photo, packed into one image. It is
+ * purely additive — every v2 document is a valid v3 document with a different stamp — which is why
+ * `upcastV2ToV3` is a one-line rewrite. Bumping this is not free on the client, though: a shipped
+ * iOS build throws on an unknown layer `type` and cannot open the project at all, so v3 documents
+ * are downcast for clients that do not announce support. See `downcastForClient`.
+ */
+export const CURRENT_DOCUMENT_VERSION = 3;
 
 /**
  * How big a stored document may get, serialized.
@@ -176,6 +184,66 @@ export const ParticleLayerV1Schema = LayerBaseSchema.extend({
   seed: z.number().int().min(0).max(2_147_483_647),
 }).strict();
 
+/**
+ * Real frames the user captured, packed into one image and played back on the timeline.
+ *
+ * The frames arrive as a single transparent PNG holding a `rows` x `columns` grid of equally sized
+ * tiles — a sprite sheet — rather than as an animated WebP, GIF, APNG, or MP4. That choice buys
+ * three things at once: no new decode path anywhere (sharp reads it as an ordinary one-page PNG,
+ * `CGImage.cropping(to:)` slices it for free on device), and the vision model can *see* the motion,
+ * because a contact sheet is exactly what it can read and an animated file is exactly what it
+ * cannot. `lib/render/sticker-render.ts` already relies on that second fact in the other direction.
+ *
+ * `frameRate` is the footage's own rate and is independent of the document's `fps`, which governs
+ * how densely the exporter samples the timeline. See `sequenceFrameIndex` for how the two compose.
+ */
+export const SequenceLayerV1Schema = LayerBaseSchema.extend({
+  type: z.literal("sequence"),
+  /** The frame-atlas PNG. One asset, whatever the frame count. */
+  assetId: AssetIdSchema,
+  columns: z.number().int().min(1).max(8),
+  rows: z.number().int().min(1).max(8),
+  /** Tiles actually used, read row-major from the top-left. Trailing cells of the grid may be empty. */
+  frameCount: z.number().int().min(1).max(64),
+  /** The captured footage's own playback rate, in frames per second. */
+  frameRate: z.number().min(1).max(60),
+  /** How the footage repeats *within* the layer. Independent of the document's `loop`. */
+  playback: z.enum(["loop", "once", "pingPong"]).default("loop"),
+  /** When on the document timeline the first tile appears. Before it, the first tile is held. */
+  startSeconds: z.number().min(0).max(30).default(0),
+  contentMode: z.enum(["fit", "fill"]).default("fit"),
+  /**
+   * Tile 0, extracted to its own asset so a client that predates v3 can be served a still.
+   *
+   * Optional because the layer is valid without it — a document authored on device has no poster
+   * until the server derives one — but `downcastForClient` can only degrade layers that have it.
+   */
+  posterAssetId: AssetIdSchema.optional(),
+}).strict().superRefine((layer, context) => {
+  if (layer.frameCount > layer.rows * layer.columns) {
+    context.addIssue({
+      code: "custom",
+      message: `Sequence layer ${layer.id} declares ${layer.frameCount} frames but its `
+        + `${layer.rows}x${layer.columns} grid holds only ${layer.rows * layer.columns}`,
+    });
+  }
+});
+
+/**
+ * The v2 layer union, frozen so v2 documents keep parsing as v2.
+ *
+ * It shares the five layer schemas by reference rather than snapshotting them, which is sound only
+ * because v3's change is purely additive. Anything that later *alters* one of those five must
+ * snapshot this union first, exactly as `LegacyLayerV1Schema` below is a full copy.
+ */
+const LegacyStickerLayerV2Schema = z.union([
+  ImageLayerV1Schema,
+  TextLayerV1Schema,
+  ShapeLayerV1Schema,
+  SVGLayerV1Schema,
+  ParticleLayerV1Schema,
+]);
+
 export const StickerLayerV1Schema = z.union([
   ImageLayerV1Schema,
   TextLayerV1Schema,
@@ -184,6 +252,7 @@ export const StickerLayerV1Schema = z.union([
   ShapeLayerV1Schema,
   SVGLayerV1Schema,
   ParticleLayerV1Schema,
+  SequenceLayerV1Schema,
 ]);
 
 export const Mp4BackgroundV1Schema = z.discriminatedUnion("type", [
@@ -383,7 +452,10 @@ export function upcastV1ToV2(document: z.infer<typeof LegacyStickerDocumentV1Sch
   const solid = (color: string): PaintV2 => ({ type: "solid", color });
   return {
     ...document,
-    version: CURRENT_DOCUMENT_VERSION,
+    // The literal 2, *not* `CURRENT_DOCUMENT_VERSION`. This function's output is piped straight into
+    // the v2 schema, so stamping it with whatever version happens to be current today would break
+    // the chain the moment the document version is bumped again.
+    version: 2,
     canvas: { ...document.canvas, transparent: true },
     background: { type: "none" },
     speed: 1,
@@ -422,6 +494,102 @@ export function upcastV1ToV2(document: z.infer<typeof LegacyStickerDocumentV1Sch
   };
 }
 
+/**
+ * The v2 document, kept for the same reason the v1 one is: stored rows never change.
+ *
+ * v2 is v3 with an older stamp and a layer union that has no `sequence` in it. Expressing it as a
+ * narrowing of the current base rather than as a copy is safe here because v3 added a layer and
+ * changed nothing else; see the note on `LegacyStickerLayerV2Schema`.
+ */
+const LegacyDocumentBaseV2Schema = DocumentBaseSchema.extend({
+  version: z.literal(2),
+  layers: z.array(LegacyStickerLayerV2Schema),
+});
+
+export const LegacyStickerDocumentV2Schema = z.discriminatedUnion("kind", [
+  LegacyDocumentBaseV2Schema.extend({
+    kind: z.literal("static"),
+    durationSeconds: z.literal(0),
+    fps: z.literal(0),
+    loop: z.literal("once"),
+    speed: z.literal(1).default(1),
+  }).strict(),
+  LegacyDocumentBaseV2Schema.extend({
+    kind: z.literal("animated"),
+    durationSeconds: z.number().min(0.1).max(30).default(2),
+    fps: z.number().int().min(1).max(60).default(30),
+    loop: z.enum(["once", "loop", "pingPong"]).default("loop"),
+    speed: z.number().min(0.1).max(8).default(1),
+  }).strict(),
+]);
+
+/**
+ * Rewrites a v2 document into the v3 shape.
+ *
+ * Total and lossless by construction: v3 only widens the layer union, so every v2 value is already
+ * a v3 value and the version stamp is the only thing that moves.
+ */
+export function upcastV2ToV3(document: z.infer<typeof LegacyStickerDocumentV2Schema>): unknown {
+  return { ...document, version: 3 };
+}
+
+/**
+ * The oldest document version a client may ask for. Anything below this is not a client we ever
+ * shipped, so a header claiming it is treated as the floor rather than honoured.
+ */
+export const MIN_CLIENT_DOCUMENT_VERSION = 2;
+
+/**
+ * Rewrites a document into the shape a given client can actually decode.
+ *
+ * This exists because bumping the document version is not free on a shipped app. iOS decodes a
+ * layer's `type` into a closed enum, so a build that predates `sequence` throws on it — and that
+ * throw fails the layer, then the document, then the whole sticker payload, leaving the user with a
+ * project they cannot open at all. Builds already in the field cannot be fixed after the fact.
+ *
+ * So a client that does not announce v3 support gets each sequence layer replaced by an ordinary
+ * image layer showing the capture's poster frame, and the document restamped as v2. Everything else
+ * about the layer — its id, name, anchor, animations, compiled keyframes, blend mode — is carried
+ * across unchanged, so the sticker still moves exactly as the AI authored it. What that client
+ * loses is the real footage, not the sticker.
+ *
+ * A sequence layer with no poster is dropped rather than degraded: an image layer pointing at an
+ * atlas would render the whole sprite sheet at once, which looks like a rendering fault. Dropping
+ * is honest, and the poster is derived whenever the server writes such a document.
+ *
+ * Applied on read, never on write. The stored row stays canonical v3 so a client that *can* read it
+ * still gets the footage.
+ */
+export function downcastForClient(document: StickerDocument, clientVersion: number): unknown {
+  if (clientVersion >= CURRENT_DOCUMENT_VERSION) return document;
+
+  const layers = document.layers.flatMap((layer) => {
+    if (layer.type !== "sequence") return [layer];
+    if (!layer.posterAssetId) return [];
+    const { columns, rows, frameCount, frameRate, playback, startSeconds, posterAssetId, type, assetId, ...base } = layer;
+    void columns; void rows; void frameCount; void frameRate; void playback; void startSeconds; void type; void assetId;
+    return [{ ...base, type: "image" as const, assetId: posterAssetId }];
+  });
+
+  return { ...document, version: MIN_CLIENT_DOCUMENT_VERSION, layers };
+}
+
+/**
+ * The document version a request announces support for, from its `X-Sticker-Contract` header.
+ *
+ * Absent means a client built before the header existed, which is exactly the population the
+ * downcast is for — so the default is the floor, not the current version. An unparseable or
+ * out-of-range value is treated the same way, because guessing generously is the one failure mode
+ * that bricks a project.
+ */
+export const CLIENT_CONTRACT_HEADER = "x-sticker-contract";
+
+export function clientDocumentVersion(request: { headers: { get(name: string): string | null } }): number {
+  const raw = Number(request.headers.get(CLIENT_CONTRACT_HEADER));
+  if (!Number.isInteger(raw)) return MIN_CLIENT_DOCUMENT_VERSION;
+  return Math.min(Math.max(raw, MIN_CLIENT_DOCUMENT_VERSION), CURRENT_DOCUMENT_VERSION);
+}
+
 const CurrentDocumentSchema = z.discriminatedUnion("kind", [
   StaticDocumentV1Schema,
   AnimatedDocumentV1Schema,
@@ -430,12 +598,16 @@ const CurrentDocumentSchema = z.discriminatedUnion("kind", [
 /**
  * The document contract every caller should use.
  *
- * Accepts either version on the way in and always produces v2, so the upcast lives in exactly one
- * place and nothing downstream has to know which shape a row was stored in.
+ * Accepts any stored version on the way in and always produces the current one, so the upcasts live
+ * in exactly one place and nothing downstream has to know which shape a row was stored in. The
+ * v1 branch chains through v2 rather than jumping straight to v3, so each upcast stays a single
+ * hop and only ever has to know about the version immediately after it.
  */
 export const StickerDocumentSchema = z.union([
   CurrentDocumentSchema,
-  LegacyStickerDocumentV1Schema.transform(upcastV1ToV2).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV2Schema.transform(upcastV2ToV3).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV1Schema.transform(upcastV1ToV2)
+    .pipe(LegacyStickerDocumentV2Schema).transform(upcastV2ToV3).pipe(CurrentDocumentSchema),
 ]).superRefine((document, context) => {
   const layerIds = new Set<string>();
   let totalKeyframes = 0;
@@ -447,6 +619,27 @@ export const StickerDocumentSchema = z.union([
     }
     layerIds.add(layer.id);
     totalKeyframes += keyframeCount(layer);
+
+    if (layer.type === "sequence") {
+      // A still document has no timeline to walk, so multi-frame footage in one could only ever
+      // show its first tile. Saying so here beats silently rendering 1 of 12.
+      if (document.kind === "static" && layer.frameCount !== 1) {
+        context.addIssue({
+          code: "custom",
+          message: `Sequence layer ${layer.id} has ${layer.frameCount} frames in a static document, `
+            + "which can only ever show the first. Make the document animated or trim the footage to one frame.",
+        });
+      }
+      // The exporter samples the timeline at the document's fps. Below the footage's own rate it
+      // cannot help but drop frames, and the result reads as stutter rather than as motion.
+      if (document.kind === "animated" && document.fps < layer.frameRate) {
+        context.addIssue({
+          code: "custom",
+          message: `Sequence layer ${layer.id} plays at ${layer.frameRate} fps but the document `
+            + `renders at ${document.fps}, so frames would be dropped. Raise the document's fps.`,
+        });
+      }
+    }
 
     // A layer with declarative specs must carry exactly their compiled output. Storing both
     // representations is only safe if they can never disagree, and this is what enforces that.
@@ -540,6 +733,21 @@ export const StickerOperationV1Schema = z.discriminatedUnion("op", [
     loop: z.enum(["once", "loop", "pingPong"]),
   }).strict(),
   z.object({ op: z.literal("setMp4Background"), background: Mp4BackgroundV1Schema }).strict(),
+  /**
+   * Retimes captured footage without rebuilding the layer.
+   *
+   * This is the only sequence-specific operation, deliberately. Everything else the agent might
+   * want to do to captured frames — move, scale, rotate, animate, reorder, rename, hide — already
+   * works, because a sequence layer carries an ordinary `LayerBase`. There is no operation to
+   * *replace* the footage: re-lifting a subject is something the user does in the picker, not
+   * something the model can do on their behalf.
+   */
+  z.object({
+    op: z.literal("setSequencePlayback"),
+    layerId: LayerIdSchema,
+    playback: z.enum(["loop", "once", "pingPong"]),
+    startSeconds: z.number().min(0).max(30).default(0),
+  }).strict(),
 ]);
 
 export const StickerOperationsV1Schema = z.array(StickerOperationV1Schema).min(1).max(32);
@@ -555,6 +763,33 @@ export type StickerOperationV1 = z.infer<typeof StickerOperationV1Schema>;
  * force every caller to spell out `anchor`, `animations`, `easing`, and friends by hand.
  */
 export type StickerOperationV1Input = z.input<typeof StickerOperationV1Schema>;
+
+/**
+ * The bitmap assets a layer needs before it can be drawn.
+ *
+ * Exists because five separate places used to spell out `layer.type === "image"` inline — the
+ * renderer, the ownership check, the reuse list, the export pre-flight, and the client's preloader.
+ * All five kept compiling when `sequence` was added and would have quietly rendered placeholders.
+ * A single exhaustive switch turns that into a build error at one site.
+ *
+ * `posterAssetId` is not here: nothing draws it, and the callers that *do* need to vouch for it —
+ * ownership and reference validation — ask for it explicitly. `svg` asset sources are not here
+ * either; they resolve to markup, not to pixels, and their one consumer collects them separately.
+ * Mirrors `AnimatedLayer.referencedImageAssetIDs` in Swift.
+ */
+export function layerImageAssetIds(layer: StickerLayerV1): string[] {
+  switch (layer.type) {
+  case "image":
+    return layer.maskAssetId ? [layer.assetId, layer.maskAssetId] : [layer.assetId];
+  case "sequence":
+    return [layer.assetId];
+  case "text":
+  case "shape":
+  case "svg":
+  case "particle":
+    return [];
+  }
+}
 
 function timingOf(document: StickerDocument): AnimationTiming {
   return { kind: document.kind, durationSeconds: document.durationSeconds };
@@ -617,6 +852,11 @@ export function applyStickerOperationsV1(
       if (layer.type !== "image") throw new Error(`Layer ${operation.layerId} is not an image layer`);
       layer.assetId = operation.assetId;
       layer.maskAssetId = operation.maskAssetId;
+    } else if (operation.op === "setSequencePlayback") {
+      const layer = document.layers[index];
+      if (layer.type !== "sequence") throw new Error(`Layer ${operation.layerId} is not a sequence layer`);
+      layer.playback = operation.playback;
+      layer.startSeconds = operation.startSeconds;
     } else if (operation.op === "setLayerAnimations") {
       const layer = document.layers[index];
       if (operation.anchor) layer.anchor = operation.anchor;

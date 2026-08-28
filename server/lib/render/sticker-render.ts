@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { loopedTime } from "@/lib/animation/sample";
-import type { StickerDocument } from "@/lib/contracts/sticker";
+import { layerImageAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
 import { frameFragment, IdFactory, type RenderAssets } from "@/lib/render/document-svg";
 
 /**
@@ -45,10 +45,7 @@ export function referencedAssetIds(document: StickerDocument): string[] {
   const ids = new Set<string>();
   if (document.background.type === "image") ids.add(document.background.assetId);
   for (const layer of document.layers) {
-    if (layer.type === "image") {
-      ids.add(layer.assetId);
-      if (layer.maskAssetId) ids.add(layer.maskAssetId);
-    }
+    for (const id of layerImageAssetIds(layer)) ids.add(id);
     if (layer.type === "svg" && layer.source.kind === "asset") ids.add(layer.source.assetId);
   }
   return [...ids];

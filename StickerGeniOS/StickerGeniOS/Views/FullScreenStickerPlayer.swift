@@ -222,6 +222,7 @@ struct StickerEditorSheet: View {
                 kind: .reference,
                 filename: normalized.filename,
                 mimeType: normalized.mimeType,
+                sequence: nil,
                 idempotencyKey: UUID().uuidString
             )
             await context.assetStore.load(assetID: assetID, api: context.store.api)

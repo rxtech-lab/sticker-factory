@@ -4,6 +4,126 @@ import SwiftUI
 // The per-kind halves of the inspector. Each writes through `editor.updateLayer`, which does not
 // recompile — none of these fields is compiler input, unlike the anchor.
 
+/// Captured footage: what is playing right now, how it fits, and how it repeats.
+///
+/// Deliberately has no "Replace footage" button, unlike the image inspector. Lifting a subject out
+/// of a Live Photo is a picker flow with its own interactive selection step; there is nothing
+/// sensible to hang off a button here, and offering one would imply the editor can re-cut a
+/// sequence it cannot.
+struct AnimatedSequenceLayerInspector: View {
+    @Bindable var editor: AnimatedDocumentEditor
+    let layer: AnimatedSequenceLayer
+    let assets: any AnimatedAssetProvider
+
+    var body: some View {
+        Section {
+            HStack {
+                Spacer()
+                thumbnail
+                Spacer()
+            }
+
+            LabeledContent("Frames", value: "\(layer.frameCount)")
+            LabeledContent("Captured at", value: "\(Int(layer.frameRate.rounded())) fps")
+
+            Picker("Fit", selection: binding(\.contentMode)) {
+                ForEach(AnimatedContentMode.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Capture")
+        } footer: {
+            Text("Lifted from a Live Photo. The frames play on this sticker's timeline.")
+        }
+
+        Section {
+            Picker("Repeat", selection: binding(\.playback)) {
+                ForEach(AnimatedSequencePlayback.allCases, id: \.self) { Text($0.inspectorLabel).tag($0) }
+            }
+            .pickerStyle(.segmented)
+
+            AnimatedValueSlider(
+                title: "Start",
+                value: binding(\.startSeconds),
+                range: 0...max(editor.document.durationSeconds, 0.1),
+                step: 0.05,
+                format: "%.2fs"
+            )
+        } header: {
+            Text("Playback")
+        } footer: {
+            Text("The sticker's own speed and loop apply on top of this.")
+        }
+    }
+
+    /// The tile under the playhead, so scrubbing the timeline scrubs the footage here too.
+    @ViewBuilder
+    private var thumbnail: some View {
+        let index = AnimationInterpolator.sequenceFrameIndex(layer, atDocumentTime: editor.scrubDocumentTime)
+        if let tile = FrameAtlasCache.shared.tile(for: layer, index: index, assets: assets) {
+            Image(platformImage: tile)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 88, height: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Text("\(index + 1)/\(layer.frameCount)")
+                        .font(.caption2.monospacedDigit())
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding(4)
+                }
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.purple.gradient)
+                .frame(width: 88, height: 88)
+                .overlay {
+                    Image(systemName: "livephoto")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+        }
+    }
+
+    private func binding<Value>(_ keyPath: WritableKeyPath<AnimatedSequenceLayer, Value>) -> Binding<Value> {
+        Binding(
+            get: { layer[keyPath: keyPath] },
+            set: { newValue in
+                editor.updateLayer(id: layer.base.id, name: "Edit Capture") {
+                    guard case .sequence(var value) = $0 else { return }
+                    value[keyPath: keyPath] = newValue
+                    $0 = .sequence(value)
+                }
+            }
+        )
+    }
+}
+
+extension AnimatedSequencePlayback {
+    var inspectorLabel: String {
+        switch self {
+        case .loop: "Loop"
+        case .once: "Once"
+        case .pingPong: "Back & forth"
+        }
+    }
+}
+
+/// A layer written by a newer build. Nothing to edit; the point is to say so plainly.
+struct AnimatedUnsupportedLayerInspector: View {
+    var body: some View {
+        Section {
+            Label(
+                "This layer was made with a newer version of Sticker Factory.",
+                systemImage: "questionmark.square.dashed"
+            )
+        } footer: {
+            Text("It is kept exactly as it was and will not be lost, but it cannot be shown or edited here. Update the app to work with it.")
+        }
+    }
+}
+
 /// Image: the asset, how it fits, and an optional mask.
 struct AnimatedImageLayerInspector: View {
     @Bindable var editor: AnimatedDocumentEditor

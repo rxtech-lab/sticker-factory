@@ -141,14 +141,17 @@ describe("declarative animations on a document", () => {
   });
 });
 
-describe("v1 documents upcast to v2 on read", () => {
+describe("v1 documents upcast to the current version on read", () => {
   /**
    * `document_json` is immutable after insert, so stored revisions stay v1 forever and this path
    * is permanent code rather than a migration step. `getSticker` also re-parses *every* revision of
    * a sticker on read, so one row that failed to upcast would take out the whole detail endpoint —
    * which is why totality matters more here than anywhere else in the contract.
+   *
+   * Since v3 the chain is two hops, v1 -> v2 -> v3, so this also covers the v1 upcast still landing
+   * on a shape the v2 schema accepts rather than on whatever is current.
    */
-  it("accepts the stored v1 fixture and reports itself as v2", () => {
+  it("accepts the stored v1 fixture and restamps it", () => {
     const document = StickerDocumentSchema.parse(fixture);
     expect(document.version).toBe(CURRENT_DOCUMENT_VERSION);
     expect(document.speed).toBe(1);

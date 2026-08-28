@@ -14,12 +14,19 @@ struct AnimatedEditorTimeline: View {
         CGFloat(AnimationChannel.allCases.count) * trackHeight
     }
 
-    /// What a caller placing this in a fixed-height slot should give it.
+    /// Room for the header, the playhead's cap, and the gap between them.
+    private static let chromeHeight: CGFloat = 30
+
+    /// What a caller placing this in a fixed-height slot should give it to show every track at once.
     ///
     /// Derived rather than a constant because the track count is `AnimationChannel.allCases`: the
     /// regular-width editor used to pin this to 150pt, which fitted exactly six tracks and silently
     /// clipped the bottom ones the moment the model grew a channel.
-    static var preferredHeight: CGFloat { tracksHeight + 18 }
+    static var preferredHeight: CGFloat { tracksHeight + chromeHeight }
+
+    /// What to give it on iPhone, where the canvas and the pane below are competing for the same
+    /// screen. Anything the cap cuts off is reachable by scrolling the tracks.
+    static var compactHeight: CGFloat { min(preferredHeight, 170) }
 
     @Bindable var editor: AnimatedDocumentEditor
 
@@ -34,22 +41,32 @@ struct AnimatedEditorTimeline: View {
             header
 
             if let layer {
-                GeometryReader { proxy in
-                    ZStack(alignment: .topLeading) {
-                        VStack(spacing: 2) {
-                            ForEach(AnimationChannel.allCases, id: \.self) { channel in
-                                track(channel, layer: layer, width: proxy.size.width)
+                // The stack is one row per channel, so it outgrows any fixed slot the moment the
+                // model gains a channel. Scrolling keeps the overflow inside the timeline instead
+                // of letting it draw over the transport above and the pane picker below.
+                ScrollView(.vertical) {
+                    GeometryReader { proxy in
+                        ZStack(alignment: .topLeading) {
+                            VStack(spacing: 2) {
+                                ForEach(AnimationChannel.allCases, id: \.self) { channel in
+                                    track(channel, layer: layer, width: proxy.size.width)
+                                }
                             }
+                            playhead(width: proxy.size.width)
                         }
-                        playhead(width: proxy.size.width)
                     }
+                    .frame(height: Self.tracksHeight)
+                    // Leaves room for the playhead's cap, which sits above the first track.
+                    .padding(.top, 4)
+                    // Preset motion is generated, so its tracks are shown but not touchable. Dimming
+                    // rather than hiding keeps the shape of the motion visible, which is what you want
+                    // when deciding whether to convert it. Applied to the content rather than the
+                    // scroll view so the tracks can still be scrolled into view.
+                    .opacity(isDeclarative ? 0.55 : 1)
+                    .allowsHitTesting(!isDeclarative)
                 }
-                .frame(height: Self.tracksHeight)
-                // Preset motion is generated, so its tracks are shown but not touchable. Dimming
-                // rather than hiding keeps the shape of the motion visible, which is what you want
-                // when deciding whether to convert it.
-                .opacity(isDeclarative ? 0.55 : 1)
-                .allowsHitTesting(!isDeclarative)
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: Self.tracksHeight + 4)
             } else {
                 Text("Select a layer to see its timeline.")
                     .font(.caption)

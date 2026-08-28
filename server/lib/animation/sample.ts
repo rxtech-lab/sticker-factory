@@ -105,6 +105,45 @@ export function sampleLayerState(layer: StickerLayerV1, time: number): LayerStat
 }
 
 /**
+ * Which tile of a sequence layer's atlas is showing at a given document time.
+ *
+ * Deliberately a pure function of the *document* time — the value the renderer already holds, after
+ * `speed` and after the document's own `loop` mapping. Three consequences, all of them the point:
+ *
+ * - `speed` scales the footage exactly as it scales keyframes. A sticker played at 2x plays
+ *   everything at 2x, which is the only reading a user would predict, and it costs nothing.
+ * - A ping-pong *document* plays real footage backwards on the way home, which is what turns 1.2s
+ *   of Live Photo into a seamless 2.4s cycle with no visible cut. That is the ingest default.
+ * - `durationSeconds` stays the sole authority on how long a sticker runs. Footage shorter than the
+ *   cycle repeats according to its own `playback`; footage longer is simply truncated. The atlas
+ *   never extends the document — which is exactly why `validateAnimatedRenditionTiming` needs no
+ *   knowledge of sequence layers. Inverting this would be the tempting change, and would break it.
+ *
+ * Mirrored byte for byte by `AnimationInterpolator.sequenceFrameIndex` in Swift, and pinned from
+ * both sides by `fixtures/sequence-frame-index-parity.json`.
+ */
+export function sequenceFrameIndex(
+  layer: { frameCount: number; frameRate: number; playback: "loop" | "once" | "pingPong"; startSeconds: number },
+  documentTime: number,
+): number {
+  const count = Math.max(1, Math.floor(layer.frameCount));
+  if (count === 1) return 0;
+
+  const elapsed = documentTime - layer.startSeconds;
+  // Before the layer's start the first tile is held rather than the layer being hidden: a sequence
+  // that vanished for its first second would look like a failed asset load, not like a delay.
+  if (elapsed <= 0) return 0;
+
+  const raw = Math.floor(elapsed * layer.frameRate);
+  if (layer.playback === "once") return Math.min(raw, count - 1);
+  if (layer.playback === "loop") return ((raw % count) + count) % count;
+
+  const period = count * 2 - 2;
+  const offset = ((raw % period) + period) % period;
+  return offset < count ? offset : period - offset;
+}
+
+/**
  * Wall-clock seconds mapped into the authored timeline, honouring `loop`.
  *
  * Mirrors `AnimationInterpolator.mappedTime`. `speed` is deliberately not applied: callers that

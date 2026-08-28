@@ -9,7 +9,10 @@ import Foundation
 ///
 /// Coordinates are normalized and keyframe times are absolute seconds.
 public struct AnimatedDocument: Codable, Hashable, Sendable {
-    public static let currentVersion = 2
+    public static let currentVersion = 3
+    /// Versions this build can read. v3 only *added* the `sequence` layer, so a v2 document is
+    /// already a valid v3 one and needs no rewriting — accepting it is the whole migration.
+    public static let readableVersions: ClosedRange<Int> = 2...3
     public static let maximumLayerCount = 12
     public static let maximumKeyframeCount = 128
     public static let durationRange: ClosedRange<Double> = 0.1...30
@@ -175,7 +178,7 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
 
     @discardableResult
     public func validated() throws -> Self {
-        guard version == Self.currentVersion else {
+        guard Self.readableVersions.contains(version) else {
             throw AnimatedDocumentError.unsupportedVersion(version)
         }
         guard canvas.isValid else { throw AnimatedDocumentError.invalidCanvas }

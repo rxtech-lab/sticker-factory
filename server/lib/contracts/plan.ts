@@ -61,6 +61,24 @@ export const PlanLayerSourceV1Schema = z.discriminatedUnion("kind", [
     color: HexColorSchema,
     seed: z.number().int().min(0).max(2_147_483_647).default(1),
   }).strict(),
+  z.object({
+    /**
+     * Real frames the user captured, already cut out on device. Free, like `existing`, and the only
+     * source that carries genuine motion — the subject actually moves the way they moved.
+     *
+     * The planner never invents one of these: the ids and the grid come from an attachment on the
+     * message, and the planning turn hands them to the model. Nothing here can tell whether the
+     * asset exists, so `assertPlanReuseIsResolvable` checks it against the sticker before the plan
+     * is stored, the same way it does for `existing`.
+     */
+    kind: z.literal("sequence"),
+    assetId: z.string().uuid(),
+    columns: z.number().int().min(1).max(8),
+    rows: z.number().int().min(1).max(8),
+    frameCount: z.number().int().min(1).max(64),
+    frameRate: z.number().min(1).max(60),
+    playback: z.enum(["loop", "once", "pingPong"]).default("pingPong"),
+  }).strict(),
 ]);
 
 /**
@@ -81,7 +99,24 @@ export const PlanLayerV1Schema = z.object({
   rotationDegrees: z.number().min(-180).max(180).default(0),
   /** Named motion effects with delays, compiled to keyframes when the plan is executed. */
   animations: z.array(AnimationSpecV1Schema).max(12).default([]),
-}).strict();
+}).strict().superRefine((layer, context) => {
+  // Checked on the layer rather than on the source, because `PlanLayerSourceV1Schema` is a
+  // discriminated union and a member carrying a refinement is wrapped in an effect zod cannot see
+  // the literal `kind` through — the same reason `StickerLayerV1Schema` stopped being one.
+  //
+  // Worth catching here at all because the document schema enforces the identical rule: without
+  // this, an impossible grid survives planning and fails when the *confirmed* plan is built, long
+  // after the user approved it and with an error they cannot act on.
+  if (layer.source.kind === "sequence" && layer.source.frameCount > layer.source.rows * layer.source.columns) {
+    context.addIssue({
+      code: "custom",
+      path: ["source", "frameCount"],
+      message: `Layer ${layer.layerId} declares ${layer.source.frameCount} captured frames but its `
+        + `${layer.source.rows}x${layer.source.columns} grid holds only ${layer.source.rows * layer.source.columns}. `
+        + "Copy columns, rows, frameCount, and frameRate exactly as they were given to you.",
+    });
+  }
+});
 
 export const PlanTimingV1Schema = z.object({
   durationSeconds: z.number().min(0.5).max(4).default(2),
@@ -186,6 +221,26 @@ export function planGenerationCount(plan: Pick<PlanV1, "layers">): number {
 }
 
 /**
+ * Whether this plan needs an approved static reference rendered before it can be built.
+ *
+ * Every animated plan does, with one exception: a plan led by captured footage that draws nothing.
+ * The concept exists so generated artwork can inherit an approved silhouette, and it doubles as the
+ * preview on the plan card. A capture-led plan with `generate` layers still needs one, because those
+ * layers do have something to match. A capture-led plan without them has neither reason — asking the
+ * image model to redraw the user's own face would cost a generation to produce something strictly
+ * worse than the photograph already in hand.
+ *
+ * Three places consult this and must agree, or a plan the user confirmed fails at build time over a
+ * reference that was deliberately never made: `confirmPlan`, `planReferencePrompt`, and
+ * `executePlanBuildTurn`.
+ */
+export function planRequiresConcept(plan: Pick<PlanV1, "kind" | "layers">): boolean {
+  if (plan.kind !== "animated") return false;
+  const capturesSubject = plan.layers.some((layer) => layer.source.kind === "sequence");
+  return !capturesSubject || planGenerationCount(plan) > 0;
+}
+
+/**
  * Keeps an animated build visually tied to the still image the user approved.
  *
  * Text, shape, and particle sources are rendered independently by the app. They are useful for
@@ -193,9 +248,18 @@ export function planGenerationCount(plan: Pick<PlanV1, "layers">): number {
  * highlights, shadows, or texture from an approved reference. New animated artwork therefore uses
  * generated image layers; existing image layers remain valid because they already have pixels to
  * preserve.
+ *
+ * `sequence` is exempt for the same reason `existing` is, only more so: it is not app-rendered at
+ * all. It is photographic frames the user captured, which is the highest-fidelity source in the
+ * whole vocabulary — there is nothing for it to fail to match, because it *is* the reference.
  */
 export function assertAnimatedPlanUsesReferenceBackedArtwork(plan: PlanV1): void {
   if (plan.kind !== "animated") return;
+  // A capture-led plan has no generated concept to diverge from — the footage *is* the reference,
+  // and the build path skips concept rendering for exactly that reason. With nothing to match, this
+  // rule has no work to do, and enforcing it anyway would forbid the sparkles and captions that are
+  // the whole point of decorating a lifted subject.
+  if (plan.layers.some((layer) => layer.source.kind === "sequence")) return;
   const appRendered = plan.layers.filter((layer) => (
     layer.source.kind === "text" || layer.source.kind === "shape" || layer.source.kind === "particle"
   ));
@@ -209,9 +273,17 @@ export function assertAnimatedPlanUsesReferenceBackedArtwork(plan: PlanV1): void
   );
 }
 
-/** The artwork a plan may reuse: every image layer the sticker on screen already has. */
+/**
+ * The artwork a plan may reuse: every image and capture layer the sticker on screen already has.
+ *
+ * Capture layers are included deliberately. Footage the user lifted from their own Live Photo is
+ * the one thing in a document that cannot be regenerated at any price, so a re-plan that dropped it
+ * would quietly replace the user's face with something drawn from a prompt.
+ */
 export function reusableAssetIds(document?: Pick<StickerDocument, "layers">): string[] {
-  return document?.layers.flatMap((layer) => (layer.type === "image" ? [layer.assetId] : [])) ?? [];
+  return document?.layers.flatMap((layer) => (
+    layer.type === "image" || layer.type === "sequence" ? [layer.assetId] : []
+  )) ?? [];
 }
 
 /**
@@ -225,11 +297,20 @@ export function reusableAssetIds(document?: Pick<StickerDocument, "layers">): st
 export function assertPlanReuseIsResolvable(
   plan: Pick<PlanV1, "layers">,
   document?: Pick<StickerDocument, "layers">,
+  /**
+   * Capture atlases attached to the message being planned against.
+   *
+   * A `sequence` source names an asset that is usually *not* in the current document yet — it came
+   * in on this turn — so it cannot be resolved against the document alone the way `existing` is.
+   */
+  attachedSequenceAssetIds: readonly string[] = [],
 ): void {
   const available = new Set(reusableAssetIds(document));
-  const unknown = plan.layers.filter(
-    (layer) => layer.source.kind === "existing" && !available.has(layer.source.assetId),
-  );
+  const resolvableCaptures = new Set([...available, ...attachedSequenceAssetIds]);
+  const unknown = plan.layers.filter((layer) => (
+    (layer.source.kind === "existing" && !available.has(layer.source.assetId))
+    || (layer.source.kind === "sequence" && !resolvableCaptures.has(layer.source.assetId))
+  ));
   if (unknown.length === 0) return;
   const named = unknown
     .map((layer) => `${layer.layerId} (${(layer.source as { assetId: string }).assetId})`)

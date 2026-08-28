@@ -146,6 +146,45 @@ public enum AnimationInterpolator {
         }
     }
 
+    /// Which tile of a sequence layer's atlas is showing at a given document time.
+    ///
+    /// Deliberately a pure function of the *document* time — the value `mappedTime` already
+    /// produced, after `speed` and after the document's own loop. Three consequences, all of them
+    /// the point:
+    ///
+    /// - `speed` scales the footage exactly as it scales keyframes. A sticker played at 2x plays
+    ///   everything at 2x, which is the only reading a user would predict.
+    /// - A ping-pong *document* plays real footage backwards on the way home, which is what turns
+    ///   1.2s of Live Photo into a seamless 2.4s cycle with no visible cut.
+    /// - `durationSeconds` stays the sole authority on how long a sticker runs. Footage shorter
+    ///   than the cycle repeats according to its own `playback`; footage longer is truncated. The
+    ///   atlas never extends the document, which is why the export duration checks need to know
+    ///   nothing about sequence layers.
+    ///
+    /// Mirrored byte for byte by `sequenceFrameIndex` in `server/lib/animation/sample.ts`, and
+    /// pinned from both sides by `sequence-frame-index-parity.json`.
+    public static func sequenceFrameIndex(_ layer: AnimatedSequenceLayer, atDocumentTime time: Double) -> Int {
+        let count = max(1, layer.frameCount)
+        if count == 1 { return 0 }
+
+        let elapsed = time - layer.startSeconds
+        // Before the layer's start the first tile is held rather than the layer being hidden: a
+        // sequence that vanished for its first second would read as a failed asset load.
+        if elapsed <= 0 { return 0 }
+
+        let raw = Int((elapsed * layer.frameRate).rounded(.down))
+        switch layer.playback {
+        case .once:
+            return min(raw, count - 1)
+        case .loop:
+            return ((raw % count) + count) % count
+        case .pingPong:
+            let period = count * 2 - 2
+            let offset = ((raw % period) + period) % period
+            return offset < count ? offset : period - offset
+        }
+    }
+
     /// The wall-clock length of one visible cycle. Ping-pong is there and back.
     public static func renderedCycleDuration(_ document: AnimatedDocument) -> Double {
         document.renderedCycleDuration

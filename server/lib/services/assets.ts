@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import sharp from "sharp";
 import type { CreateUploadRequest } from "@/lib/contracts/api";
-import { MAX_RENDITION_SECONDS } from "@/lib/contracts/sticker";
+import { MAX_RENDITION_SECONDS, type StickerDocument } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import { previewAssetIdSql } from "@/lib/db/columns";
 import { assets, stickerPackItems, stickerPacks, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -37,6 +38,99 @@ export function derivedAssetId(seed: string, slot: number | string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
+/**
+ * Fills in the poster frame every sequence layer needs before the document can be stored.
+ *
+ * A poster is tile 0 of the atlas, cut out as its own PNG. It is what `downcastForClient` serves to
+ * a client too old to decode a sequence layer, so deriving it is not optional bookkeeping: without
+ * one, such a client is handed a document with the layer *missing* rather than stilled.
+ *
+ * The id is derived from the atlas rather than from the job, so the same footage carried across a
+ * dozen revisions produces one poster and pays for the extract once. That also makes this safe to
+ * call on a workflow replay: the second run finds the row already there and does nothing.
+ *
+ * Returns the document with `posterAssetId` populated. Never throws for a poster that cannot be
+ * made — a sticker whose footage the *current* client can play should not fail to save because an
+ * older client's fallback could not be produced. `downcastForClient` drops a posterless layer.
+ */
+export async function ensureSequencePosters(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  document: StickerDocument,
+): Promise<StickerDocument> {
+  const pending = document.layers.filter(
+    (layer): layer is Extract<typeof layer, { type: "sequence" }> => layer.type === "sequence" && !layer.posterAssetId,
+  );
+  if (pending.length === 0) return document;
+
+  const store = getObjectStore();
+  const posters = new Map<string, string>();
+  for (const layer of pending) {
+    if (posters.has(layer.id)) continue;
+    const posterId = derivedAssetId(layer.assetId, "poster");
+    try {
+      const existing = await db.select({ id: assets.id, state: assets.state }).from(assets)
+        .where(and(eq(assets.id, posterId), eq(assets.ownerId, ownerId))).get();
+      if (existing?.state === "ready") {
+        posters.set(layer.id, posterId);
+        continue;
+      }
+
+      const atlas = await db.select().from(assets)
+        .where(and(eq(assets.id, layer.assetId), eq(assets.ownerId, ownerId), eq(assets.state, "ready"))).get();
+      if (!atlas?.width || !atlas.height) continue;
+      const source = await store.get(atlas.r2Key);
+      // Integer division on the pixel dimensions, matching how the renderer slices tiles, so the
+      // poster is exactly the frame a playing client shows at t=0 rather than an off-by-a-pixel crop.
+      const bytes = await sharp(Buffer.from(source.bytes))
+        .extract({
+          left: 0,
+          top: 0,
+          width: Math.floor(atlas.width / layer.columns),
+          height: Math.floor(atlas.height / layer.rows),
+        })
+        .png()
+        .toBuffer();
+      const inspection = await inspectImage(bytes);
+      const r2Key = objectKey(ownerId, posterId, "image/png");
+      await store.put(r2Key, { bytes, contentType: "image/png", metadata: { sha256: inspection.sha256 } });
+      await db.insert(assets).values({
+        id: posterId,
+        ownerId,
+        stickerId,
+        // `master` rather than a kind of its own: it is a finished still of the sticker's artwork,
+        // which is exactly what an image layer is allowed to reference.
+        kind: "master",
+        state: "ready",
+        r2Key,
+        mimeType: "image/png",
+        byteSize: inspection.byteSize,
+        width: inspection.width,
+        height: inspection.height,
+        sha256: inspection.sha256,
+        hasAlpha: inspection.hasTransparentPixels,
+        originalFilename: "capture-poster.png",
+        createdAt: new Date(),
+        readyAt: new Date(),
+      }).onConflictDoNothing();
+      posters.set(layer.id, posterId);
+    } catch {
+      // Deliberately swallowed: see the note above about not failing a save over a fallback.
+    }
+  }
+  if (posters.size === 0) return document;
+
+  return {
+    ...document,
+    layers: document.layers.map((layer) => (
+      layer.type === "sequence" && posters.has(layer.id)
+        ? { ...layer, posterAssetId: posters.get(layer.id)! }
+        : layer
+    )),
+  } as StickerDocument;
+}
+
 async function assertOwnedSticker(db: Database, ownerId: string, stickerId?: string): Promise<void> {
   if (!stickerId) return;
   const sticker = await db.select({ id: stickers.id, deletedAt: stickers.deletedAt }).from(stickers)
@@ -59,6 +153,14 @@ export async function createUpload(db: Database, ownerId: string, request: Creat
     byteSize: request.byteSize,
     sha256: request.sha256,
     originalFilename: request.filename,
+    // A frame atlas is a single still, so inspecting the object can never recover how it is packed.
+    // The client's declaration is the only source there is, and it is written here — before the
+    // bytes exist — so `completeUpload` has something to preserve rather than something to derive.
+    frameCount: request.sequence?.frameCount,
+    fps: request.sequence?.frameRate,
+    durationSeconds: request.sequence && request.sequence.frameCount / request.sequence.frameRate,
+    sequenceColumns: request.sequence?.columns,
+    sequenceRows: request.sequence?.rows,
     createdAt: new Date(),
   });
   const upload = await getObjectStore().signedPut(r2Key, request.mimeType, request.byteSize);
@@ -85,6 +187,21 @@ function validateImageForKind(
   }
   if ((asset.kind === "reference" || asset.kind === "chat_attachment") && inspection.frameCount !== 1) {
     throw new ApiError(422, "ANIMATED_REFERENCE_NOT_SUPPORTED", "AI reference uploads must be single-frame images");
+  }
+  if (asset.kind === "sequence") {
+    // `frameCount !== 1` is the *correct* assertion here, counterintuitive as it reads. The atlas
+    // is a sprite sheet: a single still image whose frames are laid out in a grid. An animated file
+    // arriving under this kind means the client packed it wrong, and would play as one frame.
+    if (inspection.mimeType !== "image/png" || inspection.frameCount !== 1) {
+      throw new ApiError(422, "INVALID_SEQUENCE_ATLAS", "A frame atlas must be a single-frame PNG");
+    }
+    if (!inspection.hasAlpha || !inspection.hasTransparentPixels || !inspection.hasNonTransparentPixels) {
+      throw new ApiError(
+        422,
+        "SEQUENCE_REQUIRES_ALPHA",
+        "A frame atlas must contain both transparent and painted pixels — the subject is cut out of its background",
+      );
+    }
   }
   if (asset.kind === "master") {
     if (inspection.mimeType !== "image/png" || inspection.width !== 1024 || inspection.height !== 1024 || inspection.frameCount !== 1) {
@@ -163,14 +280,21 @@ export async function completeUpload(db: Database, ownerId: string, assetId: str
     throw new ApiError(422, "CHECKSUM_MISMATCH", "The uploaded object checksum is invalid");
   }
 
+  // A frame atlas keeps the timing the client declared at `createUpload`. Every other kind reads its
+  // timing back out of the file, but an atlas *is* a single still — inspection reports one frame at
+  // no rate — so applying the usual rule here would overwrite a declared twelve frames with one and
+  // the sequence would play frozen, with nothing anywhere reporting an error.
+  const declaresOwnTiming = asset.kind === "sequence";
   const [ready] = await db.update(assets).set({
     state: "ready",
     byteSize: object.bytes.byteLength,
     width: inspection?.width ?? mp4Inspection?.width,
     height: inspection?.height ?? mp4Inspection?.height,
-    frameCount: inspection?.frameCount ?? mp4Inspection?.frameCount,
-    durationSeconds: inspection?.durationSeconds ?? mp4Inspection?.durationSeconds,
-    fps: inspection?.fps ?? mp4Inspection?.fps,
+    frameCount: declaresOwnTiming ? asset.frameCount : inspection?.frameCount ?? mp4Inspection?.frameCount,
+    durationSeconds: declaresOwnTiming
+      ? asset.durationSeconds
+      : inspection?.durationSeconds ?? mp4Inspection?.durationSeconds,
+    fps: declaresOwnTiming ? asset.fps : inspection?.fps ?? mp4Inspection?.fps,
     sha256: actualSha256,
     hasAlpha: inspection?.hasAlpha,
     readyAt: new Date(),
@@ -212,6 +336,12 @@ export type AssetAudience = "owner" | "pack-member";
 /**
  * The only asset kinds a marketplace pack may expose. Everything else — references, masks, the
  * MP4 sharing rendition — stays owner-only no matter how widely the sticker is published.
+ */
+/**
+ * Note the absence of `sequence`. A frame atlas is the user's own face and body, lifted from their
+ * camera roll; it is a source, not a rendition, and it must never become marketplace-visible no
+ * matter what pack the sticker ends up in. The published renditions here are drawn *from* it and
+ * are what a stranger is allowed to see.
  */
 const PACK_SHARED_ASSET_KINDS = ["system", "preview", "gif", "master"] as const;
 
