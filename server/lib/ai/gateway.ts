@@ -19,6 +19,11 @@ import {
   type StickerOperationV1,
 } from "@/lib/contracts/sticker";
 import { ApiError } from "@/lib/http/errors";
+import {
+  LayoutAdjustmentSchema,
+  layoutDiagnostics,
+  type LayoutAdjustment,
+} from "@/lib/layout/composition";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
 import { inspectImage, normalizeTransparentPng } from "@/lib/storage/r2";
 
@@ -184,6 +189,30 @@ export type StickerRenderResult = {
 export interface RenderableSession {
   renderSticker(): Promise<StickerRenderResult>;
 }
+
+export interface AiLayoutContext {
+  /** The assembled document whose actual generated pixels are now available for review. */
+  document: StickerDocument;
+  /** The approved plan's human-readable intent. */
+  instruction: string;
+  history: string;
+}
+
+export type LayoutDraftState = {
+  revision: number;
+  document: StickerDocument;
+};
+
+export interface LayoutDraftingSession extends RenderableSession {
+  /** Moves, scales, rotates, or reorders existing layers; it cannot change their artwork or motion. */
+  applyLayout(adjustment: LayoutAdjustment): Promise<LayoutDraftState>;
+  finalizeLayout(): Promise<LayoutDraftState>;
+}
+
+export type LayoutTurnResult = {
+  revision: number;
+  finalized: boolean;
+};
 
 export class TurnAbort extends Error {
   constructor(public readonly reason: unknown) {
@@ -395,6 +424,11 @@ export interface AiProvider {
    * contact sheet, which is exactly what a concept board is.
    */
   generateConceptImage(prompt: string): Promise<AiImageOutput>;
+  /** Reviews a built multi-layer sticker and corrects composition without regenerating artwork. */
+  refineStickerLayout(
+    input: AiLayoutContext,
+    session: LayoutDraftingSession,
+  ): Promise<LayoutTurnResult | undefined>;
   /**
    * Plans a document's motion, revising it as many times as it needs before finalizing.
    *
@@ -725,6 +759,92 @@ class GatewayAiProvider implements AiProvider {
       );
     }
     return { bytes: normalized.bytes, mimeType: "image/png" };
+  }
+
+  async refineStickerLayout(
+    input: AiLayoutContext,
+    session: LayoutDraftingSession,
+  ): Promise<LayoutTurnResult | undefined> {
+    let state: LayoutTurnResult | undefined;
+    let fatal: unknown;
+
+    const guard = async (run: () => Promise<LayoutDraftState>) => {
+      try {
+        const landed = await run();
+        state = { revision: landed.revision, finalized: false };
+        return {
+          revision: landed.revision,
+          sticker: summarizeDocument(landed.document),
+          diagnostics: layoutDiagnostics(landed.document),
+        };
+      } catch (error) {
+        if (isTurnAbort(error)) {
+          fatal = error.reason ?? error;
+          throw new Error("This layout review has been stopped. Do not call any more tools.");
+        }
+        throw new Error(describeToolError(error));
+      }
+    };
+
+    const tools = {
+      view_sticker: viewStickerTool(session, { animated: input.document.kind === "animated" }),
+      adjust_layout: tool({
+        description: [
+          "Correct only the composition of the existing layers. placements move, resize, or rotate",
+          "layers; order is the complete back-to-front list of layer ids (the last layer is on top).",
+          "Every generated asset, layer, and animation is preserved automatically. Use the actual",
+          "visible artwork from view_sticker, not just the nominal square layer boxes, to decide",
+          "whether overlap is intentional. Keep the main subject readable at thumbnail size.",
+        ].join(" "),
+        inputSchema: LayoutAdjustmentSchema,
+        execute: async (adjustment) => guard(() => session.applyLayout(adjustment)),
+      }),
+      finalize_layout: tool({
+        description: [
+          "Finish layout review once the final composition has been viewed and is balanced,",
+          "readable, and free of accidental obstruction or clipping.",
+        ].join(" "),
+        inputSchema: z.object({}).strict(),
+        execute: async () => {
+          const result = await guard(() => session.finalizeLayout());
+          if (state) state = { ...state, finalized: true };
+          return result;
+        },
+      }),
+    };
+
+    await generateText({
+      model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+      system: [
+        "You are the final composition reviewer for a multi-layer sticker. The individual assets",
+        "are already approved-quality: never redraw, replace, remove, rename, or restyle them, and",
+        "never change their animation timing. Your only job is layout.",
+        "First call view_sticker. Judge the actual visible pixels: visual hierarchy, balance,",
+        "spacing, scale consistency, whether important elements cover each other, whether anything",
+        "is clipped, and whether the sticker reads clearly at thumbnail size.",
+        "Use adjust_layout only when it improves the composition. Intentional overlap is allowed —",
+        "for example a hat on a character — but accidental obstruction, near-duplicate stacking,",
+        "and unrelated elements colliding are not. Geometry diagnostics are conservative square-box",
+        "warnings, so resolve overlap by looking at the image rather than blindly separating boxes.",
+        "After every adjustment, call view_sticker again. Finish with finalize_layout only after",
+        "viewing the exact final revision. If the first render is already strong, change nothing and",
+        "finalize it.",
+      ].join(" "),
+      prompt: [
+        `Approved design intent:\n${input.instruction}`,
+        `Current layer summary:\n${JSON.stringify(summarizeDocument(input.document))}`,
+        `Conservative geometry diagnostics:\n${JSON.stringify(layoutDiagnostics(input.document))}`,
+        `Recoverable project context:\n${input.history}`,
+      ].join("\n\n"),
+      tools,
+      toolChoice: "required",
+      stopWhen: [hasToolCall("finalize_layout"), stepCountIs(8), () => fatal !== undefined],
+      maxRetries: 2,
+      abortSignal: AbortSignal.timeout(120_000),
+    });
+
+    if (fatal) throw fatal;
+    return state;
   }
 
   async animateSticker(
@@ -1872,6 +1992,17 @@ class MockAiProvider implements AiProvider {
       .toBuffer();
     const normalized = await normalizeTransparentPng(bytes);
     return { bytes: normalized.bytes, mimeType: "image/png" };
+  }
+
+  async refineStickerLayout(
+    _input: AiLayoutContext,
+    session: LayoutDraftingSession,
+  ): Promise<LayoutTurnResult | undefined> {
+    // Exercise the same mandatory look-before-finalize contract without making tests invent visual
+    // judgements. Focused tests cover corrections through the layout session itself.
+    await session.renderSticker();
+    const finalized = await session.finalizeLayout();
+    return { revision: finalized.revision, finalized: true };
   }
   /**
    * Scripts the same create -> update -> finalize shape the real loop produces, so the integration

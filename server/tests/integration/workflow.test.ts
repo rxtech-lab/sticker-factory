@@ -20,6 +20,7 @@ const unusedAiProvider: AiProvider = {
   generateStickerImage: () => { throw new Error("Unexpected generateStickerImage"); },
   planSticker: () => { throw new Error("Unexpected planSticker"); },
   generateConceptImage: () => { throw new Error("Unexpected generateConceptImage"); },
+  refineStickerLayout: () => { throw new Error("Unexpected refineStickerLayout"); },
   animateSticker: () => { throw new Error("Unexpected animateSticker"); },
   editSticker: () => { throw new Error("Unexpected editSticker"); },
   routeChatTurn: () => { throw new Error("Unexpected routeChatTurn"); },
@@ -951,6 +952,8 @@ describe("durable sticker workflow", () => {
       .filter((message) => message.role === "system").map((message) => message.content);
     expect(toolRows).toContain("build-plan");
     expect(toolRows.filter((name) => name.startsWith("compose-part:"))).toHaveLength(partCount);
+    expect(toolRows).toContain("view_sticker");
+    expect(toolRows).toContain("finalize_layout");
 
     // A step retry must not mint a second set of assets or a second revision: that is what the
     // (jobId, index) derived asset ids and the deterministic revision id are for.
