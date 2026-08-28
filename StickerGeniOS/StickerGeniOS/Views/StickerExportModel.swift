@@ -4,6 +4,7 @@ import Observation
 import UIKit
 
 private let preferredStickerSizeKey = "StickerFactoryPreferredStickerSize"
+private let preferredExportSelectionKey = "StickerFactoryPreferredExportSelection"
 
 /// Export/publish state for one sticker.
 ///
@@ -18,6 +19,9 @@ final class StickerExportModel {
     var publishJobID: String?
     var background: ExportBackgroundChoice = .midnight
     var errorMessage: String?
+    /// What the ladder gave up to fit Apple's ceiling, when it gave up anything. Not an error: the
+    /// export succeeded, and this says what it cost.
+    var qualityNote: String?
 
     /// Not part of the document: the canvas is normalized and every export is square, so the
     /// rendition's pixel size is the only thing that decides how big the sticker arrives. It is
@@ -29,6 +33,17 @@ final class StickerExportModel {
         didSet {
             guard oldValue != stickerSize else { return }
             UserDefaults.standard.set(stickerSize.rawValue, forKey: preferredStickerSizeKey)
+        }
+    }
+
+    /// Which files the share sheet hands over. Remembered across stickers for the same reason the
+    /// size is: someone who wants video wants it every time, not once.
+    var selection: StickerExportSelection = StickerExportSelection(
+        rawValue: UserDefaults.standard.string(forKey: preferredExportSelectionKey) ?? ""
+    ) ?? .default {
+        didSet {
+            guard oldValue != selection else { return }
+            UserDefaults.standard.set(selection.rawValue, forKey: preferredExportSelectionKey)
         }
     }
 
@@ -52,9 +67,19 @@ final class StickerExportModel {
         }
     }
 
+    /// Drops the files staged for sharing without disowning the publish that produced them.
+    ///
+    /// Changing which formats to share does not invalidate a publish — the server still holds every
+    /// rendition — so this deliberately keeps `publishJobID`, which is what the sheet reads to know
+    /// the sticker landed.
+    func clearShareFiles() {
+        publishedURLs = []
+    }
+
     func invalidateExports() {
         publishedURLs = []
         publishJobID = nil
+        qualityNote = nil
     }
 
     /// Puts the published files on disk so a revision published in an earlier session — one this
@@ -66,7 +91,8 @@ final class StickerExportModel {
         isPreparingShare = true
         defer { isPreparingShare = false }
         do {
-            let urls = try await StickerPublisher(api: store.api).publishedExports(for: revision)
+            let urls = try await StickerPublisher(api: store.api)
+                .publishedExports(for: revision, selection: selection)
             // An edit landed while the download was in flight: these files are the version the user
             // just moved off, and `seed` has already cleared this sheet's state for the new one.
             guard seededRevisionID == revision.id else { return false }
@@ -94,26 +120,35 @@ final class StickerExportModel {
             let publisher = StickerPublisher(api: store.api)
             publishJobID = nil
 
+            let exports: [RenderedStickerExport]
+            var compromise: SystemStickerCompromise?
             if exportRevision.canPublishExports {
                 let result = try await publisher.publish(
                     stickerID: stickerID,
                     revision: exportRevision,
                     assets: assets,
                     verifiedAssetIDs: verifiedAssetIDs,
-                    size: stickerSize
+                    size: stickerSize,
+                    selection: selection
                 )
-                publishedURLs = result.localExports.map(\.url)
+                exports = result.localExports
+                compromise = result.compromise
                 publishJobID = result.jobID
                 store.observeExternalJob(jobID: result.jobID, stickerID: stickerID)
             } else {
-                let exports = try await publisher.export(
+                exports = try await publisher.export(
                     revision: exportRevision,
                     assets: assets,
                     verifiedAssetIDs: verifiedAssetIDs,
-                    size: stickerSize
+                    size: stickerSize,
+                    selection: selection
                 )
-                publishedURLs = exports.map(\.url)
             }
+            publishedURLs = exports.map(\.url)
+            // The sticker always exports; when the 500 KB ceiling cost it size or motion, say so
+            // here rather than failing the export the way this used to. A publish reports its own
+            // compromise because the sticker rendition ships whether or not it was asked to share.
+            qualityNote = (compromise ?? exports.compactMap(\.compromise).first)?.message
             errorMessage = nil
         } catch { errorMessage = error.localizedDescription }
     }

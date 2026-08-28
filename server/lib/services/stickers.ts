@@ -382,9 +382,11 @@ export function validateAnimatedRenditionTiming(
   const gridFps = rendition.frameCount / cycleSeconds;
 
   // gif and mp4 are rendered at the document's own fps. The system rendition walks a quality ladder
-  // down to 8 fps to fit under 500 KB, so it is a range rather than a value.
+  // to fit under 500 KB, so it is a range rather than a value. The bottom of that ladder is 4 fps —
+  // `SystemStickerPreset.adaptive` in `StickerGeniOS/Rendering/StickerExporter.swift` — because a
+  // long cycle of dense art that cannot fit at 8 is better shipped choppy than shipped as a still.
   const fpsMatches = rendition.kind === "system"
-    ? gridFps >= Math.min(document.fps, 8) - 0.5 && gridFps <= document.fps + 0.75
+    ? gridFps >= Math.min(document.fps, 4) - 0.5 && gridFps <= document.fps + 0.75
     : Math.abs(gridFps - document.fps) <= 0.75;
   if (!fpsMatches) throw new ApiError(422, "EXPORT_FPS_MISMATCH", "Animated rendition FPS does not match the accepted document");
 
@@ -1189,8 +1191,17 @@ export async function bindExports(
   if (revision.kind === "animated" && request.pngAssetId) {
     throw new ApiError(422, "ANIMATED_EXPORT_MATRIX", "Animated stickers do not accept a static PNG export relation");
   }
-  if (revision.kind === "animated" && (system.frameCount ?? 0) < 2) {
+  // An animated sticker normally carries an animated system rendition, and a single-frame one is a
+  // client that uploaded the wrong file — unless the client says otherwise. Some animations cannot
+  // be squeezed under Apple's 500 KB ceiling at any size or frame rate the ladder can reach, and the
+  // app ships their poster frame rather than refusing to export at all. The GIF and MP4 renditions
+  // still carry the full motion, so nothing about the sticker is lost outside Messages.
+  const systemIsStill = request.systemRenditionKind === "still";
+  if (revision.kind === "animated" && !systemIsStill && (system.frameCount ?? 0) < 2) {
     throw new ApiError(422, "ANIMATED_SYSTEM_RENDITION_REQUIRED", "Animated stickers require an animated system rendition");
+  }
+  if (systemIsStill && (revision.kind !== "animated" || (system.frameCount ?? 1) !== 1)) {
+    throw new ApiError(422, "INVALID_STILL_SYSTEM_RENDITION", "A still system rendition is only accepted as an animated sticker's single-frame fallback");
   }
   if (revision.kind === "animated" && !request.mp4Background) {
     throw new ApiError(422, "MP4_BACKGROUND_REQUIRED", "Animated exports must record the MP4 background used by the renderer");
@@ -1214,6 +1225,8 @@ export async function bindExports(
     }
     for (const assetId of [request.gifAssetId, request.mp4AssetId, request.systemAssetId]) {
       if (!assetId) continue;
+      // The still fallback has no cycle to match; it is one frame standing in for all of them.
+      if (systemIsStill && assetId === request.systemAssetId) continue;
       validateAnimatedRenditionTiming(document, byId.get(assetId)!);
     }
   }

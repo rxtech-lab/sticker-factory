@@ -222,6 +222,7 @@ extension AnimationEffectType {
         case .slideIn: "Slide In"
         case .slideOut: "Slide Out"
         case .moveTo: "Move To"
+        case .arcTo: "Arc To"
         case .scaleTo: "Scale To"
         case .rotateTo: "Rotate To"
         case .spin: "Spin"

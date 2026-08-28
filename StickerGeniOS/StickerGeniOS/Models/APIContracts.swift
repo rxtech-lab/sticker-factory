@@ -535,6 +535,15 @@ nonisolated struct PublishExportsRequest: Codable, Sendable {
     var mp4AssetId: String?
     var systemAssetId: String
     var mp4Background: StickerMP4BackgroundV1?
+    /// Sent only as `.still`, and only for an animated sticker whose motion could not be squeezed
+    /// under Apple's 500 KB ceiling at any rung of the export ladder. Omitting it means the ordinary
+    /// case — an animated rendition for an animated sticker — which is what the server assumes.
+    var systemRenditionKind: SystemRenditionKind?
+}
+
+nonisolated enum SystemRenditionKind: String, Codable, Sendable {
+    case animated
+    case still
 }
 
 nonisolated struct PublishExportsResponse: Codable, Sendable {

@@ -7,14 +7,26 @@ import UIKit
 /// The banner only announces that a decision is waiting; every button lives here, so the
 /// transcript keeps its full width and the composer stays the thing under the reader's thumb.
 struct CandidateReadySheet: View {
+    /// Which decision is currently in flight, so only the tapped button spins.
+    enum Decision {
+        case accept
+        case reject
+    }
+
     let revision: StickerRevision
     let assets: [String: UIImage]
     let isBusy: Bool
-    let onAccept: () -> Void
+    /// Both decisions report whether they landed. On success the sheet stays put and lets the
+    /// candidate disappearing take it away; on failure it leaves, because the error message it
+    /// would otherwise be covering lives under the composer.
+    let onAccept: () async -> Bool
     let onCompare: () -> Void
-    let onReject: () -> Void
+    let onReject: () async -> Bool
 
     @Environment(\.dismiss) private var dismiss
+    /// The decision the user just tapped. Kept here rather than read off `isBusy` so the spinner
+    /// lands on the button they actually pressed.
+    @State private var pending: Decision?
 
     // No `NavigationStack` and no close button: a bar for a lone ✕ costs the medium detent
     // roughly the height of the sticker preview, and the drag indicator already says
@@ -43,6 +55,9 @@ struct CandidateReadySheet: View {
         )
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // Swiping the sheet away mid-decision would leave the spinner behind with nothing to
+        // report back to.
+        .interactiveDismissDisabled(pending != nil)
         .accessibilityIdentifier("candidate-sheet")
     }
 }
@@ -83,22 +98,26 @@ private extension CandidateReadySheet {
         )
     }
 
+    /// Whether every button should be inert: one decision at a time, and none at all while the
+    /// screen behind is already deciding.
+    var isLocked: Bool { isBusy || pending != nil }
+
     var actions: some View {
         VStack(spacing: 12) {
             Button {
-                dismiss()
-                onAccept()
+                decide(.accept, run: onAccept)
             } label: {
-                HStack(spacing: 8) {
-                    if isBusy { ProgressView().tint(.white) }
-                    Label("Continue with this sticker", systemImage: "checkmark.circle")
-                }
-                .frame(maxWidth: .infinity)
+                decisionLabel(
+                    "Continue with this sticker",
+                    systemImage: "checkmark.circle",
+                    spinning: pending == .accept,
+                    spinnerTint: .white
+                )
             }
             .buttonStyle(.borderedProminent)
             .tint(AppColors.accent)
             .controlSize(.large)
-            .disabled(isBusy)
+            .disabled(isLocked)
             .accessibilityIdentifier("accept-candidate-next")
 
             Button {
@@ -111,23 +130,60 @@ private extension CandidateReadySheet {
             .buttonStyle(.bordered)
             .tint(AppColors.accent)
             .controlSize(.large)
-            .disabled(isBusy)
+            .disabled(isLocked)
             .accessibilityIdentifier("compare-candidate")
 
             Button(role: .destructive) {
-                dismiss()
-                onReject()
+                decide(.reject, run: onReject)
             } label: {
-                Label("Reject", systemImage: "xmark.circle")
-                    .frame(maxWidth: .infinity)
+                decisionLabel(
+                    "Reject",
+                    systemImage: "xmark.circle",
+                    spinning: pending == .reject,
+                    spinnerTint: .red
+                )
             }
             .buttonStyle(.bordered)
             // The destructive role alone does not colorize a bordered button against the
             // app's purple accent, and rejecting must not read like another neutral choice.
             .tint(.red)
             .controlSize(.large)
-            .disabled(isBusy)
+            .disabled(isLocked)
             .accessibilityIdentifier("reject-candidate-next")
+        }
+        // The spinner slides in beside the title rather than popping the row wider in one frame.
+        .animation(.easeInOut(duration: 0.2), value: pending)
+    }
+
+    /// The spinner sits inside the label so the button keeps its own disabled dimming, and the
+    /// title stays centred on the button rather than shifting when the spinner appears.
+    func decisionLabel(
+        _ title: String,
+        systemImage: String,
+        spinning: Bool,
+        spinnerTint: Color
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .trailing) {
+                if spinning {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(spinnerTint)
+                        .transition(.opacity.combined(with: .scale))
+                }
+            }
+    }
+
+    func decide(_ decision: Decision, run: @escaping () async -> Bool) {
+        guard pending == nil else { return }
+        pending = decision
+        Task {
+            let landed = await run()
+            pending = nil
+            // A failed decision leaves the candidate in place, so the sheet has to step aside for
+            // the error under the composer to be readable.
+            if !landed { dismiss() }
         }
     }
 }
@@ -171,8 +227,14 @@ struct CandidateReadyBanner: View {
         revision: PreviewFixtures.candidate,
         assets: [:],
         isBusy: false,
-        onAccept: {},
+        onAccept: {
+            try? await Task.sleep(for: .seconds(2))
+            return true
+        },
         onCompare: {},
-        onReject: {}
+        onReject: {
+            try? await Task.sleep(for: .seconds(2))
+            return true
+        }
     )
 }

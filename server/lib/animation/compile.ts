@@ -14,6 +14,7 @@ import {
   type ScaleKeyframeV1,
   type TrimKeyframeV1,
 } from "@/lib/contracts/animation";
+import { easedProgress } from "@/lib/animation/easing";
 
 /**
  * Compiles declarative animation specs into the keyframe tracks the renderer actually plays.
@@ -50,6 +51,15 @@ export const MAX_DOCUMENT_KEYFRAMES = 128;
 export const MAX_CHANNEL_KEYFRAMES = 32;
 /** Samples per cycle for the sine-driven specs. Four gives zero/peak/zero/trough. */
 const SAMPLES_PER_CYCLE = 4;
+/**
+ * Segments an `arcTo` is sampled into; it emits one more keyframe than this.
+ *
+ * Eleven keyframes is a third of a channel's budget, which is the price of curving a channel the
+ * interpolator blends linearly. It is enough that the chord error on the widest arc the schema
+ * allows stays well under a pixel at export sizes, and few enough that eight arcing layers still
+ * fit the document's 128-keyframe ceiling.
+ */
+const ARC_SEGMENTS = 10;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 /**
@@ -243,6 +253,36 @@ function compileSpec(spec: AnimationSpecV1, anchor: AnimationAnchorV1, cycleCap:
       position(end, spec.x, spec.y, ease),
     ], "position");
     return;
+  case "arcTo": {
+    const control = arcControlPoint(anchorPosition, spec, spec.arcHeight);
+    const frames: PositionKeyframeV1[] = [];
+    for (let index = 0; index <= ARC_SEGMENTS; index += 1) {
+      const fraction = index / ARC_SEGMENTS;
+      // Easing is baked into *where* each sample sits, and every keyframe is emitted linear, so the
+      // interpolator replays the curve at the parameter speed the easing asked for. Putting the
+      // easing on the segments instead would drop the velocity to zero at all eleven samples and
+      // read as a stutter rather than a throw. The closing sample is pinned rather than eased so
+      // an arc lands exactly on its target the way `moveTo` does, even under a spring's overshoot.
+      //
+      // The parameter is clamped rather than allowed to overshoot: a spring's easing exceeds 1, and
+      // extrapolating a Bézier past its endpoint throws the layer clean off the canvas instead of
+      // past its target. Clamped, a spring rings back and forth *along* the arc, which is what
+      // "springy throw" should mean.
+      const curve = clamp(index === ARC_SEGMENTS ? 1 : easedProgress(fraction, ease), 0, 1);
+      const inverse = 1 - curve;
+      const fromWeight = inverse * inverse;
+      const controlWeight = 2 * inverse * curve;
+      const toWeight = curve * curve;
+      frames.push(position(
+        start + fraction * spec.duration,
+        fromWeight * anchorPosition.x + controlWeight * control.x + toWeight * spec.x,
+        fromWeight * anchorPosition.y + controlWeight * control.y + toWeight * spec.y,
+        "linear",
+      ));
+    }
+    mergeChannel(out.position, frames, "position");
+    return;
+  }
   case "scaleTo":
     mergeChannel(out.scale, [
       scale(start, anchorScale.x, anchorScale.y, "linear"),
@@ -348,6 +388,41 @@ function compileSpec(spec: AnimationSpecV1, anchor: AnimationAnchorV1, cycleCap:
     ], "trim");
     return;
   }
+}
+
+/**
+ * The control point of the quadratic Bézier an `arcTo` follows.
+ *
+ * The apex sign is normalized rather than taken straight from the perpendicular: a raw perpendicular
+ * flips with the direction of travel, so one `arcHeight` would arc a rightward throw over and a
+ * leftward one under. Forcing the normal to point at the top of the canvas makes the sign mean the
+ * same thing whichever way the layer is going, and leaves a purely vertical move — where "up" is
+ * meaningless — bowing to the right.
+ */
+function arcControlPoint(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  arcHeight: number,
+) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  // `sqrt` rather than `Math.hypot`: hypot is not correctly rounded and implementations disagree,
+  // which would break the byte-equality the Swift port has to hold to.
+  const length = Math.sqrt(dx * dx + dy * dy);
+  // A move that goes nowhere has no direction to be perpendicular to; straight up is the only
+  // sensible reading, and it makes an in-place `arcTo` a toss that comes back down.
+  let normalX = length > 0 ? dy / length : 0;
+  let normalY = length > 0 ? -dx / length : -1;
+  if (normalY > 0 || (normalY === 0 && normalX < 0)) {
+    normalX = -normalX;
+    normalY = -normalY;
+  }
+  // A quadratic Bézier passes half way to its control point at the midpoint of the curve, so the
+  // control is displaced twice as far as the apex height the caller actually asked for.
+  return {
+    x: (from.x + to.x) / 2 + 2 * arcHeight * normalX,
+    y: (from.y + to.y) / 2 + 2 * arcHeight * normalY,
+  };
 }
 
 function directionOffset(direction: "up" | "down" | "left" | "right", distance: number) {

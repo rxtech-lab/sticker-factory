@@ -83,6 +83,12 @@ export const PublishExportsRequestSchema = z.object({
   mp4AssetId: z.string().uuid().optional(),
   systemAssetId: z.string().uuid(),
   mp4Background: Mp4BackgroundV1Schema.optional(),
+  /**
+   * Sent as `still` only by an animated export whose motion could not be squeezed under Apple's
+   * 500 KB ceiling at any rung of the client's ladder, which then ships the sticker's poster frame.
+   * Absent means the ordinary case, so an older client keeps meaning what it always did.
+   */
+  systemRenditionKind: z.enum(["animated", "still"]).optional(),
 }).strict();
 
 /**

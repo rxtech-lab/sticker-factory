@@ -118,6 +118,23 @@ export interface AnimationDraftingSession {
     animationId: string,
     operations: StickerOperationV1[],
   ): Promise<AnimationDraftState>;
+  /**
+   * Replaces one layer's motion, keeping every other layer's exactly as it stands.
+   *
+   * The restatement rule above is what makes a revision reproducible, but it charges the whole
+   * animation for a change to one layer: "start the hat a little later" arrives as every operation
+   * the sticker has, retyped, and a layer dropped in the retyping is silently un-animated.
+   *
+   * So this narrows the restatement to a single layer rather than abandoning it. The operations
+   * naming `layerId` are swapped for these, the rest are carried forward untouched, and the merged
+   * set is re-applied to the base document exactly as an update would be — the draft stays a pure
+   * function of the base and one operation list, and only the model's typing gets shorter.
+   */
+  editLayerAnimation(
+    animationId: string,
+    layerId: string,
+    operations: StickerOperationV1[],
+  ): Promise<AnimationDraftState>;
   /** Ends the loop. The caller creates the candidate revision and shows it in chat. */
   finalizeAnimation(animationId: string): Promise<AnimationDraftState>;
 }
@@ -321,6 +338,14 @@ export interface AiChatContext {
   stickerKind: "static" | "animated";
   document?: StickerDocument;
   attachmentCount: number;
+  /**
+   * Whether this project has ever been planned.
+   *
+   * An animated project that has never been planned has no set of independently moving layers to
+   * keyframe, so redrawing it as one flat image is a dead end: nothing downstream can animate it.
+   * The router is told so it can reach for `plan-sticker` instead of `generate-sticker`.
+   */
+  hasPlan?: boolean;
 }
 
 export interface AiTitleContext {
@@ -778,6 +803,42 @@ class GatewayAiProvider implements AiProvider {
           };
         },
       }),
+      edit_layer_animation: tool({
+        description: [
+          "Change the motion of one layer and leave every other layer's exactly as it is.",
+          "Send only the operations for that layer — not the whole animation. They replace whatever",
+          "that layer currently has, so send all of the motion you want it to end up with; every",
+          "other layer keeps the motion it already has, and you do not have to restate it.",
+          "This is the tool for a change to one part of a sticker that is otherwise right: 'start the",
+          "hat a little later', 'the caption should fade instead of pop', 'lose the wiggle on the",
+          "star'. To leave a layer still, send setLayerAnimations for it with an empty animations",
+          "list.",
+          "Use update_animation instead when you are reworking the whole animation, or when two",
+          "layers' timing has to change together.",
+        ].join(" "),
+        inputSchema: z
+          .object({
+            animationId: z.string().min(1),
+            layerId: z.string().min(1).max(64),
+            operations: AnimationOperationsSchema,
+          })
+          .strict(),
+        execute: async ({ animationId, layerId, operations }) => {
+          const current = requireAnimation(animationId);
+          const landed = await guard(() =>
+            session.editLayerAnimation(current.animationId, layerId, operations),
+          );
+          state = {
+            animationId: landed.animationId,
+            revision: landed.revision,
+            finalized: false,
+          };
+          return {
+            ...state,
+            sticker: summarizeDocument(landed.document),
+          };
+        },
+      }),
       finalize_animation: tool({
         description: [
           "Finish and show the animation to the user. Call this once you are satisfied with the",
@@ -807,27 +868,69 @@ class GatewayAiProvider implements AiProvider {
       system: [
         "You add motion to an existing sticker by applying operations to its document.",
         "Work in this order: call create_animation once with your first operations, refine with",
-        "update_animation as many times as you need, and finish by calling finalize_animation. Only",
+        "update_animation or edit_layer_animation as many times as you need, and finish by calling",
+        "finalize_animation. Only",
         "the finalized animation is shown to the user, so nothing in between is wasted or visible.",
         "update_animation is a restatement, not a patch: it is applied to the original sticker, so",
         "send every operation you want the finished animation to have, every time.",
+        // Restating an 8-layer animation to move one delay is where layers get dropped, and a dropped
+        // layer is silently un-animated rather than an error the loop can see and repair.
+        "edit_layer_animation is the same thing scoped to one layer: it swaps out that layer's",
+        "operations, keeps every other layer's, and re-applies the result to the original sticker.",
+        "Prefer it whenever the change is to one layer and the rest of the animation is already right.",
         "If a tool returns an error, read it and fix it. The compiler names the offending specs, the",
         "layer, the channel they share, and the seconds involved, so the error text says exactly what",
         "to change. If create_animation failed there is no animation to update yet — call",
-        "create_animation again with the fix. If it succeeded, fix it with update_animation. Do not",
+        "create_animation again with the fix. If it succeeded, fix it with update_animation, or with",
+        "edit_layer_animation when the error names a single layer. Do not",
         "give up and do not repeat the same rejected operations.",
         "",
-        "Strongly prefer setLayerAnimations: it takes named effects (fadeIn, popIn, slideIn, spin,",
-        "wiggle, pulse, bounce, float, blurIn, hueShift, moveTo, scaleTo, rotateTo) with a delay and a",
-        "duration in seconds, and the server compiles them into keyframes for you. Stagger layers by",
-        "giving each a larger delay.",
+        "Strongly prefer setLayerAnimations: it takes named effects with a delay and a duration in",
+        "seconds, and the server compiles them into keyframes for you. Stagger layers by giving each a",
+        "larger delay. The full vocabulary is:",
+        "entrances and exits — fadeIn, fadeOut, popIn, popOut, slideIn, slideOut;",
+        "moves — moveTo, arcTo, scaleTo, rotateTo, spin;",
+        "idles — wiggle, pulse, bounce, float;",
+        "effects — blurIn, blurOut, hueShift;",
+        "stroke drawing — drawOn, drawOff, trimTo, which only do anything on a shape with a stroke or",
+        "an SVG layer, and are how a signature, an outline, or an underline draws itself in.",
+        "",
+        // moveTo compiles to two keyframes and the interpolator blends them linearly, so no easing
+        // can bend it. Every "throw it across the screen" request used to come back as a layer
+        // sliding along a ruler, which is the single most common complaint about the motion here.
+        "Curved motion. moveTo travels in a dead straight line, which reads as mechanical for anything",
+        "thrown, tossed, lobbed, swooped, or falling. Use arcTo for those: it goes to the same x/y but",
+        "bows along a parabola. arcHeight is how far it bows at the midpoint, in canvas units,",
+        "perpendicular to the travel — positive always arcs over the top, negative sags underneath, and",
+        "0.2-0.4 reads as a natural throw. Giving it the layer's own x/y makes a straight-up toss that",
+        "comes back down. An arcTo costs 11 of a layer's 32 keyframes.",
+        // Every spec is compiled against the layer's anchor, not against where the previous spec left
+        // it, so back-to-back moves collide on the boundary keyframe with a confusing error.
+        "Every effect departs from the layer's resting x/y, not from wherever the last effect ended, so",
+        "two moves cannot be chained on one layer: an arcTo or moveTo followed by another is rejected.",
+        "One arc per layer. For repeated hops in place use bounce, and to move several things along",
+        "different trajectories give each its own layer.",
+        "",
+        // Neither prompt used to mention easing at all, so every spec landed on the easeInOut
+        // default, including the sampled ones where it is actively wrong.
+        "Easing. Every effect takes an easing: linear, easeIn, easeOut, easeInOut (the default),",
+        "springSoft, or springBouncy. It matters more than the numbers do. Entrances want easeOut or a",
+        "spring so they arrive with weight; exits want easeIn; a spin or a hueShift crossing the whole",
+        "frame wants linear. Use springBouncy for anything playful landing into place.",
+        "One case is worth memorising: wiggle, pulse and float compile to a sampled sine, and the",
+        "easing is then applied to each sample on its own, so easeInOut brings the motion to a full",
+        "stop four times a cycle — that is what makes them look stiff. Give those three linear, which",
+        "leaves the sampled sine as the only curve in play. arcTo takes",
+        "linear too unless you specifically want the throw to decelerate into its landing (easeOut),",
+        "because a linear parameter over a parabola is exactly how a real thrown object moves.",
         // The rule was already here in the abstract and was still broken constantly, always the same
         // way: an entrance and an idle effect both starting at 0. Naming that case and showing the
         // arithmetic is what makes it stick.
         "Two effects on one layer must never overlap in time if they drive the same property, and",
         "every effect must finish within the sticker's duration. An entrance and an idle effect are",
         "the usual trap: popIn, fadeIn, slideIn, blurIn, scaleTo and pulse, bounce, float, wiggle,",
-        "spin all drive scale or position. Sequence them — popIn with delay 0 and duration 0.5 means",
+        "spin all drive scale or position, and slideIn, slideOut, moveTo, arcTo, bounce and float all",
+        "drive position in particular. Sequence them — popIn with delay 0 and duration 0.5 means",
         "the pulse after it starts at delay 0.5, not 0. Two effects on different layers, or on the",
         "same layer driving different properties, may overlap freely.",
         "Fall back to the raw setXKeyframes operations only for motion no named effect can express;",
@@ -1208,9 +1311,18 @@ class GatewayAiProvider implements AiProvider {
         "does it in place and in one turn. Keep plan-sticker for a sticker that has to be rebuilt as a",
         "new set of independently moving parts, and never reach for generate-sticker to change a",
         "sticker that exists: it throws every layer away and redraws from nothing.",
+        // The kind is the project's whole contract with the user: they picked "animated" before they
+        // typed a word, and a flat image cannot be keyframed into anything, so a generate on an
+        // unplanned animated project silently delivers the static sticker they did not ask for.
+        "The sticker kind below is the user's standing choice for this project, not a detail of this turn.",
+        "On a static project the sticker never moves: never call animate-sticker or plan-sticker for motion.",
+        "On an animated project the finished sticker has to move, and only layers can be keyframed.",
+        "So when an animated project has no plan yet, design it with plan-sticker rather than drawing it",
+        "with generate-sticker: one flat image has no separate parts and can never be animated afterwards.",
       ].join(" "),
       prompt: [
         `Sticker kind: ${input.stickerKind}`,
+        `Planned as layers already: ${input.hasPlan ? "yes" : "no"}`,
         `Attached reference images: ${input.attachmentCount}`,
         input.document
           ? `Current StickerDocument: ${JSON.stringify(input.document)}`
@@ -1435,9 +1547,25 @@ class GatewayAiProvider implements AiProvider {
         "in seconds. Stagger a sequence by giving each layer a larger delay — that is how a typewriter",
         "reveal is built. Two animations on the same layer must not overlap in time if they drive the",
         "same property: fadeIn/fadeOut/popIn/popOut/slideIn/slideOut all drive opacity, popIn and pulse",
-        "and scaleTo drive scale, spin and wiggle and rotateTo drive rotation.",
+        "and scaleTo drive scale, spin and wiggle and rotateTo drive rotation, and slideIn/slideOut and",
+        "moveTo/arcTo and bounce and float all drive position.",
         "Every animation must finish within the sticker's duration (delay + duration <= durationSeconds).",
         "Static stickers cannot carry any animations at all.",
+        // moveTo is two keyframes blended linearly, so nothing can bend it into an arc. Without this
+        // paragraph every thrown or falling subject came back travelling along a ruler.
+        "Curves. moveTo travels in a dead straight line, which looks mechanical for anything thrown,",
+        "tossed, swooping or falling. Use arcTo instead: same destination, but it bows along a parabola",
+        "by arcHeight canvas units at the midpoint — positive arcs over the top, negative sags under,",
+        "0.2-0.4 is a natural throw, and giving it the layer's own x/y makes a straight-up toss.",
+        "Every animation departs from the layer's resting x/y rather than from where the previous one",
+        "ended, so a layer gets at most one moveTo or arcTo; a second is rejected.",
+        // Easing went unmentioned here for long enough that every stored spec sits on the default.
+        "Easing. Every animation takes linear, easeIn, easeOut, easeInOut (the default), springSoft or",
+        "springBouncy, and it does more for how the sticker feels than any other number. Entrances want",
+        "easeOut or a spring, exits want easeIn, a full-frame spin wants linear. wiggle, pulse and float",
+        "must use linear: they compile to a sampled sine and any other easing eases each sample on its",
+        "own, which makes them stutter. arcTo wants linear too, unless the throw should slow into its",
+        "landing.",
         "",
         "The summary is shown to the user as your chat message: one or two friendly sentences.",
       ].join("\n"),
@@ -1609,6 +1737,19 @@ export function validateEditOperation(
   return operation;
 }
 
+/**
+ * The layer an operation acts on, or `undefined` for one that acts on the document.
+ *
+ * `addLayer` is deliberately document-level even though it carries a layer: the layer it describes
+ * does not exist yet, so an edit scoped to some other layer must not drop it. `setTiming` and
+ * `setMp4Background` name no layer at all and are carried forward the same way.
+ */
+export function animationOperationLayerId(
+  operation: StickerOperationV1,
+): string | undefined {
+  return "layerId" in operation ? operation.layerId : undefined;
+}
+
 export function validatePlannedAnimationOperation(
   operation: StickerOperationV1,
 ): StickerOperationV1 {
@@ -1687,7 +1828,22 @@ class MockAiProvider implements AiProvider {
       ...scale,
       ...rotation,
     ]);
-    const finalized = await session.finalizeAnimation(updated.animationId);
+    // One layer given a bigger swell than the rest, sent on its own. The restated scale and rotation
+    // above are not repeated: every other layer keeps the motion the update landed, which is the
+    // whole of what this tool is for.
+    const edited = await session.editLayerAnimation(updated.animationId, layers[0].id, [
+      {
+        op: "setScaleKeyframes",
+        layerId: layers[0].id,
+        keyframes: [
+          { timeSeconds: 0, x: 0.9, y: 0.9, easing: "easeOut" },
+          { timeSeconds: 1, x: 1.2, y: 1.2, easing: "springBouncy" },
+          { timeSeconds: 2, x: 0.9, y: 0.9, easing: "easeIn" },
+        ],
+      },
+      rotation[0],
+    ]);
+    const finalized = await session.finalizeAnimation(edited.animationId);
     return {
       animationId: finalized.animationId,
       revision: finalized.revision,

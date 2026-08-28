@@ -57,6 +57,7 @@ struct StickerExportSheet: View {
                         }
                     }
 
+                    if let note = model.qualityNote { NoticeBanner(message: note) }
                     if let error = model.errorMessage { ErrorBanner(message: error) }
                 }
                 .padding()
@@ -102,6 +103,12 @@ struct StickerExportSheet: View {
         .onChange(of: model.stickerSize) { oldValue, newValue in
             guard oldValue != newValue, !isPublished, !publishIsPending, !model.isPublishing else { return }
             model.invalidateExports()
+        }
+        // Unlike size and background, this changes nothing about the files — only which of them get
+        // shared — so it stays available on a published sticker and drops just the share list.
+        .onChange(of: model.selection) { oldValue, newValue in
+            guard oldValue != newValue, !publishIsPending, !model.isPublishing else { return }
+            model.clearShareFiles()
         }
     }
 
@@ -207,9 +214,35 @@ struct StickerExportSheet: View {
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
 
+            if revision.document.kind == .animated { selectionPicker }
+
             sizePicker
 
             if revision.document.kind == .animated { backgroundPicker }
+        }
+    }
+
+    /// A sticker and a video are two different things to want, and wanting one does not mean
+    /// wanting the other: this decides which files the share sheet hands over.
+    private var selectionPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Export as")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("Export as", selection: $model.selection) {
+                ForEach(StickerExportSelection.allCases) { selection in
+                    Text(selection.label).tag(selection)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("export-selection-picker")
+            .disabled(publishIsPending || model.isPublishing)
+
+            Text(model.selection.detail(isAnimated: revision.document.kind == .animated))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -232,7 +265,10 @@ struct StickerExportSheet: View {
             .accessibilityIdentifier("sticker-size-picker")
             .disabled(isPublished || publishIsPending || model.isPublishing)
 
-            Text("\(model.stickerSize.detail). Detailed artwork can still be exported one size down to stay under Apple's 500 KB limit.")
+            Text("""
+            \(model.stickerSize.detail). Detailed artwork can still be exported one size down, or \
+            as a still frame, to stay under Apple's 500 KB limit — the export always goes through.
+            """)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -74,6 +74,22 @@ async function loadPlan(db: Database, ownerId: string, stickerId: string, planId
   return row;
 }
 
+/**
+ * Whether a sticker has ever been planned.
+ *
+ * Deliberately counts every plan row, cancelled and superseded ones included. It gates the rule
+ * that an animated project must be designed as layers before anything is drawn, and a user who
+ * turned a plan down has already answered that question — re-forcing a plan on their next prompt
+ * would trap them in a loop they cannot leave.
+ */
+export async function stickerHasPlan(db: Database, ownerId: string, stickerId: string) {
+  const row = await db.select({ id: plans.id }).from(plans).where(and(
+    eq(plans.ownerId, ownerId),
+    eq(plans.stickerId, stickerId),
+  )).get();
+  return Boolean(row);
+}
+
 /** The plan the agent is currently drafting for a sticker, if any. */
 export async function currentDraftPlan(db: Database, ownerId: string, stickerId: string) {
   return db.select().from(plans).where(and(

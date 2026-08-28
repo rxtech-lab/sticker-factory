@@ -183,6 +183,14 @@ describe("per spec type", () => {
       },
     },
     {
+      name: "arcTo lands exactly on its target",
+      input: { type: "arcTo", x: 0.9, y: 0.5, duration: 1 },
+      expect: (c) => {
+        expect(c.position[0]).toMatchObject({ x: 0.5, y: 0.5 });
+        expect(c.position.at(-1)).toMatchObject({ x: 0.9, y: 0.5 });
+      },
+    },
+    {
       name: "blurIn resolves to sharp",
       input: { type: "blurIn", radius: 6, duration: 0.5 },
       expect: (c) => expect(c.effects.map((f) => f.blurRadius)).toEqual([6, 0]),
@@ -204,6 +212,91 @@ describe("per spec type", () => {
       testCase.expect(compileLayerAnimation([spec(testCase.input)], DEFAULT_ANCHOR, ANIMATED));
     });
   }
+});
+
+describe("arcTo", () => {
+  const arc = (value: Record<string, unknown>, anchor = DEFAULT_ANCHOR) =>
+    compileLayerAnimation([spec({ type: "arcTo", duration: 1, ...value })], anchor, ANIMATED).position;
+
+  it("bows away from the straight line by arcHeight at the apex", () => {
+    // A horizontal move: the midpoint of the chord is (0.5, 0.5), so an apex of 0.25 above it is
+    // y = 0.25. Negative y is up, hence the subtraction.
+    const frames = arc({ x: 0.9, y: 0.5, arcHeight: 0.25, easing: "linear" }, anchorAt(0.1, 0.5));
+    const apex = frames[Math.floor((frames.length - 1) / 2)];
+    expect(apex).toMatchObject({ x: 0.5, y: 0.25 });
+  });
+
+  it("is exactly a straight line at arcHeight 0", () => {
+    const frames = arc({ x: 0.9, y: 0.9, arcHeight: 0, easing: "linear" });
+    // Every sample sits on the chord from (0.5, 0.5) to (0.9, 0.9), which here means x === y.
+    for (const frame of frames) expect(frame.y).toBeCloseTo(frame.x, 10);
+  });
+
+  it("arcs over the top whichever way the layer travels", () => {
+    // The perpendicular of the travel vector flips with direction, so without the sign
+    // normalisation these two would mirror rather than both bow upward.
+    const rightward = arc({ x: 0.9, y: 0.5, arcHeight: 0.3, easing: "linear" }, anchorAt(0.1, 0.5));
+    const leftward = arc({ x: 0.1, y: 0.5, arcHeight: 0.3, easing: "linear" }, anchorAt(0.9, 0.5));
+    expect(Math.min(...rightward.map((frame) => frame.y))).toBeLessThan(0.5);
+    expect(Math.min(...leftward.map((frame) => frame.y))).toBeLessThan(0.5);
+    // Same path, walked backwards.
+    expect(rightward.map((frame) => frame.y)).toEqual([...leftward.map((frame) => frame.y)].reverse());
+  });
+
+  it("tosses straight up when it returns to where it started", () => {
+    const frames = arc({ x: 0.5, y: 0.5, arcHeight: 0.2, easing: "linear" });
+    expect(new Set(frames.map((frame) => frame.x))).toEqual(new Set([0.5]));
+    expect(frames[0].y).toBe(0.5);
+    expect(frames.at(-1)!.y).toBe(0.5);
+    expect(Math.min(...frames.map((frame) => frame.y))).toBeLessThan(0.4);
+  });
+
+  it("emits linear keyframes so the interpolator does not re-ease each sample", () => {
+    // The easing is baked into where the samples sit. Leaving it on the keyframes would drop the
+    // velocity to zero eleven times over and read as a stutter.
+    const frames = arc({ x: 0.9, y: 0.2, easing: "springBouncy" });
+    expect(frames.every((frame) => frame.easing === "linear")).toBe(true);
+  });
+
+  it("keeps a spring on the path instead of extrapolating past the end", () => {
+    // springBouncy's eased progress exceeds 1; an unclamped Bézier parameter would throw the layer
+    // off canvas rather than overshooting along the arc.
+    const straight = arc({ x: 0.9, y: 0.5, arcHeight: 0, easing: "springBouncy" }, anchorAt(0.1, 0.5));
+    for (const frame of straight) {
+      expect(frame.x).toBeGreaterThanOrEqual(0.1);
+      expect(frame.x).toBeLessThanOrEqual(0.9);
+    }
+  });
+
+  it("costs eleven of the channel's thirty-two keyframes", () => {
+    expect(arc({ x: 0.9, y: 0.2 })).toHaveLength(11);
+  });
+
+  it("cannot be chained, because every spec departs from the layer's anchor", () => {
+    // The second arc starts at the anchor at 1s while the first leaves the layer at its target, so
+    // the shared boundary keyframe is a real discontinuity rather than a duplicate. This is not
+    // specific to arcTo — moveTo behaves the same — but it is the trap a "bounce it across the
+    // frame" instruction walks straight into, so it is pinned here.
+    expect(() => compileLayerAnimation(
+      [
+        spec({ type: "arcTo", x: 0.9, y: 0.5, delay: 0, duration: 1 }),
+        spec({ type: "arcTo", x: 0.2, y: 0.5, delay: 1, duration: 1 }),
+      ],
+      DEFAULT_ANCHOR,
+      ANIMATED,
+    )).toThrow(/different position values at 1s/);
+  });
+
+  it("conflicts with another position spec over the same window", () => {
+    expect(() => compileLayerAnimation(
+      [
+        spec({ type: "arcTo", x: 0.9, y: 0.5, delay: 0, duration: 1 }),
+        spec({ type: "float", delay: 0.5, duration: 1 }),
+      ],
+      DEFAULT_ANCHOR,
+      ANIMATED,
+    )).toThrow(/both drive the position channel/);
+  });
 });
 
 describe("channel conflicts", () => {

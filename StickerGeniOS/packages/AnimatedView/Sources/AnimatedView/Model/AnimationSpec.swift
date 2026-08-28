@@ -23,6 +23,10 @@ public enum AnimationEffect: Hashable, Sendable {
 
     // Absolute moves.
     case moveTo(x: Double, y: Double)
+    /// A curved move. `arcHeight` is how far the path bows away from the straight line at its
+    /// midpoint, measured perpendicular to the travel and signed so positive always bows toward the
+    /// top of the canvas. `0` is exactly `moveTo`.
+    case arcTo(x: Double, y: Double, arcHeight: Double)
     case scaleTo(x: Double, y: Double)
     case rotateTo(degrees: Double)
     case spin(turns: Double, direction: AnimationSpinDirection)
@@ -55,6 +59,7 @@ public enum AnimationEffect: Hashable, Sendable {
         case .slideIn: .slideIn
         case .slideOut: .slideOut
         case .moveTo: .moveTo
+        case .arcTo: .arcTo
         case .scaleTo: .scaleTo
         case .rotateTo: .rotateTo
         case .spin: .spin
@@ -74,7 +79,7 @@ public enum AnimationEffect: Hashable, Sendable {
 
 public enum AnimationEffectType: String, Codable, CaseIterable, Hashable, Sendable {
     case fadeIn, fadeOut, popIn, popOut, slideIn, slideOut
-    case moveTo, scaleTo, rotateTo, spin
+    case moveTo, arcTo, scaleTo, rotateTo, spin
     case wiggle, pulse, bounce, float
     case blurIn, blurOut, hueShift
     case drawOn, drawOff, trimTo
@@ -89,7 +94,7 @@ public enum AnimationEffectType: String, Codable, CaseIterable, Hashable, Sendab
         case .fadeIn, .fadeOut: [.opacity]
         case .popIn, .popOut: [.scale, .opacity]
         case .slideIn, .slideOut: [.position, .opacity]
-        case .moveTo: [.position]
+        case .moveTo, .arcTo: [.position]
         case .scaleTo: [.scale]
         case .rotateTo, .spin, .wiggle: [.rotation]
         case .pulse: [.scale]
@@ -140,7 +145,7 @@ public struct AnimationSpec: Codable, Hashable, Sendable {
         case type, delay, duration, easing
         case from, to, direction, distance, x, y, degrees, turns
         case amplitudeDegrees, cycles, minScale, maxScale, height, bounces, amplitude, radius
-        case start, end
+        case start, end, arcHeight
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,6 +170,12 @@ public struct AnimationSpec: Codable, Hashable, Sendable {
             )
         case .moveTo:
             effect = .moveTo(x: try c.decode(Double.self, forKey: .x), y: try c.decode(Double.self, forKey: .y))
+        case .arcTo:
+            effect = .arcTo(
+                x: try c.decode(Double.self, forKey: .x),
+                y: try c.decode(Double.self, forKey: .y),
+                arcHeight: try c.value(.arcHeight, default: 0.25)
+            )
         case .scaleTo:
             effect = .scaleTo(x: try c.decode(Double.self, forKey: .x), y: try c.decode(Double.self, forKey: .y))
         case .rotateTo:
@@ -215,6 +226,10 @@ public struct AnimationSpec: Codable, Hashable, Sendable {
         case .moveTo(let x, let y), .scaleTo(let x, let y):
             try c.encode(x, forKey: .x)
             try c.encode(y, forKey: .y)
+        case .arcTo(let x, let y, let arcHeight):
+            try c.encode(x, forKey: .x)
+            try c.encode(y, forKey: .y)
+            try c.encode(arcHeight, forKey: .arcHeight)
         case .rotateTo(let degrees), .hueShift(let degrees):
             try c.encode(degrees, forKey: .degrees)
         case .spin(let turns, let direction):
@@ -263,6 +278,13 @@ extension AnimationSpec {
 
     public static func slideIn(_ direction: AnimationDirection, distance: Double = 0.3, delay: Double = 0, duration: Double = 0.5, easing: AnimatedEasing = .easeOut) -> Self {
         .init(.slideIn(direction: direction, distance: distance), delay: delay, duration: duration, easing: easing)
+    }
+
+    /// Defaults to `linear`, unlike the other shorthands: the arc's own geometry already supplies
+    /// the slow-at-the-apex feel, and a linear parameter over a parabola is exactly what a thrown
+    /// object does. Reach for `easeOut` to lob something that settles into its landing.
+    public static func arcTo(x: Double, y: Double, arcHeight: Double = 0.25, delay: Double = 0, duration: Double = 0.8, easing: AnimatedEasing = .linear) -> Self {
+        .init(.arcTo(x: x, y: y, arcHeight: arcHeight), delay: delay, duration: duration, easing: easing)
     }
 
     public static func spin(turns: Double = 1, direction: AnimationSpinDirection = .cw, delay: Double = 0, duration: Double = 1, easing: AnimatedEasing = .easeInOut) -> Self {

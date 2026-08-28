@@ -52,6 +52,13 @@ public enum AnimationCompiler {
     public static let maximumChannelKeyframes = AnimatedLayerAnimation.maximumKeyframesPerChannel
     /// Samples per cycle for the sine-driven specs. Four gives zero/peak/zero/trough.
     static let samplesPerCycle = 4
+    /// Segments an `arcTo` is sampled into; it emits one more keyframe than this.
+    ///
+    /// Eleven keyframes is a third of a channel's budget, which is the price of curving a channel
+    /// the interpolator blends linearly. It is enough that the chord error on the widest arc the
+    /// schema allows stays well under a pixel at export sizes, and few enough that eight arcing
+    /// layers still fit the document's 128-keyframe ceiling.
+    static let arcSegments = 10
 
     // MARK: - Rounding
 
@@ -167,6 +174,35 @@ public enum AnimationCompiler {
     /// Phase samples for a cyclic spec: 0, 0.25, … cycles, inclusive of the closing sample.
     static func cyclePhases(_ cycles: Int) -> [Double] {
         stride(from: 0, through: cycles * samplesPerCycle, by: 1).map { Double($0) / Double(samplesPerCycle) }
+    }
+
+    /// The control point of the quadratic Bézier an `arcTo` follows.
+    ///
+    /// The apex sign is normalized rather than taken straight from the perpendicular: a raw
+    /// perpendicular flips with the direction of travel, so one `arcHeight` would arc a rightward
+    /// throw over and a leftward one under. Forcing the normal to point at the top of the canvas
+    /// makes the sign mean the same thing whichever way the layer is going, and leaves a purely
+    /// vertical move — where "up" is meaningless — bowing to the right.
+    static func arcControlPoint(_ from: AnimatedPoint, _ to: AnimatedPoint, _ arcHeight: Double) -> AnimatedPoint {
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        // `sqrt` rather than `hypot`: hypot is not correctly rounded and implementations disagree,
+        // which would break the byte-equality with `compile.ts` this port has to hold to.
+        let length = (dx * dx + dy * dy).squareRoot()
+        // A move that goes nowhere has no direction to be perpendicular to; straight up is the only
+        // sensible reading, and it makes an in-place `arcTo` a toss that comes back down.
+        var normalX = length > 0 ? dy / length : 0
+        var normalY = length > 0 ? -dx / length : -1
+        if normalY > 0 || (normalY == 0 && normalX < 0) {
+            normalX = -normalX
+            normalY = -normalY
+        }
+        // A quadratic Bézier passes half way to its control point at the midpoint of the curve, so
+        // the control is displaced twice as far as the apex height the caller actually asked for.
+        return AnimatedPoint(
+            x: (from.x + to.x) / 2 + 2 * arcHeight * normalX,
+            y: (from.y + to.y) / 2 + 2 * arcHeight * normalY
+        )
     }
 
     static func directionOffset(_ direction: AnimationDirection, _ distance: Double) -> AnimatedPoint {
@@ -301,6 +337,35 @@ public enum AnimationCompiler {
                 position(start, anchorPosition.x, anchorPosition.y, .linear),
                 position(end, x, y, ease),
             ], .position)
+
+        case .arcTo(let x, let y, let arcHeight):
+            let target = AnimatedPoint(x: x, y: y)
+            let control = arcControlPoint(anchorPosition, target, arcHeight)
+            try merge(&out.position, (0...arcSegments).map { index in
+                let fraction = Double(index) / Double(arcSegments)
+                // Easing is baked into *where* each sample sits, and every keyframe is emitted
+                // linear, so the interpolator replays the curve at the parameter speed the easing
+                // asked for. Putting the easing on the segments instead would drop the velocity to
+                // zero at all eleven samples and read as a stutter rather than a throw. The closing
+                // sample is pinned rather than eased so an arc lands exactly on its target the way
+                // `moveTo` does, even under a spring's overshoot.
+                //
+                // The parameter is clamped rather than allowed to overshoot: a spring's easing
+                // exceeds 1, and extrapolating a Bézier past its endpoint throws the layer clean off
+                // the canvas instead of past its target. Clamped, a spring rings back and forth
+                // *along* the arc, which is what "springy throw" should mean.
+                let curve = clamp(index == arcSegments ? 1 : AnimationInterpolator.easedProgress(fraction, easing: ease), 0, 1)
+                let inverse = 1 - curve
+                let fromWeight = inverse * inverse
+                let controlWeight = 2 * inverse * curve
+                let toWeight = curve * curve
+                return position(
+                    start + fraction * spec.duration,
+                    fromWeight * anchorPosition.x + controlWeight * control.x + toWeight * target.x,
+                    fromWeight * anchorPosition.y + controlWeight * control.y + toWeight * target.y,
+                    .linear
+                )
+            }, .position)
 
         case .scaleTo(let x, let y):
             try merge(&out.scale, [

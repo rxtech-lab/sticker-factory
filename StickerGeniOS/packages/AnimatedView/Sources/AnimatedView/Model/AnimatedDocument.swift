@@ -73,8 +73,74 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
         loop = try c.value(.loop, default: kind == .animated ? .loop : .once)
         speed = try c.value(.speed, default: 1)
         background = try c.value(.background, default: .none)
-        mp4Background = try c.value(.mp4Background, default: .solid("#FFFFFF"))
+        mp4Background = try c.decodeIfPresent(MP4Background.self, forKey: .mp4Background)?.value ?? .solid("#FFFFFF")
         layers = try c.value(.layers, default: [])
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(version, forKey: .version)
+        try c.encode(canvas, forKey: .canvas)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(durationSeconds, forKey: .durationSeconds)
+        try c.encode(fps, forKey: .fps)
+        try c.encode(loop, forKey: .loop)
+        try c.encode(speed, forKey: .speed)
+        try c.encode(background, forKey: .background)
+        try c.encode(MP4Background(mp4Background), forKey: .mp4Background)
+        try c.encode(layers, forKey: .layers)
+    }
+
+    /// The MP4 fill, which travels in a narrower shape than the artwork background.
+    ///
+    /// The two fields are the same type in this package but not on the wire. `background` is a full
+    /// gradient with located stops; `mp4Background` is only ever a flat colour or a two-colour ramp,
+    /// so the contract spells it `colors: [from, to]` and rejects anything else. Decoding it as an
+    /// artwork background made every document with a gradient MP4 fill fail to decode outright —
+    /// not the field, the whole document — and encoding one back made the server reject the save.
+    ///
+    /// Both shapes are read so a document written by either side still loads.
+    private struct MP4Background: Codable {
+        var value: AnimatedBackground
+
+        init(_ value: AnimatedBackground) { self.value = value }
+
+        private enum CodingKeys: String, CodingKey { case type, color, colors, stops, angleDegrees }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let colors = try container.decodeIfPresent([String].self, forKey: .colors)
+            guard try container.decode(String.self, forKey: .type) == "linearGradient",
+                  let colors, colors.count >= 2
+            else {
+                value = try AnimatedBackground(from: decoder)
+                return
+            }
+            value = .linearGradient(
+                stops: colors.enumerated().map {
+                    .init(color: $0.element, location: Double($0.offset) / Double(colors.count - 1))
+                },
+                angleDegrees: try container.decodeIfPresent(Double.self, forKey: .angleDegrees) ?? 0
+            )
+        }
+
+        func encode(to encoder: Encoder) throws {
+            guard case .linearGradient(let stops, let angleDegrees) = value,
+                  let first = stops.first, let last = stops.last, stops.count >= 2
+            else {
+                // `.solid` is the only other shape the contract accepts, and it encodes identically
+                // either way. Anything else can only come from a locally built document, and is
+                // written in its own shape rather than silently flattened into a colour.
+                try value.encode(to: encoder)
+                return
+            }
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode("linearGradient", forKey: .type)
+            try container.encode([first.color, last.color], forKey: .colors)
+            // The MP4 contract takes a compass bearing, not a signed rotation.
+            try container.encode((angleDegrees.truncatingRemainder(dividingBy: 360) + 360)
+                .truncatingRemainder(dividingBy: 360), forKey: .angleDegrees)
+        }
     }
 
     // MARK: - Derived timing

@@ -38,6 +38,32 @@ describe("durable sticker workflow", () => {
     setAiProviderForTests(undefined);
   });
 
+  /**
+   * Draws an animated project's first revision as one flat `hero` layer.
+   *
+   * An animated project that has never been planned is planned rather than drawn, so this is the
+   * whole of the route a user has to a single-image base: the first prompt drafts a plan, they turn
+   * it down, and the next prompt draws. The animation tests below want that base — a document with
+   * one layer to keyframe — not the composition a confirmed plan would have built.
+   */
+  async function drawnAnimatedBase(
+    db: Awaited<ReturnType<typeof createTestDatabase>>["db"],
+    ownerId: string,
+    stickerId: string,
+    text: string,
+  ) {
+    const planTurn = await createChatTurn(db, ownerId, stickerId, {
+      text, intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(planTurn.jobId)).workflowStatus).toBe("succeeded");
+    const [plan] = await db.select().from(planRows).where(eq(planRows.stickerId, stickerId));
+    // No reason given, so the plan is simply dropped rather than queueing a re-planning turn.
+    await cancelPlan(db, ownerId, stickerId, plan.id);
+    return createChatTurn(db, ownerId, stickerId, {
+      text, intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+  }
+
   it("completes base confirmation before streaming complete validated animation snapshots", async () => {
     const { db, close } = await createTestDatabase();
     setDatabaseForTests(db);
@@ -46,12 +72,7 @@ describe("durable sticker workflow", () => {
     await db.insert(users).values({ id: "owner-a", createdAt: new Date(), updatedAt: new Date() });
 
     const sticker = await createSticker(db, "owner-a", { title: "Bounce", kind: "animated", prompt: "Happy cloud", referenceAssetIds: [] });
-    const baseTurn = await createChatTurn(db, "owner-a", sticker.stickerId, {
-      text: "Happy cloud",
-      intent: "generate",
-      attachments: [],
-      imagePlacement: "replace",
-    });
+    const baseTurn = await drawnAnimatedBase(db, "owner-a", sticker.stickerId, "Happy cloud");
     expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
     const baseJob = await db.select().from(generationJobs).where(eq(generationJobs.id, baseTurn.jobId)).get();
     expect(baseJob?.state).toBe("succeeded");
@@ -69,7 +90,8 @@ describe("durable sticker workflow", () => {
     });
     expect((await stickerGenerationWorkflow(animationTurn.jobId)).workflowStatus).toBe("succeeded");
     const snapshots = await db.select().from(generationEvents).where(eq(generationEvents.jobId, animationTurn.jobId));
-    expect(snapshots.filter((event) => event.type === "document")).toHaveLength(3);
+    // One per landing — create, update, single-layer edit — and one for the revision they became.
+    expect(snapshots.filter((event) => event.type === "document")).toHaveLength(4);
     expect(snapshots.at(-1)?.type).toBe("completed");
 
     const refinementTurn = await createChatTurn(db, "owner-a", sticker.stickerId, {
@@ -145,6 +167,27 @@ describe("durable sticker workflow", () => {
     await stickerGenerationWorkflow(retry.jobId);
     await expect(retryFailedChatTurn(db, "owner-a", sticker.stickerId, retryTurn.messageId))
       .rejects.toMatchObject({ code: "MESSAGE_NOT_RETRYABLE" });
+
+    // Some animations cannot be squeezed under Apple's 500 KB ceiling at any size or frame rate the
+    // client's ladder reaches. Those publish their poster frame rather than failing to export, which
+    // the client has to say outright — a single-frame system rendition is otherwise indistinguishable
+    // from a client that uploaded the wrong file.
+    const stillSystemId = crypto.randomUUID();
+    await db.insert(assets).values([
+      { id: stillSystemId, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "system", state: "ready", r2Key: objectKey("owner-a", stillSystemId, "image/png"), mimeType: "image/png", byteSize: 40_000, width: 300, height: 300, frameCount: 1, durationSeconds: 0, fps: 0, sha256: "d".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+    ]);
+    const stillRequest = { ...publishRequest, revisionId: publishedRevisionId, systemAssetId: stillSystemId };
+    await expect(bindExports(db, "owner-a", sticker.stickerId, stillRequest, crypto.randomUUID()))
+      .rejects.toMatchObject({ code: "ANIMATED_SYSTEM_RENDITION_REQUIRED" });
+    // The claim is checked against the file: an animated rendition may not be passed off as the
+    // fallback, which is what stops the flag from becoming a way around the timing rules.
+    await expect(bindExports(db, "owner-a", sticker.stickerId, {
+      ...stillRequest, systemAssetId: renditionIds.system, systemRenditionKind: "still" as const,
+    }, crypto.randomUUID())).rejects.toMatchObject({ code: "INVALID_STILL_SYSTEM_RENDITION" });
+    const stillPublishedId = crypto.randomUUID();
+    await bindExports(db, "owner-a", sticker.stickerId, { ...stillRequest, systemRenditionKind: "still" as const }, stillPublishedId);
+    expect((await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, stillPublishedId)).get())?.systemAssetId)
+      .toBe(stillSystemId);
     await close();
   }, 30_000);
 
@@ -285,12 +328,7 @@ describe("durable sticker workflow", () => {
     const rejections: string[] = [];
 
     const sticker = await createSticker(db, "owner-repair", { title: "Pop", kind: "animated", prompt: "Pop", referenceAssetIds: [] });
-    const baseTurn = await createChatTurn(db, "owner-repair", sticker.stickerId, {
-      text: "Pop",
-      intent: "generate",
-      attachments: [],
-      imagePlacement: "replace",
-    });
+    const baseTurn = await drawnAnimatedBase(db, "owner-repair", sticker.stickerId, "Pop");
     await stickerGenerationWorkflow(baseTurn.jobId);
     await acceptRevision(db, "owner-repair", sticker.stickerId, baseTurn.jobId);
 
@@ -349,12 +387,7 @@ describe("durable sticker workflow", () => {
   async function animatedStickerWithAcceptedBase(db: Awaited<ReturnType<typeof createTestDatabase>>["db"], ownerId: string) {
     await db.insert(users).values({ id: ownerId, createdAt: new Date(), updatedAt: new Date() });
     const sticker = await createSticker(db, ownerId, { title: "Loop", kind: "animated", prompt: "Loop", referenceAssetIds: [] });
-    const baseTurn = await createChatTurn(db, ownerId, sticker.stickerId, {
-      text: "Loop",
-      intent: "generate",
-      attachments: [],
-      imagePlacement: "replace",
-    });
+    const baseTurn = await drawnAnimatedBase(db, ownerId, sticker.stickerId, "Loop");
     await stickerGenerationWorkflow(baseTurn.jobId);
     await acceptRevision(db, ownerId, sticker.stickerId, baseTurn.jobId);
     return { stickerId: sticker.stickerId, baseRevisionId: baseTurn.jobId };
@@ -494,6 +527,99 @@ describe("durable sticker workflow", () => {
     await close();
   }, 30_000);
 
+  it("changes one layer's motion through edit_layer_animation and leaves the rest standing", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-one-layer", createdAt: new Date(), updatedAt: new Date() });
+
+    const sticker = await createSticker(db, "owner-one-layer", { title: "OMG", kind: "animated", prompt: "OMG", referenceAssetIds: [] });
+    const baseTurn = await drawnAnimatedBase(db, "owner-one-layer", sticker.stickerId, "OMG");
+    await stickerGenerationWorkflow(baseTurn.jobId);
+    const drawn = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
+
+    // Two layers, so "leaves the rest standing" is something the document can actually show.
+    const twoLayers = StickerDocumentSchema.parse({
+      ...drawn!.documentJson,
+      layers: [
+        ...StickerDocumentSchema.parse(drawn!.documentJson).layers,
+        { id: "omg_text", name: "OMG", type: "text", text: "OMG", font: "rounded", weight: "bold", paint: { type: "solid", color: "#FF0055" } },
+      ],
+    });
+    const baseRevisionId = await createCandidateRevision(db, {
+      ownerId: "owner-one-layer",
+      stickerId: sticker.stickerId,
+      sourceMessageId: baseTurn.messageId,
+      document: twoLayers,
+      parentRevisionId: baseTurn.jobId,
+      masterAssetId: drawn!.masterAssetId ?? undefined,
+      previewAssetId: drawn!.previewAssetId ?? undefined,
+    });
+    await acceptRevision(db, "owner-one-layer", sticker.stickerId, baseRevisionId);
+
+    const scaleOn = (layerId: string, peak: number): StickerOperationV1 => ({
+      op: "setScaleKeyframes",
+      layerId,
+      keyframes: [
+        { timeSeconds: 0, x: 1, y: 1, easing: "easeOut" },
+        { timeSeconds: 1, x: peak, y: peak, easing: "easeInOut" },
+      ],
+    });
+    let refusedCrossLayerEdit: string | undefined;
+
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      async animateSticker(_input, session) {
+        const created = await session.createAnimation([scaleOn("hero", 1.1), scaleOn("omg_text", 1.4)]);
+        // Aiming at another layer from inside a single-layer edit is the model's own mistake, so it
+        // comes back as text it can act on rather than quietly landing.
+        await session.editLayerAnimation(created.animationId, "omg_text", [scaleOn("hero", 2)])
+          .catch((error: Error) => { refusedCrossLayerEdit = error.message; });
+        // Only the text layer is restated. The hero's scale is never sent again, and the point of
+        // the test is that it survives anyway.
+        const edited = await session.editLayerAnimation(created.animationId, "omg_text", [{
+          op: "setRotationKeyframes",
+          layerId: "omg_text",
+          keyframes: [
+            { timeSeconds: 0, degrees: -8, easing: "easeOut" },
+            { timeSeconds: 1, degrees: 8, easing: "easeIn" },
+          ],
+        }]);
+        const finalized = await session.finalizeAnimation(edited.animationId);
+        return { animationId: finalized.animationId, revision: finalized.revision, finalized: true };
+      },
+      async showSticker() { return "Here is the animation."; },
+    });
+
+    const turn = await animateTurnOn(db, "owner-one-layer", sticker.stickerId, baseRevisionId);
+    expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(refusedCrossLayerEdit).toContain("edit_layer_animation only changes omg_text");
+    const document = StickerDocumentSchema.parse(
+      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get())!.documentJson,
+    );
+    const hero = document.layers.find((layer) => layer.id === "hero");
+    const text = document.layers.find((layer) => layer.id === "omg_text");
+    // Untouched by the edit, and still carrying exactly what create_animation gave it.
+    expect(hero?.animation.scale.map((frame) => frame.x)).toEqual([1, 1.1]);
+    expect(hero?.animation.rotation).toHaveLength(0);
+    // Replaced, not merged: the scale the edited layer used to have went with the operations it
+    // replaced, which is what makes the tool a restatement of one layer rather than a patch.
+    expect(text?.animation.rotation.map((frame) => frame.degrees)).toEqual([-8, 8]);
+    expect(text?.animation.scale).toHaveLength(0);
+
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, turn.jobId)))
+      .filter((message) => message.role === "system");
+    expect(toolRows.map((message) => message.content)).toEqual([
+      "animate-sticker", "create_animation", "edit_layer_animation", "edit_layer_animation #2",
+      "finalize_animation", "show-sticker",
+    ]);
+    expect(toolRows.find((message) => message.content === "edit_layer_animation")?.status).toBe("failed");
+    expect(toolRows.find((message) => message.content === "edit_layer_animation #2")?.status).toBe("complete");
+    await close();
+  }, 30_000);
+
   it("animates the first generation before anything has been accepted", async () => {
     const { db, close } = await createTestDatabase();
     setDatabaseForTests(db);
@@ -502,12 +628,7 @@ describe("durable sticker workflow", () => {
     await db.insert(users).values({ id: "owner-first", createdAt: new Date(), updatedAt: new Date() });
 
     const sticker = await createSticker(db, "owner-first", { title: "Wave", kind: "animated", prompt: "Wave", referenceAssetIds: [] });
-    const baseTurn = await createChatTurn(db, "owner-first", sticker.stickerId, {
-      text: "A waving hand",
-      intent: "generate",
-      attachments: [],
-      imagePlacement: "replace",
-    });
+    const baseTurn = await drawnAnimatedBase(db, "owner-first", sticker.stickerId, "A waving hand");
     expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
     expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.activeRevisionId).toBeNull();
 
@@ -527,12 +648,7 @@ describe("durable sticker workflow", () => {
     await db.insert(users).values({ id: "owner-unkept", createdAt: new Date(), updatedAt: new Date() });
 
     const sticker = await createSticker(db, "owner-unkept", { title: "OMG", kind: "animated", prompt: "OMG", referenceAssetIds: [] });
-    const baseTurn = await createChatTurn(db, "owner-unkept", sticker.stickerId, {
-      text: "OMG",
-      intent: "generate",
-      attachments: [],
-      imagePlacement: "replace",
-    });
+    const baseTurn = await drawnAnimatedBase(db, "owner-unkept", sticker.stickerId, "OMG");
     await stickerGenerationWorkflow(baseTurn.jobId);
     await acceptRevision(db, "owner-unkept", sticker.stickerId, baseTurn.jobId);
 
@@ -559,7 +675,10 @@ describe("durable sticker workflow", () => {
 
     const turnRows = await db.select().from(chatMessages).where(eq(chatMessages.jobId, animateTurn.jobId));
     expect(turnRows.filter((message) => message.role === "system").map((message) => message.content))
-      .toEqual(["animate-sticker", "create_animation", "update_animation", "finalize_animation", "show-sticker"]);
+      .toEqual([
+        "animate-sticker", "create_animation", "update_animation", "edit_layer_animation",
+        "finalize_animation", "show-sticker",
+      ]);
     expect(turnRows.find((message) => message.role === "assistant"))
       .toMatchObject({ kind: "animation", revisionId: animateTurn.jobId });
     expect((await db.select().from(chatMessages).where(eq(chatMessages.id, animateTurn.messageId)).get())?.kind)
@@ -581,12 +700,7 @@ describe("durable sticker workflow", () => {
     await db.insert(users).values({ id: "owner-text", createdAt: new Date(), updatedAt: new Date() });
 
     const sticker = await createSticker(db, "owner-text", { title: "OMG", kind: "animated", prompt: "OMG", referenceAssetIds: [] });
-    const baseTurn = await createChatTurn(db, "owner-text", sticker.stickerId, {
-      text: "OMG",
-      intent: "generate",
-      attachments: [],
-      imagePlacement: "replace",
-    });
+    const baseTurn = await drawnAnimatedBase(db, "owner-text", sticker.stickerId, "OMG");
     await stickerGenerationWorkflow(baseTurn.jobId);
     const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
 
@@ -626,7 +740,10 @@ describe("durable sticker workflow", () => {
     const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)))
       .filter((message) => message.role === "system").map((message) => message.content);
     expect(toolRows).toEqual(["edit-sticker", "edit_layers", "finalize_edit", "show-sticker"]);
-    expect(await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId))).toHaveLength(0);
+    // Only the draft the base setup turned down, and it is still turned down: the edit turn drafted
+    // nothing of its own.
+    expect((await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId)))
+      .map((plan) => plan.state)).toEqual(["cancelled"]);
 
     // Nothing was drawn and nothing else was touched: the confetti survives exactly as it was.
     const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
@@ -969,24 +1086,42 @@ describe("durable sticker workflow", () => {
     await close();
   });
 
-  it("still generates a single image when creation does not need separate parts", async () => {
+  it("plans an animated creation however plain its prompt, and draws a static one", async () => {
     const { db, close } = await createTestDatabase();
     setDatabaseForTests(db);
     setObjectStoreForTests(new MemoryObjectStore());
     process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
     await db.insert(users).values({ id: "owner-f", createdAt: new Date(), updatedAt: new Date() });
 
-    const sticker = await createSticker(db, "owner-f", {
+    // "A happy cloud" asks for no per-element effect at all. It is still planned, because the kind
+    // is the user's standing choice and one flat image would quietly hand them the static sticker
+    // they did not pick — the reading of their words is not what decides this.
+    const animated = await createSticker(db, "owner-f", {
       title: "Cloud", kind: "animated", prompt: "A happy cloud", referenceAssetIds: [],
     });
-    const turn = await createChatTurn(db, "owner-f", sticker.stickerId, {
+    const animatedTurn = await createChatTurn(db, "owner-f", animated.stickerId, {
       text: "A happy cloud", intent: "generate", attachments: [], imagePlacement: "replace",
     });
-    expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
+    expect((await stickerGenerationWorkflow(animatedTurn.jobId)).workflowStatus).toBe("succeeded");
 
-    expect(await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId)))
-      .toHaveLength(0);
-    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get()).toBeTruthy();
+    expect(await db.select().from(planRows).where(eq(planRows.stickerId, animated.stickerId)))
+      .toHaveLength(1);
+    // Nothing is drawn until the user confirms the plan.
+    expect(await db.select().from(assets).where(eq(assets.stickerId, animated.stickerId))).toHaveLength(0);
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animatedTurn.jobId)).get())
+      .toBeFalsy();
+
+    // A static project never moves, so there is nothing to design as layers: it is drawn straight.
+    const still = await createSticker(db, "owner-f", {
+      title: "Cloud", kind: "static", prompt: "A happy cloud", referenceAssetIds: [],
+    });
+    const stillTurn = await createChatTurn(db, "owner-f", still.stickerId, {
+      text: "A happy cloud", intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(stillTurn.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(await db.select().from(planRows).where(eq(planRows.stickerId, still.stickerId))).toHaveLength(0);
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, stillTurn.jobId)).get()).toBeTruthy();
     await close();
   });
 

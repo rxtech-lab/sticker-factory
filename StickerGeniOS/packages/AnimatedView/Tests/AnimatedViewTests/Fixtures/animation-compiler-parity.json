@@ -511,6 +511,116 @@
     }
   },
   {
+    "name": "arcTo-defaults",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 0.5,
+        "easing": "easeInOut",
+        "type": "arcTo",
+        "x": 0.8,
+        "y": 0.5,
+        "arcHeight": 0.25
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.05,
+          "x": 0.5012,
+          "y": 0.49602,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.1,
+          "x": 0.5096,
+          "y": 0.46902,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.15,
+          "x": 0.5324,
+          "y": 0.40366,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.2,
+          "x": 0.5768,
+          "y": 0.30954,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.25,
+          "x": 0.65,
+          "y": 0.25,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.3,
+          "x": 0.7232,
+          "y": 0.30954,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.35,
+          "x": 0.7676,
+          "y": 0.40366,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.4,
+          "x": 0.7904,
+          "y": 0.46902,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.45,
+          "x": 0.7988,
+          "y": 0.49602,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 0.8,
+          "y": 0.5,
+          "easing": "linear"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [],
+      "trim": []
+    }
+  },
+  {
     "name": "scaleTo",
     "timing": {
       "kind": "animated",
@@ -2137,6 +2247,833 @@
           "easing": "linear"
         }
       ],
+      "effects": [],
+      "trim": []
+    }
+  },
+  {
+    "name": "arcTo-leftward",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.3,
+        "duration": 1.4,
+        "easing": "linear",
+        "type": "arcTo",
+        "x": 0.9,
+        "y": 0.2,
+        "arcHeight": 0.45
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0.3,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.44,
+          "x": 0.2988,
+          "y": 0.4484,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.58,
+          "x": 0.2792,
+          "y": 0.3056,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.72,
+          "x": 0.2812,
+          "y": 0.1916,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.86,
+          "x": 0.3048,
+          "y": 0.1064,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "x": 0.35,
+          "y": 0.05,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.14,
+          "x": 0.4168,
+          "y": 0.0224,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.28,
+          "x": 0.5052,
+          "y": 0.0236,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.42,
+          "x": 0.6152,
+          "y": 0.0536,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.56,
+          "x": 0.7468,
+          "y": 0.1124,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.7,
+          "x": 0.9,
+          "y": 0.2,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": [],
+      "trim": []
+    }
+  },
+  {
+    "name": "arcTo-rightward-mirrors",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.9,
+        "y": 0.2
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.3,
+        "duration": 1.4,
+        "easing": "linear",
+        "type": "arcTo",
+        "x": 0.34,
+        "y": 0.62,
+        "arcHeight": 0.45
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0.3,
+          "x": 0.9,
+          "y": 0.2,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.44,
+          "x": 0.7468,
+          "y": 0.1124,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.58,
+          "x": 0.6152,
+          "y": 0.0536,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.72,
+          "x": 0.5052,
+          "y": 0.0236,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.86,
+          "x": 0.4168,
+          "y": 0.0224,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "x": 0.35,
+          "y": 0.05,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.14,
+          "x": 0.3048,
+          "y": 0.1064,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.28,
+          "x": 0.2812,
+          "y": 0.1916,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.42,
+          "x": 0.2792,
+          "y": 0.3056,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.56,
+          "x": 0.2988,
+          "y": 0.4484,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.7,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [],
+      "trim": []
+    }
+  },
+  {
+    "name": "arcTo-vertical",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.9
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 2,
+        "easing": "easeInOut",
+        "type": "arcTo",
+        "x": 0.5,
+        "y": 0.1,
+        "arcHeight": -0.3
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.5,
+          "y": 0.9,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.2,
+          "x": 0.49522,
+          "y": 0.8968,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.4,
+          "x": 0.46283,
+          "y": 0.8744,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.6,
+          "x": 0.3844,
+          "y": 0.8136,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.8,
+          "x": 0.27144,
+          "y": 0.6952,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "x": 0.2,
+          "y": 0.5,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.2,
+          "x": 0.27144,
+          "y": 0.3048,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.4,
+          "x": 0.3844,
+          "y": 0.1864,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.6,
+          "x": 0.46283,
+          "y": 0.1256,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.8,
+          "x": 0.49522,
+          "y": 0.1032,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2,
+          "x": 0.5,
+          "y": 0.1,
+          "easing": "linear"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [],
+      "trim": []
+    }
+  },
+  {
+    "name": "arcTo-in-place",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 1,
+        "easing": "easeOut",
+        "type": "arcTo",
+        "x": 0.34,
+        "y": 0.62,
+        "arcHeight": 0.2
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.1,
+          "x": 0.34,
+          "y": 0.46195,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.2,
+          "x": 0.34,
+          "y": 0.42012,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.3,
+          "x": 0.34,
+          "y": 0.43972,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.4,
+          "x": 0.34,
+          "y": 0.48452,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.5,
+          "x": 0.34,
+          "y": 0.5325,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.6,
+          "x": 0.34,
+          "y": 0.57208,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.7,
+          "x": 0.34,
+          "y": 0.59898,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.8,
+          "x": 0.34,
+          "y": 0.61365,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.9,
+          "x": 0.34,
+          "y": 0.6192,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": [],
+      "trim": []
+    }
+  },
+  {
+    "name": "arcTo-spring-bouncy",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0.45,
+        "duration": 2.2,
+        "easing": "springBouncy",
+        "type": "arcTo",
+        "x": 0.15,
+        "y": 0.85,
+        "arcHeight": 0.6
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0.45,
+          "x": 0.5,
+          "y": 0.5,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.67,
+          "x": -0.06408,
+          "y": 0.48207,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.89,
+          "x": 0.15,
+          "y": 0.85,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.11,
+          "x": 0.15,
+          "y": 0.85,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.33,
+          "x": 0.13429,
+          "y": 0.826,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.55,
+          "x": 0.05437,
+          "y": 0.6992,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.77,
+          "x": 0.11076,
+          "y": 0.78956,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.99,
+          "x": 0.15,
+          "y": 0.85,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2.21,
+          "x": 0.15,
+          "y": 0.85,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2.43,
+          "x": 0.15,
+          "y": 0.85,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 2.65,
+          "x": 0.15,
+          "y": 0.85,
+          "easing": "linear"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
+      "effects": [],
+      "trim": []
+    }
+  },
+  {
+    "name": "arcTo-spring-soft",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.34,
+        "y": 0.62
+      },
+      "scale": {
+        "x": 0.75,
+        "y": 1.25
+      },
+      "rotationDegrees": -18,
+      "opacity": 0.8,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 1.9,
+        "easing": "springSoft",
+        "type": "arcTo",
+        "x": 1.1,
+        "y": -0.2,
+        "arcHeight": -0.75
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.34,
+          "y": 0.62,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.19,
+          "x": 1.33493,
+          "y": 0.54514,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.38,
+          "x": 1.1,
+          "y": -0.2,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.57,
+          "x": 1.1,
+          "y": -0.2,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.76,
+          "x": 1.1,
+          "y": -0.2,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.95,
+          "x": 1.1,
+          "y": -0.2,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.14,
+          "x": 1.10189,
+          "y": -0.19625,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.33,
+          "x": 1.10824,
+          "y": -0.18355,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.52,
+          "x": 1.10526,
+          "y": -0.18953,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.71,
+          "x": 1.10161,
+          "y": -0.19681,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.9,
+          "x": 1.1,
+          "y": -0.2,
+          "easing": "linear"
+        }
+      ],
+      "scale": [
+        {
+          "timeSeconds": 0,
+          "x": 0.75,
+          "y": 1.25,
+          "easing": "linear"
+        }
+      ],
+      "rotation": [
+        {
+          "timeSeconds": 0,
+          "degrees": -18,
+          "easing": "linear"
+        }
+      ],
+      "opacity": [
+        {
+          "timeSeconds": 0,
+          "value": 0.8,
+          "easing": "linear"
+        }
+      ],
+      "effects": [],
+      "trim": []
+    }
+  },
+  {
+    "name": "arcTo-clamped-apex",
+    "timing": {
+      "kind": "animated",
+      "durationSeconds": 4
+    },
+    "anchor": {
+      "position": {
+        "x": 0.1,
+        "y": -0.5
+      },
+      "scale": {
+        "x": 1,
+        "y": 1
+      },
+      "rotationDegrees": 0,
+      "opacity": 1,
+      "trim": {
+        "start": 0,
+        "end": 1
+      }
+    },
+    "cycleCap": null,
+    "specs": [
+      {
+        "delay": 0,
+        "duration": 1.5,
+        "easing": "easeIn",
+        "type": "arcTo",
+        "x": 1.9,
+        "y": -0.5,
+        "arcHeight": 1
+      }
+    ],
+    "expected": {
+      "position": [
+        {
+          "timeSeconds": 0,
+          "x": 0.1,
+          "y": -0.5,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.15,
+          "x": 0.1018,
+          "y": -0.504,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.3,
+          "x": 0.1144,
+          "y": -0.53174,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.45,
+          "x": 0.1486,
+          "y": -0.60508,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.6,
+          "x": 0.2152,
+          "y": -0.73962,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.75,
+          "x": 0.325,
+          "y": -0.9375,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 0.9,
+          "x": 0.4888,
+          "y": -1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.05,
+          "x": 0.7174,
+          "y": -1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.2,
+          "x": 1.0216,
+          "y": -1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.35,
+          "x": 1.4122,
+          "y": -1,
+          "easing": "linear"
+        },
+        {
+          "timeSeconds": 1.5,
+          "x": 1.9,
+          "y": -0.5,
+          "easing": "linear"
+        }
+      ],
+      "scale": [],
+      "rotation": [],
+      "opacity": [],
       "effects": [],
       "trim": []
     }

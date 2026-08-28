@@ -46,6 +46,22 @@ struct EmptyStateView: View {
     }
 }
 
+/// Something that went the way it had to rather than the way that was asked for. Deliberately not
+/// an `ErrorBanner`: the work succeeded, and colouring it red would say it did not.
+struct NoticeBanner: View {
+    let message: String
+
+    var body: some View {
+        Label(message, systemImage: "info.circle.fill")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .accessibilityIdentifier("notice-banner")
+    }
+}
+
 struct ErrorBanner: View {
     let message: String
 

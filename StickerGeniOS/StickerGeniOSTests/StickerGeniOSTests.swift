@@ -5,6 +5,24 @@ import Testing
 import UIKit
 @testable import StickerGeniOS
 
+/// Waits for background work to land instead of guessing how long it takes.
+///
+/// These stores finish their turns over several hops between the main actor and the network stub,
+/// and a fixed sleep only holds while the machine is idle: adding a rendering test to the suite —
+/// which occupies the main actor for a second at a time — was enough to make every fixed wait here
+/// expire early. Polling keeps the tests measuring the store rather than the machine.
+@MainActor
+func waitUntil(
+    timeout: Duration = .seconds(10),
+    _ condition: () -> Bool
+) async throws {
+    let deadline = ContinuousClock.now + timeout
+    while ContinuousClock.now < deadline {
+        if condition() { return }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+}
+
 @Suite("Sticker document and API contracts")
 struct StickerContractTests {
     @Test("Sticker image cache processor rejects checksum mismatches")
@@ -30,7 +48,18 @@ struct StickerContractTests {
         #expect(validated.canvas.coordinateSpace == "normalized")
         #expect(validated.kind == .animated)
         #expect(validated.layers.count == 2)
-        #expect(try JSONDecoder.api.decode(AnimatedDocument.self, from: JSONEncoder.api.encode(validated)) == validated)
+        // The MP4 fill is spelled `colors: [from, to]` on the wire while the artwork background uses
+        // located stops. Reading it as an artwork background threw, which failed the whole document
+        // rather than the one field, so every sticker with a gradient video background was
+        // unopenable.
+        #expect(validated.mp4Background == .linearGradient("#FFE7A3", "#FF8FA3", angleDegrees: 35))
+        let reencoded = try JSONEncoder.api.encode(validated)
+        let wire = try #require(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+        let mp4Background = try #require(wire["mp4Background"] as? [String: Any])
+        // Encoded back in the shape the server accepts, or saving an edited document is rejected.
+        #expect(mp4Background["colors"] as? [String] == ["#FFE7A3", "#FF8FA3"])
+        #expect(mp4Background["stops"] == nil)
+        #expect(try JSONDecoder.api.decode(AnimatedDocument.self, from: reencoded) == validated)
     }
 
     /// The server authors motion declaratively and ships both representations: `animations` (the
@@ -46,12 +75,12 @@ struct StickerContractTests {
             return
         }
         // popIn with a 0.4s delay over 0.5s: invisible until 0.4, fully present by 0.9.
-        #expect(layer.animation.opacity.map(\.timeSeconds) == [0.4, 0.9])
-        #expect(layer.animation.opacity.map(\.value) == [0, 1])
-        #expect(layer.animation.scale.map(\.timeSeconds) == [0.4, 0.9])
+        #expect(layer.base.animation.opacity.map(\.timeSeconds) == [0.4, 0.9])
+        #expect(layer.base.animation.opacity.map(\.value) == [0, 1])
+        #expect(layer.base.animation.scale.map(\.timeSeconds) == [0.4, 0.9])
         // Layout rides on a single t=0 anchor keyframe, exactly as a static layout would.
-        #expect(layer.animation.position.count == 1)
-        #expect(layer.animation.position[0].timeSeconds == 0)
+        #expect(layer.base.animation.position.count == 1)
+        #expect(layer.base.animation.position[0].timeSeconds == 0)
 
         let state = AnimationInterpolator.state(for: document.layers[1], atDocumentTime: 0.2)
         #expect(state.opacity == 0)
@@ -66,7 +95,7 @@ struct StickerContractTests {
             #expect(Bool(false), "Fixture must contain its canonical image layer")
             return
         }
-        layer.animation.position[0].x = 2.01
+        layer.base.animation.position[0].x = 2.01
         document.layers[0] = .image(layer)
 
         #expect(throws: AnimatedDocumentError.self) { try document.validated() }
@@ -228,17 +257,21 @@ struct StickerContractTests {
 struct StickerRenderingPolicyTests {
     @Test("Linear interpolation and ping-pong timing are deterministic")
     func interpolationAndPingPong() {
-        let animation = StickerLayerAnimationV1(position: [
+        let animation = AnimatedLayerAnimation(position: [
             .init(timeSeconds: 0, x: 0, y: 0.25, easing: .linear),
             .init(timeSeconds: 2, x: 1, y: 0.75, easing: .linear),
         ])
-        let layer = StickerLayerV1.shape(.init(id: "shape", name: "Shape", animation: animation, shape: .circle, fill: "#FFFFFF"))
+        let layer = AnimatedLayer.shape(.init(
+            base: .init(id: "shape", name: "Shape", animation: animation),
+            shape: .circle,
+            fill: .solid("#FFFFFF")
+        ))
         let document = AnimatedDocument(kind: .animated, durationSeconds: 2, fps: 30, loop: .pingPong, layers: [layer])
-        let midpoint = StickerInterpolator.state(for: layer, at: 1, in: document)
+        let midpoint = AnimationInterpolator.state(for: layer, at: 1, in: document)
 
         #expect(abs(midpoint.position.x - 0.5) < 0.000_001)
-        #expect(abs(StickerInterpolator.mappedTime(3, document: document) - 1) < 0.000_001)
-        #expect(StickerInterpolator.renderedCycleDuration(document) == 4)
+        #expect(abs(AnimationInterpolator.mappedTime(3, document: document) - 1) < 0.000_001)
+        #expect(AnimationInterpolator.renderedCycleDuration(document) == 4)
         #expect(StickerExportMetadataPolicy.frameCount(document: document, fps: 30) == 120)
     }
 
@@ -247,16 +280,48 @@ struct StickerRenderingPolicyTests {
         #expect(!StickerExportMetadataPolicy.hasAlpha(for: .mp4))
         #expect(StickerExportMetadataPolicy.hasAlpha(for: .gif))
         // Dimension is what the recipient perceives as sticker size, so the ladder spends frame
-        // rate and color depth first and only concedes pixels once those are exhausted.
-        #expect(SystemStickerPreset.adaptive.map(\.dimension) == [618, 618, 618, 408, 408, 300, 300, 300])
+        // rate first and only concedes pixels once that is exhausted.
+        #expect(SystemStickerPreset.adaptive.map(\.dimension) == [618, 618, 618, 408, 408, 300, 300, 300, 300, 300])
         // Monotonic: a rung never costs more bytes than the one it falls back from.
         #expect(zip(SystemStickerPreset.adaptive, SystemStickerPreset.adaptive.dropFirst()).allSatisfy {
             $1.dimension <= $0.dimension && ($1.dimension < $0.dimension || $1.fps <= $0.fps)
         })
-        // Dense art needs the 300 @ 8 floor; without it the export fails instead of shrinking.
-        #expect(SystemStickerPreset.adaptive.last == .init(dimension: 300, fps: 8, colorLevels: 8))
-        // The server's adaptive floor is 8 FPS; no rung may fall through it.
-        #expect(SystemStickerPreset.adaptive.allSatisfy { $0.fps >= 8 })
+        // Dense art needs the 300 @ 4 floor, which `validateAnimatedRenditionTiming` accepts; below
+        // it the export gives up its motion rather than its existence.
+        #expect(SystemStickerPreset.adaptive.last == .init(dimension: 300, fps: 4))
+        #expect(SystemStickerPreset.adaptive.allSatisfy { $0.fps >= 4 })
+        // Colour is spent inside a rung instead of being a rung, so every attempt in a rung reuses
+        // the frames the rung already rendered.
+        #expect(SystemStickerPreset.paletteLadder == [256, 64, 16])
+        #expect(SystemStickerPreset.paletteLadder.allSatisfy { $0 <= 256 })
+    }
+
+    @Test("Millisecond APNG delays land on the exact cycle a 24 FPS grid describes")
+    func apngDelayGrid() {
+        // 1/24 s is not a whole millisecond. Rounding each frame to 42 ms would run a 192-frame
+        // cycle 64 ms long, which is more than the server's tolerance and would reject every
+        // rendition of a full-length animation.
+        let delays = StickerExportMetadataPolicy.apngFrameDelays(frameCount: 192, fps: 24, holdSeconds: 0.6)
+        #expect(delays.count == 192)
+        #expect(abs(delays.reduce(0, +) - 8.6) < 0.000_001)
+        #expect(delays.allSatisfy { abs($0 * 1000 - ($0 * 1000).rounded()) < 0.000_001 })
+
+        let plain = StickerExportMetadataPolicy.apngFrameDelays(frameCount: 60, fps: 30)
+        #expect(abs(plain.reduce(0, +) - 2) < 0.000_001)
+        #expect(StickerExportMetadataPolicy.gifFrameDelays(frameCount: 60, fps: 30)
+            == StickerExportMetadataPolicy.frameDelays(frameCount: 60, fps: 30, ticksPerSecond: 100))
+    }
+
+    @Test("Export selections name the files they hand over")
+    func exportSelections() {
+        #expect(StickerExportSelection.sticker.includesSticker)
+        #expect(!StickerExportSelection.sticker.includesVideo)
+        #expect(StickerExportSelection.video.includesVideo)
+        #expect(!StickerExportSelection.video.includesSticker)
+        #expect(StickerExportSelection.both.includesSticker && StickerExportSelection.both.includesVideo)
+        // A static sticker has no video to describe, and the picker that would offer one is hidden.
+        #expect(StickerExportSelection.video.detail(isAnimated: false)
+            == StickerExportSelection.sticker.detail(isAnimated: false))
     }
 
     @Test("GIF centisecond delays preserve a 30 FPS cycle duration")
@@ -286,7 +351,11 @@ struct StickerRenderingPolicyTests {
 
     @Test("Rendered duration is the motion cycle plus the hold, and the frame grid is unchanged")
     func renderedDurationIncludesHold() {
-        let layer = StickerLayerV1.shape(.init(id: "shape", name: "Shape", shape: .circle, fill: "#FFFFFF"))
+        let layer = AnimatedLayer.shape(.init(
+            base: .init(id: "shape", name: "Shape"),
+            shape: .circle,
+            fill: .solid("#FFFFFF")
+        ))
         let pingPong = AnimatedDocument(kind: .animated, durationSeconds: 2, fps: 30, loop: .pingPong, layers: [layer])
         let once = AnimatedDocument(kind: .animated, durationSeconds: 2, fps: 30, loop: .once, layers: [layer])
 
@@ -538,7 +607,9 @@ struct StoreAndPublisherTests {
         let stickerID = api.stickerID
 
         try await store.sendMessage(stickerID: stickerID, content: "first", references: [], mask: nil, targetLayerID: nil)
-        try await Task.sleep(for: .milliseconds(80))
+        try await waitUntil {
+            store.jobs[stickerID]?.isFailed == true && !store.computingStickerIDs.contains(stickerID)
+        }
         #expect(store.jobs[stickerID]?.isFailed == true)
         #expect(!store.computingStickerIDs.contains(stickerID))
 
@@ -546,6 +617,7 @@ struct StoreAndPublisherTests {
             try await store.sendMessage(stickerID: stickerID, content: "retry later", references: [], mask: nil, targetLayerID: nil)
             #expect(Bool(false), "The stub's second request must fail")
         } catch {
+            try await waitUntil { !store.computingStickerIDs.contains(stickerID) }
             #expect(!store.computingStickerIDs.contains(stickerID))
         }
     }
@@ -555,7 +627,9 @@ struct StoreAndPublisherTests {
         let api = ResumeJobAPI()
         let store = StickerStore(api: api)
         await store.loadMessages(stickerID: api.stickerID)
-        try await Task.sleep(for: .milliseconds(80))
+        try await waitUntil {
+            store.jobs[api.stickerID]?.isFailed == true && !store.computingStickerIDs.contains(api.stickerID)
+        }
 
         #expect(store.jobs[api.stickerID]?.jobID == "resume-job")
         #expect(store.jobs[api.stickerID]?.sourceMessageID == "resume-source")
@@ -581,7 +655,10 @@ struct StoreAndPublisherTests {
         let store = StickerStore(api: api)
 
         try await store.sendMessage(stickerID: api.stickerID, content: "Make it blue", references: [], mask: nil, targetLayerID: nil)
-        try await Task.sleep(for: .milliseconds(150))
+        try await waitUntil {
+            store.messages[api.stickerID]?.contains { $0.role == .assistant } == true
+                && !store.computingStickerIDs.contains(api.stickerID)
+        }
 
         // The candidate event carries an invalid document. Dropping that one field must not stop
         // the turn from resolving, which is what leaves the chat silent until a manual refresh.
@@ -596,7 +673,10 @@ struct StoreAndPublisherTests {
         let store = StickerStore(api: api)
 
         try await store.sendMessage(stickerID: api.stickerID, content: "Make it blue", references: [], mask: nil, targetLayerID: nil)
-        try await Task.sleep(for: .milliseconds(150))
+        try await waitUntil {
+            store.messages[api.stickerID]?.contains { $0.role == .assistant } == true
+                && !store.computingStickerIDs.contains(api.stickerID)
+        }
 
         #expect(store.messages[api.stickerID]?.contains { $0.role == .assistant } == true)
         #expect(!store.computingStickerIDs.contains(api.stickerID))
@@ -610,13 +690,41 @@ struct StoreAndPublisherTests {
         let store = StickerStore(api: api)
 
         try await store.sendMessage(stickerID: api.stickerID, content: "Make it blue", references: [], mask: nil, targetLayerID: nil)
-        try await Task.sleep(for: .milliseconds(150))
+        try await waitUntil { store.messages[api.stickerID]?.contains { $0.role == .assistant } == true }
         let first = await api.streamCount()
 
         store.reattach(stickerID: api.stickerID)
-        try await Task.sleep(for: .milliseconds(150))
+        var reattached = await api.streamCount()
+        let deadline = ContinuousClock.now + .seconds(10)
+        while reattached <= first, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+            reattached = await api.streamCount()
+        }
 
-        #expect(await api.streamCount() > first)
+        #expect(reattached > first)
+    }
+
+    @Test("A confirmed plan stays live while the server is still building it")
+    func confirmedPlanSurvivesRepeatedStreamDeaths() async throws {
+        let api = LiveTurnStreamAPI()
+        let store = StickerStore(api: api)
+
+        try await store.confirmPlan(stickerID: api.stickerID, planID: "live-plan")
+        // Five opened streams is two past the re-attach budget. A plan build runs for minutes and
+        // reconnects every time the app is backgrounded, so spending that budget says nothing about
+        // whether the turn is over — and the server's own word for it, the source message's
+        // `streaming` status, still says it is not.
+        try await waitUntil(timeout: .seconds(20)) { api.streams.value >= 5 }
+
+        #expect(api.streams.value >= 5)
+        #expect(store.computingStickerIDs.contains(api.stickerID))
+        // The transcript kept flowing, so the composer must still be showing Stop rather than
+        // sitting idle over a build that is still running.
+        #expect(store.jobs[api.stickerID]?.isTerminal == false)
+        // A stream the system merely cancelled is not something to warn about.
+        #expect(store.jobs[api.stickerID]?.streamErrorMessage == nil)
+
+        store.reset()
     }
 
     @Test("Library refresh consumes every cursor before replacing state")
@@ -656,6 +764,13 @@ struct StoreAndPublisherTests {
     func publisherRequiresVerifiedAssets() async {
         var revision = PreviewFixtures.candidate
         revision.candidateState = .accepted
+        // The layer that names an asset is what this test is about, and the composite fixture no
+        // longer carries one: without it the publisher has nothing to refuse, and the test quietly
+        // rendered a complete export set instead of checking anything.
+        revision.document.layers.append(.image(.init(
+            base: .init(id: "hero", name: "Hero"),
+            assetId: PreviewFixtures.imageAssetID
+        )))
         let publisher = StickerPublisher(api: MockStickerAPIClient())
         do {
             _ = try await publisher.publish(stickerID: PreviewFixtures.sticker.id, revision: revision, assets: [:], verifiedAssetIDs: [])
@@ -705,7 +820,12 @@ struct StoreAndPublisherTests {
     func animationFreeLocalExport() async throws {
         var revision = PreviewFixtures.accepted
         revision.document.layers = [
-            .shape(.init(id: "base", name: "Base", shape: .roundedRectangle, fill: "#A88BFF", cornerRadius: 0.2)),
+            .shape(.init(
+                base: .init(id: "base", name: "Base"),
+                shape: .roundedRectangle,
+                fill: .solid("#A88BFF"),
+                cornerRadius: 0.2
+            )),
         ]
         let exports = try await StickerPublisher(api: MockStickerAPIClient()).export(
             revision: revision,
@@ -1111,6 +1231,52 @@ private actor BrokenStreamAPI: StickerAPIClientProtocol {
                 id: 1, jobId: jobID, type: .progress, createdAt: Date(), data: .init(message: "Working", progress: 0.4)
             ))
             continuation.finish(throwing: TestFixtureError.stub)
+        }
+    }
+}
+
+/// A turn the server is still running while every stream the client opens dies on it.
+///
+/// Modelled on a confirmed plan: the transcript keeps reporting the source message as `streaming`,
+/// and the stream drops the way a backgrounded app's does — cancelled, which the store reads as no
+/// error at all — so the message's status is the only thing left saying the turn is still live.
+private actor LiveTurnStreamAPI: StickerAPIClientProtocol {
+    nonisolated let stickerID = "live-turn-sticker"
+    nonisolated let streams = StreamCounter()
+
+    func confirmPlan(stickerID: String, planID: String, idempotencyKey: String) async throws -> ConfirmPlanResponse {
+        .init(
+            message: .init(id: "live-source", status: .streaming),
+            job: .init(id: "live-job", state: .queued, workflowRunId: nil, eventsUrl: "/events")
+        )
+    }
+
+    func sticker(id: String) async throws -> StickerDetail { PreviewFixtures.detail }
+
+    func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
+        .init(data: [
+            .init(
+                id: "live-source", role: .user, kind: .text,
+                content: "Build this plan: 8 layers, 4 to generate.",
+                targetLayerId: nil, imagePlacement: .replace, baseRevisionId: nil, sequence: 1,
+                revisionId: nil, jobId: "live-job", status: .streaming, createdAt: Date(), attachments: []
+            ),
+            .init(
+                id: "live-tool", role: .system, kind: .status, content: "build-plan",
+                targetLayerId: nil, imagePlacement: .replace, baseRevisionId: nil, sequence: 2,
+                revisionId: nil, jobId: "live-job", status: .streaming, createdAt: Date(), attachments: []
+            ),
+        ], nextBeforeSequence: nil)
+    }
+
+    nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
+        streams.mark()
+        return AsyncThrowingStream { continuation in
+            continuation.yield(.init(
+                id: 1, jobId: jobID, type: .progress, createdAt: Date(),
+                data: .init(message: "Composing", progress: 0.2)
+            ))
+            continuation.finish(throwing: URLError(.cancelled))
         }
     }
 }

@@ -30,6 +30,7 @@ import {
   type GenerationJobRow,
 } from "@/lib/db/schema";
 import {
+  animationOperationLayerId,
   getAiProvider,
   TurnAbort,
   validateEditOperation,
@@ -51,6 +52,7 @@ import {
   createPlan,
   finalizePlan,
   recentlyRejectedPlans,
+  stickerHasPlan,
   updatePlan,
 } from "@/lib/services/plans";
 import {
@@ -172,6 +174,7 @@ type StickerToolName =
   | "finalize_plan"
   | "create_animation"
   | "update_animation"
+  | "edit_layer_animation"
   | "finalize_animation"
   | "edit_layers"
   | "edit_image_layer"
@@ -791,6 +794,14 @@ async function executeAnimationTurn(
   // model, which only ever echoes it back.
   const animationId = derivedAssetId(job.id, "animation");
   let working: StickerDocument | undefined;
+  /**
+   * The operation set the working document was built from.
+   *
+   * Kept so a single-layer edit can be expressed as a change to this list rather than as a patch on
+   * the document: the draft stays `base` plus one list of operations, which is what makes every
+   * revision independently reproducible.
+   */
+  let landed: StickerOperationV1[] = [];
   let revision = 0;
   let snapshot = 0;
   // One transcript row per call, retries included.
@@ -822,6 +833,7 @@ async function executeAnimationTurn(
     const document = applyStickerOperationsV1(base, operations);
     await assertDocumentAssetsOwned(document, job.ownerId, sticker.id).catch(abort);
     working = document;
+    landed = operations;
     revision += 1;
     snapshot += 1;
     await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document }).catch(abort);
@@ -846,6 +858,35 @@ async function executeAnimationTurn(
       try {
         if (!working) throw new Error("There is no animation to update yet; call create_animation first");
         const state = await land(operations);
+        await finishToolCall(job, call);
+        return state;
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
+    editLayerAnimation: async (_animationId, layerId, operations) => {
+      const call = await openCall("edit_layer_animation");
+      try {
+        if (!working) throw new Error("There is no animation to edit yet; call create_animation first");
+        if (!base.layers.some((layer) => layer.id === layerId)) {
+          throw new Error(
+            `There is no layer ${layerId} on this sticker; its layers are ${base.layers.map((layer) => layer.id).join(", ")}`,
+          );
+        }
+        // The scope is the whole point of the tool: an operation aimed elsewhere would silently
+        // survive the swap below as if it had been part of this layer's motion all along.
+        for (const operation of operations) {
+          if (animationOperationLayerId(operation) !== layerId) {
+            throw new Error(
+              `edit_layer_animation only changes ${layerId}; use update_animation to change any other layer`,
+            );
+          }
+        }
+        // This layer's operations are replaced, every other layer's — and the document-level ones,
+        // which name no layer — are carried forward, and the merged set is re-applied to the base.
+        const kept = landed.filter((operation) => animationOperationLayerId(operation) !== layerId);
+        const state = await land([...kept, ...operations]);
         await finishToolCall(job, call);
         return state;
       } catch (error) {
@@ -1363,6 +1404,16 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
    * orchestrator loop to decide the obvious.
    */
   let editsThroughLoop = job.kind === "edit";
+  /**
+   * Whether this animated project still has to be designed as layers before anything is drawn.
+   *
+   * The kind is a choice the user made before typing a word, and only layers can be keyframed: a
+   * single flat image is a dead end that no later turn can animate. So an animated project that has
+   * never been planned is planned first, whatever the router made of the words — the router reads
+   * the request, and this is a property of the project.
+   */
+  const hasPlan = await stickerHasPlan(db, job.ownerId, sticker.id);
+  const mustPlanFirst = sticker.kind === "animated" && !activeDocument && !hasPlan;
 
   if (job.kind === "chat") {
     const action = await traceSpan("routeChatTurn", { jobId }, () => getAiProvider().routeChatTurn({
@@ -1370,6 +1421,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       history,
       stickerKind: sticker.kind,
       document: activeDocument,
+      hasPlan,
       attachmentCount: attachments.filter((row) => row.attachment.kind === "reference").length,
     }));
     traceEvent("routeChatTurn:routed", { jobId, action: action.type });
@@ -1399,6 +1451,22 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
             + " it first.",
         "text",
       ));
+    }
+    // An unplanned animated project cannot be served by drawing: whatever words the router read,
+    // one flat image would leave the user with the static sticker they did not pick, and no later
+    // turn could rescue it. Only the artwork-creating routes are redirected — a question still gets
+    // its answer, and `show` still shows.
+    if (mustPlanFirst && (action.type === "generate" || action.type === "generate_image")) {
+      traceEvent("routeChatTurn:forcedPlan", { jobId, action: action.type });
+      return executePlanTurn(
+        job,
+        sticker,
+        thread.id,
+        action.instruction,
+        history,
+        undefined,
+        await beginToolCall(job, "plan-sticker"),
+      );
     }
     const toolName: StickerToolName = action.type === "generate"
       ? "generate-sticker"
@@ -1452,31 +1520,22 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       targetLayerId: targetLayerId ?? null,
       imagePlacement,
     }).where(eq(chatMessages.id, sourceMessage.id));
-  } else if (job.kind === "image" && sticker.kind === "animated" && !activeDocument) {
-    // Project creation does not go through the chat router, so without this the very first
-    // prompt could only ever become one flat image — and a single flat image cannot be
-    // keyframed into a per-element effect like a typewriter reveal later. Consult the router
-    // here, but honour only a `plan` answer: anything else falls through to a plain
-    // generate, so routing can upgrade creation and never derail it.
-    const action = await getAiProvider().routeChatTurn({
+  } else if (job.kind === "image" && mustPlanFirst) {
+    // Project creation does not go through the chat router, so without this the very first prompt
+    // would become one flat image — and a flat image has no separate parts to keyframe, so the
+    // animated project the user asked for could never be anything but a static sticker. This used
+    // to ask the router whether to plan and drew whenever it said no; the kind is the user's
+    // standing choice, not a judgement call about their wording, so the plan is unconditional.
+    traceEvent("executeAiJobStep:forcedPlan", { jobId, stickerId: sticker.id });
+    return executePlanTurn(
+      job,
+      sticker,
+      thread.id,
       instruction,
       history,
-      stickerKind: sticker.kind,
-      document: undefined,
-      attachmentCount: attachments.filter((row) => row.attachment.kind === "reference").length,
-    }).catch(() => undefined);
-    if (action?.type === "plan") {
-      return executePlanTurn(
-        job,
-        sticker,
-        thread.id,
-        action.instruction,
-        history,
-        undefined,
-        await beginToolCall(job, "plan-sticker"),
-      );
-    }
-    primaryToolCallId = await beginToolCall(job, "generate-sticker");
+      undefined,
+      await beginToolCall(job, "plan-sticker"),
+    );
   } else {
     primaryToolCallId = await beginToolCall(
       job,
