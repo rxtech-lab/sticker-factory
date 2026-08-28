@@ -39,8 +39,7 @@ describe("ensureUser", () => {
   it("creates the row on first sight", async () => {
     await ensureUser(db, principal());
     const row = await db.select().from(users).where(eq(users.id, "owner-a")).get();
-    expect(row?.email).toBe("a@example.test");
-    expect(row?.displayName).toBe("Ada");
+    expect(row).toMatchObject({ id: "owner-a", email: null, displayName: null });
     expect(writes).toBe(1);
   });
 
@@ -51,15 +50,15 @@ describe("ensureUser", () => {
     expect(writes).toBe(1);
   });
 
-  it("writes when the token's profile drifts from the stored row", async () => {
+  it("ignores OAuth profile drift because this database stores only the subject id", async () => {
     await ensureUser(db, principal());
     await ensureUser(db, principal({ name: "Ada Lovelace" }));
-    expect(writes).toBe(2);
+    expect(writes).toBe(1);
     const row = await db.select().from(users).where(eq(users.id, "owner-a")).get();
-    expect(row?.displayName).toBe("Ada Lovelace");
+    expect(row).toMatchObject({ email: null, displayName: null });
   });
 
-  it("adopts a row written by another instance without rewriting it", async () => {
+  it("does not overwrite an existing row", async () => {
     const now = new Date();
     await db.insert(users).values({
       id: "owner-b",
@@ -71,7 +70,18 @@ describe("ensureUser", () => {
     writes = 0;
 
     await ensureUser(db, principal({ sub: "owner-b", email: "b@example.test", name: "Grace" }));
-    expect(writes).toBe(0);
+    expect(writes).toBe(1);
+    const row = await db.select().from(users).where(eq(users.id, "owner-b")).get();
+    expect(row).toMatchObject({ email: "b@example.test", displayName: "Grace" });
+  });
+
+  it("coalesces concurrent first requests into one insert", async () => {
+    await Promise.all([
+      ensureUser(db, principal()),
+      ensureUser(db, principal()),
+      ensureUser(db, principal()),
+    ]);
+    expect(writes).toBe(1);
   });
 
   it("keeps its bookkeeping per database", async () => {
@@ -80,21 +90,9 @@ describe("ensureUser", () => {
     try {
       await ensureUser(other.db, principal());
       const row = await other.db.select().from(users).where(eq(users.id, "owner-a")).get();
-      expect(row?.email).toBe("a@example.test");
+      expect(row).toMatchObject({ id: "owner-a", email: null, displayName: null });
     } finally {
       await other.close();
     }
-  });
-
-  it("treats a missing email or name as null rather than churning", async () => {
-    const anonymous = principal({ email: undefined, name: undefined });
-    await ensureUser(db, anonymous);
-    const row = await db.select().from(users).where(eq(users.id, "owner-a")).get();
-    expect(row?.email).toBeNull();
-    expect(row?.displayName).toBeNull();
-    expect(writes).toBe(1);
-
-    await ensureUser(db, anonymous);
-    expect(writes).toBe(1);
   });
 });

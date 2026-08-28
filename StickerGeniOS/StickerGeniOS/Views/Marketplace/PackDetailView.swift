@@ -23,7 +23,7 @@ struct PackDetailView: View {
                 }
             }
         }
-        .navigationTitle(detail?.title ?? "Pack")
+        .navigationTitle(detail?.title ?? String(localized: "Pack"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $previewedSticker) { sticker in
             NavigationStack {
@@ -114,8 +114,8 @@ struct PackDetailView: View {
         if detail.stickers.isEmpty {
             EmptyStateView(
                 symbol: "square.stack.3d.up",
-                title: "Nothing published right now",
-                message: "The creator is still working on it. Anything they publish shows up here automatically."
+                title: String(localized: "Nothing published right now"),
+                message: String(localized: "The creator is still working on it. Anything they publish shows up here automatically.")
             )
         } else {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], spacing: 12) {

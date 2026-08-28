@@ -1,11 +1,20 @@
 import SwiftUI
+import TipKit
 import UIKit
 
 private enum LibraryFilter: String, CaseIterable, Identifiable {
-    case all = "All"
-    case `static` = "Static"
-    case animated = "Animated"
+    case all
+    case `static`
+    case animated
     var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .all: String(localized: "All")
+        case .static: String(localized: "Static")
+        case .animated: String(localized: "Animated")
+        }
+    }
 
     func matches(_ sticker: Sticker) -> Bool {
         switch self {
@@ -23,38 +32,71 @@ struct LibraryView: View {
     /// Only needed so a pack section header can push that pack's detail without leaving the tab.
     @Bindable var marketplace: MarketplaceStore
     @State private var filter: LibraryFilter = .all
+    @State private var searchText = ""
     @State private var showingCreation = false
     /// Set after creation so a brand-new project lands straight in its chat.
     @State private var openedStickerID: String?
     /// A pack sticker the viewer tapped. They do not own it, so it opens read-only.
     @State private var previewedSticker: Sticker?
+    @State private var renamingSticker: Sticker?
+    @State private var renameTitle = ""
+    @State private var showingRename = false
+    @State private var deletionCandidate: Sticker?
+    @State private var confirmingDelete = false
+    private let generateTip = GenerateStickerTip()
 
-    private var filtered: [Sticker] { store.stickers.filter(filter.matches) }
+    private var normalizedSearchQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearchActive: Bool { !normalizedSearchQuery.isEmpty }
+
+    private var filtered: [Sticker] {
+        let stickers = isSearchActive ? store.librarySearchResults : store.stickers
+        return stickers.filter(filter.matches)
+    }
 
     private var packSections: [LibrarySection] {
-        store.sections
+        let sections = isSearchActive ? store.librarySearchSections : store.sections
+        return sections
             .filter { $0.kind == .pack }
-            .map { section in
+            .compactMap { section in
                 var copy = section
                 copy.stickers = section.stickers.filter(filter.matches)
-                return copy
+                return !isSearchActive || !copy.stickers.isEmpty ? copy : nil
             }
     }
 
+    private var nextStickerCursor: String? {
+        isSearchActive ? store.nextLibrarySearchCursor : store.nextStickerCursor
+    }
+
+    private var paginationTaskID: String? {
+        nextStickerCursor.map { "\(isSearchActive ? "search:\(normalizedSearchQuery)" : "library"):\($0)" }
+    }
+
     private var hasAnything: Bool {
-        !filtered.isEmpty || !packSections.isEmpty || store.nextStickerCursor != nil
+        !filtered.isEmpty || !packSections.isEmpty || nextStickerCursor != nil
     }
 
     var body: some View {
         StickerBackground {
             Group {
-                if store.isLoading && store.stickers.isEmpty && store.sections.isEmpty {
+                if !isSearchActive && store.isLoading && store.stickers.isEmpty && store.sections.isEmpty {
                     ProgressView("Loading your library…")
+                } else if isSearchActive && store.isSearchingLibrary && !hasAnything {
+                    Color.clear
                 } else if !hasAnything {
                     EmptyStateView(
-                        symbol: "face.smiling.inverse",
-                        title: "No stickers yet",
-                        message: filter == .all ? "Create a static or animated sticker to get started." : "No \(filter.rawValue.lowercased()) stickers match this filter."
+                        symbol: isSearchActive ? "magnifyingglass" : "face.smiling.inverse",
+                        title: isSearchActive
+                            ? String(localized: "No matching stickers")
+                            : String(localized: "No stickers yet"),
+                        message: isSearchActive
+                            ? String(localized: "Try a different search or filter.")
+                            : filter == .all
+                                ? String(localized: "Create a static or animated sticker to get started.")
+                                : String(localized: "No \(filter.label.lowercased()) stickers match this filter.")
                     )
                 } else {
                     ScrollView {
@@ -62,39 +104,59 @@ struct LibraryView: View {
                         // needs an opaque backing to stay readable over the content sliding under
                         // it, and that backing is a light bar across the app's own background.
                         LazyVStack(alignment: .leading, spacing: 24) {
-                            Section {
-                                if filtered.isEmpty {
-                                    SectionPlaceholder(message: "Nothing of yours matches this filter.")
-                                } else {
-                                    LazyVGrid(columns: libraryColumns, spacing: 16) {
-                                        ForEach(filtered) { sticker in
-                                            NavigationLink(value: sticker.id) {
-                                                StickerLibraryCard(sticker: sticker, api: store.api)
+                            if !isSearchActive || !filtered.isEmpty {
+                                Section {
+                                    if filtered.isEmpty {
+                                        SectionPlaceholder(message: String(localized: "Nothing of yours matches this filter."))
+                                    } else {
+                                        LazyVGrid(columns: libraryColumns, spacing: 16) {
+                                            ForEach(filtered) { sticker in
+                                                NavigationLink(value: sticker.id) {
+                                                    StickerLibraryCard(sticker: sticker, api: store.api)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .accessibilityIdentifier("library-sticker-\(sticker.id)")
+                                                .contextMenu {
+                                                    Button("Rename", systemImage: "pencil") {
+                                                        renamingSticker = sticker
+                                                        renameTitle = sticker.title
+                                                        showingRename = true
+                                                    }
+                                                    .accessibilityIdentifier("rename-library-sticker-\(sticker.id)")
+
+                                                    Button("Delete", systemImage: "trash", role: .destructive) {
+                                                        deletionCandidate = sticker
+                                                        confirmingDelete = true
+                                                    }
+                                                    .accessibilityIdentifier("delete-library-sticker-\(sticker.id)")
+                                                }
                                             }
-                                            .buttonStyle(.plain)
-                                            .accessibilityIdentifier("library-sticker-\(sticker.id)")
                                         }
+                                        .padding(.horizontal)
                                     }
-                                    .padding(.horizontal)
+                                } header: {
+                                    LibrarySectionHeader(title: String(localized: "My Stickers"), subtitle: nil, packID: nil)
                                 }
-                            } header: {
-                                LibrarySectionHeader(title: "My Stickers", subtitle: nil, packID: nil)
                             }
 
-                            if store.nextStickerCursor != nil {
+                            if nextStickerCursor != nil {
                                 ProgressView("Loading more stickers…")
                                     .frame(maxWidth: .infinity)
                                     .padding(.bottom, 8)
                                     .accessibilityIdentifier("library-pagination-progress")
-                                    .task(id: store.nextStickerCursor) {
-                                        await store.loadMoreStickers()
+                                    .task(id: paginationTaskID) {
+                                        if isSearchActive {
+                                            await store.loadMoreLibrarySearchResults()
+                                        } else {
+                                            await store.loadMoreStickers()
+                                        }
                                     }
                             }
 
                             ForEach(packSections) { section in
                                 Section {
                                     if section.stickers.isEmpty {
-                                        SectionPlaceholder(message: "Nothing published in this pack right now.")
+                                        SectionPlaceholder(message: String(localized: "Nothing published in this pack right now."))
                                     } else {
                                         LazyVGrid(columns: libraryColumns, spacing: 16) {
                                             ForEach(section.stickers) { sticker in
@@ -115,7 +177,7 @@ struct LibraryView: View {
                                 } header: {
                                     LibrarySectionHeader(
                                         title: section.title,
-                                        subtitle: section.creator.map { "by \($0.byline)" },
+                                        subtitle: section.creator.map { String(localized: "by \($0.byline)") },
                                         packID: section.packId
                                     )
                                 }
@@ -123,11 +185,27 @@ struct LibraryView: View {
                         }
                         .padding(.vertical)
                     }
-                    .refreshable { await store.refresh() }
+                    .refreshable {
+                        if isSearchActive {
+                            await store.searchLibrary(query: searchText, debounce: .zero)
+                        } else {
+                            await store.refresh()
+                        }
+                    }
                 }
             }
         }
         .navigationTitle("Library")
+        .searchable(text: $searchText, prompt: "Search stickers")
+        .overlay {
+            if isSearchActive && store.isSearchingLibrary {
+                ProgressView("Searching…")
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .accessibilityIdentifier("library-search-progress")
+            }
+        }
         .navigationDestination(for: String.self) { id in
             StickerChatView(store: store, stickerID: id)
         }
@@ -143,14 +221,16 @@ struct LibraryView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Create", systemImage: "wand.and.stars") {
+                    generateTip.invalidate(reason: .actionPerformed)
                     Haptics.tap(.light)
                     showingCreation = true
                 }
+                .popoverTip(generateTip, arrowEdge: .top)
                 .accessibilityIdentifier("create-sticker-button")
 
                 Menu("Filter", systemImage: "line.3.horizontal.decrease.circle") {
                     Picker("Filter", selection: $filter) {
-                        ForEach(LibraryFilter.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(LibraryFilter.allCases) { Text($0.label).tag($0) }
                     }
                 }
                 .accessibilityIdentifier("library-filter-menu")
@@ -180,14 +260,45 @@ struct LibraryView: View {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close") { previewedSticker = nil }
                         }
-                    }
+                }
             }
+        }
+        .stickerRenameAlert(
+            store: store,
+            stickerID: renamingSticker?.id ?? "",
+            currentTitle: renamingSticker?.title ?? "",
+            isPresented: $showingRename,
+            title: $renameTitle
+        )
+        .confirmationDialog(
+            "Delete this sticker project?",
+            isPresented: $confirmingDelete,
+            titleVisibility: .visible,
+            presenting: deletionCandidate
+        ) { sticker in
+            Button("Delete “\(sticker.title)”", role: .destructive) {
+                Haptics.tap(.heavy)
+                Task {
+                    if await store.delete(stickerID: sticker.id) {
+                        Haptics.success()
+                    } else {
+                        Haptics.failure()
+                    }
+                    deletionCandidate = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { deletionCandidate = nil }
+        } message: { _ in
+            Text("Deletion starts a durable purge of the private source images, transcript, revisions, and exports.")
         }
         .safeAreaInset(edge: .top) {
             if let error = store.errorMessage { ErrorBanner(message: error).padding(.horizontal) }
         }
         .task {
             if store.stickers.isEmpty { await store.refresh() } else { await store.refreshSections() }
+        }
+        .task(id: searchText) {
+            await store.searchLibrary(query: searchText)
         }
     }
 }

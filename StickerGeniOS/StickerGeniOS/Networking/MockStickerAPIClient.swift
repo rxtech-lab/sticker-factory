@@ -17,6 +17,13 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
 
     func listStickers(cursor: String?) async throws -> Page<Sticker> { .init(data: stickers, nextCursor: nil) }
 
+    func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> {
+        .init(
+            data: stickers.filter { $0.title.localizedCaseInsensitiveContains(query) },
+            nextCursor: nil
+        )
+    }
+
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse {
         if failCreationAsUpload { throw StickerAPIError.uploadFailed }
         let value = Sticker(
@@ -49,6 +56,19 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             )
         }
         return detail
+    }
+
+    func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail {
+        let updatedAt = Date()
+        if let index = stickers.firstIndex(where: { $0.id == id }) {
+            stickers[index].title = request.title
+            stickers[index].updatedAt = updatedAt
+        }
+        if detail.id == id {
+            detail.title = request.title
+            detail.updatedAt = updatedAt
+        }
+        return try await sticker(id: id)
     }
 
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse {
@@ -326,6 +346,16 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             )
         }
         return .init(sections: [mine] + installed, generatedAt: Date())
+    }
+
+    func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        let response = try await librarySections(status: status)
+        let sections = response.sections.compactMap { section -> LibrarySection? in
+            var copy = section
+            copy.stickers = section.stickers.filter { $0.title.localizedCaseInsensitiveContains(query) }
+            return copy.kind == .mine || !copy.stickers.isEmpty ? copy : nil
+        }
+        return .init(sections: sections, generatedAt: response.generatedAt)
     }
 
     @discardableResult

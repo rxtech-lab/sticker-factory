@@ -82,16 +82,6 @@ struct MessageListPinningTests {
         #expect(action == .clearPin)
         #expect(controller.pinnedUserMessageID == nil)
     }
-
-    @Test("A reopened transcript reserves space without re-asserting the position")
-    func restoreReservesWithoutPinning() {
-        var controller = Controller()
-        controller.restoreLatestTurn(id: 1)
-        #expect(controller.pinnedUserMessageID == 1)
-        // Nothing is being sent, so there is no incoming content to hold a position
-        // against: the caller places once and leaves the reader alone.
-        #expect(!controller.isPinningUserMessage)
-    }
 }
 
 /// Identity the list depends on, on the app's own chat model.

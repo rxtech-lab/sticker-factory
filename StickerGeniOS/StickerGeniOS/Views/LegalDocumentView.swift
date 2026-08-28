@@ -7,8 +7,8 @@ nonisolated enum LegalDocument: String, Hashable, Sendable {
 
     var title: String {
         switch self {
-        case .privacy: "Privacy Policy"
-        case .terms: "Terms of Service"
+        case .privacy: String(localized: "Privacy Policy")
+        case .terms: String(localized: "Terms of Service")
         }
     }
 
@@ -26,7 +26,7 @@ nonisolated enum LegalDocument: String, Hashable, Sendable {
     }
 }
 
-nonisolated enum LegalDocumentLoadingError: LocalizedError, Sendable {
+nonisolated enum MarkdownDocumentLoadingError: LocalizedError, Sendable {
     case invalidResponse
     case httpStatus(Int)
     case invalidMarkdown
@@ -34,12 +34,39 @@ nonisolated enum LegalDocumentLoadingError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            "The server returned an invalid response."
+            String(localized: "The server returned an invalid response.")
         case .httpStatus(let status):
-            "The server could not load this document (\(status))."
+            String(localized: "The server could not load this document (\(status)).")
         case .invalidMarkdown:
-            "The server returned an unreadable document."
+            String(localized: "The server returned an unreadable document.")
         }
+    }
+}
+
+nonisolated enum MarkdownDocumentLoader {
+    static func load(
+        url: URL,
+        session: URLSession = .shared,
+        cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy
+    ) async throws -> String {
+        var request = URLRequest(url: url)
+        request.setValue("text/markdown", forHTTPHeaderField: "Accept")
+        request.cachePolicy = cachePolicy
+
+        let (data, response) = try await session.data(for: request)
+        guard let response = response as? HTTPURLResponse else {
+            throw MarkdownDocumentLoadingError.invalidResponse
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            throw MarkdownDocumentLoadingError.httpStatus(response.statusCode)
+        }
+        guard response.mimeType == "text/markdown" else {
+            throw MarkdownDocumentLoadingError.invalidMarkdown
+        }
+        guard !data.isEmpty, let markdown = String(data: data, encoding: .utf8) else {
+            throw MarkdownDocumentLoadingError.invalidMarkdown
+        }
+        return markdown
     }
 }
 
@@ -49,24 +76,10 @@ nonisolated enum LegalDocumentLoader {
         baseURL: URL,
         session: URLSession = .shared
     ) async throws -> String {
-        var request = URLRequest(url: document.url(relativeTo: baseURL))
-        request.setValue("text/markdown", forHTTPHeaderField: "Accept")
-        request.cachePolicy = .useProtocolCachePolicy
-
-        let (data, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse else {
-            throw LegalDocumentLoadingError.invalidResponse
-        }
-        guard (200..<300).contains(response.statusCode) else {
-            throw LegalDocumentLoadingError.httpStatus(response.statusCode)
-        }
-        guard response.mimeType == "text/markdown" else {
-            throw LegalDocumentLoadingError.invalidMarkdown
-        }
-        guard !data.isEmpty, let markdown = String(data: data, encoding: .utf8) else {
-            throw LegalDocumentLoadingError.invalidMarkdown
-        }
-        return markdown
+        try await MarkdownDocumentLoader.load(
+            url: document.url(relativeTo: baseURL),
+            session: session
+        )
     }
 }
 
@@ -104,6 +117,7 @@ struct LegalDocumentView: View {
         }
         .navigationTitle(document.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .task(id: document) { await load() }
         .accessibilityIdentifier("legal-document-view")
     }

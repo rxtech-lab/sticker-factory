@@ -24,6 +24,8 @@ struct StickerChatView: View {
     @State private var showingExport = false
     @State private var showingComparison = false
     @State private var confirmingDelete = false
+    @State private var showingRename = false
+    @State private var renameTitle = ""
     @State private var showingCandidate = false
     @State private var isDeciding = false
     @State private var isConfirmingPlan = false
@@ -48,6 +50,11 @@ struct StickerChatView: View {
     @State private var rejectedRevisionIDs: Set<String> = []
 
     private var detail: StickerDetail? { store.details[stickerID] }
+    private var stickerTitle: String {
+        detail?.title
+            ?? store.stickers.first(where: { $0.id == stickerID })?.title
+            ?? String(localized: "Sticker")
+    }
     private var candidate: StickerRevision? {
         detail?.revisions.first { $0.state == .candidate && !rejectedRevisionIDs.contains($0.id) }
     }
@@ -72,7 +79,8 @@ struct StickerChatView: View {
     private var mediaPreloadToken: String {
         let revisionIDs = messages.compactMap(\.revisionId)
         let attachmentIDs = messages.flatMap(\.attachments).map(\.assetId)
-        return (revisionIDs + attachmentIDs).joined(separator: ":")
+        let planReferenceIDs = messages.compactMap(\.plan?.conceptAssetId)
+        return (revisionIDs + attachmentIDs + planReferenceIDs).joined(separator: ":")
     }
     /// How much the assistant has written in the turn being streamed, as a haptic trigger only.
     /// Zero while nothing is computing, so a transcript arriving from a refetch never ticks.
@@ -110,7 +118,7 @@ struct StickerChatView: View {
         let phase = messages.last {
             $0.kind == .status && $0.status == .streaming && StickerToolLabel.isPhase($0.content)
         }
-        return phase.map { StickerToolLabel.text(for: $0.content) } ?? "Working…"
+        return phase.map { StickerToolLabel.text(for: $0.content) } ?? String(localized: "Working…")
     }
 
     /// The revision the sticker actions operate on. Nothing renders it — the assistant attaches
@@ -142,13 +150,13 @@ struct StickerChatView: View {
         }
         // Still set even though `.principal` draws the bar: this is what names the back button on
         // the screen that pushed us, and what VoiceOver reads for the screen itself.
-        .navigationTitle(detail?.title ?? "Sticker")
+        .navigationTitle(stickerTitle)
         .navigationBarTitleDisplayMode(.inline)
         // Chat is the whole detail screen; the tab bar would sit under the composer.
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                ChatTitleChip(title: detail?.title ?? "Sticker", status: activeStatus)
+                ChatTitleChip(title: stickerTitle, status: activeStatus)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 StickerChatActionsMenu(
@@ -159,6 +167,10 @@ struct StickerChatView: View {
                     onRejectCandidate: { if let candidate { Task { await rejectCandidate(candidate) } } },
                     onCompare: { showingComparison = true },
                     onExport: { showingExport = true },
+                    onRename: {
+                        renameTitle = stickerTitle
+                        showingRename = true
+                    },
                     onViewVersions: { showingVersions = true },
                     onDelete: { confirmingDelete = true }
                 )
@@ -167,6 +179,9 @@ struct StickerChatView: View {
         .task {
             await store.loadDetail(stickerID: stickerID)
             await store.loadMessages(stickerID: stickerID)
+            if activeRevision != nil {
+                StickerOnboardingTips.acceptedRevisionBecameAvailable()
+            }
             store.startReconciliationPolling(stickerID: stickerID)
             await preloadMessageMedia()
         }
@@ -264,8 +279,8 @@ struct StickerChatView: View {
                 } else {
                     EmptyStateView(
                         symbol: "shippingbox",
-                        title: "Nothing to export yet",
-                        message: "Accept a candidate first, then export and publish it."
+                        title: String(localized: "Nothing to export yet"),
+                        message: String(localized: "Accept a candidate first, then export and publish it.")
                     )
                 }
             }
@@ -281,6 +296,13 @@ struct StickerChatView: View {
                 }
             )
         }
+        .stickerRenameAlert(
+            store: store,
+            stickerID: stickerID,
+            currentTitle: stickerTitle,
+            isPresented: $showingRename,
+            title: $renameTitle
+        )
         .confirmationDialog("Delete this sticker project?", isPresented: $confirmingDelete) {
             Button("Delete project", role: .destructive) {
                 Haptics.tap(.heavy)
@@ -417,6 +439,7 @@ struct StickerChatView: View {
         } else if let record = message.plan {
             PlanCard(
                 record: record.id == actionablePlanID ? record : record.readOnly,
+                referenceImage: record.conceptAssetId.flatMap { assetStore.images[$0] },
                 isBusy: isConfirmingPlan || isComputing,
                 onConfirm: { Task { await confirmPlan(record) } },
                 onReject: { reason in Task { await rejectPlan(record, reason: reason) } }
@@ -538,7 +561,11 @@ struct StickerChatView: View {
                 .accessibilityLabel("Add photos")
                 .accessibilityIdentifier("add-chat-attachment")
 
-                TextField("Message Sticker Factory", text: $text, axis: .vertical)
+                TextField(
+                    String(localized: "Message \(AppConfiguration.defaultAppName)"),
+                    text: $text,
+                    axis: .vertical
+                )
                     .lineLimit(1...5)
                     .textFieldStyle(.plain)
                     .focused($composerFocused)
@@ -591,6 +618,9 @@ struct StickerChatView: View {
 
     private func preloadMessageMedia() async {
         for message in messages {
+            if let referenceID = message.plan?.conceptAssetId {
+                await assetStore.load(assetID: referenceID, api: store.api)
+            }
             for attachment in message.attachments {
                 await assetStore.load(assetID: attachment.assetId, api: store.api)
             }
@@ -653,7 +683,7 @@ struct StickerChatView: View {
         let submittedReferenceItems = draft.referenceItems
         let submittedReferences = draft.references
         let value = submittedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let content = value.isEmpty ? "Use these reference images for the sticker." : value
+        let content = value.isEmpty ? String(localized: "Use these reference images for the sticker.") : value
         let baseRevisionID = detail?.revisions.first(where: { $0.state == .candidate })?.id ?? detail?.activeRevisionId
 
         localError = nil
@@ -714,6 +744,7 @@ struct StickerChatView: View {
         defer { isDeciding = false }
         do {
             try await store.transition(stickerID: stickerID, revisionID: revision.id, action: .accept)
+            StickerOnboardingTips.acceptedRevisionBecameAvailable()
             exportModel.invalidateExports()
             Haptics.success()
             localError = nil
@@ -988,7 +1019,7 @@ private struct ToolCallRow: View {
         .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(color.opacity(0.25), lineWidth: 0.5))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel("Tool \(message.content), \(message.status.rawValue)")
+        .accessibilityLabel("Tool \(message.content), \(message.status.label)")
     }
 }
 
@@ -1014,7 +1045,9 @@ private struct AssistantTypingIndicator: View {
         .padding(.vertical, 9)
         .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 16))
         .onAppear { animate = true }
-        .accessibilityLabel("Sticker Factory is responding")
+        .accessibilityLabel(
+            String(localized: "\(AppConfiguration.defaultAppName) is responding")
+        )
     }
 }
 

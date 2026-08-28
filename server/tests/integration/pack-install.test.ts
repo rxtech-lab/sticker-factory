@@ -33,8 +33,7 @@ async function startIssuer(): Promise<{ issuer: string; sign: (sub: string, name
   const issuer = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
     issuer,
-    // `ensureUser` rewrites `users.display_name` from the token's `name` claim on every request,
-    // so the claim has to be here or the seeded name is wiped before the handle is minted.
+    // The claim is representative of production OAuth tokens; application user rows stay id-only.
     sign: (sub, name) => new SignJWT({ client_id: "ios-client", name })
       .setProtectedHeader({ alg: "RS256", kid: "test" })
       .setIssuer(issuer)

@@ -140,10 +140,10 @@ nonisolated enum StickerExportError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidDocument: "The animation document is invalid."
-        case .renderFailed: "A sticker frame could not be rendered."
-        case .destinationFailed: "The export file could not be created."
-        case .videoWriterFailed(let reason): "The MP4 export failed: \(reason)"
+        case .invalidDocument: String(localized: "The animation document is invalid.")
+        case .renderFailed: String(localized: "A sticker frame could not be rendered.")
+        case .destinationFailed: String(localized: "The export file could not be created.")
+        case .videoWriterFailed(let reason): String(localized: "The MP4 export failed: \(reason)")
         }
     }
 }
@@ -160,14 +160,14 @@ nonisolated struct SystemStickerCompromise: Equatable, Sendable {
 
     var message: String? {
         if droppedMotion {
-            return """
+            return String(localized: """
             This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the \
             sticker is a still frame. The animated GIF and MP4 exports are unaffected. Shortening \
             the animation, or switching a ping-pong loop to a plain loop, brings the motion back.
-            """
+            """)
         }
         guard dimension < requestedDimension else { return nil }
-        return "Exported at \(dimension) px to stay under Apple's 500 KB sticker limit."
+        return String(localized: "Exported at \(dimension) px to stay under Apple's 500 KB sticker limit.")
     }
 }
 
@@ -228,9 +228,15 @@ final class StickerExporter {
                 kCVPixelBufferHeightKey as String: dimension,
             ]
         )
-        guard writer.canAdd(input) else { throw StickerExportError.videoWriterFailed("Unsupported writer settings") }
+        guard writer.canAdd(input) else {
+            throw StickerExportError.videoWriterFailed(String(localized: "Unsupported writer settings"))
+        }
         writer.add(input)
-        guard writer.startWriting() else { throw StickerExportError.videoWriterFailed(writer.error?.localizedDescription ?? "Could not start") }
+        guard writer.startWriting() else {
+            throw StickerExportError.videoWriterFailed(
+                writer.error?.localizedDescription ?? String(localized: "Could not start")
+            )
+        }
         writer.startSession(atSourceTime: .zero)
 
         let renderedDuration = StickerExportMetadataPolicy.renderedDuration(document)
@@ -271,14 +277,18 @@ final class StickerExporter {
                 appended = adaptor.append(buffer, withPresentationTime: timestamp)
             }
             guard appended else {
-                throw StickerExportError.videoWriterFailed(writer.error?.localizedDescription ?? "Could not append a frame")
+                throw StickerExportError.videoWriterFailed(
+                    writer.error?.localizedDescription ?? String(localized: "Could not append a frame")
+                )
             }
         }
         input.markAsFinished()
         writer.endSession(atSourceTime: CMTime(seconds: renderedDuration, preferredTimescale: 600))
         await writer.finishWriting()
         guard writer.status == .completed else {
-            throw StickerExportError.videoWriterFailed(writer.error?.localizedDescription ?? "Writer did not complete")
+            throw StickerExportError.videoWriterFailed(
+                writer.error?.localizedDescription ?? String(localized: "Writer did not complete")
+            )
         }
         let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         return .init(
@@ -580,7 +590,9 @@ final class StickerExporter {
         var format: CMVideoFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pixelBuffer, formatDescriptionOut: &format) == noErr,
               let format
-        else { throw StickerExportError.videoWriterFailed("The final frame could not be described") }
+        else {
+            throw StickerExportError.videoWriterFailed(String(localized: "The final frame could not be described"))
+        }
         var timing = CMSampleTimingInfo(duration: duration, presentationTimeStamp: presentationTime, decodeTimeStamp: .invalid)
         var sample: CMSampleBuffer?
         guard CMSampleBufferCreateReadyWithImageBuffer(
@@ -590,7 +602,9 @@ final class StickerExporter {
             sampleTiming: &timing,
             sampleBufferOut: &sample
         ) == noErr, let sample
-        else { throw StickerExportError.videoWriterFailed("The final frame could not be timed") }
+        else {
+            throw StickerExportError.videoWriterFailed(String(localized: "The final frame could not be timed"))
+        }
         return sample
     }
 

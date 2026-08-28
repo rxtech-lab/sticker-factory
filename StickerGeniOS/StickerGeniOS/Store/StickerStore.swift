@@ -13,7 +13,7 @@ nonisolated struct StickerJobState: Sendable, Equatable {
     var jobID: String
     var sourceMessageID: String?
     var progress: Double = 0
-    var message: String = "Starting…"
+    var message: String = String(localized: "Starting…")
     var lastEventID: Int64?
     var isTerminal = false
     var isFailed = false
@@ -46,6 +46,14 @@ final class StickerStore {
     /// Cursor for the next page of the user's own stickers. A refresh deliberately fetches only
     /// the first page; `LibraryView` asks for this cursor when its pagination sentinel appears.
     private(set) var nextStickerCursor: String?
+    /// Remote results live beside the normal Library snapshot so cancelling search restores the
+    /// user's shelf immediately instead of issuing another full reload.
+    private(set) var librarySearchResults: [Sticker] = []
+    private(set) var librarySearchSections: [LibrarySection] = []
+    private(set) var activeLibrarySearchQuery: String?
+    private(set) var nextLibrarySearchCursor: String?
+    private(set) var isSearchingLibrary = false
+    private(set) var isLoadingMoreLibrarySearchResults = false
     var isLoading = false
     private(set) var isLoadingMoreStickers = false
     var errorMessage: String?
@@ -69,6 +77,8 @@ final class StickerStore {
     /// the list endpoint hit twice per cold start.
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshGeneration = 0
+    /// Invalidates late remote-search responses whenever the user changes or clears the query.
+    @ObservationIgnored private var librarySearchGeneration = 0
 
     /// Asked to request notification permission when a turn starts. The banners themselves come
     /// from the server, which is the only side still watching once iOS suspends the app.
@@ -104,6 +114,13 @@ final class StickerStore {
         sections = []
         nextStickerCursor = nil
         isLoadingMoreStickers = false
+        librarySearchGeneration &+= 1
+        librarySearchResults = []
+        librarySearchSections = []
+        activeLibrarySearchQuery = nil
+        nextLibrarySearchCursor = nil
+        isSearchingLibrary = false
+        isLoadingMoreLibrarySearchResults = false
         errorMessage = nil
     }
 
@@ -166,6 +183,79 @@ final class StickerStore {
         }
     }
 
+    /// Debounces a title query, then asks both authenticated Library endpoints for remote results.
+    /// The owned-sticker page remains paginated; installed packs are already bounded server-side.
+    func searchLibrary(query rawQuery: String, debounce: Duration = .milliseconds(300)) async {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            clearLibrarySearch()
+            return
+        }
+
+        librarySearchGeneration &+= 1
+        let generation = librarySearchGeneration
+        activeLibrarySearchQuery = query
+        librarySearchResults = []
+        librarySearchSections = []
+        nextLibrarySearchCursor = nil
+        isLoadingMoreLibrarySearchResults = false
+        isSearchingLibrary = true
+        defer {
+            if generation == librarySearchGeneration { isSearchingLibrary = false }
+        }
+
+        do {
+            try await Task.sleep(for: debounce)
+            async let ownedRequest = api.searchStickers(query: query, cursor: nil)
+            async let sectionsRequest = api.searchLibrarySections(query: query, status: .all)
+            let (owned, sectionResponse) = try await (ownedRequest, sectionsRequest)
+            guard generation == librarySearchGeneration, activeLibrarySearchQuery == query else { return }
+            var seenIDs = Set<String>()
+            librarySearchResults = owned.items.filter { seenIDs.insert($0.id).inserted }
+            librarySearchSections = sectionResponse.packSections
+            nextLibrarySearchCursor = Self.usableCursor(owned.nextCursor)
+            errorMessage = nil
+        } catch {
+            guard generation == librarySearchGeneration, !Self.isCancellation(error) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func clearLibrarySearch() {
+        librarySearchGeneration &+= 1
+        activeLibrarySearchQuery = nil
+        librarySearchResults = []
+        librarySearchSections = []
+        nextLibrarySearchCursor = nil
+        isSearchingLibrary = false
+        isLoadingMoreLibrarySearchResults = false
+    }
+
+    func loadMoreLibrarySearchResults() async {
+        guard let query = activeLibrarySearchQuery,
+              let cursor = nextLibrarySearchCursor,
+              !isSearchingLibrary,
+              !isLoadingMoreLibrarySearchResults
+        else { return }
+        let generation = librarySearchGeneration
+        isLoadingMoreLibrarySearchResults = true
+        defer {
+            if generation == librarySearchGeneration { isLoadingMoreLibrarySearchResults = false }
+        }
+        do {
+            let page = try await api.searchStickers(query: query, cursor: cursor)
+            guard generation == librarySearchGeneration, activeLibrarySearchQuery == query else { return }
+            var seenIDs = Set(librarySearchResults.map(\.id))
+            librarySearchResults.append(contentsOf: page.items.filter { seenIDs.insert($0.id).inserted })
+            let next = Self.usableCursor(page.nextCursor)
+            nextLibrarySearchCursor = next == cursor ? nil : next
+            errorMessage = nil
+        } catch {
+            guard generation == librarySearchGeneration, !Self.isCancellation(error) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private static func usableCursor(_ cursor: String?) -> String? {
         guard let cursor, !cursor.isEmpty else { return nil }
         return cursor
@@ -212,6 +302,9 @@ final class StickerStore {
         if let index = stickers.firstIndex(where: { $0.id == detail.id }) {
             stickers[index] = detail.sticker
         }
+        if let index = librarySearchResults.firstIndex(where: { $0.id == detail.id }) {
+            librarySearchResults[index] = detail.sticker
+        }
     }
 
     func loadDetail(stickerID: String) async {
@@ -221,6 +314,26 @@ final class StickerStore {
         } catch {
             guard !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func rename(stickerID: String, title: String) async -> Bool {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return false }
+        do {
+            let detail = try await api.updateSticker(
+                id: stickerID,
+                request: .init(title: title),
+                idempotencyKey: UUID().uuidString
+            )
+            absorb(detail: detail)
+            errorMessage = nil
+            return true
+        } catch {
+            guard !Self.isCancellation(error) else { return false }
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -438,7 +551,7 @@ final class StickerStore {
         observations[stickerID]?.cancel()
         observations[stickerID] = nil
         var stopped = jobs[stickerID] ?? state
-        stopped.message = response.state == .cancelled ? "Stopped" : stopped.message
+        stopped.message = response.state == .cancelled ? String(localized: "Stopped") : stopped.message
         stopped.progress = response.state == .cancelled ? 1 : stopped.progress
         stopped.isTerminal = true
         stopped.isFailed = response.state == .failed
@@ -502,14 +615,15 @@ final class StickerStore {
             let response = try await api.deleteSticker(id: stickerID, idempotencyKey: UUID().uuidString)
             guard response.status == .deleting, response.job.state != .failed else {
                 errorMessage = response.job.retryable
-                    ? "Project deletion could not start. Your sticker is unchanged; please try again."
-                    : "Project deletion could not start. Your sticker is unchanged."
+                    ? String(localized: "Project deletion could not start. Your sticker is unchanged; please try again.")
+                    : String(localized: "Project deletion could not start. Your sticker is unchanged.")
                 return false
             }
             observations[stickerID]?.cancel()
             observations[stickerID] = nil
             stopReconciliationPolling(stickerID: stickerID)
             stickers.removeAll { $0.id == stickerID }
+            librarySearchResults.removeAll { $0.id == stickerID }
             details[stickerID] = nil
             messages[stickerID] = nil
             computingStickerIDs.remove(stickerID)
@@ -770,7 +884,7 @@ final class StickerStore {
                 jobID: jobID,
                 sourceMessageID: source.id,
                 progress: 1,
-                message: "Generation failed. You can retry this request.",
+                message: String(localized: "Generation failed. You can retry this request."),
                 isTerminal: true,
                 isFailed: true
             )
@@ -866,8 +980,8 @@ nonisolated enum StickerStoreError: Error, LocalizedError {
     case noRetryableTurn
     var errorDescription: String? {
         switch self {
-        case .turnAlreadyComputing: "Wait for the current AI edit to finish before sending another."
-        case .noRetryableTurn: "The failed AI turn no longer has a retryable source message."
+        case .turnAlreadyComputing: String(localized: "Wait for the current AI edit to finish before sending another.")
+        case .noRetryableTurn: String(localized: "The failed AI turn no longer has a retryable source message.")
         }
     }
 }

@@ -1,7 +1,8 @@
-import { noStoreJson } from "@/lib/http/errors";
+import { UpdateStickerRequestSchema } from "@/lib/contracts/api";
+import { noStoreJson, readJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
 import { executeIdempotent, requireIdempotencyKey } from "@/lib/services/idempotency";
-import { createCleanupJob, getSticker } from "@/lib/services/stickers";
+import { createCleanupJob, getSticker, updateSticker } from "@/lib/services/stickers";
 import { startCleanupWorkflow } from "@/lib/services/workflows";
 
 type Context = { params: Promise<{ id: string }> };
@@ -10,6 +11,24 @@ export async function GET(request: Request, context: Context) {
   return withApiAuth(request, async (principal, db) => {
     const { id } = await context.params;
     return noStoreJson(await getSticker(db, principal.sub, id));
+  });
+}
+
+export async function PATCH(request: Request, context: Context) {
+  return withApiAuth(request, async (principal, db) => {
+    const { id } = await context.params;
+    const body = await readJson(request, UpdateStickerRequestSchema.parse);
+    const key = requireIdempotencyKey(request);
+    const result = await executeIdempotent(db, {
+      ownerId: principal.sub,
+      operation: `update-sticker:${id}`,
+      key,
+      request: body,
+    }, async () => ({ status: 200, body: await updateSticker(db, principal.sub, id, body) }));
+    return noStoreJson(result.body, {
+      status: result.status,
+      headers: { "idempotency-replayed": String(result.replayed) },
+    });
   });
 }
 

@@ -205,9 +205,9 @@ export const plans = sqliteTable("plans", {
 /**
  * The creator's public identity in the marketplace.
  *
- * Kept out of `users` because `ensureUser()` rewrites `users.display_name` from the OAuth token
- * whenever it drifts. `handle` is the only creator identifier that appears in URLs and response
- * bodies — the OAuth `sub` never leaves the server.
+ * Kept out of `users` because OAuth owns account profile data while marketplace identity is
+ * user-authored application state. `handle` is the only creator identifier that appears in URLs
+ * and response bodies — the OAuth `sub` never leaves the server.
  */
 export const creatorProfiles = sqliteTable("creator_profiles", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),

@@ -102,19 +102,19 @@ enum SharedAuthenticationError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidConfiguration(let key):
-            "Sticker Factory is missing the \(key) configuration value."
+            String(localized: "Sticker Factory is missing the \(key) configuration value.")
         case .keychain(let status):
-            "Shared credentials could not be read (Keychain status \(status))."
+            String(localized: "Shared credentials could not be read (Keychain status \(status)).")
         case .missingCredentials:
-            "Open Sticker Factory and sign in to use your stickers."
+            String(localized: "Open Sticker Factory and sign in to use your stickers.")
         case .refreshUnavailable:
-            "Your sign-in has expired. Open Sticker Factory to sign in again."
+            String(localized: "Your sign-in has expired. Open Sticker Factory to sign in again.")
         case .refreshRejected:
-            "Your sign-in was revoked. Open Sticker Factory to sign in again."
+            String(localized: "Your sign-in was revoked. Open Sticker Factory to sign in again.")
         case .invalidRefreshResponse:
-            "The authentication server returned an invalid token response."
+            String(localized: "The authentication server returned an invalid token response.")
         case .appGroupUnavailable:
-            "The shared Sticker Factory container is unavailable."
+            String(localized: "The shared Sticker Factory container is unavailable.")
         }
     }
 }

@@ -65,15 +65,15 @@ enum StickerCacheError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .appGroupUnavailable:
-            "The shared sticker cache is unavailable."
+            String(localized: "The shared sticker cache is unavailable.")
         case .unsupportedFile:
-            "The downloaded rendition is not a supported PNG, APNG, or GIF."
+            String(localized: "The downloaded rendition is not a supported PNG, APNG, or GIF.")
         case .fileTooLarge:
-            "The downloaded rendition exceeds the 500 KB Messages limit."
+            String(localized: "The downloaded rendition exceeds the 500 KB Messages limit.")
         case .invalidDimensions:
-            "The downloaded rendition has invalid system-sticker dimensions."
+            String(localized: "The downloaded rendition has invalid system-sticker dimensions.")
         case .checksumMismatch:
-            "The downloaded rendition failed its integrity check."
+            String(localized: "The downloaded rendition failed its integrity check.")
         }
     }
 }
@@ -86,7 +86,7 @@ actor SharedStickerCache {
     static let allowedPixelDimensions: Set<Int> = [300, 408, 618]
 
     static let mineSectionID = "mine"
-    static let mineSectionTitle = "My Stickers"
+    static let mineSectionTitle = String(localized: "My Stickers")
     /// 2 added sections. A v1 index migrates in place — see `CacheEntry.init(from:)`.
     static let indexVersion = 2
 

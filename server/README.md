@@ -38,8 +38,8 @@ Configure Turso, a private R2 bucket, Vercel AI Gateway (API key or Vercel OIDC)
 
 All state-changing endpoints require `Idempotency-Key`. JSON bodies are content-type checked and limited to 1 MB. AI inputs, uploads, layers/keyframes, and event replay have independent bounds.
 
-- `POST/GET /api/v1/stickers`
-- `GET/DELETE /api/v1/stickers/{id}`
+- `POST/GET /api/v1/stickers` — the authenticated list accepts `?q=&cursor=` for title search
+- `GET/PATCH/DELETE /api/v1/stickers/{id}` — `PATCH` renames an owned live sticker
 - `GET/POST /api/v1/stickers/{id}/chat/messages`
 - `POST /api/v1/stickers/{id}/chat/messages/{messageId}/retry`
 - `POST /api/v1/stickers/{id}/revisions` — saves a client-edited document as a new accepted revision
@@ -60,7 +60,7 @@ Marketplace:
 - `DELETE /api/v1/packs/{packId}/items/{stickerId}`
 - `POST/DELETE /api/v1/packs/{packId}/install`
 - `GET /api/v1/creators/{handle}` — a creator's byline plus every pack of theirs the viewer may see
-- `GET /api/v1/library/sections` — "My Stickers" then one section per installed pack
+- `GET /api/v1/library/sections` — "My Stickers" then one section per installed pack; `?q=` searches sticker titles in every section
 
 A saved edit arrives already accepted — the user has seen exactly what they made, so there is no
 candidate to review — and its revision id is derived from the idempotency key, so a retried save

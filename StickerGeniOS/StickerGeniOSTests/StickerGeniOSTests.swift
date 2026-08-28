@@ -752,6 +752,48 @@ struct StoreAndPublisherTests {
         #expect(await api.requestedCursors() == ["<first>", "2", "3"])
     }
 
+    @Test("Renaming updates detail, Library, and active search caches together")
+    func renameSticker() async {
+        let api = MockStickerAPIClient()
+        let store = StickerStore(api: api)
+        await store.refresh()
+        await store.loadDetail(stickerID: PreviewFixtures.sticker.id)
+        await store.searchLibrary(query: "Happy", debounce: .zero)
+
+        let renamed = await store.rename(stickerID: PreviewFixtures.sticker.id, title: "  Bouncy Cloud  ")
+
+        #expect(renamed)
+        #expect(store.stickers.first?.title == "Bouncy Cloud")
+        #expect(store.librarySearchResults.first?.title == "Bouncy Cloud")
+        #expect(store.details[PreviewFixtures.sticker.id]?.title == "Bouncy Cloud")
+        #expect(store.errorMessage == nil)
+    }
+
+    @Test("Library search uses remote owned and installed-pack results")
+    func remoteLibrarySearch() async {
+        let api = RemoteSearchLibraryAPI()
+        let store = StickerStore(api: api)
+
+        await store.searchLibrary(query: "  cloud  ", debounce: .zero)
+
+        #expect(store.activeLibrarySearchQuery == "cloud")
+        #expect(store.librarySearchResults.map(\.title) == ["Blue Cloud"])
+        #expect(store.librarySearchSections.map(\.title) == ["Weather Cats"])
+        #expect(store.librarySearchSections[0].stickers.map(\.title) == ["Cloud Cat"])
+        #expect(store.nextLibrarySearchCursor == "second")
+        #expect(await api.requestedPages() == ["cloud:<first>"])
+
+        await store.loadMoreLibrarySearchResults()
+        #expect(store.librarySearchResults.map(\.title) == ["Blue Cloud", "Cloud Nine"])
+        #expect(store.nextLibrarySearchCursor == nil)
+        #expect(await api.requestedPages() == ["cloud:<first>", "cloud:second"])
+
+        store.clearLibrarySearch()
+        #expect(store.activeLibrarySearchQuery == nil)
+        #expect(store.librarySearchResults.isEmpty)
+        #expect(store.librarySearchSections.isEmpty)
+    }
+
     @Test("A cancelled Library refresh keeps its content and does not show an error")
     func cancelledLibraryRefreshIsSilent() async {
         let api = CancelledLibraryAPI()
@@ -967,8 +1009,10 @@ private final class NotificationProbe: @unchecked Sendable {
 
 private extension StickerAPIClientProtocol {
     func listStickers(cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
+    func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse { throw TestFixtureError.stub }
     func sticker(id: String) async throws -> StickerDetail { throw TestFixtureError.stub }
+    func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail { throw TestFixtureError.stub }
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse { throw TestFixtureError.stub }
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage { throw TestFixtureError.stub }
     func sendChatMessage(stickerID: String, request: SendChatMessageRequest, idempotencyKey: String) async throws -> SendChatMessageResponse { throw TestFixtureError.stub }
@@ -1008,6 +1052,9 @@ private extension StickerAPIClientProtocol {
     func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
         .init(sections: [], generatedAt: Date())
     }
+    func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        .init(sections: [], generatedAt: Date())
+    }
 }
 
 private actor PaginatedLibraryAPI: StickerAPIClientProtocol {
@@ -1024,6 +1071,39 @@ private actor PaginatedLibraryAPI: StickerAPIClientProtocol {
     }
 
     func requestedCursors() -> [String] { cursors }
+}
+
+private actor RemoteSearchLibraryAPI: StickerAPIClientProtocol {
+    private var pages: [String] = []
+
+    func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> {
+        pages.append("\(query):\(cursor ?? "<first>")")
+        let title = cursor == nil ? "Blue Cloud" : "Cloud Nine"
+        return .init(data: [
+            .init(
+                id: cursor == nil ? "cloud-first" : "cloud-second",
+                title: title,
+                kind: .static,
+                status: .published,
+                activeRevisionId: nil,
+                createdAt: Date(),
+                updatedAt: Date(),
+                previewAsset: nil,
+                systemSticker: nil
+            ),
+        ], nextCursor: cursor == nil ? "second" : nil)
+    }
+
+    func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        var sticker = PreviewFixtures.borrowedSticker
+        sticker.title = "Cloud Cat"
+        var section = PreviewFixtures.installedSection
+        section.title = "Weather Cats"
+        section.stickers = [sticker]
+        return .init(sections: [section], generatedAt: Date())
+    }
+
+    func requestedPages() -> [String] { pages }
 }
 
 private actor CancelledLibraryAPI: StickerAPIClientProtocol {

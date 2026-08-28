@@ -12,3 +12,16 @@ export function integerQuery(
   }
   return parsed;
 }
+
+export function textQuery(
+  value: string | null,
+  options: { name: string; maxLength: number },
+): string | undefined {
+  if (value === null) return undefined;
+  const parsed = value.trim();
+  if (parsed === "") return undefined;
+  if (parsed.length > options.maxLength) {
+    throw new ApiError(400, "INVALID_QUERY", `${options.name} must be at most ${options.maxLength} characters`);
+  }
+  return parsed;
+}

@@ -79,7 +79,18 @@ nonisolated struct StickerRevision: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-nonisolated enum RevisionCandidateState: String, Codable, CaseIterable, Hashable, Sendable { case candidate, accepted, rejected, superseded }
+nonisolated enum RevisionCandidateState: String, Codable, CaseIterable, Hashable, Sendable {
+    case candidate, accepted, rejected, superseded
+
+    var label: String {
+        switch self {
+        case .candidate: String(localized: "Candidate")
+        case .accepted: String(localized: "Accepted")
+        case .rejected: String(localized: "Rejected")
+        case .superseded: String(localized: "Superseded")
+        }
+    }
+}
 
 nonisolated struct AssetRecord: Codable, Identifiable, Hashable, Sendable {
     var id: String
@@ -264,9 +275,9 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
 
     var label: String {
         switch self {
-        case .generate: "Generated"
-        case .existing: "Kept"
-        case .text(let text, _): "Text “\(text)”"
+        case .generate: String(localized: "Generated")
+        case .existing: String(localized: "Kept")
+        case .text(let text, _): String(localized: "Text “\(text)”")
         case .shape(let shape, _): Self.humanized(shape)
         case .particle(let preset, _): Self.humanized(preset)
         case .unknown(let kind): Self.humanized(kind)
@@ -349,7 +360,17 @@ nonisolated struct CancelPlanResponse: Codable, Sendable {
     var message: AcceptedMessageReference?
     var job: GenerationJobReference?
 }
-nonisolated enum ChatMessageStatus: String, Codable, Hashable, Sendable { case complete, streaming, failed }
+nonisolated enum ChatMessageStatus: String, Codable, Hashable, Sendable {
+    case complete, streaming, failed
+
+    var label: String {
+        switch self {
+        case .complete: String(localized: "Complete")
+        case .streaming: String(localized: "In progress")
+        case .failed: String(localized: "Failed")
+        }
+    }
+}
 
 nonisolated struct ChatAttachment: Codable, Identifiable, Hashable, Sendable {
     var assetId: String
@@ -419,6 +440,10 @@ nonisolated struct CreateStickerRequest: Codable, Sendable {
     var kind: StickerKind
     var prompt: String
     var referenceAssetIds: [String]
+}
+
+nonisolated struct UpdateStickerRequest: Codable, Sendable {
+    var title: String
 }
 
 nonisolated struct CreateStickerResponse: Codable, Sendable {

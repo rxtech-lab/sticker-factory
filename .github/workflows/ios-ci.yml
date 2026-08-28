@@ -1,0 +1,56 @@
+name: iOS UI Tests
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-tests:
+    name: Run iOS UI Tests
+    runs-on: [self-hosted, macOS, ARM64, ui-tests]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Prepare simulators
+        run: |
+          xcrun simctl shutdown all 2>/dev/null || true
+          xcrun simctl erase all 2>/dev/null || true
+          xcrun simctl --set testing delete all 2>/dev/null || true
+
+      - name: Run UI tests
+        env:
+          STICKER_FACTORY_TEST_ROOT: ${{ runner.temp }}/sticker-factory-ios-ui-tests
+          STICKER_FACTORY_PACKAGE_ROOT: ${{ runner.temp }}/sticker-factory-packages
+          STICKER_FACTORY_SIMULATOR_NAME: iPhone 17 Pro
+          STICKER_FACTORY_UI_TESTS_ONLY: "1"
+        run: ./StickerGeniOS/scripts/ios-test.sh
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sticker-gen-ios-ui-test-results
+          path: ${{ runner.temp }}/sticker-factory-ios-ui-tests/DerivedData/Logs/Test
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Shut down simulators
+        if: always()
+        run: |
+          xcrun simctl shutdown all 2>/dev/null || true
+          xcrun simctl --set testing delete all 2>/dev/null || true

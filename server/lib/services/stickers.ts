@@ -1,9 +1,10 @@
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or, sql } from "drizzle-orm";
 import type {
   CreateStickerRequest,
   PostChatMessageRequest,
   PublishExportsRequest,
   SaveEditedDocumentRequest,
+  UpdateStickerRequest,
 } from "@/lib/contracts/api";
 import { countKeyframes } from "@/lib/animation/compile";
 import { EXPORT_LOOP_HOLD_SECONDS, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
@@ -21,7 +22,7 @@ import {
   stickers,
 } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
-import { getReadyOwnedAssets, serializeAsset } from "@/lib/services/assets";
+import { getReadyOwnedAssets } from "@/lib/services/assets";
 import { loadPlansByIds, serializePlan } from "@/lib/services/plans";
 
 const MAX_AI_INPUT_BYTES = 32 * 1024 * 1024;
@@ -73,6 +74,40 @@ export async function assertOwnedSticker(db: Database, ownerId: string, stickerI
   return sticker;
 }
 
+export const stickerSummaryColumns = {
+  id: stickers.id,
+  title: stickers.title,
+  kind: stickers.kind,
+  status: stickers.status,
+  activeRevisionId: stickers.activeRevisionId,
+  createdAt: stickers.createdAt,
+  updatedAt: stickers.updatedAt,
+};
+
+export const systemAssetSummaryColumns = {
+  id: systemAssets.id,
+  mimeType: systemAssets.mimeType,
+  byteSize: systemAssets.byteSize,
+  sha256: systemAssets.sha256,
+};
+
+export const previewAssetSummaryColumns = {
+  id: previewAssets.id,
+  stickerId: previewAssets.stickerId,
+  kind: previewAssets.kind,
+  state: previewAssets.state,
+  mimeType: previewAssets.mimeType,
+  byteSize: previewAssets.byteSize,
+  width: previewAssets.width,
+  height: previewAssets.height,
+  frameCount: previewAssets.frameCount,
+  durationSeconds: previewAssets.durationSeconds,
+  fps: previewAssets.fps,
+  sha256: previewAssets.sha256,
+  hasAlpha: previewAssets.hasAlpha,
+  createdAt: previewAssets.createdAt,
+};
+
 /**
  * A sticker plus its active revision's system and preview assets, resolved in one statement.
  *
@@ -82,9 +117,9 @@ export async function assertOwnedSticker(db: Database, ownerId: string, stickerI
  */
 export function selectStickerSummaries(db: Database) {
   return db.select({
-    sticker: stickers,
-    systemAsset: systemAssets,
-    previewAsset: previewAssets,
+    sticker: stickerSummaryColumns,
+    systemAsset: systemAssetSummaryColumns,
+    previewAsset: previewAssetSummaryColumns,
   }).from(stickers)
     .leftJoin(stickerRevisions, and(
       eq(stickerRevisions.id, stickers.activeRevisionId),
@@ -95,9 +130,12 @@ export function selectStickerSummaries(db: Database) {
 }
 
 export type StickerSummaryRow = {
-  sticker: typeof stickers.$inferSelect;
-  systemAsset: typeof assets.$inferSelect | null;
-  previewAsset: typeof assets.$inferSelect | null;
+  sticker: Pick<typeof stickers.$inferSelect,
+    "id" | "title" | "kind" | "status" | "activeRevisionId" | "createdAt" | "updatedAt">;
+  systemAsset: Pick<typeof assets.$inferSelect, "id" | "mimeType" | "byteSize" | "sha256"> | null;
+  previewAsset: Pick<typeof assets.$inferSelect,
+    "id" | "stickerId" | "kind" | "state" | "mimeType" | "byteSize" | "width" | "height"
+    | "frameCount" | "durationSeconds" | "fps" | "sha256" | "hasAlpha" | "createdAt"> | null;
 };
 
 export function serializeStickerSummary({ sticker, systemAsset, previewAsset }: StickerSummaryRow) {
@@ -109,7 +147,10 @@ export function serializeStickerSummary({ sticker, systemAsset, previewAsset }: 
     activeRevisionId: sticker.activeRevisionId,
     createdAt: sticker.createdAt.toISOString(),
     updatedAt: sticker.updatedAt.toISOString(),
-    previewAsset: previewAsset ? serializeAsset(previewAsset) : null,
+    previewAsset: previewAsset ? {
+      ...previewAsset,
+      createdAt: previewAsset.createdAt.toISOString(),
+    } : null,
     systemSticker: systemAsset ? {
       assetId: systemAsset.id,
       mimeType: systemAsset.mimeType,
@@ -127,13 +168,21 @@ async function serializeSticker(db: Database, sticker: typeof stickers.$inferSel
 export async function listStickers(
   db: Database,
   ownerId: string,
-  options: { limit?: number; cursor?: string | null; kind?: "static" | "animated"; status?: "draft" | "published" } = {},
+  options: {
+    limit?: number;
+    cursor?: string | null;
+    kind?: "static" | "animated";
+    status?: "draft" | "published";
+    query?: string | null;
+  } = {},
 ) {
   const limit = Math.min(Math.max(options.limit ?? 30, 1), 100);
   const cursor = decodeCursor(options.cursor);
   const conditions = [eq(stickers.ownerId, ownerId), ne(stickers.status, "deleting")];
   if (options.kind) conditions.push(eq(stickers.kind, options.kind));
   if (options.status) conditions.push(eq(stickers.status, options.status));
+  const query = options.query?.trim();
+  if (query) conditions.push(sql`instr(lower(${stickers.title}), lower(${query})) > 0`);
   if (cursor) conditions.push(or(
     lt(stickers.updatedAt, new Date(cursor.updatedAt)),
     and(eq(stickers.updatedAt, new Date(cursor.updatedAt)), lt(stickers.id, cursor.id)),
@@ -189,6 +238,20 @@ export async function createSticker(db: Database, ownerId: string, request: Crea
     }
   });
   return { stickerId, threadId };
+}
+
+export async function updateSticker(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  request: UpdateStickerRequest,
+) {
+  await assertOwnedSticker(db, ownerId, stickerId);
+  await db.update(stickers).set({
+    title: request.title,
+    updatedAt: new Date(),
+  }).where(and(eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId)));
+  return getSticker(db, ownerId, stickerId);
 }
 
 export async function createExportJob(db: Database, ownerId: string, stickerId: string) {

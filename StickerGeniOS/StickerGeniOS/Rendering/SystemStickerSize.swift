@@ -30,14 +30,16 @@ nonisolated enum SystemStickerSize: String, CaseIterable, Identifiable, Codable,
 
     var label: String {
         switch self {
-        case .large: "Large"
-        case .medium: "Medium"
-        case .small: "Small"
+        case .large: String(localized: "Large")
+        case .medium: String(localized: "Medium")
+        case .small: String(localized: "Small")
         }
     }
 
     /// The transcript size Messages derives from `dimension`.
     var approximatePoints: Int { dimension / 3 }
 
-    var detail: String { "\(dimension) px · arrives about \(approximatePoints) pt wide" }
+    var detail: String {
+        String(localized: "\(dimension) px · arrives about \(approximatePoints) pt wide")
+    }
 }

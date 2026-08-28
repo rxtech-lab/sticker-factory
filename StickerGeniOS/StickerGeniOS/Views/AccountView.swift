@@ -3,18 +3,31 @@ import SwiftUI
 
 struct AccountView: View {
     @Bindable var environment: AppEnvironment
+    var onShowWelcome: () -> Void = {}
     @State private var confirmingLogout = false
 
     private var userName: String {
-        environment.authManager.currentUser?.name ?? "Sticker maker"
+        environment.authManager.currentUser?.name ?? String(localized: "Sticker maker")
     }
 
     private var userEmail: String {
-        environment.authManager.currentUser?.email ?? "Signed in with RxLab"
+        environment.authManager.currentUser?.email ?? String(localized: "Signed in with RxLab")
     }
 
     private var avatarURL: URL? {
         environment.authManager.currentUser?.image.flatMap(URL.init(string:))
+    }
+
+    private var howItWorksTitle: String {
+        String(localized: "How \(AppConfiguration.defaultAppName) works")
+    }
+
+    private var aboutTitle: String {
+        String(localized: "About \(AppConfiguration.defaultAppName)")
+    }
+
+    private var signOutTitle: String {
+        String(localized: "Sign out of \(AppConfiguration.defaultAppName)?")
     }
 
     var body: some View {
@@ -52,6 +65,27 @@ struct AccountView: View {
                 .accessibilityIdentifier("terms-of-service-link")
             }
 
+            Section("Help") {
+                Button(howItWorksTitle, systemImage: "sparkles") {
+                    onShowWelcome()
+                }
+                .accessibilityIdentifier("show-welcome-button")
+            }
+
+            Section("About") {
+                NavigationLink {
+                    AboutPageView(
+                        baseURL: environment.configuration.apiBaseURL,
+                        appName: AppConfiguration.defaultAppName,
+                        appVersion: environment.configuration.appVersion,
+                        appBuild: environment.configuration.appBuild
+                    )
+                } label: {
+                    Label(aboutTitle, systemImage: "info.circle.fill")
+                }
+                .accessibilityIdentifier("about-page-link")
+            }
+
             Section {
                 Button("Sign Out", role: .destructive) {
                     confirmingLogout = true
@@ -66,7 +100,7 @@ struct AccountView: View {
         .navigationDestination(for: LegalDocument.self) { document in
             LegalDocumentView(document: document, baseURL: environment.configuration.apiBaseURL)
         }
-        .confirmationDialog("Sign out of Sticker Factory?", isPresented: $confirmingLogout) {
+        .confirmationDialog(signOutTitle, isPresented: $confirmingLogout) {
             Button("Sign Out", role: .destructive) { Task { await environment.signOut() } }
             Button("Cancel", role: .cancel) {}
         } message: {

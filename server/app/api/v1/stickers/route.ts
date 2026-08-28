@@ -1,7 +1,7 @@
 import { CreateStickerRequestSchema } from "@/lib/contracts/api";
 import { noStoreJson, readJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
-import { integerQuery } from "@/lib/http/query";
+import { integerQuery, textQuery } from "@/lib/http/query";
 import { executeIdempotent, requireIdempotencyKey } from "@/lib/services/idempotency";
 import { purgeStickerMediaImmediately } from "@/lib/services/assets";
 import { createChatTurn, createSticker, listStickers } from "@/lib/services/stickers";
@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       cursor: url.searchParams.get("cursor"),
       kind: kind === "static" || kind === "animated" ? kind : undefined,
       status: status === "draft" || status === "published" ? status : undefined,
+      query: textQuery(url.searchParams.get("q"), { name: "q", maxLength: 100 }),
     });
     return noStoreJson(result);
   });

@@ -4,8 +4,10 @@ import os
 
 nonisolated protocol StickerAPIClientProtocol: Sendable {
     func listStickers(cursor: String?) async throws -> Page<Sticker>
+    func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker>
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse
     func sticker(id: String) async throws -> StickerDetail
+    func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage
     func sendChatMessage(stickerID: String, request: SendChatMessageRequest, idempotencyKey: String) async throws -> SendChatMessageResponse
@@ -38,6 +40,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func installPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse
     func uninstallPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse
     func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse
+    func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse
 }
 
 nonisolated enum PackSort: String, Sendable, CaseIterable { case recent, popular }
@@ -69,12 +72,27 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         try await send(path: "api/v1/stickers", query: cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? [])
     }
 
+    func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> {
+        var items = [URLQueryItem(name: "q", value: query)]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await send(path: "api/v1/stickers", query: items)
+    }
+
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse {
         try await send(path: "api/v1/stickers", method: "POST", body: request, idempotencyKey: idempotencyKey)
     }
 
     func sticker(id: String) async throws -> StickerDetail {
         try await send(path: "api/v1/stickers/\(id)")
+    }
+
+    func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail {
+        try await send(
+            path: "api/v1/stickers/\(id)",
+            method: "PATCH",
+            body: request,
+            idempotencyKey: idempotencyKey
+        )
     }
 
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse {
@@ -266,6 +284,13 @@ actor StickerAPIClient: StickerAPIClientProtocol {
 
     func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
         try await send(path: "api/v1/library/sections", query: [URLQueryItem(name: "status", value: status.rawValue)])
+    }
+
+    func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        try await send(path: "api/v1/library/sections", query: [
+            URLQueryItem(name: "status", value: status.rawValue),
+            URLQueryItem(name: "q", value: query),
+        ])
     }
 
     // MARK: - Uploads
@@ -500,9 +525,9 @@ nonisolated enum StickerAPIError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse: "The server returned an invalid response."
-        case .http(let code): "The request failed (HTTP \(code))."
-        case .uploadFailed: "The media upload could not be completed."
+        case .invalidResponse: String(localized: "The server returned an invalid response.")
+        case .http(let code): String(localized: "The request failed (HTTP \(code)).")
+        case .uploadFailed: String(localized: "The media upload could not be completed.")
         }
     }
 }

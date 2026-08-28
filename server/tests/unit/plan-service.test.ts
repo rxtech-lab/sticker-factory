@@ -206,6 +206,17 @@ describe("plan service", () => {
     expect(serializePlan(row).generationCount).toBe(1);
   });
 
+  it("refuses to confirm an animated plan before its static reference exists", async () => {
+    const created = await create(plan("Needs reference"));
+    await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: created.planId });
+    await settleFixtureTurn();
+
+    await expect(confirmPlan(db, "owner-a", stickerId, created.planId))
+      .rejects.toMatchObject({ code: "PLAN_REFERENCE_REQUIRED" });
+    expect((await db.select().from(plans).where(eq(plans.id, created.planId)).get())?.state)
+      .toBe("finalized");
+  });
+
   it("rejects confirming a plan whose kind does not match the project", async () => {
     const staticSticker = await createSticker(db, "owner-a", {
       title: "Flat", kind: "static", prompt: "Flat", referenceAssetIds: [],

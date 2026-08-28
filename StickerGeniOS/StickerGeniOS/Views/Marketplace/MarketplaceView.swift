@@ -1,9 +1,16 @@
 import SwiftUI
 
 private enum MarketplaceTab: String, CaseIterable, Identifiable {
-    case browse = "Browse"
-    case mine = "My packs"
+    case browse
+    case mine
     var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .browse: String(localized: "Browse")
+        case .mine: String(localized: "My packs")
+        }
+    }
 }
 
 struct MarketplaceView: View {
@@ -25,12 +32,14 @@ struct MarketplaceView: View {
                 } else if visible.isEmpty {
                     EmptyStateView(
                         symbol: "square.stack.3d.up",
-                        title: tab == .mine ? "No packs yet" : "Nothing here yet",
+                        title: tab == .mine
+                            ? String(localized: "No packs yet")
+                            : String(localized: "Nothing here yet"),
                         message: tab == .mine
-                            ? "Bundle stickers you have published and share them with everyone."
+                            ? String(localized: "Bundle stickers you have published and share them with everyone.")
                             : store.searchQuery.isEmpty
-                                ? "Be the first to publish a sticker pack."
-                                : "No packs match “\(store.searchQuery)”."
+                                ? String(localized: "Be the first to publish a sticker pack.")
+                                : String(localized: "No packs match “\(store.searchQuery)”.")
                     )
                 } else {
                     ScrollView {
@@ -71,7 +80,7 @@ struct MarketplaceView: View {
             }
             ToolbarItem(placement: .principal) {
                 Picker("Section", selection: $tab) {
-                    ForEach(MarketplaceTab.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(MarketplaceTab.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("marketplace-tab-picker")

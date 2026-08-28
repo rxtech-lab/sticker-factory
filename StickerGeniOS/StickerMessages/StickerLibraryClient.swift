@@ -10,15 +10,15 @@ enum StickerLibraryError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidConfiguration:
-            "Sticker Factory's API address is not configured."
+            String(localized: "Sticker Factory's API address is not configured.")
         case .unauthorized:
-            "Your Sticker Factory sign-in has expired."
+            String(localized: "Your Sticker Factory sign-in has expired.")
         case .server(let statusCode):
-            "Sticker Factory could not refresh the library (HTTP \(statusCode))."
+            String(localized: "Sticker Factory could not refresh the library (HTTP \(statusCode)).")
         case .invalidResponse:
-            "Sticker Factory returned an invalid library response."
+            String(localized: "Sticker Factory returned an invalid library response.")
         case .renditionTooLarge:
-            "A downloaded sticker exceeds the Messages file-size limit."
+            String(localized: "A downloaded sticker exceeds the Messages file-size limit.")
         }
     }
 }
@@ -261,10 +261,10 @@ private struct SectionDTO: Decodable {
         id = try container.decodeIfPresent(String.self, forKey: .id)
             ?? container.decodeIfPresent(String.self, forKey: .kind)
             ?? "mine"
-        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Stickers"
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? String(localized: "Stickers")
         // The byline is the only part of the creator this surface shows.
         let creator = try? container.decodeIfPresent(CreatorDTO.self, forKey: .creator)
-        subtitle = (creator?.displayName).map { "by \($0)" }
+        subtitle = (creator?.displayName).map { String(localized: "by \($0)") }
         stickers = try container.decodeIfPresent([StickerDTO].self, forKey: .stickers)
             ?? container.decodeIfPresent([StickerDTO].self, forKey: .data)
             ?? []
@@ -369,7 +369,7 @@ private struct StickerDTO: Decodable {
         id = try container.decode(String.self, forKey: .id)
         title = try container.decodeIfPresent(String.self, forKey: .title)
             ?? container.decodeIfPresent(String.self, forKey: .name)
-            ?? "Sticker"
+            ?? String(localized: "Sticker")
         updatedAt = (try? container.decode(FlexibleDate.self, forKey: .updatedAt).value) ?? .distantPast
         systemSticker = try container.decodeIfPresent(AssetDTO.self, forKey: .systemSticker)
         systemStickerAssetID = try container.decodeIfPresent(String.self, forKey: .systemStickerAssetID)

@@ -7,9 +7,8 @@ PRAGMA foreign_keys = ON;
 
 -- The creator's public identity.
 --
--- Deliberately separate from `users`: `ensureUser()` in lib/services/users.ts upserts
--- `users.display_name` from the OAuth token whenever it drifts, so a chosen public name stored
--- there would be silently clobbered on the next request. The handle is also the only creator
+-- Deliberately separate from `users`: OAuth owns account profile data while a chosen public
+-- marketplace name is durable application state. The handle is also the only creator
 -- identifier that ever appears in a URL or a response body — the OAuth `sub` (which is
 -- `users.id`, and every `owner_id` in this schema) must never be exposed.
 CREATE TABLE creator_profiles (

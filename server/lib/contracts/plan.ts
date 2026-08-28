@@ -105,10 +105,11 @@ export const PlanV1Schema = z.object({
   timing: PlanTimingV1Schema.default({ durationSeconds: 2, fps: 30, loop: "loop" }),
   layers: z.array(PlanLayerV1Schema).min(1).max(8),
   /**
-   * How to draw the concept storyboard the user approves before anything is generated.
+   * How to draw the finished static reference the user approves before animated parts are made.
    *
-   * Optional because a plan is still actionable without a picture — concept rendering is a
-   * best-effort step and plans stored before it existed must keep parsing.
+   * Older plans may not carry this field, so it remains optional in the persisted v1 schema. The
+   * workflow derives a complete fallback prompt for animated plans, which means every new animated
+   * plan still has a reference image before it becomes actionable.
    */
   conceptPrompt: z.string().trim().min(1).max(2_000).optional(),
 }).strict().superRefine((plan, context) => {
@@ -182,6 +183,30 @@ export function compilePlanAnimations(plan: Pick<PlanV1, "kind" | "timing" | "la
 /** How many image generations executing this plan will cost. */
 export function planGenerationCount(plan: Pick<PlanV1, "layers">): number {
   return plan.layers.filter((layer) => layer.source.kind === "generate").length;
+}
+
+/**
+ * Keeps an animated build visually tied to the still image the user approved.
+ *
+ * Text, shape, and particle sources are rendered independently by the app. They are useful for
+ * static plans, but they cannot inherit the illustration model's exact silhouette, outline,
+ * highlights, shadows, or texture from an approved reference. New animated artwork therefore uses
+ * generated image layers; existing image layers remain valid because they already have pixels to
+ * preserve.
+ */
+export function assertAnimatedPlanUsesReferenceBackedArtwork(plan: PlanV1): void {
+  if (plan.kind !== "animated") return;
+  const appRendered = plan.layers.filter((layer) => (
+    layer.source.kind === "text" || layer.source.kind === "shape" || layer.source.kind === "particle"
+  ));
+  if (appRendered.length === 0) return;
+
+  const named = appRendered.map((layer) => `${layer.layerId} (${layer.source.kind})`).join(", ");
+  throw new Error(
+    `These animated layers use app-rendered primitives that cannot match the approved static reference: ${named}. `
+      + "Use a generate source for each one so the image model can separate its exact appearance "
+      + "from the reference. Existing image sources may still be reused.",
+  );
 }
 
 /** The artwork a plan may reuse: every image layer the sticker on screen already has. */

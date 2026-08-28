@@ -81,6 +81,35 @@ describe("library sections", () => {
     expect(forApp.sections[0].stickers.map((sticker) => sticker.title).sort()).toEqual(["Draft", "Published"]);
   });
 
+  it("searches owned and installed stickers by title on the backend", async () => {
+    await seedPublishedSticker(db, "installer", { title: "Blue Cloud" });
+    await seedPublishedSticker(db, "installer", { title: "Red Rocket" });
+    const matching = await seedPublishedSticker(db, "creator", { title: "Cloud Cat" });
+    const other = await seedPublishedSticker(db, "creator", { title: "Sleepy Loaf" });
+    const cloudPack = await createPack(db, "creator", {
+      title: "Weather Cats",
+      stickerIds: [matching.stickerId, other.stickerId],
+      state: "published",
+    });
+    const unrelatedPack = await createPack(db, "creator", {
+      title: "Bread Cats",
+      stickerIds: [other.stickerId],
+      state: "published",
+    });
+    await installPack(db, "installer", cloudPack.id);
+    await installPack(db, "installer", unrelatedPack.id);
+
+    const { sections } = await listLibrarySections(db, "installer", { status: "all", query: "  cloud  " });
+
+    expect(sections.map((section) => section.title)).toEqual(["My Stickers", "Weather Cats"]);
+    expect(sections[0].stickers.map((sticker) => sticker.title)).toEqual(["Blue Cloud"]);
+    expect(sections[1].stickers.map((sticker) => sticker.title)).toEqual(["Cloud Cat"]);
+
+    const literalWildcard = await listLibrarySections(db, "installer", { status: "all", query: "%" });
+    expect(literalWildcard.sections).toHaveLength(1);
+    expect(literalWildcard.sections[0].stickers).toEqual([]);
+  });
+
   it("removes a section on uninstall and caps a section's size", async () => {
     const member = await seedPublishedSticker(db, "creator");
     const pack = await createPack(db, "creator", { title: "Temporary", stickerIds: [member.stickerId], state: "published" });
