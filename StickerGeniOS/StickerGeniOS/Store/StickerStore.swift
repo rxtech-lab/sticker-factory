@@ -43,7 +43,11 @@ final class StickerStore {
     /// export all read `stickers`, and the sections endpoint caps its own-sticker list where the
     /// paged reload does not.
     private(set) var sections: [LibrarySection] = []
+    /// Cursor for the next page of the user's own stickers. A refresh deliberately fetches only
+    /// the first page; `LibraryView` asks for this cursor when its pagination sentinel appears.
+    private(set) var nextStickerCursor: String?
     var isLoading = false
+    private(set) var isLoadingMoreStickers = false
     var errorMessage: String?
 
     let api: StickerAPIClientProtocol
@@ -81,6 +85,8 @@ final class StickerStore {
         // A reload that outlives sign-out would repopulate the library we are clearing here.
         refreshTask?.cancel()
         refreshTask = nil
+        // Invalidate a page response that may already be returning while reset clears the store.
+        refreshGeneration &+= 1
         observations = [:]
         observationGenerations = [:]
         pollers = [:]
@@ -96,6 +102,8 @@ final class StickerStore {
         loadingMessageStickerIDs = []
         loadingOlderMessageStickerIDs = []
         sections = []
+        nextStickerCursor = nil
+        isLoadingMoreStickers = false
         errorMessage = nil
     }
 
@@ -121,26 +129,46 @@ final class StickerStore {
         isLoading = true
         defer { isLoading = false }
         do {
-            var loaded: [Sticker] = []
-            var cursor: String?
-            var seenCursors = Set<String>()
-            repeat {
-                let page = try await api.listStickers(cursor: cursor)
-                loaded.append(contentsOf: page.items)
-                guard let next = page.nextCursor, seenCursors.insert(next).inserted else {
-                    cursor = nil
-                    break
-                }
-                cursor = next
-            } while cursor != nil
+            let page = try await api.listStickers(cursor: nil)
             var seenIDs = Set<String>()
-            stickers = loaded.filter { seenIDs.insert($0.id).inserted }
+            stickers = page.items.filter { seenIDs.insert($0.id).inserted }
+            nextStickerCursor = Self.usableCursor(page.nextCursor)
             errorMessage = nil
         } catch {
             guard !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
         }
         await refreshSections()
+    }
+
+    /// Fetches exactly one continuation page and appends it to the current Library snapshot.
+    ///
+    /// Keeping the cursor until the request succeeds makes a transient failure retryable. The
+    /// generation check prevents a slow continuation response from appending stale rows after a
+    /// pull-to-refresh has replaced the first page.
+    func loadMoreStickers() async {
+        guard let cursor = nextStickerCursor, !isLoading, !isLoadingMoreStickers else { return }
+        let generation = refreshGeneration
+        isLoadingMoreStickers = true
+        defer { isLoadingMoreStickers = false }
+        do {
+            let page = try await api.listStickers(cursor: cursor)
+            guard generation == refreshGeneration else { return }
+            var seenIDs = Set(stickers.map(\.id))
+            stickers.append(contentsOf: page.items.filter { seenIDs.insert($0.id).inserted })
+            let next = Self.usableCursor(page.nextCursor)
+            // A repeated cursor would otherwise make the Library request the same page forever.
+            nextStickerCursor = next == cursor ? nil : next
+            errorMessage = nil
+        } catch {
+            guard generation == refreshGeneration, !Self.isCancellation(error) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private static func usableCursor(_ cursor: String?) -> String? {
+        guard let cursor, !cursor.isEmpty else { return nil }
+        return cursor
     }
 
     /// Reloads the installed-pack sections.

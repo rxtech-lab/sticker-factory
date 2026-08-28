@@ -16,6 +16,9 @@ extension RotationKeyframe: AnimatedEditableKeyframe {}
 extension OpacityKeyframe: AnimatedEditableKeyframe {}
 extension EffectKeyframe: AnimatedEditableKeyframe {}
 extension TrimKeyframe: AnimatedEditableKeyframe {}
+extension WipeKeyframe: AnimatedEditableKeyframe {}
+extension SheenKeyframe: AnimatedEditableKeyframe {}
+extension GlowKeyframe: AnimatedEditableKeyframe {}
 
 extension EffectKeyframe {
     /// This keyframe's three effect values as one bundle.
@@ -25,6 +28,52 @@ extension EffectKeyframe {
     /// keeps that from being spelled out at every call site.
     public var value: AnimatedEffectValue {
         .init(blurRadius: blurRadius, hueDegrees: hueDegrees, saturation: saturation)
+    }
+}
+
+extension WipeKeyframe {
+    /// This keyframe's wipe values as one bundle, for the same reason `EffectKeyframe.value` exists:
+    /// four components where editing one means rewriting the other three unchanged.
+    public var value: AnimatedWipe {
+        .init(start: start, end: end, angleDegrees: angleDegrees, softness: softness)
+    }
+}
+
+extension AnimatedWipe {
+    public func with(
+        start: Double? = nil,
+        end: Double? = nil,
+        angleDegrees: Double? = nil,
+        softness: Double? = nil
+    ) -> Self {
+        .init(
+            start: start ?? self.start,
+            end: end ?? self.end,
+            angleDegrees: angleDegrees ?? self.angleDegrees,
+            softness: softness ?? self.softness
+        )
+    }
+}
+
+extension SheenKeyframe {
+    public var value: AnimatedSheen {
+        .init(position: position, width: width, angleDegrees: angleDegrees, intensity: intensity)
+    }
+}
+
+extension AnimatedSheen {
+    public func with(
+        position: Double? = nil,
+        width: Double? = nil,
+        angleDegrees: Double? = nil,
+        intensity: Double? = nil
+    ) -> Self {
+        .init(
+            position: position ?? self.position,
+            width: width ?? self.width,
+            angleDegrees: angleDegrees ?? self.angleDegrees,
+            intensity: intensity ?? self.intensity
+        )
     }
 }
 
@@ -49,6 +98,9 @@ extension AnimatedLayerAnimation {
         case .opacity: opacity.count
         case .effects: effects.count
         case .trim: trim.count
+        case .wipe: wipe.count
+        case .sheen: sheen.count
+        case .glow: glow.count
         }
     }
 
@@ -61,6 +113,9 @@ extension AnimatedLayerAnimation {
         case .opacity: opacity.map(\.timeSeconds)
         case .effects: effects.map(\.timeSeconds)
         case .trim: trim.map(\.timeSeconds)
+        case .wipe: wipe.map(\.timeSeconds)
+        case .sheen: sheen.map(\.timeSeconds)
+        case .glow: glow.map(\.timeSeconds)
         }
     }
 
@@ -72,6 +127,9 @@ extension AnimatedLayerAnimation {
         case .opacity: opacity.indices.contains(index) ? opacity[index].easing : nil
         case .effects: effects.indices.contains(index) ? effects[index].easing : nil
         case .trim: trim.indices.contains(index) ? trim[index].easing : nil
+        case .wipe: wipe.indices.contains(index) ? wipe[index].easing : nil
+        case .sheen: sheen.indices.contains(index) ? sheen[index].easing : nil
+        case .glow: glow.indices.contains(index) ? glow[index].easing : nil
         }
     }
 
@@ -122,7 +180,10 @@ extension AnimatedLayerAnimation {
         rotation editRotation: (inout [RotationKeyframe]) throws -> Void = { _ in },
         opacity editOpacity: (inout [OpacityKeyframe]) throws -> Void = { _ in },
         effects editEffects: (inout [EffectKeyframe]) throws -> Void = { _ in },
-        trim editTrim: (inout [TrimKeyframe]) throws -> Void = { _ in }
+        trim editTrim: (inout [TrimKeyframe]) throws -> Void = { _ in },
+        wipe editWipe: (inout [WipeKeyframe]) throws -> Void = { _ in },
+        sheen editSheen: (inout [SheenKeyframe]) throws -> Void = { _ in },
+        glow editGlow: (inout [GlowKeyframe]) throws -> Void = { _ in }
     ) throws -> Self {
         switch channel {
         case .position: try editing(\.position, channel, editPosition)
@@ -131,6 +192,9 @@ extension AnimatedLayerAnimation {
         case .opacity: try editing(\.opacity, channel, editOpacity)
         case .effects: try editing(\.effects, channel, editEffects)
         case .trim: try editing(\.trim, channel, editTrim)
+        case .wipe: try editing(\.wipe, channel, editWipe)
+        case .sheen: try editing(\.sheen, channel, editSheen)
+        case .glow: try editing(\.glow, channel, editGlow)
         }
     }
 
@@ -173,7 +237,18 @@ extension AnimatedLayerAnimation {
                     easing
                 ))
             },
-            trim: { $0.append(AnimationCompiler.trim(t, state.trim.start, state.trim.end, easing)) }
+            trim: { $0.append(AnimationCompiler.trim(t, state.trim.start, state.trim.end, easing)) },
+            wipe: {
+                $0.append(AnimationCompiler.wipe(
+                    t, state.wipe.start, state.wipe.end, state.wipe.angleDegrees, state.wipe.softness, easing
+                ))
+            },
+            sheen: {
+                $0.append(AnimationCompiler.sheen(
+                    t, state.sheen.position, state.sheen.width, state.sheen.angleDegrees, state.sheen.intensity, easing
+                ))
+            },
+            glow: { $0.append(AnimationCompiler.glow(t, state.glow.amount, state.glow.radius, easing)) }
         )
     }
 
@@ -212,7 +287,10 @@ extension AnimatedLayerAnimation {
             rotation: { $0[index].timeSeconds = clamped },
             opacity: { $0[index].timeSeconds = clamped },
             effects: { $0[index].timeSeconds = clamped },
-            trim: { $0[index].timeSeconds = clamped }
+            trim: { $0[index].timeSeconds = clamped },
+            wipe: { $0[index].timeSeconds = clamped },
+            sheen: { $0[index].timeSeconds = clamped },
+            glow: { $0[index].timeSeconds = clamped }
         )
     }
 
@@ -227,7 +305,10 @@ extension AnimatedLayerAnimation {
             rotation: { $0.remove(at: index) },
             opacity: { $0.remove(at: index) },
             effects: { $0.remove(at: index) },
-            trim: { $0.remove(at: index) }
+            trim: { $0.remove(at: index) },
+            wipe: { $0.remove(at: index) },
+            sheen: { $0.remove(at: index) },
+            glow: { $0.remove(at: index) }
         )
     }
 
@@ -248,7 +329,10 @@ extension AnimatedLayerAnimation {
             rotation: { $0[index].easing = easing },
             opacity: { $0[index].easing = easing },
             effects: { $0[index].easing = easing },
-            trim: { $0[index].easing = easing }
+            trim: { $0[index].easing = easing },
+            wipe: { $0[index].easing = easing },
+            sheen: { $0[index].easing = easing },
+            glow: { $0[index].easing = easing }
         )
     }
 
@@ -307,6 +391,41 @@ extension AnimatedLayerAnimation {
         }
     }
 
+    public func settingWipe(_ value: AnimatedWipe, index: Int) throws -> Self {
+        try requireIndex(index, on: .wipe)
+        return try editing(\.wipe, .wipe) {
+            $0[index] = AnimationCompiler.wipe(
+                $0[index].timeSeconds,
+                value.start,
+                value.end,
+                value.angleDegrees,
+                value.softness,
+                $0[index].easing
+            )
+        }
+    }
+
+    public func settingSheen(_ value: AnimatedSheen, index: Int) throws -> Self {
+        try requireIndex(index, on: .sheen)
+        return try editing(\.sheen, .sheen) {
+            $0[index] = AnimationCompiler.sheen(
+                $0[index].timeSeconds,
+                value.position,
+                value.width,
+                value.angleDegrees,
+                value.intensity,
+                $0[index].easing
+            )
+        }
+    }
+
+    public func settingGlow(_ value: AnimatedGlow, index: Int) throws -> Self {
+        try requireIndex(index, on: .glow)
+        return try editing(\.glow, .glow) {
+            $0[index] = AnimationCompiler.glow($0[index].timeSeconds, value.amount, value.radius, $0[index].easing)
+        }
+    }
+
     private func requireIndex(_ index: Int, on channel: AnimationChannel) throws {
         guard index >= 0, index < count(of: channel) else {
             throw AnimatedEditorError.keyframeIndexOutOfRange(channel, index)
@@ -323,14 +442,8 @@ extension AnimatedLayerAnimation {
     /// a declarative layer.
     public func rescalingTimes(by factor: Double) -> Self {
         guard factor > 0, factor.isFinite, factor != 1 else { return self }
-        var result = self
-        result.position = result.position.map { var f = $0; f.timeSeconds = AnimationCompiler.roundTime($0.timeSeconds * factor); return f }
-        result.scale = result.scale.map { var f = $0; f.timeSeconds = AnimationCompiler.roundTime($0.timeSeconds * factor); return f }
-        result.rotation = result.rotation.map { var f = $0; f.timeSeconds = AnimationCompiler.roundTime($0.timeSeconds * factor); return f }
-        result.opacity = result.opacity.map { var f = $0; f.timeSeconds = AnimationCompiler.roundTime($0.timeSeconds * factor); return f }
-        result.effects = result.effects.map { var f = $0; f.timeSeconds = AnimationCompiler.roundTime($0.timeSeconds * factor); return f }
-        result.trim = result.trim.map { var f = $0; f.timeSeconds = AnimationCompiler.roundTime($0.timeSeconds * factor); return f }
-        return result.deduplicatingTimes()
+        return transformingEveryChannel(MapTimes { AnimationCompiler.roundTime($0 * factor) })
+            .deduplicatingTimes()
     }
 
     /// Pulls every keyframe time inside `0...duration`.
@@ -341,14 +454,7 @@ extension AnimatedLayerAnimation {
     /// end up with a collision the interpolator cannot resolve.
     public func clampingTimes(to duration: Double) -> Self {
         let limit = Swift.max(duration, 0)
-        var result = self
-        result.position = result.position.map { var f = $0; f.timeSeconds = Swift.min($0.timeSeconds, limit); return f }
-        result.scale = result.scale.map { var f = $0; f.timeSeconds = Swift.min($0.timeSeconds, limit); return f }
-        result.rotation = result.rotation.map { var f = $0; f.timeSeconds = Swift.min($0.timeSeconds, limit); return f }
-        result.opacity = result.opacity.map { var f = $0; f.timeSeconds = Swift.min($0.timeSeconds, limit); return f }
-        result.effects = result.effects.map { var f = $0; f.timeSeconds = Swift.min($0.timeSeconds, limit); return f }
-        result.trim = result.trim.map { var f = $0; f.timeSeconds = Swift.min($0.timeSeconds, limit); return f }
-        return result.deduplicatingTimes()
+        return transformingEveryChannel(MapTimes { Swift.min($0, limit) }).deduplicatingTimes()
     }
 
     /// Drops keyframes that collided onto an identical time after a whole-track time change.
@@ -357,18 +463,63 @@ extension AnimatedLayerAnimation {
     /// itself collide, whereas two keyframes at one instant carry no information the first does not
     /// already carry. The earliest one wins because tracks are sorted ascending.
     private func deduplicatingTimes() -> Self {
-        var result = self
-        result.position = Self.deduplicate(result.position)
-        result.scale = Self.deduplicate(result.scale)
-        result.rotation = Self.deduplicate(result.rotation)
-        result.opacity = Self.deduplicate(result.opacity)
-        result.effects = Self.deduplicate(result.effects)
-        result.trim = Self.deduplicate(result.trim)
-        return result
+        transformingEveryChannel(Deduplicate())
     }
+}
 
-    private static func deduplicate<Frame: AnimatedEditableKeyframe>(_ frames: [Frame]) -> [Frame] {
+// MARK: - Whole-animation transforms
+
+/// A transform applied uniformly to every channel, whatever its keyframe type.
+///
+/// A protocol rather than a plain closure because the nine channels hold nine different element
+/// types and Swift closures cannot be generic. This exists so `transformingEveryChannel` is the
+/// *single* place that enumerates the channels: retiming, clamping and de-duplicating used to keep
+/// three separate hand-written lists, and a channel added later only had to be forgotten in one of
+/// them to produce keyframes stranded past the end of a shortened document.
+private protocol AnimatedChannelTransform {
+    func apply<Frame: AnimatedEditableKeyframe>(_ frames: [Frame]) -> [Frame]
+}
+
+private struct MapTimes: AnimatedChannelTransform {
+    let transform: (Double) -> Double
+
+    init(_ transform: @escaping (Double) -> Double) { self.transform = transform }
+
+    func apply<Frame: AnimatedEditableKeyframe>(_ frames: [Frame]) -> [Frame] {
+        frames.map { frame in
+            var copy = frame
+            copy.timeSeconds = transform(frame.timeSeconds)
+            return copy
+        }
+    }
+}
+
+/// Drops keyframes that collided onto an identical time after a whole-track time change.
+///
+/// Deletion rather than nudging: a nudge would invent a time the user never authored and could
+/// itself collide, whereas two keyframes at one instant carry no information the first does not
+/// already carry. The earliest one wins because tracks are sorted ascending.
+private struct Deduplicate: AnimatedChannelTransform {
+    func apply<Frame: AnimatedEditableKeyframe>(_ frames: [Frame]) -> [Frame] {
         var seen = Set<Double>()
         return frames.sorted { $0.timeSeconds < $1.timeSeconds }.filter { seen.insert($0.timeSeconds).inserted }
+    }
+}
+
+extension AnimatedLayerAnimation {
+    /// The one place that touches all nine channels. `ChannelCoverageTests` walks
+    /// `AnimationChannel.allCases` and fails if a channel is ever missing from this list.
+    fileprivate func transformingEveryChannel(_ transform: some AnimatedChannelTransform) -> Self {
+        var result = self
+        result.position = transform.apply(result.position)
+        result.scale = transform.apply(result.scale)
+        result.rotation = transform.apply(result.rotation)
+        result.opacity = transform.apply(result.opacity)
+        result.effects = transform.apply(result.effects)
+        result.trim = transform.apply(result.trim)
+        result.wipe = transform.apply(result.wipe)
+        result.sheen = transform.apply(result.sheen)
+        result.glow = transform.apply(result.glow)
+        return result
     }
 }

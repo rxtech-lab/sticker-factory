@@ -87,6 +87,17 @@ struct CompilerParityTests {
         // Trim used to be asserted empty here, because the channel existed only on the Swift side.
         // Now that `compile.ts` implements it, it is compared like every other channel.
         #expect(compiled.trim == testCase.expected.trim, "\(testCase.name): trim")
+        #expect(compiled.wipe == testCase.expected.wipe, "\(testCase.name): wipe")
+        #expect(compiled.sheen == testCase.expected.sheen, "\(testCase.name): sheen")
+        #expect(compiled.glow == testCase.expected.glow, "\(testCase.name): glow")
+
+        // Belt and braces: every channel is asserted above, but the list is hand-written and a
+        // future channel could be added to the model without anyone adding a line here. Comparing
+        // the totals catches that, since a channel compared by nobody still shows up in the count.
+        #expect(
+            compiled.keyframeCount == testCase.expected.keyframeCount,
+            "\(testCase.name): keyframe total differs — a channel may be missing an assertion above"
+        )
     }
 
     /// The fixture stores the specs *after* zod applied its defaults, so decoding them back and

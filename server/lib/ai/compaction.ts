@@ -138,6 +138,25 @@ function isToolUse(message: TranscriptMessage): boolean {
   return message.role === "system" && message.kind === "status";
 }
 
+/**
+ * Renders one row as prompt text.
+ *
+ * `device_edit` rows are the reason this is not just `role: content`. They are stored with role
+ * `user` and a content string like "Edited on device", so rendered plainly they are indistinguishable
+ * from the user having *typed* that sentence — and the one thing they actually mean, that the
+ * document changed underneath the agent since its last turn, is exactly what is lost. An agent that
+ * misses it goes on to build operations against the document it remembers producing and quietly
+ * reverts whatever the user just did by hand.
+ */
+function lineFor(message: TranscriptMessage): string {
+  if (message.kind === "device_edit") {
+    return `system: [The user edited the sticker directly in the on-device editor: "${message.content}". `
+      + "This did not come from you, and the current sticker document already contains it. "
+      + "Read that document as it is now and build on it; do not work from any earlier version.]";
+  }
+  return `${message.role}: ${message.content}`;
+}
+
 /** Shortens a line to at most `characters`, the ellipsis included, so a budget is never overspent. */
 function clip(line: string, characters: number): string {
   return line.length <= characters
@@ -179,7 +198,7 @@ export function compactTranscript(
   let digesting = false;
 
   for (const message of [...messages].reverse()) {
-    const line = `${message.role}: ${message.content}`;
+    const line = lineFor(message);
     if (!digesting) {
       // The newest message goes in whatever its size: a budget so small that the turn being answered
       // does not fit is a misconfiguration, and an empty history is worse than an oversized one.

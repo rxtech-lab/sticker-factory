@@ -42,7 +42,7 @@ struct LibraryView: View {
     }
 
     private var hasAnything: Bool {
-        !filtered.isEmpty || !packSections.isEmpty
+        !filtered.isEmpty || !packSections.isEmpty || store.nextStickerCursor != nil
     }
 
     var body: some View {
@@ -79,6 +79,16 @@ struct LibraryView: View {
                                 }
                             } header: {
                                 LibrarySectionHeader(title: "My Stickers", subtitle: nil, packID: nil)
+                            }
+
+                            if store.nextStickerCursor != nil {
+                                ProgressView("Loading more stickers…")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.bottom, 8)
+                                    .accessibilityIdentifier("library-pagination-progress")
+                                    .task(id: store.nextStickerCursor) {
+                                        await store.loadMoreStickers()
+                                    }
                             }
 
                             ForEach(packSections) { section in

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, max } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, max } from "drizzle-orm";
 import { FatalError } from "workflow";
 import { compactTranscript } from "@/lib/ai/compaction";
 import {
@@ -65,6 +65,8 @@ import {
   revertRevision,
   serializeChatMessage,
 } from "@/lib/services/stickers";
+import { referencedAssetIds, renderSticker } from "@/lib/render/sticker-render";
+import type { RenderAssets } from "@/lib/render/document-svg";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 
@@ -180,6 +182,7 @@ type StickerToolName =
   | "edit_image_layer"
   | "add_image_layer"
   | "finalize_edit"
+  | "view_sticker"
   | "show-sticker";
 
 /**
@@ -312,6 +315,39 @@ async function assertJobStillRunning(jobId: string): Promise<void> {
  */
 function boundedTranscript(messages: Array<typeof chatMessages.$inferSelect>, maxCharacters = 24_000): string {
   return compactTranscript(messages, maxCharacters);
+}
+
+/**
+ * Renders the working document to a PNG for the agent's `view_sticker` tool.
+ *
+ * Lives here rather than in the AI layer for the same reason every other side effect does: this is
+ * where database and object-store access belong. The renderer itself is pure — it takes a document
+ * and a bag of already-fetched bytes — so all this adds is the fetching.
+ *
+ * Missing artwork is deliberately not an error. A layer whose asset has gone draws as a labelled
+ * placeholder, which tells the agent more than a failed tool call would: it can see the layer is
+ * there, and see that its artwork is not.
+ */
+async function renderWorkingDocument(document: StickerDocument, ownerId: string) {
+  const db = getDatabase();
+  const objectStore = getObjectStore();
+  const ids = referencedAssetIds(document);
+  const loaded: RenderAssets = new Map();
+  if (ids.length > 0) {
+    const rows = await db.select().from(assets)
+      .where(and(eq(assets.ownerId, ownerId), inArray(assets.id, ids)));
+    await Promise.all(rows
+      .filter((asset) => asset.state === "ready")
+      .map(async (asset) => {
+        try {
+          const object = await objectStore.get(asset.r2Key);
+          loaded.set(asset.id, { bytes: object.bytes, mimeType: asset.mimeType });
+        } catch {
+          // Left out of the map on purpose; the renderer draws a placeholder for it.
+        }
+      }));
+  }
+  return renderSticker(document, loaded);
 }
 
 async function assertDocumentAssetsOwned(document: StickerDocument, ownerId: string, stickerId: string): Promise<void> {
@@ -841,6 +877,22 @@ async function executeAnimationTurn(
   };
 
   const session: AnimationDraftingSession = {
+    // The draft once one exists, the base document before that — so a look taken before the first
+    // operation shows the sticker as it stands rather than failing.
+    renderSticker: async () => {
+      // Opened as a tool row like every other call, so the transcript shows the agent stopping to
+      // look. It is the one call that changes nothing, which is exactly why it is worth showing:
+      // otherwise a turn that spent two steps reviewing reads as a turn that stalled.
+      const call = await openCall("view_sticker");
+      try {
+        const render = await renderWorkingDocument(working ?? base, job.ownerId);
+        await finishToolCall(job, call);
+        return render;
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
     createAnimation: async (operations) => {
       const call = await openCall("create_animation");
       try {
@@ -1101,6 +1153,17 @@ async function executeEditTurn(
         ]);
         await finishToolCall(job, call);
         return state;
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
+    renderSticker: async () => {
+      const call = await openCall("view_sticker");
+      try {
+        const render = await renderWorkingDocument(working, job.ownerId);
+        await finishToolCall(job, call);
+        return render;
       } catch (error) {
         await finishToolCall(job, call, "failed");
         throw error;

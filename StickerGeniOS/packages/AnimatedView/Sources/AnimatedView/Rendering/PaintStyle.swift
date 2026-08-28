@@ -58,6 +58,26 @@ extension AnimatedPaint {
         let dy = sin(radians) / 2
         return start ? UnitPoint(x: 0.5 - dx, y: 0.5 - dy) : UnitPoint(x: 0.5 + dx, y: 0.5 + dy)
     }
+
+    /// `unitPoint(forAngle:)` with the axis extended to reach the unit square's *corners*.
+    ///
+    /// The plain version spans only the inscribed circle: at 45° it runs (0.146, 0.146) to
+    /// (0.854, 0.854), leaving the two far corners outside the gradient. For a fill that is a
+    /// harmless styling choice, but a wipe driven by it would never fully reveal the layer — the
+    /// corners would stay masked out at `end == 1`, as permanent bite marks.
+    ///
+    /// Deliberately a separate function rather than a fix to `unitPoint(forAngle:)`: that one is
+    /// shared by every gradient fill in SwiftUI, in the exporter and in the web preview's CSS, and
+    /// widening it would silently restyle existing artwork. This also happens to be exactly what CSS
+    /// `linear-gradient` does natively, so wipes agree across platforms for free.
+    static func sweepUnitPoint(forAngle degrees: Double, start: Bool) -> UnitPoint {
+        let radians = degrees * .pi / 180
+        // 1 on-axis, √2 at 45°: the half-extent of the unit square along this direction.
+        let extent = abs(cos(radians)) + abs(sin(radians))
+        let dx = cos(radians) * extent / 2
+        let dy = sin(radians) * extent / 2
+        return start ? UnitPoint(x: 0.5 - dx, y: 0.5 - dy) : UnitPoint(x: 0.5 + dx, y: 0.5 + dy)
+    }
 }
 
 extension SVGPaintValue {

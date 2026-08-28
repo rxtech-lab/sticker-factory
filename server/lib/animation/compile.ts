@@ -7,12 +7,15 @@ import {
   type AnimationChannel,
   type AnimationSpecV1,
   type EffectKeyframeV1,
+  type GlowKeyframeV1,
   type LayerAnimationV1,
   type OpacityKeyframeV1,
   type PositionKeyframeV1,
   type RotationKeyframeV1,
   type ScaleKeyframeV1,
+  type SheenKeyframeV1,
   type TrimKeyframeV1,
+  type WipeKeyframeV1,
 } from "@/lib/contracts/animation";
 import { easedProgress } from "@/lib/animation/easing";
 
@@ -60,6 +63,23 @@ const SAMPLES_PER_CYCLE = 4;
  * fit the document's 128-keyframe ceiling.
  */
 const ARC_SEGMENTS = 10;
+/**
+ * The fraction of a `shine` cycle spent traversing; the remainder is an invisible return leg.
+ *
+ * A repeating sweep needs the band to jump back to the leading edge, and two keyframes cannot share
+ * a timestamp. Reserving a slice at the end of each cycle — travelled at `intensity: 0`, so nothing
+ * is on screen — is what lets `cycles > 1` exist without the discontinuity the interpolator cannot
+ * express.
+ */
+const SHINE_SWEEP_FRACTION = 0.88;
+/**
+ * Where a `shine` reaches full brightness, as a fraction of its traverse, and its mirror.
+ *
+ * A triangular envelope (dark, peak at the midpoint, dark) reads as a brightening blob rather than a
+ * travelling highlight. Holding full intensity across the middle of the traverse and ramping only at
+ * the ends is what makes it read as a sweep.
+ */
+const SHINE_RAMP_FRACTION = 0.18;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 /**
@@ -80,10 +100,15 @@ type Channels = {
   opacity: OpacityKeyframeV1[];
   effects: EffectKeyframeV1[];
   trim: TrimKeyframeV1[];
+  wipe: WipeKeyframeV1[];
+  sheen: SheenKeyframeV1[];
+  glow: GlowKeyframeV1[];
 };
 
 function emptyChannels(): Channels {
-  return { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] };
+  return {
+    position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [], wipe: [], sheen: [], glow: [],
+  };
 }
 
 const position = (t: number, x: number, y: number, easing: PositionKeyframeV1["easing"]): PositionKeyframeV1 => ({
@@ -128,6 +153,47 @@ const trim = (t: number, start: number, end: number, easing: TrimKeyframeV1["eas
   timeSeconds: roundTime(t),
   start: roundValue(clamp(start, 0, 1)),
   end: roundValue(clamp(end, 0, 1)),
+  easing,
+});
+
+const wipe = (
+  t: number,
+  start: number,
+  end: number,
+  angleDegrees: number,
+  softness: number,
+  easing: WipeKeyframeV1["easing"],
+): WipeKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  start: roundValue(clamp(start, 0, 1)),
+  end: roundValue(clamp(end, 0, 1)),
+  angleDegrees: roundValue(clamp(angleDegrees, -360, 360)),
+  softness: roundValue(clamp(softness, 0, 0.5)),
+  easing,
+});
+
+const sheen = (
+  t: number,
+  position_: number,
+  width: number,
+  angleDegrees: number,
+  intensity: number,
+  easing: SheenKeyframeV1["easing"],
+): SheenKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  // Clamped to the position channel's range, not 0…1: the band has to be representable fully
+  // off-canvas at both ends or a sweep would start already at the layer's leading edge.
+  position: roundValue(clamp(position_, -1, 2)),
+  width: roundValue(clamp(width, 0.02, 1)),
+  angleDegrees: roundValue(clamp(angleDegrees, -360, 360)),
+  intensity: roundValue(clamp(intensity, 0, 1)),
+  easing,
+});
+
+const glow = (t: number, amount: number, radius: number, easing: GlowKeyframeV1["easing"]): GlowKeyframeV1 => ({
+  timeSeconds: roundTime(t),
+  amount: roundValue(clamp(amount, 0, 1)),
+  radius: roundValue(clamp(radius, 0.01, 0.5)),
   easing,
 });
 
@@ -387,6 +453,86 @@ function compileSpec(spec: AnimationSpecV1, anchor: AnimationAnchorV1, cycleCap:
       trim(end, spec.start, spec.end, ease),
     ], "trim");
     return;
+  case "wipeIn": {
+    // Only `end` moves: the visible window grows from the leading edge across the layer.
+    const angle = wipeDirectionAngle(spec.direction);
+    mergeChannel(out.wipe, [
+      wipe(start, 0, 0, angle, spec.softness, "linear"),
+      wipe(end, 0, 1, angle, spec.softness, ease),
+    ], "wipe");
+    return;
+  }
+  case "wipeOut": {
+    // Only `start` moves, so the layer is eaten from the same edge the matching wipeIn revealed
+    // from — it reads as the reveal running on rather than as it rewinding.
+    const angle = wipeDirectionAngle(spec.direction);
+    mergeChannel(out.wipe, [
+      wipe(start, 0, 1, angle, spec.softness, "linear"),
+      wipe(end, 1, 1, angle, spec.softness, ease),
+    ], "wipe");
+    return;
+  }
+  case "wipeTo":
+    mergeChannel(out.wipe, [
+      wipe(start, 0, 1, spec.angleDegrees, spec.softness, "linear"),
+      wipe(end, spec.start, spec.end, spec.angleDegrees, spec.softness, ease),
+    ], "wipe");
+    return;
+  case "shine": {
+    const cycles = Math.min(spec.cycles, cycleCap);
+    const step = spec.duration / cycles;
+    // The band is centred on `position`, so half a width past each edge is exactly fully off-canvas.
+    const from = -spec.width / 2;
+    const span = 1 + spec.width;
+    const frames: SheenKeyframeV1[] = [];
+    for (let index = 0; index < cycles; index += 1) {
+      const base = start + index * step;
+      const traverse = SHINE_SWEEP_FRACTION * step;
+      for (const phase of [0, SHINE_RAMP_FRACTION, 1 - SHINE_RAMP_FRACTION, 1]) {
+        frames.push(sheen(
+          base + phase * traverse,
+          from + phase * span,
+          spec.width,
+          spec.angleDegrees,
+          // Dark at both extremes, full brightness across the middle. The dark ends are also what
+          // make the retreat to the next cycle's leading edge invisible.
+          phase === 0 || phase === 1 ? 0 : spec.intensity,
+          // Always linear, whatever the spec asked for. Easing the closing keyframe would decelerate
+          // only the second half of the traverse, which reads as a stutter rather than a glint —
+          // the same reason `arcTo` pins its samples.
+          "linear",
+        ));
+      }
+    }
+    mergeChannel(out.sheen, frames, "sheen");
+    return;
+  }
+  case "bloomIn":
+    mergeChannel(out.glow, [
+      glow(start, 0, spec.radius, "linear"),
+      glow(end, spec.intensity, spec.radius, ease),
+    ], "glow");
+    return;
+  case "bloomOut":
+    mergeChannel(out.glow, [
+      glow(start, spec.intensity, spec.radius, "linear"),
+      glow(end, 0, spec.radius, ease),
+    ], "glow");
+    return;
+  case "bloomPulse": {
+    const cycles = Math.min(spec.cycles, cycleCap);
+    const step = spec.duration / cycles;
+    // Shaped like `bounce` rather than `pulse`: a glow only brightens, so sampling a full sine would
+    // spend half of every cycle clamped flat at zero and cost twice the keyframes for the same
+    // breathing motion.
+    const frames: GlowKeyframeV1[] = [glow(start, 0, spec.radius, "linear")];
+    for (let index = 0; index < cycles; index += 1) {
+      frames.push(glow(start + (index + 0.5) * step, spec.intensity, spec.radius, ease));
+      frames.push(glow(start + (index + 1) * step, 0, spec.radius, ease));
+    }
+    mergeChannel(out.glow, frames, "glow");
+    return;
+  }
   }
 }
 
@@ -435,6 +581,22 @@ function directionOffset(direction: "up" | "down" | "left" | "right", distance: 
 }
 
 /**
+ * The wipe axis for a direction, in the paint convention: 0° left-to-right, increasing clockwise.
+ *
+ * Names the *direction of travel*, matching `directionOffset` — a `wipeIn` with direction `right`
+ * uncovers the layer starting at its left edge and sweeps rightwards, the same way a `slideIn` with
+ * direction `right` ends up travelling rightwards.
+ */
+function wipeDirectionAngle(direction: "up" | "down" | "left" | "right"): number {
+  switch (direction) {
+  case "right": return 0;
+  case "down": return 90;
+  case "left": return 180;
+  case "up": return 270;
+  }
+}
+
+/**
  * Emits the resting keyframe for channels no spec drives.
  *
  * Only channels whose anchor differs from the renderer's own default get a keyframe. Emitting all
@@ -461,8 +623,10 @@ function applyAnchors(anchor: AnimationAnchorV1, driven: Set<AnimationChannel>, 
 }
 
 export function countKeyframes(animation: LayerAnimationV1): number {
-  return animation.position.length + animation.scale.length + animation.rotation.length
-    + animation.opacity.length + animation.effects.length + animation.trim.length;
+  // Driven off ANIMATION_CHANNELS rather than a hand-written sum, because every hand-written copy of
+  // this list in the codebase has already drifted at least once — `trim` was missing from two of
+  // them, which quietly failed a draw-on-only sticker at rendition acceptance.
+  return ANIMATION_CHANNELS.reduce((total, channel) => total + animation[channel].length, 0);
 }
 
 /**

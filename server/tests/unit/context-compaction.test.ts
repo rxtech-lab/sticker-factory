@@ -19,6 +19,38 @@ function toolUse(toolName: string): TranscriptMessage {
   return { role: "system", kind: "status", content: toolName };
 }
 
+/** Stored with role `user`, because the editor saves it on the user's behalf. */
+function deviceEdit(note: string): TranscriptMessage {
+  return { role: "user", kind: "device_edit", content: note };
+}
+
+describe("device edit markers", () => {
+  it("renders a device edit as a system note rather than as something the user typed", () => {
+    const rendered = compactTranscript([deviceEdit("Nudged the dot")]);
+    // The failure this guards against is subtle and expensive: rendered as `user: Nudged the dot`
+    // it reads as a request to nudge a dot, and the agent nudges it a second time.
+    expect(rendered).not.toBe("user: Nudged the dot");
+    expect(rendered.startsWith("system: [")).toBe(true);
+    expect(rendered).toContain("Nudged the dot");
+    expect(rendered).toContain("on-device editor");
+    // The instruction that makes the marker actionable at all.
+    expect(rendered).toMatch(/current sticker document already contains it/i);
+  });
+
+  it("leaves ordinary user turns alone", () => {
+    expect(compactTranscript([userMessage("Nudged the dot")])).toBe("user: Nudged the dot");
+  });
+
+  it("still marks a device edit once it has aged into the digest", () => {
+    const rendered = compactTranscript([
+      deviceEdit("Moved the star"),
+      userMessage("z".repeat(4_000)),
+      userMessage("now make it spin"),
+    ], 2_000);
+    expect(rendered).toContain("on-device editor");
+  });
+});
+
 describe("compactTranscript", () => {
   it("passes a short thread through untouched", () => {
     const transcript = [

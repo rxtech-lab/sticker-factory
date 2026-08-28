@@ -1,17 +1,21 @@
 import { z } from "zod";
-import { compileLayerAnimation, type AnimationTiming } from "@/lib/animation/compile";
+import { compileLayerAnimation, countKeyframes, type AnimationTiming } from "@/lib/animation/compile";
 import {
+  ANIMATION_CHANNELS,
   AnimationSpecV1Schema,
   DEFAULT_ANCHOR,
   EMPTY_LAYER_ANIMATION,
   EffectKeyframeV1Schema,
+  GlowKeyframeV1Schema,
   LayerAnimationV1Schema,
   OpacityKeyframeV1Schema,
   PositionKeyframeV1Schema,
   RotationKeyframeV1Schema,
   ScaleKeyframeV1Schema,
+  SheenKeyframeV1Schema,
   StickerEasingV1Schema,
   TrimKeyframeV1Schema,
+  WipeKeyframeV1Schema,
   type LayerAnimationV1,
 } from "@/lib/contracts/animation";
 import {
@@ -278,9 +282,7 @@ export const EXPORT_LOOP_HOLD_SECONDS = 0.6;
 export const MAX_RENDITION_SECONDS = 8 + EXPORT_LOOP_HOLD_SECONDS;
 
 function keyframeCount(layer: z.infer<typeof StickerLayerV1Schema>): number {
-  const animation = layer.animation;
-  return animation.position.length + animation.scale.length + animation.rotation.length
-    + animation.opacity.length + animation.effects.length + animation.trim.length;
+  return countKeyframes(layer.animation);
 }
 
 /** Key-order-independent structural comparison, since zod and the compiler build objects differently. */
@@ -466,14 +468,11 @@ export const StickerDocumentSchema = z.union([
       }
     }
 
-    for (const keyframe of [
-      ...layer.animation.position,
-      ...layer.animation.scale,
-      ...layer.animation.rotation,
-      ...layer.animation.opacity,
-      ...layer.animation.effects,
-      ...layer.animation.trim,
-    ]) {
+    // Widened to the one field every channel shares. Enumerating the channels instead of spreading
+    // them by hand is what keeps a newly added channel from silently escaping these two checks.
+    const timedKeyframes: ReadonlyArray<{ timeSeconds: number }> = ANIMATION_CHANNELS
+      .flatMap((channel) => layer.animation[channel] as ReadonlyArray<{ timeSeconds: number }>);
+    for (const keyframe of timedKeyframes) {
       if (keyframe.timeSeconds > document.durationSeconds) {
         context.addIssue({
           code: "custom",
@@ -531,6 +530,9 @@ export const StickerOperationV1Schema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("setOpacityKeyframes"), layerId: LayerIdSchema, keyframes: z.array(OpacityKeyframeV1Schema).max(32) }).strict(),
   z.object({ op: z.literal("setEffectKeyframes"), layerId: LayerIdSchema, keyframes: z.array(EffectKeyframeV1Schema).max(32) }).strict(),
   z.object({ op: z.literal("setTrimKeyframes"), layerId: LayerIdSchema, keyframes: z.array(TrimKeyframeV1Schema).max(32) }).strict(),
+  z.object({ op: z.literal("setWipeKeyframes"), layerId: LayerIdSchema, keyframes: z.array(WipeKeyframeV1Schema).max(32) }).strict(),
+  z.object({ op: z.literal("setSheenKeyframes"), layerId: LayerIdSchema, keyframes: z.array(SheenKeyframeV1Schema).max(32) }).strict(),
+  z.object({ op: z.literal("setGlowKeyframes"), layerId: LayerIdSchema, keyframes: z.array(GlowKeyframeV1Schema).max(32) }).strict(),
   z.object({
     op: z.literal("setTiming"),
     durationSeconds: z.number().min(0.5).max(4),
@@ -638,6 +640,15 @@ export function applyStickerOperationsV1(
     } else if (operation.op === "setTrimKeyframes") {
       assertNotDeclarative(document.layers[index], "setTrimKeyframes");
       document.layers[index].animation.trim = operation.keyframes;
+    } else if (operation.op === "setWipeKeyframes") {
+      assertNotDeclarative(document.layers[index], "setWipeKeyframes");
+      document.layers[index].animation.wipe = operation.keyframes;
+    } else if (operation.op === "setSheenKeyframes") {
+      assertNotDeclarative(document.layers[index], "setSheenKeyframes");
+      document.layers[index].animation.sheen = operation.keyframes;
+    } else if (operation.op === "setGlowKeyframes") {
+      assertNotDeclarative(document.layers[index], "setGlowKeyframes");
+      document.layers[index].animation.glow = operation.keyframes;
     }
   }
 

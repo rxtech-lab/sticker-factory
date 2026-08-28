@@ -50,6 +50,22 @@ public enum AnimationEffect: Hashable, Sendable {
     case drawOff(to: Double)
     case trimTo(start: Double, end: Double)
 
+    // Spatial wipes. Unlike the trim cases above these need no geometry, so they work on images,
+    // glyphs and particles too. `softness` feathers the edge; 0 is a hard cut.
+    case wipeIn(direction: AnimationDirection, softness: Double)
+    case wipeOut(direction: AnimationDirection, softness: Double)
+    case wipeTo(start: Double, end: Double, angleDegrees: Double, softness: Double)
+
+    // Light.
+    /// A highlight band sweeping across the layer. `easing` is ignored — the band must travel at a
+    /// constant speed or it reads as a stutter rather than as light moving.
+    case shine(angleDegrees: Double, width: Double, intensity: Double, cycles: Int)
+    /// Glow: the layer stays sharp and grows a halo of its own colours. `radius` is a fraction of
+    /// the layer's box width.
+    case bloomIn(radius: Double, intensity: Double)
+    case bloomOut(radius: Double, intensity: Double)
+    case bloomPulse(radius: Double, intensity: Double, cycles: Int)
+
     public var type: AnimationEffectType {
         switch self {
         case .fadeIn: .fadeIn
@@ -73,6 +89,13 @@ public enum AnimationEffect: Hashable, Sendable {
         case .drawOn: .drawOn
         case .drawOff: .drawOff
         case .trimTo: .trimTo
+        case .wipeIn: .wipeIn
+        case .wipeOut: .wipeOut
+        case .wipeTo: .wipeTo
+        case .shine: .shine
+        case .bloomIn: .bloomIn
+        case .bloomOut: .bloomOut
+        case .bloomPulse: .bloomPulse
         }
     }
 }
@@ -83,6 +106,8 @@ public enum AnimationEffectType: String, Codable, CaseIterable, Hashable, Sendab
     case wiggle, pulse, bounce, float
     case blurIn, blurOut, hueShift
     case drawOn, drawOff, trimTo
+    case wipeIn, wipeOut, wipeTo
+    case shine, bloomIn, bloomOut, bloomPulse
 
     /// Which channels each effect writes.
     ///
@@ -101,6 +126,9 @@ public enum AnimationEffectType: String, Codable, CaseIterable, Hashable, Sendab
         case .bounce, .float: [.position]
         case .blurIn, .blurOut, .hueShift: [.effects]
         case .drawOn, .drawOff, .trimTo: [.trim]
+        case .wipeIn, .wipeOut, .wipeTo: [.wipe]
+        case .shine: [.sheen]
+        case .bloomIn, .bloomOut, .bloomPulse: [.glow]
         }
     }
 
@@ -108,7 +136,7 @@ public enum AnimationEffectType: String, Codable, CaseIterable, Hashable, Sendab
     /// reduce when a document runs out of keyframes.
     public var isCyclic: Bool {
         switch self {
-        case .wiggle, .pulse, .bounce, .float: true
+        case .wiggle, .pulse, .bounce, .float, .shine, .bloomPulse: true
         default: false
         }
     }
@@ -146,6 +174,7 @@ public struct AnimationSpec: Codable, Hashable, Sendable {
         case from, to, direction, distance, x, y, degrees, turns
         case amplitudeDegrees, cycles, minScale, maxScale, height, bounces, amplitude, radius
         case start, end, arcHeight
+        case angleDegrees, softness, width, intensity
     }
 
     public init(from decoder: Decoder) throws {
@@ -204,6 +233,46 @@ public struct AnimationSpec: Codable, Hashable, Sendable {
         case .drawOff: effect = .drawOff(to: try c.value(.to, default: 1))
         case .trimTo:
             effect = .trimTo(start: try c.value(.start, default: 0), end: try c.value(.end, default: 1))
+        case .wipeIn:
+            effect = .wipeIn(
+                direction: try c.decode(AnimationDirection.self, forKey: .direction),
+                softness: try c.value(.softness, default: 0)
+            )
+        case .wipeOut:
+            effect = .wipeOut(
+                direction: try c.decode(AnimationDirection.self, forKey: .direction),
+                softness: try c.value(.softness, default: 0)
+            )
+        case .wipeTo:
+            effect = .wipeTo(
+                start: try c.value(.start, default: 0),
+                end: try c.value(.end, default: 1),
+                angleDegrees: try c.value(.angleDegrees, default: 0),
+                softness: try c.value(.softness, default: 0)
+            )
+        case .shine:
+            effect = .shine(
+                angleDegrees: try c.value(.angleDegrees, default: -30),
+                width: try c.value(.width, default: 0.25),
+                intensity: try c.value(.intensity, default: 0.6),
+                cycles: try c.value(.cycles, default: 1)
+            )
+        case .bloomIn:
+            effect = .bloomIn(
+                radius: try c.value(.radius, default: 0.08),
+                intensity: try c.value(.intensity, default: 0.7)
+            )
+        case .bloomOut:
+            effect = .bloomOut(
+                radius: try c.value(.radius, default: 0.08),
+                intensity: try c.value(.intensity, default: 0.7)
+            )
+        case .bloomPulse:
+            effect = .bloomPulse(
+                radius: try c.value(.radius, default: 0.08),
+                intensity: try c.value(.intensity, default: 0.7),
+                cycles: try c.value(.cycles, default: 2)
+            )
         }
     }
 
@@ -257,6 +326,26 @@ public struct AnimationSpec: Codable, Hashable, Sendable {
         case .trimTo(let start, let end):
             try c.encode(start, forKey: .start)
             try c.encode(end, forKey: .end)
+        case .wipeIn(let direction, let softness), .wipeOut(let direction, let softness):
+            try c.encode(direction, forKey: .direction)
+            try c.encode(softness, forKey: .softness)
+        case .wipeTo(let start, let end, let angleDegrees, let softness):
+            try c.encode(start, forKey: .start)
+            try c.encode(end, forKey: .end)
+            try c.encode(angleDegrees, forKey: .angleDegrees)
+            try c.encode(softness, forKey: .softness)
+        case .shine(let angleDegrees, let width, let intensity, let cycles):
+            try c.encode(angleDegrees, forKey: .angleDegrees)
+            try c.encode(width, forKey: .width)
+            try c.encode(intensity, forKey: .intensity)
+            try c.encode(cycles, forKey: .cycles)
+        case .bloomIn(let radius, let intensity), .bloomOut(let radius, let intensity):
+            try c.encode(radius, forKey: .radius)
+            try c.encode(intensity, forKey: .intensity)
+        case .bloomPulse(let radius, let intensity, let cycles):
+            try c.encode(radius, forKey: .radius)
+            try c.encode(intensity, forKey: .intensity)
+            try c.encode(cycles, forKey: .cycles)
         }
     }
 }
@@ -313,5 +402,42 @@ extension AnimationSpec {
 
     public static func drawOff(to: Double = 1, delay: Double = 0, duration: Double = 1, easing: AnimatedEasing = .easeInOut) -> Self {
         .init(.drawOff(to: to), delay: delay, duration: duration, easing: easing)
+    }
+
+    /// Defaults to `easeOut`: a reveal that decelerates into place reads as deliberate, where a
+    /// linear wipe reads as a scanline.
+    public static func wipeIn(_ direction: AnimationDirection, softness: Double = 0, delay: Double = 0, duration: Double = 0.6, easing: AnimatedEasing = .easeOut) -> Self {
+        .init(.wipeIn(direction: direction, softness: softness), delay: delay, duration: duration, easing: easing)
+    }
+
+    public static func wipeOut(_ direction: AnimationDirection, softness: Double = 0, delay: Double = 0, duration: Double = 0.6, easing: AnimatedEasing = .easeIn) -> Self {
+        .init(.wipeOut(direction: direction, softness: softness), delay: delay, duration: duration, easing: easing)
+    }
+
+    /// `easing` is accepted for symmetry but never reaches the keyframes: see ``AnimationEffect/shine(angleDegrees:width:intensity:cycles:)``.
+    public static func shine(angleDegrees: Double = -30, width: Double = 0.25, intensity: Double = 0.6, cycles: Int = 1, delay: Double = 0, duration: Double = 1, easing: AnimatedEasing = .linear) -> Self {
+        .init(
+            .shine(angleDegrees: angleDegrees, width: width, intensity: intensity, cycles: cycles),
+            delay: delay,
+            duration: duration,
+            easing: easing
+        )
+    }
+
+    public static func bloomIn(radius: Double = 0.08, intensity: Double = 0.7, delay: Double = 0, duration: Double = 0.6, easing: AnimatedEasing = .easeOut) -> Self {
+        .init(.bloomIn(radius: radius, intensity: intensity), delay: delay, duration: duration, easing: easing)
+    }
+
+    public static func bloomOut(radius: Double = 0.08, intensity: Double = 0.7, delay: Double = 0, duration: Double = 0.6, easing: AnimatedEasing = .easeIn) -> Self {
+        .init(.bloomOut(radius: radius, intensity: intensity), delay: delay, duration: duration, easing: easing)
+    }
+
+    public static func bloomPulse(radius: Double = 0.08, intensity: Double = 0.7, cycles: Int = 2, delay: Double = 0, duration: Double = 1.5, easing: AnimatedEasing = .easeInOut) -> Self {
+        .init(
+            .bloomPulse(radius: radius, intensity: intensity, cycles: cycles),
+            delay: delay,
+            duration: duration,
+            easing: easing
+        )
     }
 }

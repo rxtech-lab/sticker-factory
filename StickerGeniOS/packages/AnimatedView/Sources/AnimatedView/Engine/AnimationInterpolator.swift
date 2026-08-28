@@ -15,6 +15,65 @@ public struct AnimatedEffectValue: Equatable, Sendable {
     public var isIdentity: Bool { self == .identity }
 }
 
+/// How much of the layer a wipe is currently letting through.
+///
+/// `start`/`end` bound the visible band along the axis at `angleDegrees`, feathered by `softness`.
+/// The identity — the whole layer, hard-edged — is what an empty channel resolves to, so a layer
+/// that has never been wiped costs the renderer nothing.
+public struct AnimatedWipe: Equatable, Sendable {
+    public var start: Double
+    public var end: Double
+    public var angleDegrees: Double
+    public var softness: Double
+
+    public init(start: Double = 0, end: Double = 1, angleDegrees: Double = 0, softness: Double = 0) {
+        self.start = start
+        self.end = end
+        self.angleDegrees = angleDegrees
+        self.softness = softness
+    }
+
+    public static let identity = AnimatedWipe()
+    public var isIdentity: Bool { self == .identity }
+    /// A window that has closed past itself shows nothing, rather than inverting.
+    public var isEmptyWindow: Bool { end <= start }
+}
+
+/// Where the highlight band is and how bright it burns.
+///
+/// Identity is `intensity == 0`: the band is always somewhere on the axis, it is just invisible.
+public struct AnimatedSheen: Equatable, Sendable {
+    public var position: Double
+    public var width: Double
+    public var angleDegrees: Double
+    public var intensity: Double
+
+    public init(position: Double = 0, width: Double = 0.25, angleDegrees: Double = 0, intensity: Double = 0) {
+        self.position = position
+        self.width = width
+        self.angleDegrees = angleDegrees
+        self.intensity = intensity
+    }
+
+    public static let identity = AnimatedSheen()
+    /// Only `intensity` decides visibility, so a band parked mid-layer at zero strength is identity.
+    public var isIdentity: Bool { intensity <= 0 }
+}
+
+/// How strong a halo the layer is shedding, and how far it spreads.
+public struct AnimatedGlow: Equatable, Sendable {
+    public var amount: Double
+    public var radius: Double
+
+    public init(amount: Double = 0, radius: Double = 0.08) {
+        self.amount = amount
+        self.radius = radius
+    }
+
+    public static let identity = AnimatedGlow()
+    public var isIdentity: Bool { amount <= 0 }
+}
+
 /// Everything the renderer needs to draw one layer at one instant.
 public struct AnimatedLayerState: Equatable, Sendable {
     public var position: AnimatedPoint
@@ -23,14 +82,22 @@ public struct AnimatedLayerState: Equatable, Sendable {
     public var opacity: Double
     public var effects: AnimatedEffectValue
     public var trim: AnimatedTrim
+    public var wipe: AnimatedWipe
+    public var sheen: AnimatedSheen
+    public var glow: AnimatedGlow
 
+    // The three v3 parameters are appended last and defaulted so every existing caller — previews,
+    // tests, the exporter — keeps compiling untouched.
     public init(
         position: AnimatedPoint = .center,
         scale: AnimatedPoint = .unit,
         rotationDegrees: Double = 0,
         opacity: Double = 1,
         effects: AnimatedEffectValue = .identity,
-        trim: AnimatedTrim = .full
+        trim: AnimatedTrim = .full,
+        wipe: AnimatedWipe = .identity,
+        sheen: AnimatedSheen = .identity,
+        glow: AnimatedGlow = .identity
     ) {
         self.position = position
         self.scale = scale
@@ -38,6 +105,9 @@ public struct AnimatedLayerState: Equatable, Sendable {
         self.opacity = opacity
         self.effects = effects
         self.trim = trim
+        self.wipe = wipe
+        self.sheen = sheen
+        self.glow = glow
     }
 
     /// The state of a layer with no keyframes at all. These are exactly the fallbacks each channel
@@ -100,7 +170,12 @@ public enum AnimationInterpolator {
             rotationDegrees: scalar(animation.rotation, at: time, default: anchor.rotationDegrees, value: \.degrees),
             opacity: scalar(animation.opacity, at: time, default: anchor.opacity, value: \.value),
             effects: effect(animation.effects, at: time),
-            trim: trim(animation.trim, at: time, default: anchor.trim)
+            trim: trim(animation.trim, at: time, default: anchor.trim),
+            // These three fall back to their own identity rather than to the anchor: like `effects`,
+            // they have no resting state on `AnimatedAnchor`, so an empty channel means "off".
+            wipe: wipe(animation.wipe, at: time),
+            sheen: sheen(animation.sheen, at: time),
+            glow: glow(animation.glow, at: time)
         )
     }
 
@@ -195,6 +270,40 @@ public enum AnimationInterpolator {
             AnimatedTrim(start: $0.start, end: $0.end)
         } blend: { a, b, t in
             AnimatedTrim(start: mix(a.start, b.start, t), end: mix(a.end, b.end, t))
+        }
+    }
+
+    private static func wipe(_ frames: [WipeKeyframe], at time: Double) -> AnimatedWipe {
+        interpolate(frames, at: time, default: .identity, easing: \.easing) {
+            AnimatedWipe(start: $0.start, end: $0.end, angleDegrees: $0.angleDegrees, softness: $0.softness)
+        } blend: { a, b, t in
+            AnimatedWipe(
+                start: mix(a.start, b.start, t),
+                end: mix(a.end, b.end, t),
+                angleDegrees: mix(a.angleDegrees, b.angleDegrees, t),
+                softness: mix(a.softness, b.softness, t)
+            )
+        }
+    }
+
+    private static func sheen(_ frames: [SheenKeyframe], at time: Double) -> AnimatedSheen {
+        interpolate(frames, at: time, default: .identity, easing: \.easing) {
+            AnimatedSheen(position: $0.position, width: $0.width, angleDegrees: $0.angleDegrees, intensity: $0.intensity)
+        } blend: { a, b, t in
+            AnimatedSheen(
+                position: mix(a.position, b.position, t),
+                width: mix(a.width, b.width, t),
+                angleDegrees: mix(a.angleDegrees, b.angleDegrees, t),
+                intensity: mix(a.intensity, b.intensity, t)
+            )
+        }
+    }
+
+    private static func glow(_ frames: [GlowKeyframe], at time: Double) -> AnimatedGlow {
+        interpolate(frames, at: time, default: .identity, easing: \.easing) {
+            AnimatedGlow(amount: $0.amount, radius: $0.radius)
+        } blend: { a, b, t in
+            AnimatedGlow(amount: mix(a.amount, b.amount, t), radius: mix(a.radius, b.radius, t))
         }
     }
 

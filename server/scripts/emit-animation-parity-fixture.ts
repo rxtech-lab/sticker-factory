@@ -297,6 +297,127 @@ const cases: Case[] = [
     anchor: DEFAULT_ANCHOR,
     specs: [{ type: "wiggle", amplitudeDegrees: 7, cycles: 3, delay: 0.13, duration: 1.37 }],
   },
+
+  // --- v3: wipe, sheen, glow --------------------------------------------------------------
+  {
+    name: "wipeIn-defaults",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    specs: [{ type: "wipeIn", direction: "right" }],
+  },
+  {
+    name: "wipeOut-defaults",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    specs: [{ type: "wipeOut", direction: "down" }],
+  },
+  { name: "wipeTo-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "wipeTo" }] },
+  { name: "shine-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "shine" }] },
+  { name: "bloomIn-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "bloomIn" }] },
+  { name: "bloomOut-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "bloomOut" }] },
+  { name: "bloomPulse-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "bloomPulse" }] },
+
+  // A reveal running straight into its matching conceal. The two agree on axis and softness at the
+  // shared timestamp, which is the only way touching wipe windows can merge.
+  {
+    name: "wipeIn-then-wipeOut",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    specs: [
+      { type: "wipeIn", direction: "right", delay: 0, duration: 0.5, softness: 0.2 },
+      { type: "wipeOut", direction: "right", delay: 0.5, duration: 0.5, softness: 0.2 },
+    ],
+  },
+  // Each direction maps to a different axis angle, so all four need covering. One spec per case:
+  // two wipes back to back can never share a boundary keyframe, since the second has to snap back
+  // to hidden before it can reveal again.
+  { name: "wipeIn-up", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "wipeIn", direction: "up" }] },
+  { name: "wipeIn-down", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "wipeIn", direction: "down" }] },
+  { name: "wipeIn-left", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "wipeIn", direction: "left" }] },
+  { name: "wipeOut-up", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "wipeOut", direction: "up" }] },
+  { name: "wipeOut-right", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "wipeOut", direction: "right" }] },
+  {
+    name: "wipeIn-explicit",
+    timing: animated(),
+    anchor: offsetAnchor,
+    specs: [{ type: "wipeIn", direction: "up", softness: 0.35, delay: 0.2, duration: 1.3, easing: "springSoft" }],
+  },
+  {
+    name: "wipeTo-explicit-angle",
+    timing: animated(),
+    anchor: offsetAnchor,
+    specs: [{ type: "wipeTo", start: 0.2, end: 0.6, angleDegrees: -135, softness: 0.5, duration: 2 }],
+  },
+  {
+    name: "shine-explicit",
+    timing: animated(),
+    anchor: offsetAnchor,
+    specs: [{ type: "shine", angleDegrees: 42, width: 0.9, intensity: 1, delay: 0.3, duration: 2.1 }],
+  },
+  {
+    name: "shine-multi-cycle",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    specs: [{ type: "shine", width: 0.15, intensity: 0.45, cycles: 3, duration: 3 }],
+  },
+  {
+    // Pins down that `shine` ignores the spec easing and emits linear throughout. If the Swift port
+    // ever passes `spec.easing` through, only this case catches it.
+    name: "shine-ignores-easing",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    specs: [{ type: "shine", easing: "springBouncy", duration: 1.9 }],
+  },
+  {
+    name: "shine-cycle-cap-1",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    cycleCap: 1,
+    specs: [{ type: "shine", cycles: 4, duration: 3.2 }],
+  },
+  {
+    name: "bloomPulse-explicit",
+    timing: animated(),
+    anchor: offsetAnchor,
+    specs: [{ type: "bloomPulse", radius: 0.42, intensity: 0.95, cycles: 5, duration: 2.7, easing: "easeIn" }],
+  },
+  {
+    name: "bloomPulse-cycle-cap-2",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    cycleCap: 2,
+    specs: [{ type: "bloomPulse", radius: 0.2, intensity: 0.8, cycles: 8, duration: 3 }],
+  },
+  {
+    // The reason wipe, sheen and glow are three channels rather than one: all of these overlap in
+    // time, and a shared channel would reject every pairing here.
+    name: "wipe-sheen-glow-all-at-once",
+    timing: animated(),
+    anchor: offsetAnchor,
+    specs: [
+      { type: "wipeIn", direction: "right", softness: 0.1, delay: 0, duration: 1.5 },
+      { type: "shine", angleDegrees: -30, width: 0.3, intensity: 0.7, delay: 0, duration: 1.5 },
+      { type: "bloomIn", radius: 0.12, intensity: 0.6, delay: 0, duration: 1.5 },
+      { type: "blurOut", radius: 5, delay: 0, duration: 1.5 },
+    ],
+  },
+  {
+    name: "shine-touching-windows",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    specs: [
+      { type: "shine", width: 0.2, delay: 0, duration: 1 },
+      { type: "shine", width: 0.2, delay: 1, duration: 1 },
+    ],
+  },
+  {
+    // Short, awkward duration so the 0.88 traverse fraction and the 0.18 ramps land on times that
+    // actually exercise the 4-decimal rounding in both languages.
+    name: "shine-rounding",
+    timing: animated(1.7),
+    anchor: DEFAULT_ANCHOR,
+    specs: [{ type: "shine", width: 0.37, intensity: 0.33, cycles: 2, delay: 0.11, duration: 1.53 }],
+  },
 ];
 
 const output = cases.map((testCase) => {
