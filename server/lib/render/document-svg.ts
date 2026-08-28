@@ -1,4 +1,4 @@
-import { sampleLayerState, type LayerState } from "@/lib/animation/sample";
+import { sampleLayerState, sequenceFrameIndex, type LayerState } from "@/lib/animation/sample";
 import type { PaintV2, StrokeV2 } from "@/lib/contracts/paint";
 import type { StickerDocument, StickerLayerV1 } from "@/lib/contracts/sticker";
 import { particleGlyph, particlePosition, shapeGeometry } from "@/lib/render/shapes";
@@ -181,6 +181,7 @@ function wipeMask(state: LayerState, id: string, box: number): string | undefine
 function layerBody(
   layer: StickerLayerV1,
   state: LayerState,
+  time: number,
   box: number,
   assets: RenderAssets,
   ids: IdFactory,
@@ -202,6 +203,34 @@ function layerBody(
     const fit = layer.contentMode === "fill" ? "xMidYMid slice" : "xMidYMid meet";
     return `<image x="${-half}" y="${-half}" width="${box}" height="${box}" `
       + `preserveAspectRatio="${fit}" href="${href}"/>`;
+  }
+  case "sequence": {
+    const asset = assets.get(layer.assetId);
+    if (!asset) {
+      return `<rect x="${-half}" y="${-half}" width="${box}" height="${box}" rx="${round(box * 0.12)}" `
+        + `fill="#B39DDB" opacity="0.5"/>`
+        + `<text x="0" y="0" font-size="${round(box * 0.1)}" fill="#311B92" text-anchor="middle" `
+        + `dominant-baseline="middle" font-family="${FONT_STACKS.system}">capture</text>`;
+    }
+    // One tile of the atlas, cropped with a nested viewport rather than by slicing pixels: librsvg
+    // resolves the `viewBox` itself, so this costs no image processing at all. `sequenceFrameIndex`
+    // is the same function the Swift renderer uses, so the frame the agent reviews here is the frame
+    // the user will actually see.
+    //
+    // The sheet is drawn into a `columns` x `rows` *unit* grid rather than into its pixel
+    // dimensions, so this needs no knowledge of how big the atlas actually is — `RenderAssets`
+    // carries only bytes. That is exact because the encoder writes square tiles (it squares one
+    // shared crop rect before scaling), so one grid cell is one tile with no distortion.
+    const index = sequenceFrameIndex(layer, time);
+    const column = index % layer.columns;
+    const row = Math.floor(index / layer.columns);
+    const href = `data:${asset.mimeType};base64,${Buffer.from(asset.bytes).toString("base64")}`;
+    const fit = layer.contentMode === "fill" ? "xMidYMid slice" : "xMidYMid meet";
+    return `<svg x="${round(-half)}" y="${round(-half)}" width="${round(box)}" height="${round(box)}" `
+      + `viewBox="${column} ${row} 1 1" preserveAspectRatio="${fit}">`
+      + `<image x="0" y="0" width="${layer.columns}" height="${layer.rows}" `
+      + `preserveAspectRatio="none" href="${href}"/>`
+      + `</svg>`;
   }
   case "text": {
     // Sized by character count rather than measured: librsvg has no text-fitting equivalent to
@@ -306,7 +335,7 @@ function renderLayer(
   if (state.opacity <= 0.001) return "";
   const box = size * LAYER_FIT;
 
-  const body = layerBody(layer, state, box, assets, ids, defs);
+  const body = layerBody(layer, state, time, box, assets, ids, defs);
   if (!body) return "";
 
   const attributes: string[] = [];

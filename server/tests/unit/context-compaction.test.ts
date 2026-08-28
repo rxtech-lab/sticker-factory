@@ -109,6 +109,43 @@ describe("compactTranscript", () => {
   });
 });
 
+describe("estimateTokens", () => {
+  const withImage = (bytes: number): ModelMessage[] => [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "make this a sticker" },
+        { type: "image", image: new Uint8Array(bytes).fill(137), mediaType: "image/jpeg" },
+      ],
+    },
+  ];
+
+  it("counts an attached image as a picture rather than as its bytes", () => {
+    // A `Uint8Array` serializes as `{"0":137,"1":137,…}` — around eight characters a byte — so
+    // without special handling a 60 KB photo alone reads as more than a hundred thousand tokens
+    // and every loop carrying one starts compacting on its first step.
+    expect(estimateTokens(withImage(60_000))).toBeLessThan(10_000);
+  });
+
+  it("does not charge more for a larger image", () => {
+    // The provider tiles whatever it is given, so the file size is not what the model is billed for.
+    expect(estimateTokens(withImage(200_000))).toBe(estimateTokens(withImage(20_000)));
+  });
+
+  it("still counts the words around it", () => {
+    const wordy: ModelMessage[] = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "x".repeat(40_000) },
+          { type: "image", image: new Uint8Array(1_000).fill(137), mediaType: "image/jpeg" },
+        ],
+      },
+    ];
+    expect(estimateTokens(wordy)).toBeGreaterThan(estimateTokens(withImage(1_000)) + 9_000);
+  });
+});
+
 describe("compactingPrepareStep", () => {
   const bulkyToolCall = (index: number): ModelMessage[] => [
     {

@@ -25,7 +25,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     }
 
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse {
-        if failCreationAsUpload { throw StickerAPIError.uploadFailed }
+        if failCreationAsUpload { throw StickerAPIError.uploadFailed(status: 403) }
         let value = Sticker(
             id: UUID().uuidString,
             title: request.title,
@@ -384,7 +384,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
-    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, idempotencyKey: String) async throws -> String { UUID().uuidString }
+    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String { UUID().uuidString }
     func assetDownload(assetID: String) async throws -> AssetDownload { throw StickerAPIError.http(404) }
 
     nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {

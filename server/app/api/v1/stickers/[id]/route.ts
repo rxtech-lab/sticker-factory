@@ -1,8 +1,9 @@
 import { UpdateStickerRequestSchema } from "@/lib/contracts/api";
+import { clientDocumentVersion } from "@/lib/contracts/sticker";
 import { noStoreJson, readJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
 import { executeIdempotent, requireIdempotencyKey } from "@/lib/services/idempotency";
-import { createCleanupJob, getSticker, updateSticker } from "@/lib/services/stickers";
+import { createCleanupJob, downcastStickerDetail, getSticker, updateSticker } from "@/lib/services/stickers";
 import { startCleanupWorkflow } from "@/lib/services/workflows";
 
 type Context = { params: Promise<{ id: string }> };
@@ -10,7 +11,8 @@ type Context = { params: Promise<{ id: string }> };
 export async function GET(request: Request, context: Context) {
   return withApiAuth(request, async (principal, db) => {
     const { id } = await context.params;
-    return noStoreJson(await getSticker(db, principal.sub, id));
+    const detail = await getSticker(db, principal.sub, id);
+    return noStoreJson(downcastStickerDetail(detail, clientDocumentVersion(request)));
   });
 }
 

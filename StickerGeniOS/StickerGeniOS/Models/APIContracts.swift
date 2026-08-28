@@ -112,6 +112,27 @@ nonisolated struct AssetRecord: Codable, Identifiable, Hashable, Sendable {
 nonisolated enum AssetKind: String, Codable, CaseIterable, Hashable, Sendable {
     case reference, mask, master, preview, gif, mp4, system
     case chatAttachment = "chat_attachment"
+    /// A frame atlas: one transparent PNG holding a grid of frames lifted from a Live Photo.
+    case sequence
+}
+
+/// How a frame atlas is packed, sent with the upload intent.
+///
+/// The atlas is a single still PNG, so the server cannot recover any of this by inspecting it — the
+/// client's declaration is the only source, and it is what the document's sequence layer is
+/// cross-checked against.
+nonisolated struct SequenceMetadata: Codable, Hashable, Sendable {
+    var columns: Int
+    var rows: Int
+    var frameCount: Int
+    var frameRate: Double
+
+    init(columns: Int, rows: Int, frameCount: Int, frameRate: Double) {
+        self.columns = columns
+        self.rows = rows
+        self.frameCount = frameCount
+        self.frameRate = frameRate
+    }
 }
 nonisolated enum AssetState: String, Codable, Hashable, Sendable { case pending, ready, failed, deleted }
 
@@ -394,6 +415,19 @@ nonisolated struct ChatMessagePage: Codable, Sendable {
 }
 
 nonisolated struct APIErrorEnvelope: Codable, Error, Equatable, Sendable { var error: APIErrorBody }
+
+/// Without this the server's own words never reach the user.
+///
+/// `Error.localizedDescription` on a type that is merely `Error` synthesises "The operation couldn't
+/// be completed. (StickerGeniOS.APIErrorEnvelope error 1.)" — so every considered message the API
+/// returns was replaced, at the last step before display, by a sentence that says nothing. The
+/// conformance is the fix; it compiled and read fine without it, which is why it survived.
+extension APIErrorEnvelope: LocalizedError {
+    var errorDescription: String? { error.message }
+    /// Surfaced separately so a user reporting a problem can quote something that finds the request
+    /// in the server's logs.
+    var failureReason: String? { "\(error.code) · \(error.requestId)" }
+}
 nonisolated struct APIErrorBody: Codable, Equatable, Sendable {
     var code: String
     var message: String
@@ -538,6 +572,8 @@ nonisolated struct UploadIntentRequest: Codable, Sendable {
     var byteSize: Int
     var filename: String
     var sha256: String?
+    /// Required for, and rejected on anything but, `kind == .sequence`.
+    var sequence: SequenceMetadata?
 }
 
 nonisolated struct UploadIntentResponse: Codable, Sendable {

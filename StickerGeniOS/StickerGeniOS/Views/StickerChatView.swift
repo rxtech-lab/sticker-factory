@@ -17,6 +17,8 @@ struct StickerChatView: View {
     @State private var composerFieldGeneration = 0
     @State private var privacyAccepted = false
     @State private var showingPrivacy = false
+    /// The photo waiting for the user to choose a subject in it, when the lift flow is on.
+    @State private var pendingLift: PendingLift?
     @State private var localError: String?
     @State private var assetStore = StickerAssetStore()
     @State private var exportModel = StickerExportModel()
@@ -219,6 +221,7 @@ struct StickerChatView: View {
         } message: {
             Text("Reference images are uploaded privately and become part of this sticker’s persistent chat and revision history until project deletion.")
         }
+        .subjectLiftSheet(pending: $pendingLift, references: $references, basename: "chat-capture")
         .sheet(isPresented: $showingCandidate) {
             if let candidate {
                 CandidateReadySheet(
@@ -525,10 +528,17 @@ struct StickerChatView: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(references) { reference in
-                            ComposerMediaChip(media: reference) {
-                                Haptics.selection()
-                                references.removeAll { $0.id == reference.id }
-                            }
+                            ComposerMediaChip(
+                                media: reference,
+                                lift: AppConfiguration.subjectLiftEnabled ? {
+                                    Haptics.tap(.light)
+                                    Task { pendingLift = await SubjectLiftPresenter.lift(from: reference) }
+                                } : nil,
+                                remove: {
+                                    Haptics.selection()
+                                    references.removeAll { $0.id == reference.id }
+                                }
+                            )
                         }
                     }
                     .padding(.horizontal, 2)
@@ -543,7 +553,11 @@ struct StickerChatView: View {
                         PhotosPicker(
                             selection: $referenceItems,
                             maxSelectionCount: 8,
-                            matching: .images,
+                            // Live Photos only when the lift flow is on; otherwise nothing could
+                            // use the motion and picking one would behave exactly like a still.
+                            matching: AppConfiguration.subjectLiftEnabled
+                                ? .any(of: [.images, .livePhotos])
+                                : .images,
                             preferredItemEncoding: .compatible
                         ) {
                             Label("Photo Library", systemImage: "photo.on.rectangle")
@@ -630,14 +644,34 @@ struct StickerChatView: View {
         }
     }
 
+    /// Picking a photo attaches it, exactly as in `CreateStickerView.loadReferences`.
+    ///
+    /// Kept as two small copies rather than one shared helper because the two composers hold their
+    /// drafts differently, and the only part genuinely worth sharing — the pipeline — already is.
     private func loadReferences(_ items: [PhotosPickerItem]) async {
+        // Emptied immediately, and never read as the source of truth again. A picker's `selection`
+        // binding remembers everything ever chosen, so leaving items in it means a photo the user
+        // later removed is still "selected" — and the next pick re-delivers it and it reappears,
+        // which is exactly what made deletions look like they had not taken. Clearing it re-enters
+        // this method with an empty array, which the guard drops.
+        guard !items.isEmpty else { return }
+        referenceItems = []
+
         var loaded: [PendingMediaAttachment] = []
-        for (index, item) in items.prefix(8).enumerated() {
+        for (index, item) in items.prefix(max(0, 8 - references.count)).enumerated() {
             guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-            do { loaded.append(try MediaNormalizer.reference(data: data, basename: "chat-reference-\(index)")) }
-            catch { localError = error.localizedDescription }
+            do {
+                var attachment = try MediaNormalizer.reference(
+                    data: data,
+                    basename: "chat-reference-\(references.count + index)"
+                )
+                attachment.source = item
+                loaded.append(attachment)
+            } catch {
+                localError = error.localizedDescription
+            }
         }
-        references = loaded
+        references.append(contentsOf: loaded)
         if !loaded.isEmpty { Haptics.selection() }
     }
 
@@ -1106,17 +1140,40 @@ private struct StickerAttachment: View {
 
 private struct ComposerMediaChip: View {
     let media: PendingMediaAttachment
+    /// Tapping the thumbnail reopens the lift flow on it. Nil hides the affordance entirely.
+    var lift: (() -> Void)?
     let remove: () -> Void
 
     var body: some View {
         HStack(spacing: 7) {
-            if let image = UIImage(data: media.data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 34, height: 34)
-                    .clipShape(.rect(cornerRadius: 8))
+            Button {
+                lift?()
+            } label: {
+                if let image = UIImage(data: media.data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 34, height: 34)
+                        .clipShape(.rect(cornerRadius: 8))
+                        .overlay(alignment: .bottomTrailing) {
+                            // A capture is already cut out, so its thumbnail is mostly transparent
+                            // and reads as a failed load without a badge. A plain reference gets one
+                            // too, because nothing else says that tapping it lifts a subject.
+                            if lift != nil {
+                                Image(systemName: media.sequence != nil ? "livephoto" : "person.and.background.dotted")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .padding(2)
+                                    .background(.thinMaterial, in: Circle())
+                            }
+                        }
+                }
             }
+            .buttonStyle(.plain)
+            .disabled(lift == nil)
+            .accessibilityLabel(media.sequence != nil
+                ? "Lifted subject. Tap to choose a different one."
+                : "Reference photo. Tap to lift a subject out of it.")
+
             Text(media.filename)
                 .font(.caption)
                 .lineLimit(1)

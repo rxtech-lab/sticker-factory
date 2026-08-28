@@ -130,6 +130,14 @@ public struct AnimatedIconFrame: View {
                     duration: max(document.durationSeconds, 1)
                 )
                 .frame(width: canvasSize.width, height: canvasSize.height)
+            case .sequence(let sequenceLayer):
+                sequenceContent(sequenceLayer, box: box)
+            case .unsupported:
+                // Drawn as nothing rather than as a placeholder: the layer came from a newer build
+                // and we have no idea how large it is meant to be, so inventing a box in the middle
+                // of the canvas would misrepresent the sticker worse than omitting it. The editor
+                // reports it as a blocking issue, which is where the user should hear about it.
+                EmptyView()
             }
         }
         .animatedSweeps(state, boxWidth: box.width)
@@ -157,6 +165,32 @@ public struct AnimatedIconFrame: View {
                 .fill(.purple.gradient)
                 .overlay {
                     Image(systemName: "wand.and.stars")
+                        .font(.system(size: box.width * 0.28, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: box.width * 0.74, height: box.height * 0.74)
+        }
+    }
+
+    @ViewBuilder
+    private func sequenceContent(_ layer: AnimatedSequenceLayer, box: CGSize) -> some View {
+        // `documentTime` is what the whole timing design hangs on: it already has `speed` and the
+        // document's loop folded in, so the footage inherits both for free. See
+        // `AnimationInterpolator.sequenceFrameIndex`.
+        let index = AnimationInterpolator.sequenceFrameIndex(layer, atDocumentTime: documentTime)
+        if let tile = FrameAtlasCache.shared.tile(for: layer, index: index, assets: assets) {
+            Image(platformImage: tile)
+                .resizable()
+                .aspectRatio(contentMode: layer.contentMode == .fit ? .fit : .fill)
+                .frame(width: box.width, height: box.height)
+                .clipped()
+        } else {
+            // The same placeholder an image layer uses, for the same reason: a layer whose asset has
+            // not loaded should still lay out at the right size and stay visible while it fetches.
+            RoundedRectangle(cornerRadius: box.width * 0.12, style: .continuous)
+                .fill(.purple.gradient)
+                .overlay {
+                    Image(systemName: "livephoto")
                         .font(.system(size: box.width * 0.28, weight: .bold))
                         .foregroundStyle(.white)
                 }

@@ -12,6 +12,8 @@ struct CreateStickerView: View {
     @State private var references: [PendingMediaAttachment] = []
     @State private var isGenerating = false
     @State private var localError: String?
+    /// The photo waiting for the user to choose a subject in it, when the lift flow is on.
+    @State private var pendingLift: PendingLift?
 
     var body: some View {
         StickerBackground {
@@ -72,7 +74,12 @@ struct CreateStickerView: View {
                                 PhotosPicker(
                                     selection: $pickerItems,
                                     maxSelectionCount: 8,
-                                    matching: .images,
+                                    // Live Photos are offered only when the lift flow is on: without
+                                    // it there is nothing that could use the motion, and picking one
+                                    // would silently behave exactly like picking a still.
+                                    matching: AppConfiguration.subjectLiftEnabled
+                                        ? .any(of: [.images, .livePhotos])
+                                        : .images,
                                     preferredItemEncoding: .compatible
                                 ) {
                                     Label("Add", systemImage: "photo.badge.plus")
@@ -92,10 +99,17 @@ struct CreateStickerView: View {
                                 ScrollView(.horizontal) {
                                     HStack(spacing: 10) {
                                         ForEach(references) { reference in
-                                            ReferenceThumbnail(reference: reference) {
-                                                Haptics.selection()
-                                                references.removeAll { $0.id == reference.id }
-                                            }
+                                            ReferenceThumbnail(
+                                                reference: reference,
+                                                lift: AppConfiguration.subjectLiftEnabled ? {
+                                                    Haptics.tap(.light)
+                                                    Task { pendingLift = await SubjectLiftPresenter.lift(from: reference) }
+                                                } : nil,
+                                                remove: {
+                                                    Haptics.selection()
+                                                    references.removeAll { $0.id == reference.id }
+                                                }
+                                            )
                                         }
                                     }
                                 }
@@ -130,16 +144,40 @@ struct CreateStickerView: View {
         }
         .navigationTitle("Create")
         .onChange(of: pickerItems) { _, newItems in Task { await loadReferences(newItems) } }
+        .subjectLiftSheet(pending: $pendingLift, references: $references, basename: "capture")
     }
 
+    /// Picking a photo attaches it. Nothing else.
+    ///
+    /// Lifting a subject used to happen here, which meant choosing one photo opened a second sheet
+    /// before the user had asked for anything — and if no subject was found, the photo they picked
+    /// was unusable. Attaching first makes the lift an optional refinement of something that
+    /// already works, reached by tapping the thumbnail.
     private func loadReferences(_ items: [PhotosPickerItem]) async {
+        // Emptied immediately, and never read as the source of truth again. A picker's `selection`
+        // binding remembers everything ever chosen, so leaving items in it means a photo the user
+        // later removed is still "selected" — and the next pick re-delivers it and it reappears,
+        // which is exactly what made deletions look like they had not taken. Clearing it re-enters
+        // this method with an empty array, which the guard drops.
+        guard !items.isEmpty else { return }
+        pickerItems = []
+
         var loaded: [PendingMediaAttachment] = []
-        for (index, item) in items.prefix(8).enumerated() {
+        for (index, item) in items.prefix(max(0, 8 - references.count)).enumerated() {
             guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-            do { loaded.append(try MediaNormalizer.reference(data: data, basename: "reference-\(index + 1)")) }
-            catch { localError = error.localizedDescription }
+            do {
+                var attachment = try MediaNormalizer.reference(
+                    data: data,
+                    basename: "reference-\(references.count + index + 1)"
+                )
+                attachment.source = item
+                loaded.append(attachment)
+            } catch {
+                localError = error.localizedDescription
+            }
         }
-        references = loaded
+        // Appended rather than assigned, now that the picker no longer holds the whole set.
+        references.append(contentsOf: loaded)
         if !loaded.isEmpty { Haptics.selection() }
     }
 
@@ -160,17 +198,42 @@ struct CreateStickerView: View {
 
 private struct ReferenceThumbnail: View {
     let reference: PendingMediaAttachment
+    /// Tapping the photo reopens the lift flow on it. Nil hides the affordance entirely.
+    var lift: (() -> Void)?
     let remove: () -> Void
+
+    private var isCapture: Bool { reference.sequence != nil }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            if let image = UIImage(data: reference.data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 84, height: 84)
-                    .clipShape(.rect(cornerRadius: 16))
+            Button {
+                lift?()
+            } label: {
+                ZStack(alignment: .bottomLeading) {
+                    if let image = UIImage(data: reference.data) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 84, height: 84)
+                            .clipShape(.rect(cornerRadius: 16))
+                    }
+                    // Two jobs. A capture is already cut out, so its thumbnail is mostly transparent
+                    // and reads as a failed load without a badge saying otherwise. And a plain
+                    // reference gives no sign that tapping it does anything at all — which is
+                    // precisely why the lift went unnoticed — so it advertises the action instead.
+                    if lift != nil {
+                        Image(systemName: isCapture ? "livephoto" : "person.and.background.dotted")
+                            .font(.caption2.bold())
+                            .padding(4)
+                            .background(.thinMaterial, in: Circle())
+                            .padding(5)
+                    }
+                }
             }
+            .buttonStyle(.plain)
+            .disabled(lift == nil)
+            .accessibilityLabel(isCapture ? "Lifted subject. Tap to choose a different one." : "Reference photo. Tap to lift a subject out of it.")
+
             Button(action: remove) {
                 Image(systemName: "xmark.circle.fill")
                     .symbolRenderingMode(.palette)

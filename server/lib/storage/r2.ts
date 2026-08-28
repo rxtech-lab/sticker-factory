@@ -398,6 +398,41 @@ export async function normalizeTransparentPng(bytes: Uint8Array): Promise<{ byte
   return { bytes: png, inspection: await inspectImage(png) };
 }
 
+/**
+ * The longest edge an image keeps when it is handed to a reasoning model to look at.
+ *
+ * A vision model tiles a square image at roughly this size anyway, so anything larger is paid for
+ * and then discarded. It also has to stay large enough to read a frame atlas as a contact sheet: a
+ * 4x4 capture leaves each frame around 256px, which is plenty to see what the subject does.
+ */
+const MODEL_INPUT_MAX_EDGE = 1024;
+
+/**
+ * Shrinks an attachment into something an agent can be shown cheaply on every step of a tool loop.
+ *
+ * Two choices worth stating. It is flattened onto white rather than kept transparent, because a
+ * cut-out subject on an alpha background is composited onto black by most providers, which is
+ * exactly where a dark subject disappears. And it is re-encoded as JPEG, because the agent judges
+ * what is in the picture rather than the quality of its edges, and a downscaled photograph as PNG
+ * is several times the bytes for nothing.
+ *
+ * Only the first frame of an animated attachment survives — the frames of a capture already arrive
+ * as one atlas, so there is nothing here worth paging through.
+ */
+export async function downscaleForModelInput(
+  bytes: Uint8Array,
+): Promise<{ bytes: Uint8Array; mimeType: "image/jpeg" }> {
+  const jpeg = await sharp(bytes, { limitInputPixels: 4096 * 4096 })
+    .resize(MODEL_INPUT_MAX_EDGE, MODEL_INPUT_MAX_EDGE, {
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+  return { bytes: new Uint8Array(jpeg), mimeType: "image/jpeg" };
+}
+
 export function objectKey(ownerId: string, assetId: string, mimeType: string): string {
   const extension = ({
     "image/png": "png",

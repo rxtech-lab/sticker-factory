@@ -3,6 +3,7 @@ import {
   isActionablePlanState,
   isEditablePlanState,
   planGenerationCount,
+  planRequiresConcept,
   PlanV1Schema,
   type PlanState,
   type PlanV1,
@@ -241,7 +242,7 @@ export async function confirmPlan(
   if (plan.kind !== sticker.kind) {
     throw new ApiError(422, "PLAN_KIND_MISMATCH", `This plan builds a ${plan.kind} sticker but the project is ${sticker.kind}`);
   }
-  if (plan.kind === "animated") {
+  if (planRequiresConcept(plan)) {
     const reference = row.conceptAssetId
       ? await db.select({ id: assets.id }).from(assets).where(and(
         eq(assets.id, row.conceptAssetId),

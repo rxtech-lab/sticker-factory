@@ -7,7 +7,14 @@ import type {
   UpdateStickerRequest,
 } from "@/lib/contracts/api";
 import { countKeyframes } from "@/lib/animation/compile";
-import { EXPORT_LOOP_HOLD_SECONDS, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
+import {
+  CURRENT_DOCUMENT_VERSION,
+  downcastForClient,
+  EXPORT_LOOP_HOLD_SECONDS,
+  layerImageAssetIds,
+  StickerDocumentSchema,
+  type StickerDocument,
+} from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import { previewAssetIdSql, previewAssets, systemAssets } from "@/lib/db/columns";
 import {
@@ -22,11 +29,22 @@ import {
   stickers,
 } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
-import { getReadyOwnedAssets } from "@/lib/services/assets";
+import { ensureSequencePosters, getReadyOwnedAssets } from "@/lib/services/assets";
 import { loadPlansByIds, serializePlan } from "@/lib/services/plans";
 
 const MAX_AI_INPUT_BYTES = 32 * 1024 * 1024;
 const AI_REFERENCE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/**
+ * The asset kinds a user may attach to a turn as visual input.
+ *
+ * `sequence` belongs here for a reason worth stating: a frame atlas is a PNG contact sheet, so it
+ * reaches the model as an ordinary image and the model can *read the motion off it* the way a
+ * person reads a storyboard. That is the property the whole sprite-sheet transport was chosen for,
+ * and it is why no other part of the AI path — bounds checks, MIME allowlists, reference loading —
+ * needed widening to support captured footage.
+ */
+const AI_INPUT_ASSET_KINDS = new Set(["reference", "chat_attachment", "sequence"]);
 
 export interface StickerCursor {
   updatedAt: string;
@@ -200,7 +218,7 @@ export async function listStickers(
 
 export async function createSticker(db: Database, ownerId: string, request: CreateStickerRequest) {
   const references = await getReadyOwnedAssets(db, ownerId, request.referenceAssetIds);
-  if (references.some((asset) => asset.kind !== "reference" && asset.kind !== "chat_attachment")) {
+  if (references.some((asset) => !AI_INPUT_ASSET_KINDS.has(asset.kind))) {
     throw new ApiError(422, "INVALID_REFERENCE", "Initial references must be reference image assets");
   }
   if (references.some((asset) => !AI_REFERENCE_MIME_TYPES.has(asset.mimeType))) {
@@ -378,6 +396,27 @@ export async function requeueFailedCleanupJobs(
   return claimed;
 }
 
+/**
+ * Degrades every revision's document to what `clientVersion` can decode.
+ *
+ * Applied at the route rather than inside `getSticker` so the service keeps returning a real
+ * `StickerDocument` — the web library renders the same payload in-process and has no old-client
+ * problem, and typing it as "some version of a document" would infect every caller for the benefit
+ * of one. The API route is the only place that has a client to ask about.
+ */
+export function downcastStickerDetail<
+  T extends { revisions: Array<{ document: StickerDocument }> },
+>(detail: T, clientVersion: number): unknown {
+  if (clientVersion >= CURRENT_DOCUMENT_VERSION) return detail;
+  return {
+    ...detail,
+    revisions: detail.revisions.map((revision) => ({
+      ...revision,
+      document: downcastForClient(revision.document, clientVersion),
+    })),
+  };
+}
+
 export async function getSticker(db: Database, ownerId: string, stickerId: string) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
   const revisions = await db.select().from(stickerRevisions)
@@ -479,9 +518,15 @@ export async function validateDocumentAssetReferences(
     layer.type === "svg" && layer.source.kind === "asset" ? [layer.source.assetId] : []
   ));
   const backgroundAssetIds = document.background.type === "image" ? [document.background.assetId] : [];
+  const sequenceLayers = document.layers.filter(
+    (layer): layer is Extract<typeof layer, { type: "sequence" }> => layer.type === "sequence",
+  );
   const ids = [...new Set([
     ...additionalAssetIds,
-    ...imageLayers.flatMap((layer) => [layer.assetId, ...(layer.maskAssetId ? [layer.maskAssetId] : [])]),
+    ...document.layers.flatMap(layerImageAssetIds),
+    // The poster is what a pre-v3 client is served in place of the footage, so it has to clear the
+    // same ownership bar as everything else the document names.
+    ...sequenceLayers.flatMap((layer) => (layer.posterAssetId ? [layer.posterAssetId] : [])),
     ...svgAssetIds,
     ...backgroundAssetIds,
   ])];
@@ -503,6 +548,33 @@ export async function validateDocumentAssetReferences(
       }
       if (mask.width !== image.width || mask.height !== image.height || mask.mimeType !== image.mimeType) {
         throw new ApiError(422, "MASK_DIMENSIONS_MISMATCH", "Layer masks must match their image format and dimensions");
+      }
+    }
+  }
+  for (const layer of sequenceLayers) {
+    const atlas = byId.get(layer.assetId)!;
+    if (atlas.kind !== "sequence" || atlas.mimeType !== "image/png" || !atlas.hasAlpha) {
+      throw new ApiError(422, "INVALID_SEQUENCE_ASSET", "Capture layers must reference a validated transparent frame atlas");
+    }
+    // The layer and the asset row each carry the frame grid, and the renderer trusts the layer while
+    // the exporter's timing checks trust neither. If they disagree, the sticker plays footage that
+    // is not the footage that was uploaded — so this is a mismatch worth refusing, not reconciling.
+    if (
+      atlas.frameCount !== layer.frameCount
+      || atlas.fps !== layer.frameRate
+      || atlas.sequenceColumns !== layer.columns
+      || atlas.sequenceRows !== layer.rows
+    ) {
+      throw new ApiError(
+        422,
+        "SEQUENCE_METADATA_MISMATCH",
+        "A capture layer's grid, frame count, and rate must match the uploaded atlas",
+      );
+    }
+    if (layer.posterAssetId) {
+      const poster = byId.get(layer.posterAssetId)!;
+      if (poster.mimeType !== "image/png" || !poster.hasAlpha) {
+        throw new ApiError(422, "INVALID_SEQUENCE_POSTER", "A capture layer's still frame must be a transparent PNG");
       }
     }
   }
@@ -666,7 +738,7 @@ export async function createChatTurn(
       throw new ApiError(422, "INVALID_MASK", "Masks must be validated PNG or WebP images with alpha");
     }
     if (attachment.kind === "reference" && (
-      (asset.kind !== "reference" && asset.kind !== "chat_attachment")
+      !AI_INPUT_ASSET_KINDS.has(asset.kind)
       || !AI_REFERENCE_MIME_TYPES.has(asset.mimeType)
     )) {
       throw new ApiError(422, "INVALID_REFERENCE", "Chat references must be PNG, JPEG, or WebP reference images");
@@ -1031,7 +1103,15 @@ export async function createCandidateRevision(
 ) {
   const sticker = await assertOwnedSticker(db, input.ownerId, input.stickerId);
   const id = input.id ?? crypto.randomUUID();
-  const parsed = StickerDocumentSchema.parse(input.document);
+  // Derived before the document is stored, so the stored row already names a poster for every
+  // capture. Doing it on read instead would mean an old client's fallback depended on a write
+  // happening during a GET.
+  const parsed = await ensureSequencePosters(
+    db,
+    input.ownerId,
+    input.stickerId,
+    StickerDocumentSchema.parse(input.document),
+  );
   if (parsed.kind !== sticker.kind) {
     throw new ApiError(422, "REVISION_KIND_MISMATCH", "Revision document kind must match the sticker project kind");
   }
@@ -1118,7 +1198,9 @@ export async function saveEditedRevision(
     throw new ApiError(409, "STICKER_OPERATION_IN_PROGRESS", "Wait for the current sticker operation before saving an edit");
   }
 
-  const document = StickerDocumentSchema.parse(request.document);
+  // A device-authored document arrives with no poster — the editor has no reason to derive one —
+  // so this is the other place a capture's fallback still gets made.
+  const document = await ensureSequencePosters(db, ownerId, stickerId, StickerDocumentSchema.parse(request.document));
   if (document.kind !== sticker.kind) {
     throw new ApiError(422, "REVISION_KIND_MISMATCH", "Revision document kind must match the sticker project kind");
   }

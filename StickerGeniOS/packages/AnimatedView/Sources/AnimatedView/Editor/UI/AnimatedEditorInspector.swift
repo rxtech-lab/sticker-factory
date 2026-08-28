@@ -165,6 +165,10 @@ struct AnimatedEditorInspector: View {
             AnimatedSVGLayerInspector(editor: editor, layer: value)
         case .particle(let value):
             AnimatedParticleLayerInspector(editor: editor, layer: value)
+        case .sequence(let value):
+            AnimatedSequenceLayerInspector(editor: editor, layer: value, assets: assets)
+        case .unsupported:
+            AnimatedUnsupportedLayerInspector()
         }
     }
 

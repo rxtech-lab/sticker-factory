@@ -4,7 +4,7 @@ import { resolveChatAction, validateEditOperation, validatePlannedAnimationOpera
 import { CreateUploadRequestSchema, PostChatMessageRequestSchema } from "@/lib/contracts/api";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { validateAnimatedRenditionTiming } from "@/lib/services/stickers";
-import { inspectImage } from "@/lib/storage/r2";
+import { downscaleForModelInput, inspectImage } from "@/lib/storage/r2";
 import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation/steps";
 
 describe("media and animation hardening", () => {
@@ -36,6 +36,33 @@ describe("media and animation hardening", () => {
     // what it carries, so timing cannot be inflated by a lying header.
     const overclaimed = spliceApngControlChunks(still, [80, 80, 120], 240);
     expect((await inspectImage(overclaimed)).frameCount).toBe(3);
+  });
+
+  it("shrinks an attachment to one tile before an agent is shown it", async () => {
+    const photo = await sharp({
+      create: { width: 3_024, height: 4_032, channels: 3, background: { r: 200, g: 120, b: 60 } },
+    }).jpeg().toBuffer();
+    const shown = await downscaleForModelInput(photo);
+    const inspected = await inspectImage(shown.bytes);
+    // The long edge lands on the tile size and the aspect ratio survives, so a portrait photo is
+    // still a portrait photo rather than a squashed square.
+    expect(inspected).toMatchObject({ mimeType: "image/jpeg", height: 1_024 });
+    expect(inspected.width).toBe(768);
+    // The whole point of the resize: this is re-sent on every step of a tool loop.
+    expect(shown.bytes.byteLength).toBeLessThan(photo.byteLength);
+  });
+
+  it("flattens a cut-out attachment onto white rather than leaving it on alpha", async () => {
+    // A capture arrives as a transparent PNG. Left on alpha, providers composite it onto black,
+    // which is where a dark subject stops being visible to the model at all.
+    const cutout = await sharp({
+      create: { width: 512, height: 512, channels: 4, background: { r: 10, g: 10, b: 10, alpha: 0 } },
+    }).png().toBuffer();
+    const shown = await downscaleForModelInput(cutout);
+    const inspected = await inspectImage(shown.bytes);
+    expect(inspected.hasAlpha).toBe(false);
+    const { data } = await sharp(shown.bytes).raw().toBuffer({ resolveWithObject: true });
+    expect([data[0], data[1], data[2]]).toEqual([255, 255, 255]);
   });
 
   it("permits safe non-image layer planning but blocks invented image assets", () => {

@@ -48,14 +48,10 @@ final class StickerAssetStore: AnimatedAssetProvider {
 
     // MARK: - Loading
 
-    /// Fetches every bitmap a document needs, including image-layer masks and an image background.
+    /// Fetches every bitmap a document needs, including image-layer masks, capture atlases, and an
+    /// image background.
     func preload(document: AnimatedDocument, api: StickerAPIClientProtocol) async {
-        var ids: Set<String> = []
-        for layer in document.layers {
-            guard case .image(let image) = layer else { continue }
-            ids.insert(image.assetId)
-            if let mask = image.maskAssetId { ids.insert(mask) }
-        }
+        var ids = Set(document.layers.flatMap(\.referencedImageAssetIDs))
         if case .image(let assetId, _) = document.background { ids.insert(assetId) }
         for id in ids { await load(assetID: id, api: api) }
     }

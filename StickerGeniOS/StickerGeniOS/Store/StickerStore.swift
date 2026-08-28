@@ -2,13 +2,6 @@ import AnimatedView
 import Foundation
 import Observation
 
-nonisolated struct PendingMediaAttachment: Identifiable, Sendable {
-    var id = UUID()
-    var data: Data
-    var filename: String
-    var mimeType: String
-}
-
 nonisolated struct StickerJobState: Sendable, Equatable {
     var jobID: String
     var sourceMessageID: String?
@@ -645,9 +638,12 @@ final class StickerStore {
             values.append(try await api.upload(
                 data: attachment.data,
                 stickerID: stickerID,
-                kind: kind,
+                // A lifted capture overrides whatever kind the caller asked for: it is a frame
+                // atlas wherever it was picked, and the server validates it as one.
+                kind: attachment.sequence == nil ? kind : .sequence,
                 filename: attachment.filename,
                 mimeType: attachment.mimeType,
+                sequence: attachment.sequence,
                 idempotencyKey: UUID().uuidString
             ))
         }

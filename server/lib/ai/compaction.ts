@@ -25,14 +25,37 @@ import { traceEvent } from "@/lib/observability/trace";
  */
 
 /**
+ * What one attached image costs a vision model, near enough.
+ *
+ * Images are downscaled to a single 1024px tile before they are attached (`downscaleForModelInput`),
+ * which is around a thousand tokens on every provider that publishes the arithmetic. The exact
+ * number matters much less than not counting the pixels as if they were prose — see below.
+ */
+const IMAGE_PART_TOKENS = 1_500;
+
+/**
  * Rough token count for a message list.
  *
  * Four characters per token of serialized JSON, the estimate the AI SDK's own compaction guide uses.
  * It is only ever compared against a threshold that exists to stop the context running away, so a
  * real tokenizer would buy accuracy nothing here spends.
+ *
+ * Binary parts are the exception, and they are counted rather than serialized. A `Uint8Array`
+ * stringifies as `{"0":137,"1":80,…}` — roughly eight characters per byte — so one attached photo
+ * would read as hundreds of thousands of tokens and put every loop that carries an image over the
+ * compaction threshold from its first step, pruning tool calls to make room for pixels the estimate
+ * never measured correctly in the first place.
  */
 export function estimateTokens(messages: ModelMessage[]): number {
-  return JSON.stringify(messages).length / 4;
+  let images = 0;
+  const serialized = JSON.stringify(messages, (_key, value) => {
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+      images += 1;
+      return "<image>";
+    }
+    return value;
+  });
+  return serialized.length / 4 + images * IMAGE_PART_TOKENS;
 }
 
 /**

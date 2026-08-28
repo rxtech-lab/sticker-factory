@@ -101,7 +101,14 @@ export const assets = sqliteTable("assets", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   stickerId: text("sticker_id").references(() => stickers.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["reference", "mask", "master", "preview", "gif", "mp4", "system", "chat_attachment"] }).notNull(),
+  /**
+   * `sequence` is a frame atlas: one transparent PNG holding a grid of frames lifted from a Live
+   * Photo. Unlike every other kind, its `frame_count`/`fps`/`duration_seconds` are declared by the
+   * client at upload time rather than read out of the file — the file itself is a single still.
+   */
+  kind: text("kind", {
+    enum: ["reference", "mask", "master", "preview", "gif", "mp4", "system", "chat_attachment", "sequence"],
+  }).notNull(),
   state: text("state", { enum: ["pending", "ready", "failed", "deleted"] }).notNull().default("pending"),
   r2Key: text("r2_key").notNull().unique(),
   mimeType: text("mime_type").notNull(),
@@ -116,6 +123,13 @@ export const assets = sqliteTable("assets", {
   originalFilename: text("original_filename"),
   createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
   readyAt: timestamp("ready_at"),
+  /**
+   * The atlas grid, for `sequence` assets only. `frameCount`/`fps` say how many frames there are
+   * and how fast they play; only this says where each one sits, and the image cannot say — a sprite
+   * sheet looks exactly like any other still.
+   */
+  sequenceColumns: integer("sequence_columns"),
+  sequenceRows: integer("sequence_rows"),
 }, (table) => [
   index("assets_owner_created_idx").on(table.ownerId, table.createdAt),
   index("assets_sticker_kind_idx").on(table.stickerId, table.kind),

@@ -1,3 +1,4 @@
+import { clientDocumentVersion } from "@/lib/contracts/sticker";
 import { withApiAuth } from "@/lib/http/handler";
 import { listGenerationEvents, serializeGenerationEvent } from "@/lib/services/events";
 
@@ -27,6 +28,9 @@ export async function GET(request: Request, context: Context) {
     // Also proves the job exists and belongs to the caller before the stream body starts,
     // so an unknown job still produces a JSON 404 rather than an empty event stream.
     const initial = await listGenerationEvents(db, principal.sub, jobId, cursor);
+    // Read once, outside the stream body: `request.headers` is still live there, but resolving it
+    // per event would repeat the same parse for every frame of a turn.
+    const contractVersion = clientDocumentVersion(request);
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
@@ -41,7 +45,7 @@ export async function GET(request: Request, context: Context) {
             const { job, events } = pending ?? await listGenerationEvents(db, principal.sub, jobId, cursor);
             pending = undefined;
             for (const event of events) {
-              const serialized = serializeGenerationEvent(event);
+              const serialized = serializeGenerationEvent(event, contractVersion);
               controller.enqueue(encoder.encode(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(serialized)}\n\n`));
               cursor = event.id;
             }

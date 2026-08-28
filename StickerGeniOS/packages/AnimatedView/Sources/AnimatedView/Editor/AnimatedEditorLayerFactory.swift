@@ -19,9 +19,13 @@ public enum AnimatedEditorDefaults {
 
     /// A starter layer of the given type, or `nil` when one cannot be made.
     ///
-    /// Only `.image` returns `nil`, and only when `assetID` is missing or malformed: a document
-    /// carries no pixels, so an image layer is meaningless without an asset the host has already
-    /// resolved. That is why the add menu hides image layers unless the host supplied a picker.
+    /// `.image` returns `nil` when `assetID` is missing or malformed: a document carries no pixels,
+    /// so an image layer is meaningless without an asset the host has already resolved. That is why
+    /// the add menu hides image layers unless the host supplied a picker.
+    ///
+    /// `.sequence` and `.unsupported` always return `nil`. Captured footage comes from lifting a
+    /// subject out of a Live Photo in the picker — there is no meaningful starter to invent here,
+    /// and `AnimatedLayerType.isAuthorable` keeps both out of the add menu in the first place.
     public static func layer(
         _ type: AnimatedLayerType,
         id: String,
@@ -45,6 +49,8 @@ public enum AnimatedEditorDefaults {
             return .svg(.init(base: base, source: .inline(markup: starterSVGMarkup)))
         case .particle:
             return .particle(.init(base: base, preset: .sparkles))
+        case .sequence, .unsupported:
+            return nil
         }
     }
 
@@ -55,6 +61,8 @@ public enum AnimatedEditorDefaults {
         case .shape: "Shape"
         case .svg: "Artwork"
         case .particle: "Sparkles"
+        case .sequence: "Live capture"
+        case .unsupported: "Unsupported layer"
         }
     }
 
@@ -65,6 +73,8 @@ public enum AnimatedEditorDefaults {
         case .shape: "circle"
         case .svg: "scribble.variable"
         case .particle: "sparkles"
+        case .sequence: "livephoto"
+        case .unsupported: "questionmark.square.dashed"
         }
     }
 }
