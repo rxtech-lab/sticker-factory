@@ -156,6 +156,27 @@ export const AnimationSpecV1Schema = z.discriminatedUnion("type", [
     x: z.number().min(-1).max(2),
     y: z.number().min(-1).max(2),
   }).strict(),
+  /**
+   * A curved move: the layer travels to `x`/`y` along a parabolic arc rather than a straight line.
+   *
+   * `moveTo` interpolates two keyframes, which is a straight line by construction — there is no
+   * amount of easing that bends it, so a throw, a lob, or an orbiting sweep was previously
+   * inexpressible. This samples a quadratic Bézier into position keyframes instead, which is the
+   * only way to curve a channel the interpolator blends linearly.
+   */
+  SpecBaseSchema.extend({
+    type: z.literal("arcTo"),
+    x: z.number().min(-1).max(2),
+    y: z.number().min(-1).max(2),
+    /**
+     * How far the path bows away from the straight line, at its midpoint, in normalized units.
+     *
+     * Measured perpendicular to the direction of travel and signed so that positive always bows
+     * toward the top of the canvas — a rightward and a leftward throw with the same `arcHeight`
+     * both arc over, not mirrored. `0` degenerates to exactly the straight line `moveTo` draws.
+     */
+    arcHeight: z.number().min(-1).max(1).default(0.25),
+  }).strict(),
   SpecBaseSchema.extend({
     type: z.literal("scaleTo"),
     x: z.number().min(0.05).max(8),
@@ -231,6 +252,8 @@ export const AnimationSpecV1Schema = z.discriminatedUnion("type", [
 
 export const AnimationSpecsV1Schema = z.array(AnimationSpecV1Schema).max(12);
 
+export type StickerEasingV1 = z.infer<typeof StickerEasingV1Schema>;
+
 export type AnimationSpecV1 = z.infer<typeof AnimationSpecV1Schema>;
 export type AnimationSpecType = AnimationSpecV1["type"];
 export type LayerAnimationV1 = z.infer<typeof LayerAnimationV1Schema>;
@@ -256,6 +279,7 @@ export const SPEC_CHANNELS: Record<AnimationSpecType, readonly AnimationChannel[
   slideIn: ["position", "opacity"],
   slideOut: ["position", "opacity"],
   moveTo: ["position"],
+  arcTo: ["position"],
   scaleTo: ["scale"],
   rotateTo: ["rotation"],
   spin: ["rotation"],

@@ -103,7 +103,9 @@ export async function cancelGenerationWorkflow(db: Database, ownerId: string, jo
     eq(generationJobs.ownerId, ownerId),
   )).get();
   if (!job) throw new ApiError(404, "JOB_NOT_FOUND", "Generation job not found");
-  if (!new Set(["image", "edit", "animation", "chat", "plan"]).has(job.kind)) {
+  // `compose` belongs here as much as any of the others: building a confirmed plan is the longest
+  // turn the app runs, so it is the one a user is most likely to want to stop.
+  if (!new Set(["image", "edit", "animation", "chat", "plan", "compose"]).has(job.kind)) {
     throw new ApiError(409, "JOB_NOT_CANCELLABLE", "Only an active sticker chat turn can be stopped");
   }
   if (!new Set(["queued", "running", "waiting"]).has(job.state)) {

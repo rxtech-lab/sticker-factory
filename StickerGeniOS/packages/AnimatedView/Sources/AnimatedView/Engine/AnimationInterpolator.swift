@@ -106,6 +106,16 @@ public enum AnimationInterpolator {
 
     // MARK: - Easing
 
+    /// The easing curves, as a plain function of normalized progress.
+    ///
+    /// `AnimationCompiler` calls this when it bakes eased progress into an `arcTo`'s samples, which
+    /// makes it part of the cross-language contract: `server/lib/animation/easing.ts` is its twin
+    /// and the two must agree bit for bit. That is why the polynomials are written as repeated
+    /// multiplication rather than `pow` — `pow` is not required to be correctly rounded, so libm and
+    /// V8 may disagree in the last bit, while multiplication is exact IEEE-754 in both.
+    ///
+    /// The two springs deliberately overshoot 1 before settling, so `easedProgress(1)` is not
+    /// exactly 1 for them; callers that must land on a target pin the closing sample themselves.
     public static func easedProgress(_ progress: Double, easing: AnimatedEasing) -> Double {
         let t = min(max(progress, 0), 1)
         switch easing {
@@ -114,9 +124,12 @@ public enum AnimationInterpolator {
         case .easeIn:
             return t * t * t
         case .easeOut:
-            return 1 - pow(1 - t, 3)
+            let remaining = 1 - t
+            return 1 - remaining * remaining * remaining
         case .easeInOut:
-            return t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+            if t < 0.5 { return 4 * t * t * t }
+            let remaining = -2 * t + 2
+            return 1 - (remaining * remaining * remaining) / 2
         case .springSoft:
             return 1 - exp(-7 * t) * cos(8 * t)
         case .springBouncy:

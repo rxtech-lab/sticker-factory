@@ -1,6 +1,5 @@
 import AnimatedView
 import AVFoundation
-import CoreImage
 import CoreVideo
 import ImageIO
 import SwiftUI
@@ -10,52 +9,59 @@ import UIKit
 nonisolated struct RenderedStickerExport: Sendable {
     var url: URL
     var metadata: LocalExportMetadata
+    /// What the 500 KB ceiling cost this rendition, when it cost anything.
+    var compromise: SystemStickerCompromise?
+
+    /// An animated sticker whose system rendition had to give up its motion. The publish request
+    /// carries this so the server reads a single-frame rendition for an animated sticker as the
+    /// deliberate floor of the ladder rather than as a client bug.
+    var isStillFallback: Bool { compromise?.droppedMotion == true }
 }
 
 nonisolated struct SystemStickerPreset: Equatable, Sendable {
     var dimension: Int
     var fps: Int
-    var colorLevels: Int
 
-    /// Spends frame rate and color depth before it spends dimension.
+    /// Spends frame rate before it spends dimension.
     ///
     /// Messages draws a sticker in the transcript at its own pixel size over 3, so `dimension` is
     /// the only rung that changes how big the sticker arrives: 618 lands at 206 pt, 300 at 100 pt
-    /// — half the sticker. The 618 rungs are worth attempting because flat, poster-like art does
-    /// reach them; dense photographic art does not, and no ordering fixes that. A 618 frame of it
-    /// costs well over the 500 KB budget on its own, and the server's 8 FPS floor for adaptive
-    /// renditions bounds how many frames can be dropped chasing it.
+    /// — half the sticker. Colour is no longer a rung of its own: `IndexedPNGEncoder` tries three
+    /// palettes inside every rung, in the same pass that renders it, and keeps the richest one that
+    /// fits. That is why this ladder is half the length of the one it replaces and reaches further
+    /// down: the bottom rungs used to be posterization levels that flattened art to eight colours
+    /// and still overshot.
     ///
-    /// Every rung the previous ladder ended on is still here. Detailed art genuinely needs the
-    /// 300 @ 8 floor, and a ladder that cannot reach it fails the export outright rather than
-    /// shipping a small sticker.
+    /// The floor is 300 px — Apple's smallest sticker size class, which
+    /// `SharedStickerCache.allowedPixelDimensions` and Messages both enforce — at 4 FPS, matching
+    /// `validateAnimatedRenditionTiming`'s floor in `server/lib/services/stickers.ts`. A cycle that
+    /// cannot fit even there falls back to a still rather than failing the export.
     static let adaptive: [Self] = [
-        .init(dimension: 618, fps: 24, colorLevels: 32),
-        .init(dimension: 618, fps: 15, colorLevels: 16),
-        .init(dimension: 618, fps: 10, colorLevels: 8),
-        .init(dimension: 408, fps: 18, colorLevels: 24),
-        .init(dimension: 408, fps: 12, colorLevels: 12),
-        .init(dimension: 300, fps: 15, colorLevels: 16),
-        .init(dimension: 300, fps: 10, colorLevels: 12),
-        .init(dimension: 300, fps: 8, colorLevels: 8),
-        // Below this point only color is left to spend. 300 is Apple's smallest sticker size
-        // class — `SharedStickerCache.allowedPixelDimensions` and Messages itself reject anything
-        // under it — and 8 FPS is the floor the server accepts for an adaptive rendition, so a
-        // long cycle cannot be answered by shrinking or by dropping more frames. A 4 s ping-pong
-        // of photographic art writes 32 frames at this rung and lands around 500 KB at 8 levels;
-        // the same frames posterize to roughly 290 KB at 4 and 227 KB at 3. Flat art never gets
-        // here, so the banding these rungs cause is only ever paid by art that would otherwise
-        // fail the export outright.
-        .init(dimension: 300, fps: 8, colorLevels: 6),
-        .init(dimension: 300, fps: 8, colorLevels: 4),
-        .init(dimension: 300, fps: 8, colorLevels: 3),
-        .init(dimension: 300, fps: 8, colorLevels: 2),
+        .init(dimension: 618, fps: 24),
+        .init(dimension: 618, fps: 15),
+        .init(dimension: 618, fps: 10),
+        .init(dimension: 408, fps: 18),
+        .init(dimension: 408, fps: 12),
+        .init(dimension: 300, fps: 15),
+        .init(dimension: 300, fps: 10),
+        .init(dimension: 300, fps: 8),
+        .init(dimension: 300, fps: 6),
+        .init(dimension: 300, fps: 4),
     ]
+
+    /// Palettes attempted within one rung, richest first.
+    ///
+    /// All three are encoded in the rung's single rendering pass and the first that fits wins, so
+    /// the cost of offering a fallback palette is a few milliseconds of deflate rather than another
+    /// pass over the animation.
+    static let paletteLadder = [256, 64, 16]
 }
 
 nonisolated enum StickerExportMetadataPolicy {
     static let staticSystemDimensions = [618, 408, 300]
-    static let staticSystemColorLevels: [Int?] = [nil, 64, 32, 16, 8]
+
+    /// Apple's ceiling, in the decimal kilobytes Messages measures it in.
+    static let systemStickerByteCeiling = 500_000
 
     static func hasAlpha(for format: StickerExportFormat) -> Bool { format != .mp4 }
     static func frameCount(document: AnimatedDocument, fps: Int) -> Int {
@@ -79,26 +85,45 @@ nonisolated enum StickerExportMetadataPolicy {
         loop == .once ? 0 : loopHoldSeconds
     }
 
-    /// GIF frame delays are stored in integer centiseconds by widely used
-    /// decoders. Cumulative rounding distributes 30/40 ms frames while
-    /// preserving the exact intended cycle instead of shortening 30 FPS to
-    /// 33.33 FPS.
+    /// Frame delays on an integer tick grid, distributed so the cycle they sum to is exact.
+    ///
+    /// Animated containers store a delay per frame as a whole number of ticks — hundredths of a
+    /// second for GIF, and whatever denominator the encoder picks for APNG, which is milliseconds
+    /// here. Rounding each frame independently compounds: 30 FPS rounded to 3 centiseconds a frame
+    /// shortens a 2-second cycle to 1.8. Rounding the *cumulative* time instead spreads 30 and 40 ms
+    /// frames across the cycle and lands on its exact length, which matters because the server
+    /// recomputes a rendition's duration from the file and rejects one that drifts.
     ///
     /// `holdSeconds` is added to the final frame, so the returned delays sum to the cycle plus the
     /// hold while the count still matches the motion grid.
-    static func gifFrameDelays(frameCount: Int, fps: Int, holdSeconds: Double = 0) -> [Double] {
-        guard frameCount > 0, fps > 0 else { return [] }
-        var previousCentiseconds = 0
+    static func frameDelays(
+        frameCount: Int,
+        fps: Int,
+        holdSeconds: Double = 0,
+        ticksPerSecond: Int
+    ) -> [Double] {
+        guard frameCount > 0, fps > 0, ticksPerSecond > 0 else { return [] }
+        let ticks = Double(ticksPerSecond)
+        var previousTicks = 0
         var delays = (0..<frameCount).map { index in
-            let target = Int((Double(index + 1) * 100 / Double(fps)).rounded())
-            let delay = max(1, target - previousCentiseconds)
-            previousCentiseconds += delay
-            return Double(delay) / 100
+            let target = Int((Double(index + 1) * ticks / Double(fps)).rounded())
+            let delay = max(1, target - previousTicks)
+            previousTicks += delay
+            return Double(delay) / ticks
         }
-        // Rounded to whole centiseconds like every other delay, or the sum drifts off the duration
-        // the server recomputes from the encoded file.
-        if holdSeconds > 0 { delays[delays.count - 1] += Double(Int((holdSeconds * 100).rounded())) / 100 }
+        // Rounded onto the same grid as every other delay, or the sum drifts off the duration the
+        // server recomputes from the encoded file.
+        if holdSeconds > 0 { delays[delays.count - 1] += Double(Int((holdSeconds * ticks).rounded())) / ticks }
         return delays
+    }
+
+    static func gifFrameDelays(frameCount: Int, fps: Int, holdSeconds: Double = 0) -> [Double] {
+        frameDelays(frameCount: frameCount, fps: fps, holdSeconds: holdSeconds, ticksPerSecond: 100)
+    }
+
+    /// `IndexedPNGEncoder` writes `fcTL` delays with a denominator of 1000.
+    static func apngFrameDelays(frameCount: Int, fps: Int, holdSeconds: Double = 0) -> [Double] {
+        frameDelays(frameCount: frameCount, fps: fps, holdSeconds: holdSeconds, ticksPerSecond: 1000)
     }
 
     /// What an export of `document` actually occupies on a timeline: its motion plus the hold.
@@ -112,9 +137,6 @@ nonisolated enum StickerExportError: Error, LocalizedError {
     case renderFailed
     case destinationFailed
     case videoWriterFailed(String)
-    /// `smallestByteCount` is what the bottom rung actually produced, so the message can say how
-    /// far over Apple's ceiling the sticker landed instead of only that it did.
-    case systemStickerTooLarge(smallestByteCount: Int)
 
     var errorDescription: String? {
         switch self {
@@ -122,20 +144,36 @@ nonisolated enum StickerExportError: Error, LocalizedError {
         case .renderFailed: "A sticker frame could not be rendered."
         case .destinationFailed: "The export file could not be created."
         case .videoWriterFailed(let reason): "The MP4 export failed: \(reason)"
-        case .systemStickerTooLarge(let bytes):
-            """
-            The sticker could not be reduced below Apple's 500 KB limit — the smallest rendition \
-            was \(bytes / 1000) KB. Shorten the animation, or switch a ping-pong loop to a plain \
-            loop, which halves the exported frames.
+        }
+    }
+}
+
+/// What the ladder had to give up to fit Apple's ceiling, in the words the export sheet shows.
+///
+/// Nothing here is an error. The export always produces a sticker; this says which one, so a person
+/// who asked for Large and received Small can see why instead of guessing.
+nonisolated struct SystemStickerCompromise: Equatable, Sendable {
+    var requestedDimension: Int
+    var dimension: Int
+    var fps: Int?
+    var droppedMotion: Bool
+
+    var message: String? {
+        if droppedMotion {
+            return """
+            This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the \
+            sticker is a still frame. The animated GIF and MP4 exports are unaffected. Shortening \
+            the animation, or switching a ping-pong loop to a plain loop, brings the motion back.
             """
         }
+        guard dimension < requestedDimension else { return nil }
+        return "Exported at \(dimension) px to stay under Apple's 500 KB sticker limit."
     }
 }
 
 @MainActor
 final class StickerExporter {
     private let fileManager: FileManager
-    private let ciContext = CIContext(options: [.cacheIntermediates: false])
 
     init(fileManager: FileManager = .default) { self.fileManager = fileManager }
 
@@ -154,7 +192,7 @@ final class StickerExporter {
 
     func exportGIF(document: AnimatedDocument, assets: [String: UIImage]) throws -> RenderedStickerExport {
         _ = try document.validated()
-        let data = try animatedImageData(document: document, assets: assets, format: .gif, dimension: 1024, fps: document.fps, colorLevels: nil)
+        let data = try animatedImageData(document: document, assets: assets, format: .gif, dimension: 1024, fps: document.fps)
         let url = try outputURL(extension: "gif")
         try data.write(to: url, options: .atomic)
         return .init(
@@ -162,21 +200,6 @@ final class StickerExporter {
             metadata: .init(
                 format: .gif, width: 1024, height: 1024, byteCount: data.count,
                 durationSeconds: StickerExportMetadataPolicy.renderedDuration(document), fps: document.fps, hasAlpha: true
-            )
-        )
-    }
-
-    func exportAPNG(document: AnimatedDocument, assets: [String: UIImage], dimension: Int = 618, fps: Int? = nil) throws -> RenderedStickerExport {
-        _ = try document.validated()
-        let frameRate = fps ?? document.fps
-        let data = try animatedImageData(document: document, assets: assets, format: .apng, dimension: dimension, fps: frameRate, colorLevels: nil)
-        let url = try outputURL(extension: "png")
-        try data.write(to: url, options: .atomic)
-        return .init(
-            url: url,
-            metadata: .init(
-                format: .apng, width: dimension, height: dimension, byteCount: data.count,
-                durationSeconds: StickerExportMetadataPolicy.renderedDuration(document), fps: frameRate, hasAlpha: true
             )
         )
     }
@@ -268,6 +291,15 @@ final class StickerExporter {
         )
     }
 
+    /// The rendition Messages actually carries, guaranteed to fit Apple's 500 KB ceiling.
+    ///
+    /// This never fails for size. The ladder walks frame rate and then pixels, encoding three
+    /// palettes inside each rung, and if an animation still will not fit at 300 px and 4 FPS it
+    /// ships the sticker's poster frame as a still. Refusing the export was the old behaviour and it
+    /// was the wrong trade: a sticker that arrives smaller, or that arrives without its motion, is
+    /// worth more than an error message, and the GIF and MP4 exports keep the full animation either
+    /// way.
+    ///
     /// - Parameter size: the rung the ladder starts at. Larger rungs are skipped rather than
     ///   removed, so a sticker that cannot be squeezed into 500 KB at the requested size still
     ///   exports — one size down — instead of failing.
@@ -277,56 +309,203 @@ final class StickerExporter {
         size: SystemStickerSize = .default
     ) throws -> RenderedStickerExport {
         _ = try document.validated()
-        // Every rung that encodes but overshoots, so a ladder that runs out can say how close it
-        // came. A ladder where *nothing* encoded never reached the ceiling at all — that is a
-        // rendering failure wearing a size error's message, and it reports itself as one below.
-        var smallestByteCount: Int?
-        func record(_ count: Int) { smallestByteCount = min(smallestByteCount ?? count, count) }
+        let survey = colorSurvey(document: document, assets: assets)
+        if document.kind == .animated,
+           let rendition = animatedSystemRendition(
+               document: document,
+               assets: assets,
+               survey: survey,
+               maximumDimension: size.dimension
+           ) {
+            let url = try outputURL(extension: "png")
+            try rendition.data.write(to: url, options: .atomic)
+            return .init(
+                url: url,
+                metadata: .init(
+                    format: .apng, width: rendition.dimension, height: rendition.dimension,
+                    byteCount: rendition.data.count,
+                    durationSeconds: StickerExportMetadataPolicy.renderedDuration(document),
+                    fps: rendition.fps, hasAlpha: true
+                ),
+                compromise: .init(
+                    requestedDimension: size.dimension,
+                    dimension: rendition.dimension,
+                    fps: rendition.fps,
+                    droppedMotion: false
+                )
+            )
+        }
 
-        if document.kind == .static {
-            for dimension in StickerExportMetadataPolicy.staticSystemDimensions
-                where dimension <= size.dimension {
-                guard let rendered = renderFrame(document: document, time: 0, dimension: dimension, assets: assets) else { continue }
-                for colorLevels in StickerExportMetadataPolicy.staticSystemColorLevels {
-                    let image = colorLevels.flatMap { posterized(rendered, levels: $0) } ?? rendered
-                    guard let data = UIImage(cgImage: image).pngData() else { continue }
-                    guard data.count < 500_000 else { record(data.count); continue }
-                    let url = try outputURL(extension: "png")
-                    try data.write(to: url, options: .atomic)
-                    return .init(
-                        url: url,
-                        metadata: .init(format: .png, width: dimension, height: dimension, byteCount: data.count, durationSeconds: nil, fps: nil, hasAlpha: true)
-                    )
-                }
-            }
-        } else {
-            for preset in SystemStickerPreset.adaptive where preset.dimension <= size.dimension {
-                for format in [StickerExportFormat.apng, .gif] {
-                    guard let data = try? animatedImageData(
-                        document: document,
-                        assets: assets,
-                        format: format,
-                        dimension: preset.dimension,
-                        fps: min(document.fps, preset.fps),
-                        colorLevels: preset.colorLevels
-                    ) else { continue }
-                    guard data.count < 500_000 else { record(data.count); continue }
-                    let url = try outputURL(extension: format == .gif ? "gif" : "png")
-                    try data.write(to: url, options: .atomic)
-                    return .init(
-                        url: url,
-                        metadata: .init(
-                            format: format, width: preset.dimension, height: preset.dimension,
-                            byteCount: data.count, durationSeconds: StickerExportMetadataPolicy.renderedDuration(document),
-                            fps: min(document.fps, preset.fps), hasAlpha: true
-                        )
-                    )
-                }
+        let still = try stillSystemRendition(
+            document: document,
+            assets: assets,
+            survey: survey,
+            maximumDimension: size.dimension
+        )
+        return .init(
+            url: still.url,
+            metadata: .init(
+                format: .png, width: still.dimension, height: still.dimension,
+                byteCount: still.byteCount, durationSeconds: nil, fps: nil, hasAlpha: true
+            ),
+            compromise: .init(
+                requestedDimension: size.dimension,
+                dimension: still.dimension,
+                fps: nil,
+                droppedMotion: document.kind == .animated
+            )
+        )
+    }
+
+    /// One rendering pass per rung, three palettes encoded inside it.
+    ///
+    /// The pass stops the moment every candidate has outgrown the ceiling, so an animation that is
+    /// hopeless at 618 px pays for a handful of frames there rather than for all of them. The old
+    /// ladder re-rendered the whole cycle for each of its thirteen rungs and each of two formats.
+    private func animatedSystemRendition(
+        document: AnimatedDocument,
+        assets: [String: UIImage],
+        survey: ColorSurvey,
+        maximumDimension: Int
+    ) -> (data: Data, dimension: Int, fps: Int)? {
+        var attempted = Set<[Int]>()
+        for preset in SystemStickerPreset.adaptive where preset.dimension <= maximumDimension {
+            // A 6 FPS document clamps every rung below it onto the same grid; rendering that grid
+            // once is enough to know it does not fit.
+            let fps = min(document.fps, preset.fps)
+            guard fps > 0, attempted.insert([preset.dimension, fps]).inserted else { continue }
+            if let data = indexedAnimation(
+                document: document,
+                assets: assets,
+                survey: survey,
+                dimension: preset.dimension,
+                fps: fps
+            ) {
+                return (data, preset.dimension, fps)
             }
         }
-        guard let smallestByteCount else { throw StickerExportError.renderFailed }
-        throw StickerExportError.systemStickerTooLarge(smallestByteCount: smallestByteCount)
+        return nil
     }
+
+    private func indexedAnimation(
+        document: AnimatedDocument,
+        assets: [String: UIImage],
+        survey: ColorSurvey,
+        dimension: Int,
+        fps: Int
+    ) -> Data? {
+        let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: fps)
+        let delays = StickerExportMetadataPolicy.apngFrameDelays(
+            frameCount: frameCount,
+            fps: fps,
+            holdSeconds: StickerExportMetadataPolicy.holdSeconds(for: document.loop)
+        )
+        guard delays.count == frameCount else { return nil }
+        let streams = SystemStickerPreset.paletteLadder.map { paletteCount in
+            IndexedPNGEncoder.AnimationStream(
+                palette: survey.census.palette(limit: paletteCount),
+                dimension: dimension,
+                frameCount: frameCount,
+                loopCount: document.loop == .once ? 1 : 0,
+                byteBudget: StickerExportMetadataPolicy.systemStickerByteCeiling - 1
+            )
+        }
+        for index in 0..<frameCount {
+            guard let frame = renderFrame(
+                document: document,
+                time: Double(index) / Double(fps),
+                dimension: dimension,
+                assets: assets
+            ) else { return nil }
+            for stream in streams where !stream.isAbandoned {
+                stream.append(frame: frame, delaySeconds: delays[index])
+            }
+            guard streams.contains(where: { !$0.isAbandoned }) else { return nil }
+        }
+        // Ordered richest palette first, so the first one still standing is the best that fits.
+        return streams.lazy.compactMap { $0.finish() }.first
+    }
+
+    /// A single-frame rendition, and the one part of the ladder that cannot run out of room.
+    ///
+    /// 300 px at sixteen palette entries is four bits a pixel — 45 KB before it is even compressed —
+    /// so the last rung is under the ceiling by construction rather than by luck.
+    private func stillSystemRendition(
+        document: AnimatedDocument,
+        assets: [String: UIImage],
+        survey: ColorSurvey,
+        maximumDimension: Int
+    ) throws -> (url: URL, dimension: Int, byteCount: Int) {
+        let ceiling = StickerExportMetadataPolicy.systemStickerByteCeiling
+        for dimension in StickerExportMetadataPolicy.staticSystemDimensions where dimension <= maximumDimension {
+            guard let rendered = renderFrame(
+                document: document,
+                time: survey.posterTime,
+                dimension: dimension,
+                assets: assets
+            ) else { continue }
+            // Full colour first: a single frame usually fits without being quantized at all, and a
+            // static sticker deserves its gradients.
+            if let data = UIImage(cgImage: rendered).pngData(), data.count < ceiling {
+                return (try write(data, extension: "png"), dimension, data.count)
+            }
+            for paletteCount in [256, 64, 16, 4, 2] {
+                guard let data = IndexedPNGEncoder.encodeStill(
+                    rendered,
+                    palette: survey.census.palette(limit: paletteCount),
+                    dimension: dimension
+                ), data.count < ceiling else { continue }
+                return (try write(data, extension: "png"), dimension, data.count)
+            }
+        }
+        throw StickerExportError.renderFailed
+    }
+
+    /// The colour census the palettes are drawn from, plus the frame a still should show.
+    ///
+    /// Both come from the same handful of sampled frames because both need the whole cycle and
+    /// neither needs it at full size: a palette has to exist before the first frame can be encoded,
+    /// so surveying every frame would mean rendering the animation twice over. Sampling at 300 px
+    /// costs a fraction of a rung and the colours it finds are the same ones.
+    private struct ColorSurvey {
+        var census: IndexedPNGEncoder.ColorCensus
+        var posterTime: Double
+    }
+
+    private func colorSurvey(document: AnimatedDocument, assets: [String: UIImage]) -> ColorSurvey {
+        var census = IndexedPNGEncoder.ColorCensus(lattice: .init(colorLevels: 32, alphaLevels: 8))
+        var posterTime = 0.0
+        guard document.kind == .animated else {
+            if let frame = renderFrame(document: document, time: 0, dimension: Self.surveyDimension, assets: assets) {
+                census.add(frame)
+            }
+            return .init(census: census, posterTime: 0)
+        }
+        let cycle = document.renderedCycleDuration
+        var bestCoverage = -1
+        for sample in 0..<Self.surveySampleCount {
+            let time = cycle * Double(sample) / Double(Self.surveySampleCount)
+            guard let frame = renderFrame(
+                document: document,
+                time: time,
+                dimension: Self.surveyDimension,
+                assets: assets
+            ) else { continue }
+            census.add(frame)
+            // The still fallback shows the sticker's settled pose rather than frame zero, which for
+            // anything that fades or slides in is an empty square.
+            let coverage = StickerPosterFrame.opaqueCoverage(of: frame)
+            if coverage > bestCoverage {
+                bestCoverage = coverage
+                posterTime = time
+            }
+        }
+        return .init(census: census, posterTime: posterTime)
+    }
+
+    /// Enough of the cycle to find its colours; more samples stop changing the palette.
+    private static let surveySampleCount = 12
+    private static let surveyDimension = 300
 
     func renderFrame(document: AnimatedDocument, time: Double, dimension: Int, assets: [String: UIImage]) -> CGImage? {
         let content = AnimatedIconFrame(
@@ -346,8 +525,7 @@ final class StickerExporter {
         assets: [String: UIImage],
         format: StickerExportFormat,
         dimension: Int,
-        fps: Int,
-        colorLevels: Int?
+        fps: Int
     ) throws -> Data {
         guard format == .gif || format == .apng, fps > 0 else { throw StickerExportError.invalidDocument }
         let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: fps)
@@ -372,10 +550,9 @@ final class StickerExporter {
 
         for index in 0..<frameCount {
             let sourceTime = Double(index) / Double(fps)
-            guard var image = renderFrame(document: document, time: sourceTime, dimension: dimension, assets: assets) else {
+            guard let image = renderFrame(document: document, time: sourceTime, dimension: dimension, assets: assets) else {
                 throw StickerExportError.renderFailed
             }
-            if let colorLevels { image = posterized(image, levels: colorLevels) ?? image }
             // APNG delays are uniform, so the hold is simply the last frame lingering; the GIF
             // delays already carry it from `gifFrameDelays`.
             let isLast = index == frameCount - 1
@@ -415,12 +592,6 @@ final class StickerExporter {
         ) == noErr, let sample
         else { throw StickerExportError.videoWriterFailed("The final frame could not be timed") }
         return sample
-    }
-
-    private func posterized(_ image: CGImage, levels: Int) -> CGImage? {
-        let input = CIImage(cgImage: image)
-        let output = input.applyingFilter("CIColorPosterize", parameters: ["inputLevels": max(2, levels)])
-        return ciContext.createCGImage(output, from: input.extent)
     }
 
     private func drawOpaqueVideoFrame(
@@ -463,6 +634,12 @@ final class StickerExporter {
             }
         }
         context.draw(sticker, in: rect)
+    }
+
+    private func write(_ data: Data, extension fileExtension: String) throws -> URL {
+        let url = try outputURL(extension: fileExtension)
+        try data.write(to: url, options: .atomic)
+        return url
     }
 
     private func outputURL(extension fileExtension: String) throws -> URL {

@@ -37,7 +37,11 @@ nonisolated enum StickerPosterFrame {
         return UIImage(cgImage: poster)
     }
 
-    private static func opaqueCoverage(of image: CGImage) -> Int {
+    /// Summed alpha over a downsample of the frame — a ranking, not a measurement.
+    ///
+    /// `StickerExporter` scores the frames it renders with the same function, so the still it falls
+    /// back to and the still the library shows are chosen the same way.
+    static func opaqueCoverage(of image: CGImage) -> Int {
         var pixels = [UInt8](repeating: 0, count: sampleSide * sampleSide * 4)
         return pixels.withUnsafeMutableBytes { buffer -> Int in
             // Copy rather than blend, and start from a zeroed buffer: source-over onto an opaque

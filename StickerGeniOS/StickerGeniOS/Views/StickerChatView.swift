@@ -11,12 +11,13 @@ struct StickerChatView: View {
     @State private var text = ""
     @State private var referenceItems: [PhotosPickerItem] = []
     @State private var references: [PendingMediaAttachment] = []
+    @FocusState private var composerFocused: Bool
+    /// Identity of the composer's text field. Bumped whenever the draft is written from code, which
+    /// rebuilds the field — see `takeComposerDraft`.
+    @State private var composerFieldGeneration = 0
     @State private var privacyAccepted = false
     @State private var showingPrivacy = false
     @State private var localError: String?
-    /// Non-failure guidance shown under the composer. Distinct from `localError` so an ordinary
-    /// next step is never dressed up as something going wrong.
-    @State private var localHint: String?
     @State private var assetStore = StickerAssetStore()
     @State private var exportModel = StickerExportModel()
     @State private var showingVersions = false
@@ -177,8 +178,10 @@ struct StickerChatView: View {
                 CandidateReadySheet(
                     revision: candidate,
                     assets: assetStore.images,
+                    // `isBusy` covers a decision started from the toolbar menu; the sheet spins its
+                    // own buttons for the ones started inside it.
                     isBusy: isDeciding,
-                    onAccept: { Task { await acceptCandidate(candidate) } },
+                    onAccept: { await acceptCandidate(candidate) },
                     // Comparison is a second sheet: let this one finish leaving before it
                     // arrives, or the presentation lands on a view that is on its way out.
                     onCompare: {
@@ -187,7 +190,7 @@ struct StickerChatView: View {
                             showingComparison = true
                         }
                     },
-                    onReject: { Task { await rejectCandidate(candidate) } }
+                    onReject: { await rejectCandidate(candidate) }
                 )
             }
         }
@@ -507,6 +510,8 @@ struct StickerChatView: View {
                 TextField("Message Sticker Factory", text: $text, axis: .vertical)
                     .lineLimit(1...5)
                     .textFieldStyle(.plain)
+                    .focused($composerFocused)
+                    .id(composerFieldGeneration)
                     .accessibilityIdentifier("chat-composer")
 
                 Button {
@@ -540,11 +545,6 @@ struct StickerChatView: View {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else if let localHint {
-                Text(localHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -595,7 +595,26 @@ struct StickerChatView: View {
         text = ""
         referenceItems = []
         references = []
+        rebuildComposerField()
         return draft
+    }
+
+    /// Replaces the text field with a fresh one carrying the current `text`.
+    ///
+    /// A `.vertical` axis text field keeps drawing what the user typed when its binding is written
+    /// from code while it holds the keyboard — the field owns the editing session, and it does not
+    /// re-read the binding on the way through. So emptying `text` is not enough to empty the
+    /// composer: the field it is showing has to be a new one. Focus is handed back afterwards,
+    /// because the field taking the keyboard with it is the whole reason this is not free.
+    private func rebuildComposerField() {
+        guard composerFocused else {
+            composerFieldGeneration &+= 1
+            return
+        }
+        composerFieldGeneration &+= 1
+        // The replacement does not exist until this update has been applied, so it can only be
+        // focused on the next one — soon enough that the keyboard never leaves.
+        Task { @MainActor in composerFocused = true }
     }
 
     private func send(_ draft: ComposerDraft) async {
@@ -607,7 +626,6 @@ struct StickerChatView: View {
         let baseRevisionID = detail?.revisions.first(where: { $0.state == .candidate })?.id ?? detail?.activeRevisionId
 
         localError = nil
-        localHint = nil
 
         do {
             try await store.sendMessage(
@@ -636,6 +654,9 @@ struct StickerChatView: View {
                 text = submittedText
                 referenceItems = Array((submittedReferenceItems + referenceItems).prefix(8))
                 references = Array((submittedReferences + references).prefix(8))
+                // Same reason as the send: a field holding the keyboard shows what it was given
+                // last, not what the binding says, so putting the draft back needs a new field.
+                rebuildComposerField()
             }
             localError = error.localizedDescription
             Haptics.failure()
@@ -654,7 +675,10 @@ struct StickerChatView: View {
         }
     }
 
-    private func acceptCandidate(_ revision: StickerRevision) async {
+    /// Returns whether the decision landed, so the sheet knows whether to keep its spinner up or
+    /// step aside for the error message under the composer.
+    @discardableResult
+    private func acceptCandidate(_ revision: StickerRevision) async -> Bool {
         isDeciding = true
         defer { isDeciding = false }
         do {
@@ -662,35 +686,34 @@ struct StickerChatView: View {
             exportModel.invalidateExports()
             Haptics.success()
             localError = nil
-            localHint = detail?.kind == .animated && !revision.containsMotion
-                // Nothing to navigate to any more — say what to do next, right where they type it.
-                ? "Accepted. Describe how it should move to add motion before exporting."
-                : nil
+            return true
         } catch {
             localError = error.localizedDescription
             Haptics.failure()
+            return false
         }
     }
 
-    private func rejectCandidate(_ revision: StickerRevision) async {
+    @discardableResult
+    private func rejectCandidate(_ revision: StickerRevision) async -> Bool {
         isDeciding = true
         defer { isDeciding = false }
-        // The decision is made the moment they tap, so the sheet leaves and the banner goes with
-        // it — not a round trip later, when the reloaded detail happens to drop the candidate.
-        rejectedRevisionIDs.insert(revision.id)
-        showingCandidate = false
         do {
             try await store.transition(stickerID: stickerID, revisionID: revision.id, action: .reject)
+            // The banner and the sheet only leave once the decision has landed; until then the
+            // spinner on the tapped button is what says the tap registered. Hidden from here
+            // rather than a reload later, when the refreshed detail happens to drop the candidate.
+            rejectedRevisionIDs.insert(revision.id)
+            showingCandidate = false
             // Deliberately not a `success`: the decision went through, but throwing work away is
             // not the note to end on.
             Haptics.tap(.medium)
             localError = nil
+            return true
         } catch {
-            // It is still a candidate, so put the banner back rather than stranding a decision the
-            // user can no longer reach.
-            rejectedRevisionIDs.remove(revision.id)
             localError = error.localizedDescription
             Haptics.failure()
+            return false
         }
     }
 

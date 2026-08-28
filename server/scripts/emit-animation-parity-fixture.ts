@@ -76,6 +76,7 @@ const cases: Case[] = [
     specs: [{ type: "slideOut", direction: "left" }],
   },
   { name: "moveTo", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "moveTo", x: 0.2, y: 0.8 }] },
+  { name: "arcTo-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "arcTo", x: 0.8, y: 0.5 }] },
   { name: "scaleTo", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "scaleTo", x: 1.6, y: 0.4 }] },
   { name: "rotateTo", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "rotateTo", degrees: -135 }] },
   { name: "spin-defaults", timing: animated(), anchor: DEFAULT_ANCHOR, specs: [{ type: "spin" }] },
@@ -129,6 +130,55 @@ const cases: Case[] = [
     timing: animated(),
     anchor: offsetAnchor,
     specs: [{ type: "float", amplitude: 0.23, cycles: 6, duration: 3.6, easing: "easeIn" }],
+  },
+  // Arcs. Every easing family gets a case because `arcTo` is the only spec that *evaluates* an
+  // easing curve at compile time rather than just storing its name, so this is the only place a
+  // drifted `easedProgress` — including the springs' `exp`/`cos` — can be caught.
+  {
+    name: "arcTo-leftward",
+    timing: animated(),
+    anchor: offsetAnchor,
+    specs: [{ type: "arcTo", x: 0.9, y: 0.2, arcHeight: 0.45, delay: 0.3, duration: 1.4, easing: "linear" }],
+  },
+  {
+    name: "arcTo-rightward-mirrors",
+    timing: animated(),
+    anchor: { ...DEFAULT_ANCHOR, position: { x: 0.9, y: 0.2 } },
+    specs: [{ type: "arcTo", x: 0.34, y: 0.62, arcHeight: 0.45, delay: 0.3, duration: 1.4, easing: "linear" }],
+  },
+  {
+    name: "arcTo-vertical",
+    timing: animated(),
+    anchor: { ...DEFAULT_ANCHOR, position: { x: 0.5, y: 0.9 } },
+    specs: [{ type: "arcTo", x: 0.5, y: 0.1, arcHeight: -0.3, duration: 2, easing: "easeInOut" }],
+  },
+  {
+    name: "arcTo-in-place",
+    timing: animated(),
+    anchor: offsetAnchor,
+    specs: [{ type: "arcTo", x: 0.34, y: 0.62, arcHeight: 0.2, duration: 1, easing: "easeOut" }],
+  },
+  // The springs exceed 1, so these are what proves the Bézier parameter is clamped on both sides
+  // rather than extrapolated off the canvas.
+  {
+    name: "arcTo-spring-bouncy",
+    timing: animated(),
+    anchor: DEFAULT_ANCHOR,
+    specs: [{ type: "arcTo", x: 0.15, y: 0.85, arcHeight: 0.6, delay: 0.45, duration: 2.2, easing: "springBouncy" }],
+  },
+  {
+    name: "arcTo-spring-soft",
+    timing: animated(),
+    anchor: offsetAnchor,
+    specs: [{ type: "arcTo", x: 1.1, y: -0.2, arcHeight: -0.75, duration: 1.9, easing: "springSoft" }],
+  },
+  // An arc whose apex leaves the position bounds. The clamp lands on each sampled keyframe, not on
+  // the control point, so the arc flattens against the ceiling instead of being scaled down.
+  {
+    name: "arcTo-clamped-apex",
+    timing: animated(),
+    anchor: { ...DEFAULT_ANCHOR, position: { x: 0.1, y: -0.5 } },
+    specs: [{ type: "arcTo", x: 1.9, y: -0.5, arcHeight: 1, duration: 1.5, easing: "easeIn" }],
   },
   {
     name: "blurIn-explicit",

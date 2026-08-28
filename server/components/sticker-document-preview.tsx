@@ -1,10 +1,20 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
+import { easedProgress } from "@/lib/animation/easing";
+import type { StickerEasingV1 } from "@/lib/contracts/animation";
 import type { PaintV2, StickerDocument, StickerLayerV1 } from "@/lib/contracts/sticker";
 
-type Timed = { timeSeconds: number };
+type Timed = { timeSeconds: number; easing: StickerEasingV1 };
 
+/**
+ * The two keyframes straddling `time`, and the eased blend between them.
+ *
+ * Easing comes off the *upper* keyframe, which is the convention the compiler emits against and
+ * `AnimationInterpolator` reads. This preview used to blend linearly, so it disagreed with the
+ * native renderer and the exporter on every eased segment — most visibly on springs, which overshoot
+ * and settle here and simply ramped there.
+ */
 function framePair<T extends Timed>(frames: T[], time: number): [T | undefined, T | undefined, number] {
   if (frames.length === 0) return [undefined, undefined, 0];
   const ordered = [...frames].sort((a, b) => a.timeSeconds - b.timeSeconds);
@@ -13,7 +23,8 @@ function framePair<T extends Timed>(frames: T[], time: number): [T | undefined, 
   if (nextIndex < 0) return [ordered.at(-1), ordered.at(-1), 0];
   const previous = ordered[nextIndex - 1];
   const next = ordered[nextIndex];
-  return [previous, next, (time - previous.timeSeconds) / Math.max(next.timeSeconds - previous.timeSeconds, 0.001)];
+  const progress = (time - previous.timeSeconds) / Math.max(next.timeSeconds - previous.timeSeconds, 0.001);
+  return [previous, next, easedProgress(progress, next.easing)];
 }
 
 function interpolate(a: number | undefined, b: number | undefined, progress: number, fallback: number): number {

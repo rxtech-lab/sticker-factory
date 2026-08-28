@@ -196,7 +196,13 @@ final class StickerStore {
         }
     }
 
-    func loadMessages(stickerID: String) async {
+    /// Refetches the transcript, and says whether it actually arrived.
+    ///
+    /// The answer matters to `finishObservation`: a refetch that never landed says nothing about
+    /// whether the turn is over, and treating it as if it did is what ends a turn the server is
+    /// still running.
+    @discardableResult
+    func loadMessages(stickerID: String) async -> Bool {
         loadingMessageStickerIDs.insert(stickerID)
         defer { loadingMessageStickerIDs.remove(stickerID) }
         do {
@@ -205,10 +211,12 @@ final class StickerStore {
             nextMessageBeforeSequence[stickerID] = page.nextBeforeSequence
             resumeLatestUnfinishedTurn(stickerID: stickerID, messages: page.items)
             errorMessage = nil
+            return true
         }
         catch {
-            guard !Self.isCancellation(error) else { return }
+            guard !Self.isCancellation(error) else { return false }
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -541,15 +549,32 @@ final class StickerStore {
         observationGenerations[stickerID] = generation
         observations[stickerID] = Task {
             var streamError: Error?
+            // Whether the server said the turn was over, as opposed to the connection simply
+            // ending. Only these two types are the server's word for it — `candidate` is posted
+            // mid-turn by a plan build, which keeps working after it.
+            var sawTurnEnd = false
             do {
                 for try await event in api.generationEvents(jobID: jobID, after: jobs[stickerID]?.lastEventID) {
                     guard jobs[stickerID]?.jobID == jobID, observationGenerations[stickerID] == generation else { break }
+                    // A stream that is delivering is a working one, so it clears the re-attach
+                    // budget. That budget exists to stop a *failing* endpoint being hammered; left
+                    // to accumulate across a whole turn it becomes a lifetime cap of three
+                    // reconnects, which a plan build — minutes long, and reconnected every time the
+                    // app is backgrounded — exhausts long before the server is finished.
+                    reattachAttempts[stickerID] = 0
+                    sawTurnEnd = sawTurnEnd || event.type == .completed || event.type == .failed
                     await apply(event: event, stickerID: stickerID, jobID: jobID)
                 }
             } catch {
                 if !Self.isCancellation(error) { streamError = error }
             }
-            await finishObservation(stickerID: stickerID, jobID: jobID, generation: generation, error: streamError)
+            await finishObservation(
+                stickerID: stickerID,
+                jobID: jobID,
+                generation: generation,
+                error: streamError,
+                sawTurnEnd: sawTurnEnd
+            )
         }
     }
 
@@ -593,7 +618,13 @@ final class StickerStore {
     /// The stream is a latency optimisation, never the source of truth — so this always
     /// reconciles against the server. Without it, a stream that dies before the terminal event
     /// leaves the chat showing nothing at all until the user navigates away and back.
-    private func finishObservation(stickerID: String, jobID: String, generation: Int, error: Error?) async {
+    private func finishObservation(
+        stickerID: String,
+        jobID: String,
+        generation: Int,
+        error: Error?,
+        sawTurnEnd: Bool
+    ) async {
         // A superseded stream finishing says nothing about the one that replaced it — even when
         // both are on the same job id, as a re-attach mid-turn is.
         guard observationGenerations[stickerID] == generation else { return }
@@ -602,10 +633,26 @@ final class StickerStore {
         streamingDocuments[stickerID] = nil
 
         await loadDetail(stickerID: stickerID)
-        await loadMessages(stickerID: stickerID)
+        let reconciled = await loadMessages(stickerID: stickerID)
 
         // `loadMessages` may have re-attached a genuinely unfinished turn.
         guard jobs[stickerID]?.jobID == jobID, observations[stickerID] == nil else { return }
+
+        // A stream ending is not a turn ending. Absent a terminal event, the server's word for it is
+        // the source message's status — it leaves `streaming` when the turn ends, completion,
+        // failure and cancellation alike. While that still says the turn is live, or while the
+        // refetch that would have said otherwise never landed, the turn stays open and the
+        // reconciliation poller keeps it fresh and re-attaches. Ending it here instead is what
+        // strands a long plan build half-built: the transcript freezes on whichever tool row was
+        // running, the composer drops back to idle, and nothing on screen can move again — the
+        // poller only runs for a computing sticker, so it stops too.
+        if !sawTurnEnd, !reconciled || isTurnLive(stickerID: stickerID, jobID: jobID) {
+            // Silent for a stream the system merely cancelled — backgrounding does that on every
+            // long turn, and the poller has it back within seconds.
+            if let error { jobs[stickerID]?.streamErrorMessage = error.localizedDescription }
+            return
+        }
+
         computingStickerIDs.remove(stickerID)
         jobs[stickerID]?.isTerminal = true
 
@@ -613,6 +660,17 @@ final class StickerStore {
             jobs[stickerID]?.streamErrorMessage = error.localizedDescription
             return
         }
+    }
+
+    /// Whether the server still says this job's turn is running.
+    ///
+    /// The source message's `streaming` status is the server's own word for it, and it is the only
+    /// thing that stays true for the whole turn: a plan build posts tool rows and a candidate long
+    /// before it is finished, so neither their presence nor the stream's liveness can stand in.
+    private func isTurnLive(stickerID: String, jobID: String) -> Bool {
+        messages[stickerID]?.contains {
+            $0.role == .user && $0.jobId == jobID && $0.status == .streaming
+        } ?? false
     }
 
     /// Whether the server has produced the assistant half of a turn. This, not the stream's
@@ -699,6 +757,10 @@ final class StickerStore {
 
     /// Re-attaches to an unfinished turn, bounded so a server that fails the stream immediately
     /// cannot drive `finishObservation` → `loadMessages` → resume into a reconnect storm.
+    ///
+    /// The bound counts *consecutive* dead streams — a stream that delivers anything clears it — so
+    /// it stays a guard against an endpoint that is refusing rather than a lifetime allowance a long
+    /// turn spends simply by running long enough.
     private func resume(jobID: String, stickerID: String, sourceMessageID: String) {
         if jobs[stickerID]?.jobID == jobID, observations[stickerID] != nil { return }
         let attempts = reattachAttempts[stickerID, default: 0]

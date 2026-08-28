@@ -294,6 +294,51 @@ export function inspectMp4(bytes: Uint8Array): Mp4Inspection {
   };
 }
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/**
+ * Frame timing for an animated PNG, read straight out of its chunks.
+ *
+ * libvips has no APNG decoder — sharp reports an eight-frame sticker as a single-page PNG with no
+ * delays — so an APNG rendition would otherwise arrive looking static and be rejected as one. The
+ * chunks carry everything the validator needs without decoding a pixel: `acTL` counts the frames and
+ * each `fcTL` carries that frame's delay as a rational.
+ *
+ * Returns `null` for a plain PNG, which is not an error: it means the caller keeps sharp's answer.
+ */
+export function readApngTiming(bytes: Uint8Array): { frameCount: number; durationSeconds: number } | null {
+  if (bytes.byteLength < 8 || PNG_SIGNATURE.some((byte, index) => bytes[index] !== byte)) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const decoder = new TextDecoder("ascii");
+  let cursor = 8;
+  let declaredFrames: number | null = null;
+  let controlCount = 0;
+  let durationSeconds = 0;
+  while (cursor + 8 <= bytes.byteLength) {
+    const length = view.getUint32(cursor);
+    const type = decoder.decode(bytes.subarray(cursor + 4, cursor + 8));
+    const dataStart = cursor + 8;
+    if (length > bytes.byteLength || dataStart + length + 4 > bytes.byteLength) break;
+    if (type === "acTL" && length >= 8) {
+      declaredFrames = view.getUint32(dataStart);
+    } else if (type === "fcTL" && length >= 26) {
+      controlCount += 1;
+      const delayNumerator = view.getUint16(dataStart + 20);
+      // A zero denominator means hundredths of a second; the spec spells this out because 0/0 is
+      // how encoders ask for "as fast as possible".
+      const delayDenominator = view.getUint16(dataStart + 22) || 100;
+      durationSeconds += delayNumerator / delayDenominator;
+    } else if (type === "IEND") {
+      break;
+    }
+    cursor = dataStart + length + 4;
+  }
+  if (declaredFrames === null || controlCount === 0) return null;
+  // The frame count is taken from the control chunks actually present rather than from `acTL`, so a
+  // file that promises more frames than it carries cannot inflate its own timing.
+  return { frameCount: Math.min(declaredFrames, controlCount), durationSeconds };
+}
+
 function formatToMime(format?: string): ImageInspection["mimeType"] {
   if (format === "png") return "image/png";
   if (format === "jpeg") return "image/jpeg";
@@ -310,7 +355,8 @@ export async function inspectImage(bytes: Uint8Array): Promise<ImageInspection> 
   } catch {
     throw new ApiError(422, "INVALID_IMAGE", "The image could not be decoded");
   }
-  const frameCount = metadata.pages ?? 1;
+  const apng = metadata.format === "png" ? readApngTiming(bytes) : null;
+  const frameCount = apng?.frameCount ?? metadata.pages ?? 1;
   const frameHeight = metadata.pageHeight ?? metadata.height;
   if (!metadata.width || !frameHeight) throw new ApiError(422, "INVALID_IMAGE", "The image has no dimensions");
   if (frameCount < 1 || frameCount > 240) throw new ApiError(422, "TOO_MANY_IMAGE_FRAMES", "Animated images may contain at most 240 frames");
@@ -323,9 +369,11 @@ export async function inspectImage(bytes: Uint8Array): Promise<ImageInspection> 
     throw new ApiError(422, "INVALID_IMAGE", "The image pixels could not be decoded safely");
   }
   const alpha = stats.channels.length > 3 ? stats.channels[3] : undefined;
-  const durationSeconds = frameCount > 1 && metadata.delay?.length
-    ? metadata.delay.reduce((total, delay) => total + delay, 0) / 1000
-    : 0;
+  // sharp only pages formats libvips can animate, so an APNG's timing comes from its own chunks.
+  const durationSeconds = apng?.durationSeconds
+    ?? (frameCount > 1 && metadata.delay?.length
+      ? metadata.delay.reduce((total, delay) => total + delay, 0) / 1000
+      : 0);
   return {
     width: metadata.width,
     height: frameHeight,

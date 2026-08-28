@@ -16,6 +16,28 @@ describe("media and animation hardening", () => {
     expect(inspected).toMatchObject({ width: 64, height: 64, frameCount: 2, durationSeconds: 0.07 });
   });
 
+  it("reads animated PNG timing from its own chunks", async () => {
+    // libvips has no APNG decoder, so sharp reports an animated PNG as a single still page. The
+    // sticker exporter writes APNG because it is the only sticker format that carries real alpha,
+    // which makes reading `acTL`/`fcTL` directly the difference between an animated rendition being
+    // accepted and being rejected as static.
+    const still = await sharp({
+      create: { width: 300, height: 300, channels: 4, background: { r: 20, g: 40, b: 60, alpha: 0.5 } },
+    }).png().toBuffer();
+    expect((await inspectImage(still)).frameCount).toBe(1);
+
+    const animated = spliceApngControlChunks(still, [80, 80, 120]);
+    const inspected = await inspectImage(animated);
+    expect(inspected).toMatchObject({ width: 300, height: 300, mimeType: "image/png", frameCount: 3 });
+    expect(inspected.durationSeconds).toBeCloseTo(0.28, 5);
+    expect(inspected.fps).toBeCloseTo(3 / 0.28, 5);
+
+    // A file that claims more frames in `acTL` than it carries control chunks for is counted by
+    // what it carries, so timing cannot be inflated by a lying header.
+    const overclaimed = spliceApngControlChunks(still, [80, 80, 120], 240);
+    expect((await inspectImage(overclaimed)).frameCount).toBe(3);
+  });
+
   it("permits safe non-image layer planning but blocks invented image assets", () => {
     const shape = {
       op: "addLayer" as const,
@@ -100,9 +122,12 @@ describe("media and animation hardening", () => {
     expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 5, durationSeconds: 1.11, fps: 5 / 1.11 })).not.toThrow();
     // One frame of encoder slack on top of that is still accepted.
     expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 5, durationSeconds: 1.21, fps: 5 / 1.21 })).not.toThrow();
-    // The grid is recovered from the cycle, not the held duration, so the floor still bites: three
-    // frames over 0.51 s is 5.9 fps, under the ladder's 8 fps floor.
-    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 3, durationSeconds: 1.11, fps: 3 / 1.11 }))
+    // Three frames over 0.51 s is 5.9 fps: below the old 8 fps floor and above the 4 fps one the
+    // ladder now reaches, because a choppy sticker beats a still one.
+    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 3, durationSeconds: 1.11, fps: 3 / 1.11 })).not.toThrow();
+    // The grid is recovered from the cycle, not the held duration, so the floor still bites: a
+    // single frame over 0.51 s is 2 fps, under anything the ladder can produce.
+    expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 1, durationSeconds: 1.11, fps: 1 / 1.11 }))
       .toThrow(/FPS/);
     // A rendition encoded without the hold is the regression this guards: right frames, short file.
     expect(() => validateAnimatedRenditionTiming(document, { kind: "system", frameCount: 5, durationSeconds: 0.51, fps: 5 / 0.51 }))
@@ -184,3 +209,48 @@ describe("media and animation hardening", () => {
       .toEqual({ ...animate, targetLayerId: undefined });
   });
 });
+
+/**
+ * Turns a still PNG into an APNG by splicing the animation control chunks in front of its `IDAT`.
+ *
+ * The frames are a fiction — every control chunk points at the same default image — but the chunk
+ * layout is the real one, which is all the inspector reads. Building it here rather than checking in
+ * a binary keeps the fixture legible and keeps libpng happy: `acTL` and `fcTL` are ancillary, so a
+ * decoder that does not know them skips them and still sees a valid PNG.
+ */
+function spliceApngControlChunks(png: Buffer, delaysMilliseconds: number[], declaredFrames = delaysMilliseconds.length): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, index) => {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    return value >>> 0;
+  });
+  const chunk = (type: string, payload: Buffer) => {
+    const typed = Buffer.concat([Buffer.from(type, "ascii"), payload]);
+    let crc = 0xffffffff;
+    for (const byte of typed) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(payload.byteLength);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
+    return Buffer.concat([length, typed, checksum]);
+  };
+
+  const control = Buffer.alloc(8);
+  control.writeUInt32BE(declaredFrames, 0);
+  control.writeUInt32BE(0, 4);
+  const chunks = [chunk("acTL", control)];
+  delaysMilliseconds.forEach((delay, index) => {
+    const payload = Buffer.alloc(26);
+    payload.writeUInt32BE(index, 0);
+    payload.writeUInt32BE(300, 4);
+    payload.writeUInt32BE(300, 8);
+    payload.writeUInt32BE(0, 12);
+    payload.writeUInt32BE(0, 16);
+    payload.writeUInt16BE(delay, 20);
+    payload.writeUInt16BE(1000, 22);
+    chunks.push(chunk("fcTL", payload));
+  });
+
+  const idat = png.indexOf(Buffer.from("IDAT", "ascii")) - 4;
+  return Buffer.concat([png.subarray(0, idat), ...chunks, png.subarray(idat)]);
+}
