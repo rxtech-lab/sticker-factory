@@ -33,7 +33,7 @@ struct StickerVersionsSheet: View {
                                     HStack {
                                         Image(systemName: icon(for: revision))
                                         VStack(alignment: .leading) {
-                                            Text(revision.state.rawValue.capitalized)
+                                            Text(revision.state.label)
                                             Text(revision.createdAt, format: .relative(presentation: .named))
                                                 .font(.caption).foregroundStyle(.secondary)
                                         }

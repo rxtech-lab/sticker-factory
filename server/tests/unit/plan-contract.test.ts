@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  assertAnimatedPlanUsesReferenceBackedArtwork,
   compilePlanAnimations,
   planGenerationCount,
   planLayerAnchor,
@@ -103,6 +104,22 @@ describe("PlanV1Schema", () => {
       ],
     }));
     expect(planGenerationCount(parsed)).toBe(1);
+  });
+
+  it("requires animated visual elements to be image-generated from the approved reference", () => {
+    const animated = PlanV1Schema.parse(plan({
+      layers: [
+        { ...plan().layers[0], source: { kind: "text", text: "OBJECTION!", color: "#FFF8E7" } },
+        { ...plan().layers[1], source: { kind: "shape", shape: "burst", fill: "#E31E2B" } },
+      ],
+    }));
+    expect(() => assertAnimatedPlanUsesReferenceBackedArtwork(animated)).toThrow(/part_0 \(text\).*part_1 \(shape\)/);
+
+    const staticPlan = PlanV1Schema.parse({ ...animated, kind: "static", timing: undefined, layers: animated.layers.map((layer) => ({
+      ...layer,
+      animations: [],
+    })) });
+    expect(() => assertAnimatedPlanUsesReferenceBackedArtwork(staticPlan)).not.toThrow();
   });
 });
 

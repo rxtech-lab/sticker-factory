@@ -19,11 +19,11 @@ nonisolated enum PackState: String, Codable, Hashable, Sendable {
 
     var label: String {
         switch self {
-        case .draft: "Draft"
-        case .published: "Published"
-        case .unlisted: "Unlisted"
-        case .removed: "Removed"
-        case .unknown: "Unknown"
+        case .draft: String(localized: "Draft")
+        case .published: String(localized: "Published")
+        case .unlisted: String(localized: "Unlisted")
+        case .removed: String(localized: "Removed")
+        case .unknown: String(localized: "Unknown")
         }
     }
 }
@@ -36,7 +36,7 @@ nonisolated struct PackCreator: Codable, Hashable, Sendable {
     var packCount: Int
     var isSelf: Bool
 
-    var byline: String { isSelf ? "you" : displayName }
+    var byline: String { isSelf ? String(localized: "you") : displayName }
 }
 
 /// Placeholder only — every pack is free and nothing charges today.
@@ -71,9 +71,9 @@ nonisolated struct StickerPack: Codable, Identifiable, Hashable, Sendable {
 nonisolated enum PackInstallCount {
     static func label(_ count: Int) -> String {
         switch count {
-        case 0: "No installs yet"
-        case 1: "1 install"
-        default: "\(count.formatted(.number)) installs"
+        case 0: String(localized: "No installs yet")
+        case 1: String(localized: "1 install")
+        default: String(localized: "\(count.formatted(.number)) installs")
         }
     }
 }

@@ -19,7 +19,7 @@ struct ContentView: View {
                     manager: environment.authManager,
                     appearance: .init(
                         icon: .systemImage("face.smiling.inverse"),
-                        title: "Sticker Factory",
+                        title: LocalizedStringKey(AppConfiguration.defaultAppName),
                         subtitle: "Make expressive stickers from words and photos.",
                         signInButtonTitle: "Sign in with RxLab",
                         accentColor: AppColors.accent,
@@ -39,7 +39,9 @@ struct ContentView: View {
 
 struct StickerFactoryTabView: View {
     @Bindable var environment: AppEnvironment
+    @AppStorage(StickerOnboarding.welcomeStorageKey) private var hasSeenWelcome = false
     @State private var selection = 0
+    @State private var showingWelcome = false
     /// Driven only from outside the UI — a tapped "sticker ready" banner. Tapping around the
     /// Library still pushes through its own `NavigationLink`s, which this path also records.
     @State private var libraryPath = NavigationPath()
@@ -58,7 +60,9 @@ struct StickerFactoryTabView: View {
                 .tabItem { Label("Marketplace", systemImage: "bag") }
                 .tag(1)
 
-            NavigationStack { AccountView(environment: environment) }
+            NavigationStack {
+                AccountView(environment: environment, onShowWelcome: { showingWelcome = true })
+            }
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag(2)
         }
@@ -73,6 +77,24 @@ struct StickerFactoryTabView: View {
             var path = NavigationPath()
             path.append(stickerID)
             libraryPath = path
+        }
+        .task {
+            StickerOnboardingTips.setWelcomeCompleted(hasSeenWelcome)
+            let arguments = ProcessInfo.processInfo.arguments
+            if StickerOnboarding.shouldPresentWelcome(
+                hasSeenWelcome: hasSeenWelcome,
+                isUITesting: environment.isUITesting,
+                forceWelcome: arguments.contains("--ui-show-welcome")
+            ) {
+                showingWelcome = true
+            }
+        }
+        .sheet(isPresented: $showingWelcome) {
+            StickerWelcomeSheet {
+                hasSeenWelcome = true
+                StickerOnboardingTips.setWelcomeCompleted(true)
+                showingWelcome = false
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 /// Every action that used to live on the sticker workspace, grouped into divider-separated
 /// sections. Candidate decisions also appear inline in the transcript; this is the complete,
@@ -12,8 +13,10 @@ struct StickerChatActionsMenu: View {
     let onRejectCandidate: () -> Void
     let onCompare: () -> Void
     let onExport: () -> Void
+    let onRename: () -> Void
     let onViewVersions: () -> Void
     let onDelete: () -> Void
+    private let versionsTip = VersionHistoryTip()
 
     var body: some View {
         Menu {
@@ -32,13 +35,21 @@ struct StickerChatActionsMenu: View {
                 Button(
                     activeRevision?.canPublishExports == true ? "Export & Publish" : "Export",
                     systemImage: "shippingbox"
-                ) { onExport() }
+                ) {
+                    versionsTip.invalidate(reason: .actionPerformed)
+                    onExport()
+                }
                     .disabled(activeRevision == nil)
                     .accessibilityIdentifier("export-sticker")
             }
 
             Section {
-                Button("Version history", systemImage: "clock.arrow.circlepath") { onViewVersions() }
+                Button("Rename sticker", systemImage: "pencil") { onRename() }
+                    .accessibilityIdentifier("rename-sticker")
+                Button("Version history", systemImage: "clock.arrow.circlepath") {
+                    versionsTip.invalidate(reason: .actionPerformed)
+                    onViewVersions()
+                }
                     .accessibilityIdentifier("view-versions")
             }
 
@@ -49,6 +60,10 @@ struct StickerChatActionsMenu: View {
         } label: {
             Image(systemName: "ellipsis.circle")
         }
+        .popoverTip(
+            candidate == nil && activeRevision != nil ? versionsTip : nil,
+            arrowEdge: .top
+        )
         .accessibilityLabel("Sticker actions")
         .accessibilityIdentifier("sticker-actions-menu")
     }

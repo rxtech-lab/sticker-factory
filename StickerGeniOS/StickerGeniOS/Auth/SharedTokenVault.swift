@@ -27,9 +27,9 @@ nonisolated enum TokenVaultError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .keychain(let status): "The secure token store failed (\(status))."
-        case .invalidPayload: "The secure token bundle is invalid."
-        case .missingSharedAccessGroup: "The shared Keychain access group is not configured."
+        case .keychain(let status): String(localized: "The secure token store failed (\(status)).")
+        case .invalidPayload: String(localized: "The secure token bundle is invalid.")
+        case .missingSharedAccessGroup: String(localized: "The shared Keychain access group is not configured.")
         }
     }
 }

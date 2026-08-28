@@ -418,12 +418,15 @@ export interface AiProvider {
     session: PlanDraftingSession,
   ): Promise<PlanTurnResult | undefined>;
   /**
-   * Renders a storyboard of a proposed animation for the user to approve.
+   * Renders the finished static appearance of a proposed animation for the user to approve.
    *
-   * Deliberately not `generateStickerImage`: that path is instructed never to draw a grid or a
-   * contact sheet, which is exactly what a concept board is.
+   * Deliberately separate from `generateStickerImage`: this image shows the complete composition,
+   * while the ordinary path produces one transparent, independently animatable part.
    */
-  generateConceptImage(prompt: string): Promise<AiImageOutput>;
+  generateConceptImage(input: {
+    prompt: string;
+    references: Array<{ bytes: Uint8Array; mimeType: string }>;
+  }): Promise<AiImageOutput>;
   /** Reviews a built multi-layer sticker and corrects composition without regenerating artwork. */
   refineStickerLayout(
     input: AiLayoutContext,
@@ -1658,7 +1661,8 @@ class GatewayAiProvider implements AiProvider {
       finalize_plan: tool({
         description: [
           "Finish planning and hand the plan to the user to confirm. Call this once you are",
-          "satisfied with the design. Nothing is generated until the user confirms.",
+          "satisfied with the design. For an animated plan, this first renders the static visual",
+          "reference the user will approve; separate animation parts are not generated until then.",
         ].join(" "),
         inputSchema: z.object({ planId: z.string().min(1) }).strict(),
         execute: async ({ planId }) => {
@@ -1679,8 +1683,14 @@ class GatewayAiProvider implements AiProvider {
         "If a tool returns an error, read it and fix the plan with update_plan — the error text says",
         "exactly what was wrong. Do not give up and do not repeat the same invalid plan.",
         "",
-        "Layers. At most 8. Every layer picks its own source, and most good stickers mix drawn",
-        "artwork with app-drawn text and effects. The five options are:",
+        "Static visual reference. For every animated plan, set conceptPrompt to a complete prompt",
+        "for one polished still image of the finished sticker in its resting pose. It must include",
+        "all planned layers in their intended layout, use one coherent style, fill the square frame,",
+        "and show no animation frames, contact sheet, labels, arrows, watermark, or UI. The user",
+        "approves this image before the generated artwork is separated into independent parts, so",
+        "it is the visual source of truth for style, colour, proportions, and composition.",
+        "",
+        "Layers. At most 8. Every layer picks its own source. The five options are:",
         "  generate — artwork drawn from a prompt by an image model onto a transparent background.",
         "    This is the only source that can draw a subject: a character, creature, face, animal,",
         "    object, food, prop, scene element, or any illustration at all. Use one generate layer",
@@ -1693,9 +1703,18 @@ class GatewayAiProvider implements AiProvider {
         "  text — words drawn by the app in a system font.",
         "  shape — one fixed primitive: circle, roundedRectangle, star, heart, or burst.",
         "  particle — a preset field of sparkles, confetti, hearts, bubbles, or snow.",
-        "Prefer text, shape, and particle for lettering, flat accents, and effects: they cost nothing",
-        "and stay crisp at any size. That preference stops at illustration. A shape is a plain filled",
-        "silhouette and a particle preset is a scatter of dots, so neither is ever a stand-in for",
+        "Animated visual fidelity. In an animated plan, every new visible element must use generate,",
+        "including styled lettering, bursts, stars, underlines, badges, and decorative accents. The",
+        "approved static image is later separated into these generated layers, which is how the final",
+        "sticker keeps its exact silhouettes, outlines, bevels, shadows, highlights, and texture.",
+        "Never use text, shape, or particle in an animated plan: those are generic app-rendered",
+        "primitives and will not match the approved image. Keep a word or phrase together in one",
+        "generated layer unless parts of it genuinely need independent motion. Existing image layers",
+        "may still be reused when revising artwork that must remain pixel-identical.",
+        "For static plans, prefer text, shape, and particle for simple lettering, flat accents, and",
+        "effects: they cost nothing and stay crisp at any size. That preference stops at illustration.",
+        "A shape is a plain filled silhouette and a particle preset is a scatter of dots, so neither",
+        "is ever a stand-in for",
         // Left to itself the planner reads "prefer the free sources" as "never generate", and returns
         // plans made entirely of primitives — a design with no artwork in it at all, which is not
         // what a user who asked for a sticker of something wants.
@@ -1819,23 +1838,38 @@ class GatewayAiProvider implements AiProvider {
     return state;
   }
 
-  async generateConceptImage(prompt: string): Promise<AiImageOutput> {
-    // Opaque on purpose. A storyboard is a picture *of* a sticker, not a sticker, so it skips both
-    // the transparency provider options and the normalize/retry path that enforces an alpha channel.
+  async generateConceptImage(input: {
+    prompt: string;
+    references: Array<{ bytes: Uint8Array; mimeType: string }>;
+  }): Promise<AiImageOutput> {
+    if (input.references.length > 0) {
+      return this.generateStickerImage({
+        prompt: [
+          input.prompt,
+          "Render the complete polished static sticker composition shown by this plan. Preserve",
+          "the subjects and likenesses from the supplied references in one coherent resting pose.",
+        ].join(" "),
+        references: input.references,
+        mode: "generate",
+      });
+    }
+    // Opaque on purpose. The reference is a picture *of* the complete sticker, not one of the
+    // transparent parts later extracted from it, so it skips the part-generation alpha gate.
     const result = await generateImage({
       model: gateway.imageModel(
         process.env.AI_IMAGE_MODEL ?? "openai/gpt-image-2",
       ),
       prompt: [
-        prompt,
-        "Draw this as a single flat concept sketch on a plain light background:",
-        "a rough storyboard of how the finished sticker will look. Do not add captions, labels,",
-        "arrows, watermarks, or UI chrome.",
+        input.prompt,
+        "Render one polished static image of the finished sticker on a plain light background.",
+        "Show the complete approved resting composition in one coherent illustration, not a rough",
+        "sketch. Do not draw multiple poses, animation frames, a grid, contact sheet, captions,",
+        "labels, arrows, watermarks, or UI chrome.",
       ].join(" "),
       n: 1,
       size: "1024x1024",
       maxRetries: 1,
-      // Same model as the sticker path, so the same budget: 120s never let a storyboard finish, and
+      // Same model as the sticker path, so the same budget: 120s never let a static reference finish, and
       // a plan silently losing its picture every time is not the "best effort" this was meant to be.
       abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
     });
@@ -2114,8 +2148,11 @@ class MockAiProvider implements AiProvider {
     return { revision: finalized.revision, finalized: true };
   }
 
-  async generateConceptImage(prompt: string): Promise<AiImageOutput> {
-    const label = prompt.replace(/[<&>]/g, "").slice(0, 24) || "Concept";
+  async generateConceptImage(input: {
+    prompt: string;
+    references: Array<{ bytes: Uint8Array; mimeType: string }>;
+  }): Promise<AiImageOutput> {
+    const label = input.prompt.replace(/[<&>]/g, "").slice(0, 24) || "Concept";
     const bytes = await sharp(
       Buffer.from(
         `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1024" fill="#f4f0ff"/><rect x="96" y="96" width="832" height="640" rx="32" fill="none" stroke="#7c3aed" stroke-width="8" stroke-dasharray="24 16"/><text x="512" y="860" text-anchor="middle" font-family="system-ui" font-size="56" fill="#3b2a5a">${label}</text></svg>`,
@@ -2149,6 +2186,9 @@ class MockAiProvider implements AiProvider {
         title: "Planned sticker",
         summary: `Here is a plan with ${characters.length} layers. Confirm to build it.`,
         kind: input.stickerKind,
+        conceptPrompt: animated
+          ? `A polished sticker spelling ${characters.join("").toUpperCase()}, with every character arranged left to right in one coherent bold style.`
+          : undefined,
         timing: { durationSeconds: 2, fps: 30, loop: "loop" },
         layers: characters.map((token, index, all) => ({
           layerId: `part_${index}`,

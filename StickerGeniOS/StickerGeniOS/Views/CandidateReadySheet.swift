@@ -1,5 +1,6 @@
 import AnimatedView
 import SwiftUI
+import TipKit
 import UIKit
 
 /// The candidate decision, presented from the banner that sits above the composer.
@@ -193,9 +194,13 @@ private extension CandidateReadySheet {
 struct CandidateReadyBanner: View {
     let isBusy: Bool
     let onTap: () -> Void
+    private let reviewTip = ReviewCandidateTip()
 
     var body: some View {
-        Button(action: onTap) {
+        Button {
+            reviewTip.invalidate(reason: .actionPerformed)
+            onTap()
+        } label: {
             HStack(spacing: 8) {
                 Label("Candidate ready", systemImage: "sparkles")
                 Spacer(minLength: 8)
@@ -210,6 +215,7 @@ struct CandidateReadyBanner: View {
         .buttonStyle(.glassProminent)
         .tint(AppColors.accent)
         .controlSize(.large)
+        .popoverTip(reviewTip, arrowEdge: .bottom)
         .accessibilityIdentifier("candidate-banner")
     }
 }

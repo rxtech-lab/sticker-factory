@@ -65,23 +65,6 @@ nonisolated struct MessageListPinningController<ID: Hashable & Sendable>: Equata
         return .releasePin
     }
 
-    /// Re-establish the reservation for a transcript that arrives already
-    /// populated — a reopened chat, a cold launch, a tab switch.
-    ///
-    /// The reserved tail space is what makes the newest turn readable from its
-    /// start, and that is no less true a day later than a second later: without
-    /// this, a reloaded transcript has no "just sent" moment to pin, so it comes
-    /// back with the reservation gone and the reader dropped at the raw end of
-    /// the content.
-    ///
-    /// Persistent state only — no action to apply, and deliberately not the
-    /// re-asserting state: nothing is being sent, so there is no incoming content
-    /// to hold a position against. The caller reserves the space and places once.
-    mutating func restoreLatestTurn(id: ID) {
-        pinnedUserMessageID = id
-        isPinningUserMessage = false
-    }
-
     mutating func handleStreamingChange(
         oldValue: Bool,
         newValue: Bool

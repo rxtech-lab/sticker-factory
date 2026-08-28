@@ -7,7 +7,12 @@ enum ExportBackgroundChoice: String, CaseIterable, Identifiable {
         allCases.first { $0.background == background }
     }
     var label: String {
-        switch self { case .white: "White"; case .midnight: "Midnight"; case .sunrise: "Sunrise gradient"; case .ocean: "Ocean gradient" }
+        switch self {
+        case .white: String(localized: "White")
+        case .midnight: String(localized: "Midnight")
+        case .sunrise: String(localized: "Sunrise gradient")
+        case .ocean: String(localized: "Ocean gradient")
+        }
     }
     var background: StickerMP4BackgroundV1 {
         switch self {

@@ -1,0 +1,5604 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "@%@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@"
+          }
+        }
+      }
+    },
+    "%@ · %lld GENERATED" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$lld GENERATED"
+          }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · 已生成 %2$lld 个"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · 已生成 %2$lld 個"
+          }
+        }
+      }
+    },
+    "%@ installs" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 次安装"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 次安裝"
+          }
+        }
+      }
+    },
+    "%@ is responding" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 正在回复"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 正在回覆"
+          }
+        }
+      }
+    },
+    "%@. Detailed artwork can still be exported one size down, or as a still frame, to stay under Apple's 500 KB limit — the export always goes through." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@。细节丰富的图稿仍可缩小一个尺寸导出，或导出为静态帧，以符合 Apple 500 KB 的限制——文件始终可以导出。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@。細節豐富的圖稿仍可縮小一個尺寸導出，或導出為靜態幀，以符合 Apple 500 KB 的限制——檔案始終可以導出。"
+          }
+        }
+      }
+    },
+    "%@s · %lld fps · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@s · %2$lld fps · %3$@"
+          }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 秒 · %2$lld fps · %3$@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 秒 · %2$lld fps · %3$@"
+          }
+        }
+      }
+    },
+    "%lld" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld"
+          }
+        }
+      }
+    },
+    "%lld LAYERS" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个图层"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個圖層"
+          }
+        }
+      }
+    },
+    "%lld px · arrives about %lld pt wide" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld px · arrives about %2$lld pt wide"
+          }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld px · 发送后宽约 %2$lld pt"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld px · 發送後寬約 %2$lld pt"
+          }
+        }
+      }
+    },
+    "%lld." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld."
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld."
+          }
+        }
+      }
+    },
+    "%lld/4,000" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld/4,000"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld/4,000"
+          }
+        }
+      }
+    },
+    "•" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "•"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "•"
+          }
+        }
+      }
+    },
+    "◦" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "◦"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "◦"
+          }
+        }
+      }
+    },
+    "1 install" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 次安装"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 次安裝"
+          }
+        }
+      }
+    },
+    "1 LAYER" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 个图层"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 個圖層"
+          }
+        }
+      }
+    },
+    "1. Generate" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. 生成"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. 生成"
+          }
+        }
+      }
+    },
+    "2. Confirm" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. 确认"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. 確認"
+          }
+        }
+      }
+    },
+    "3. Keep every version" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. 保留每个版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3. 保留每個版本"
+          }
+        }
+      }
+    },
+    "4. Publish" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "4. 发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "4. 發佈"
+          }
+        }
+      }
+    },
+    "5. Use it" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5. 使用"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5. 使用"
+          }
+        }
+      }
+    },
+    "A joyful corgi in a raincoat, thick white sticker outline…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一只穿雨衣的开心柯基，带粗白色贴纸描边…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一隻穿雨衣的開心柯基，帶粗白色貼圖描邊…"
+          }
+        }
+      }
+    },
+    "A sticker frame could not be rendered." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法渲染贴纸画面。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法渲染貼圖畫面。"
+          }
+        }
+      }
+    },
+    "A transparent PNG sticker." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一张透明 PNG 贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一張透明 PNG 貼圖。"
+          }
+        }
+      }
+    },
+    "A transparent sticker and GIF, sized for Messages." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "适用于“信息”的透明贴纸和 GIF。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "適用於“訊息”的透明貼圖和 GIF。"
+          }
+        }
+      }
+    },
+    "About" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關於"
+          }
+        }
+      }
+    },
+    "About %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于 %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關於 %@"
+          }
+        }
+      }
+    },
+    "Accept a candidate first, then export and publish it." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先接受一个候选版本，再导出并发布。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先接受一個候選版本，再導出併發布。"
+          }
+        }
+      }
+    },
+    "Accept this revision before publishing exports." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先接受此修订版本，再发布导出文件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先接受此修訂版本，再發布導出檔案。"
+          }
+        }
+      }
+    },
+    "Accepted" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已接受"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已接受"
+          }
+        }
+      }
+    },
+    "Accepted changes stay in version history, where you can compare results and restore an earlier sticker." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受的更改会保留在版本历史中，你可以比较结果并恢复较早的贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受的更改會保留在版本歷史中，你可以比較結果並恢復較早的貼圖。"
+          }
+        }
+      }
+    },
+    "Account" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帐户"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帳戶"
+          }
+        }
+      }
+    },
+    "Add" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入"
+          }
+        }
+      }
+    },
+    "Add motion before publishing this animated sticker. You can still export the current image locally." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布这张动态贴纸前，请先添加动画。你仍可在本地导出当前图像。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈這張動態貼圖前，請先加入動畫。你仍可在本地導出當前影像。"
+          }
+        }
+      }
+    },
+    "Add photos" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加照片"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入相片"
+          }
+        }
+      }
+    },
+    "Add to library" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加到贴纸库"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入到貼圖庫"
+          }
+        }
+      }
+    },
+    "Added" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已添加"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已加入"
+          }
+        }
+      }
+    },
+    "Adding a layer" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在添加图层"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加入圖層"
+          }
+        }
+      }
+    },
+    "Adjusting animation" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在调整动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在調整動畫"
+          }
+        }
+      }
+    },
+    "All" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部"
+          }
+        }
+      }
+    },
+    "All image and mask assets must finish verified download before export. Try again when the preview is ready." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有图像和蒙版资源都必须完成验证下载后才能导出。预览就绪后请重试。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有影像和蒙版資源都必須完成驗證下載後才能導出。預覽就緒後請重試。"
+          }
+        }
+      }
+    },
+    "An MP4 with a solid background, for video-only apps." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "带纯色背景的 MP4，适用于仅支持视频的 App。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帶純色背景的 MP4，適用於僅支援影片的 App。"
+          }
+        }
+      }
+    },
+    "Animated" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "动态"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動態"
+          }
+        }
+      }
+    },
+    "Animated sticker attachment" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "动态贴纸附件"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動態貼圖附件"
+          }
+        }
+      }
+    },
+    "Animated stickers need motion before they can be published. Describe how it should move in chat first." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "动态贴纸需要先添加动画才能发布。请先在聊天中描述它应如何运动。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動態貼圖需要先加入動畫才能發佈。請先在聊天中描述它應如何運動。"
+          }
+        }
+      }
+    },
+    "Animating sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在制作贴纸动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在製作貼圖動畫"
+          }
+        }
+      }
+    },
+    "assistant: %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "助理：%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "助理：%@"
+          }
+        }
+      }
+    },
+    "Be the first to publish a sticker pack." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成为第一个发布贴纸包的人。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成為第一個發佈貼圖包的人。"
+          }
+        }
+      }
+    },
+    "Both" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "两者"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "兩者"
+          }
+        }
+      }
+    },
+    "Browse" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "浏览"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "瀏覽"
+          }
+        }
+      }
+    },
+    "Build" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成"
+          }
+        }
+      }
+    },
+    "Build animation" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成動畫"
+          }
+        }
+      }
+    },
+    "Build number" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "构建版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本編號"
+          }
+        }
+      }
+    },
+    "Build sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成貼圖"
+          }
+        }
+      }
+    },
+    "Build this plan?" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成此方案？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成此方案？"
+          }
+        }
+      }
+    },
+    "Building plan" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在生成方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在生成方案"
+          }
+        }
+      }
+    },
+    "Building." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在生成。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在生成。"
+          }
+        }
+      }
+    },
+    "Bundle stickers you have published and share them with everyone." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将你发布的贴纸组合成贴纸包并分享给所有人。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將你發佈的貼圖組合成貼圖包並分享給所有人。"
+          }
+        }
+      }
+    },
+    "by %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作者：%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作者：%@"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        }
+      }
+    },
+    "Candidate" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候選版本"
+          }
+        }
+      }
+    },
+    "Candidate animated sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选动态贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候選動態貼圖"
+          }
+        }
+      }
+    },
+    "Candidate ready" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选版本已就绪"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候選版本已就緒"
+          }
+        }
+      }
+    },
+    "Candidate sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候选贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "候選貼圖"
+          }
+        }
+      }
+    },
+    "Check the layers, layout, and image count. Build only when the plan matches what you want." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查图层、布局和图像数量。确认方案符合你的要求后再生成。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查圖層、佈局和影像數量。確認方案符合你的要求後再生成。"
+          }
+        }
+      }
+    },
+    "Choose a PNG mask with transparent and painted areas. Regular opaque photos cannot be used as masks." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择包含透明和绘制区域的 PNG 蒙版。普通不透明照片不能用作蒙版。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請選擇包含透明和繪製區域的 PNG 蒙版。普通不透明相片不能用作蒙版。"
+          }
+        }
+      }
+    },
+    "Choose the export settings and publish an accepted version as Apple-compatible sticker files." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择导出设置，并将已接受的版本发布为兼容 Apple 的贴纸文件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇導出設定，並將已接受的版本發佈為兼容 Apple 的貼圖檔案。"
+          }
+        }
+      }
+    },
+    "Choose the name shown in your Library and sticker detail." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择显示在贴纸库和贴纸详情中的名称。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇顯示在貼圖庫和貼圖詳情中的名稱。"
+          }
+        }
+      }
+    },
+    "Choose the next version" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择下一个版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇下一個版本"
+          }
+        }
+      }
+    },
+    "Close" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉"
+          }
+        }
+      }
+    },
+    "Compare revisions" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "比较修订版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "比較修訂版本"
+          }
+        }
+      }
+    },
+    "Compare side by side" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "并排比较"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "並排比較"
+          }
+        }
+      }
+    },
+    "Compare with previous" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与上一版本比较"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與上一版本比較"
+          }
+        }
+      }
+    },
+    "Complete" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已完成"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已完成"
+          }
+        }
+      }
+    },
+    "Confirm before generation" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成前确认"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成前確認"
+          }
+        }
+      }
+    },
+    "Confirm this look, then the artwork is separated into parts for animation." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认此外观后，图稿将被分成多个部分用于制作动画。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認此外觀後，圖稿將被分成多個部分用於製作動畫。"
+          }
+        }
+      }
+    },
+    "Continue" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繼續"
+          }
+        }
+      }
+    },
+    "Continue with this sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续使用此贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繼續使用此貼圖"
+          }
+        }
+      }
+    },
+    "Could not append a frame" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法添加画面"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法加入畫面"
+          }
+        }
+      }
+    },
+    "Could not start" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法开始"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開始"
+          }
+        }
+      }
+    },
+    "Couldn't fetch the published files. Check your connection and try again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法获取已发布的文件。请检查网络连接后重试。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法獲取已發佈的檔案。請檢查網絡連線後重試。"
+          }
+        }
+      }
+    },
+    "Create" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立"
+          }
+        }
+      }
+    },
+    "Create a static or animated sticker to get started." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建一张静态或动态贴纸即可开始。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立一張靜態或動態貼圖即可開始。"
+          }
+        }
+      }
+    },
+    "Create and publish" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建并发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立併發布"
+          }
+        }
+      }
+    },
+    "Creating animation" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在创建动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在建立動畫"
+          }
+        }
+      }
+    },
+    "Creator" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创作者"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "創作者"
+          }
+        }
+      }
+    },
+    "Current" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當前"
+          }
+        }
+      }
+    },
+    "Current animated sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前动态贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當前動態貼圖"
+          }
+        }
+      }
+    },
+    "Current sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當前貼圖"
+          }
+        }
+      }
+    },
+    "CURRENT VERSION" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當前版本"
+          }
+        }
+      }
+    },
+    "Delete" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除"
+          }
+        }
+      }
+    },
+    "Delete “%@”" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除“%@”"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除“%@”"
+          }
+        }
+      }
+    },
+    "Delete project" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除项目"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除專案"
+          }
+        }
+      }
+    },
+    "Delete this sticker project?" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除此贴纸项目？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除此貼圖專案？"
+          }
+        }
+      }
+    },
+    "Deletion starts a durable purge of the private source images, transcript, revisions, and exports." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除后将永久清除私密源图像、聊天记录、修订版本和导出文件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除後將永久清除私密源影像、聊天記錄、修訂版本和導出檔案。"
+          }
+        }
+      }
+    },
+    "Describe one sticker, choose static or animated, and add reference photos when they help." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述一张贴纸，选择静态或动态，并可按需添加参考照片。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述一張貼圖，選擇靜態或動態，並可按需加入參考相片。"
+          }
+        }
+      }
+    },
+    "Describe your sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述你的贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述你的貼圖"
+          }
+        }
+      }
+    },
+    "Description" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述"
+          }
+        }
+      }
+    },
+    "Dismiss connection warning" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭连接警告"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉連線警告"
+          }
+        }
+      }
+    },
+    "Dismissed — %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已关闭 — %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已關閉 — %@"
+          }
+        }
+      }
+    },
+    "Dismissed." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已关闭。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已關閉。"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
+          }
+        }
+      }
+    },
+    "Draft" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "草稿"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "草稿"
+          }
+        }
+      }
+    },
+    "Drafting a plan" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在起草方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在起草方案"
+          }
+        }
+      }
+    },
+    "Drawing artwork" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在绘制图稿"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在繪製圖稿"
+          }
+        }
+      }
+    },
+    "Edit" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編輯"
+          }
+        }
+      }
+    },
+    "Edit Sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編輯貼圖"
+          }
+        }
+      }
+    },
+    "Editing layers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在编辑图层"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在編輯圖層"
+          }
+        }
+      }
+    },
+    "Editing sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在编辑贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在編輯貼圖"
+          }
+        }
+      }
+    },
+    "Export" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "導出"
+          }
+        }
+      }
+    },
+    "Export & Publish" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出并发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "導出併發布"
+          }
+        }
+      }
+    },
+    "Export as" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出为"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "導出為"
+          }
+        }
+      }
+    },
+    "Export it now or add motion first" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即导出或先添加动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即導出或先加入動畫"
+          }
+        }
+      }
+    },
+    "Export ready" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出已就绪"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "導出已就緒"
+          }
+        }
+      }
+    },
+    "EXPORT SETTINGS" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出设置"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "導出設定"
+          }
+        }
+      }
+    },
+    "Exported at %lld px to stay under Apple's 500 KB sticker limit." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已以 %lld px 导出，以符合 Apple 贴纸 500 KB 的限制。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已以 %lld px 導出，以符合 Apple 貼圖 500 KB 的限制。"
+          }
+        }
+      }
+    },
+    "Exporting files…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在导出文件…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在導出檔案…"
+          }
+        }
+      }
+    },
+    "Failed" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失敗"
+          }
+        }
+      }
+    },
+    "Filter" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "筛选"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "篩選"
+          }
+        }
+      }
+    },
+    "Finishing animation" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成動畫"
+          }
+        }
+      }
+    },
+    "Finishing the edit" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成编辑"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成編輯"
+          }
+        }
+      }
+    },
+    "Finishing the plan" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成方案"
+          }
+        }
+      }
+    },
+    "Generate %lld images" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成 %lld 张图像"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成 %lld 張影像"
+          }
+        }
+      }
+    },
+    "Generate 1 image" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成 1 张图像"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成 1 張影像"
+          }
+        }
+      }
+    },
+    "Generate one candidate" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成一个候选版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成一個候選版本"
+          }
+        }
+      }
+    },
+    "Generate your first sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成你的第一张贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成你的第一張貼圖"
+          }
+        }
+      }
+    },
+    "Generated" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已生成"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已生成"
+          }
+        }
+      }
+    },
+    "Generation failed. You can retry this request." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成失败。你可以重试此请求。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成失敗。你可以重試此請求。"
+          }
+        }
+      }
+    },
+    "Get started" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始使用"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始使用"
+          }
+        }
+      }
+    },
+    "Help" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帮助"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "幫助"
+          }
+        }
+      }
+    },
+    "How %@ works" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 使用指南"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 使用指南"
+          }
+        }
+      }
+    },
+    "Image ready" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图像已就绪"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影像已就緒"
+          }
+        }
+      }
+    },
+    "In progress" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "进行中"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進行中"
+          }
+        }
+      }
+    },
+    "Keep it" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留"
+          }
+        }
+      }
+    },
+    "Keep it and it becomes the sticker you build on." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留后，它将成为你继续编辑的贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留後，它將成為你繼續編輯的貼圖。"
+          }
+        }
+      }
+    },
+    "Kept" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保留"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保留"
+          }
+        }
+      }
+    },
+    "Large" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大"
+          }
+        }
+      }
+    },
+    "Layout preview with %lld layers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含 %lld 个图层的布局预览"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含 %lld 個圖層的佈局預覽"
+          }
+        }
+      }
+    },
+    "Legal" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "法律信息"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "法律訊息"
+          }
+        }
+      }
+    },
+    "Library" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸库"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖庫"
+          }
+        }
+      }
+    },
+    "Load earlier messages" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "载入更早的消息"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "載入更早的訊息"
+          }
+        }
+      }
+    },
+    "Loading %@…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入%@…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入%@…"
+          }
+        }
+      }
+    },
+    "Loading conversation" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入对话"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入對話"
+          }
+        }
+      }
+    },
+    "Loading creator…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入创作者…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入創作者…"
+          }
+        }
+      }
+    },
+    "Loading earlier messages…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入更早的消息…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入更早的訊息…"
+          }
+        }
+      }
+    },
+    "Loading more stickers…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入更多贴纸…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入更多貼圖…"
+          }
+        }
+      }
+    },
+    "Loading pack…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入贴纸包…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入貼圖包…"
+          }
+        }
+      }
+    },
+    "Loading packs…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入贴纸包…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入貼圖包…"
+          }
+        }
+      }
+    },
+    "Loading reference…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入参考图…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入參考圖…"
+          }
+        }
+      }
+    },
+    "Loading your library…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入你的贴纸库…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入你的貼圖庫…"
+          }
+        }
+      }
+    },
+    "Loop" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "循环"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "循環"
+          }
+        }
+      }
+    },
+    "Lost the live connection" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时连接已中断"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "實時連線已中斷"
+          }
+        }
+      }
+    },
+    "Make expressive stickers from words and photos." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用文字和照片制作富有表现力的贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用文字和相片製作富有表現力的貼圖。"
+          }
+        }
+      }
+    },
+    "Making your sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在制作贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在製作貼圖"
+          }
+        }
+      }
+    },
+    "Marketplace" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "市场"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "市場"
+          }
+        }
+      }
+    },
+    "Mask attachment" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "蒙版附件"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "蒙版附件"
+          }
+        }
+      }
+    },
+    "Medium" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中"
+          }
+        }
+      }
+    },
+    "Message %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "给 %@ 发消息"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "給 %@ 發訊息"
+          }
+        }
+      }
+    },
+    "Midnight" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "午夜"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "午夜"
+          }
+        }
+      }
+    },
+    "MP4 background" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MP4 背景"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MP4 背景"
+          }
+        }
+      }
+    },
+    "MP4 uses this background. GIF and system sticker exports remain transparent." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MP4 使用此背景。GIF 和系统贴纸导出仍保持透明。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MP4 使用此背景。GIF 和系統貼圖導出仍保持透明。"
+          }
+        }
+      }
+    },
+    "My packs" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的貼圖包"
+          }
+        }
+      }
+    },
+    "My Stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的貼圖"
+          }
+        }
+      }
+    },
+    "Name" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名称"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名稱"
+          }
+        }
+      }
+    },
+    "New pack" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建貼圖包"
+          }
+        }
+      }
+    },
+    "Newest" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最新"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最新"
+          }
+        }
+      }
+    },
+    "Next" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一步"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一步"
+          }
+        }
+      }
+    },
+    "No %@ stickers match this filter." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有符合此筛选条件的%@贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有符合此篩選條件的%@貼圖。"
+          }
+        }
+      }
+    },
+    "No installs yet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚无安装"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無安裝"
+          }
+        }
+      }
+    },
+    "No matching stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有匹配的貼圖"
+          }
+        }
+      }
+    },
+    "No packs match “%@”." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有与“%@”匹配的贴纸包。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有與“%@”匹配的貼圖包。"
+          }
+        }
+      }
+    },
+    "No packs yet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚无贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無貼圖包"
+          }
+        }
+      }
+    },
+    "No stickers yet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚无贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無貼圖"
+          }
+        }
+      }
+    },
+    "Not now" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂不"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫不"
+          }
+        }
+      }
+    },
+    "Nothing here yet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这里还没有内容"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裏還沒有內容"
+          }
+        }
+      }
+    },
+    "Nothing of yours matches this filter." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的内容中没有符合此筛选条件的贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的內容中沒有符合此篩選條件的貼圖。"
+          }
+        }
+      }
+    },
+    "Nothing published in this pack right now." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此贴纸包目前没有已发布的内容。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此貼圖包目前沒有已發佈的內容。"
+          }
+        }
+      }
+    },
+    "Nothing published right now" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前没有已发布的内容"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前沒有已發佈的內容"
+          }
+        }
+      }
+    },
+    "Nothing to export yet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前没有可导出的内容"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前沒有可導出的內容"
+          }
+        }
+      }
+    },
+    "Ocean gradient" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "海洋渐变"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "海洋漸變"
+          }
+        }
+      }
+    },
+    "Once" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次"
+          }
+        }
+      }
+    },
+    "Open %@ from the Messages app drawer to send published stickers, or share the exported files anywhere." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从“信息”的 App 抽屉中打开 %@ 以发送已发布的贴纸，也可在任意位置分享导出文件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從“訊息”的 App 列表中打開 %@ 以發送已發佈的貼圖，也可在任意位置分享導出檔案。"
+          }
+        }
+      }
+    },
+    "Open %@ in the Messages app drawer to send this sticker. You can also share the exported files below." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“信息”的 App 抽屉中打开 %@ 以发送此贴纸。你也可以分享下方的导出文件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“訊息”的 App 列表中打開 %@ 以發送此貼圖。你也可以分享下方的導出檔案。"
+          }
+        }
+      }
+    },
+    "Open Sticker actions to compare versions, restore an earlier one, or publish the current version." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开“贴纸操作”以比较版本、恢复较早版本或发布当前版本。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開“貼圖操作”以比較版本、恢復較早版本或發佈當前版本。"
+          }
+        }
+      }
+    },
+    "Opens full screen" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以全屏打开"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以全屏打開"
+          }
+        }
+      }
+    },
+    "Opens full screen, where it can be edited" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以全屏打开并可进行编辑"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以全屏打開並可進行編輯"
+          }
+        }
+      }
+    },
+    "Optional · up to 8" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选 · 最多 8 张"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可選 · 最多 8 張"
+          }
+        }
+      }
+    },
+    "Pack" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖包"
+          }
+        }
+      }
+    },
+    "Pack details" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸包详情"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖包詳情"
+          }
+        }
+      }
+    },
+    "Personal photos are uploaded privately to create or edit this sticker. Sources, chat, and revisions remain until you delete the project." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "个人照片会以私密方式上传，用于创建或编辑此贴纸。源文件、聊天和修订版本会一直保留，直到你删除项目。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "個人相片會以私密方式上傳，用於建立或編輯此貼圖。源檔案、聊天和修訂版本會一直保留，直到你刪除專案。"
+          }
+        }
+      }
+    },
+    "Photo Library" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片图库"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相片圖庫"
+          }
+        }
+      }
+    },
+    "Pick the sticker size and formats, then export and publish this accepted version to your Library." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择贴纸尺寸和格式，然后将已接受的版本导出并发布到贴纸库。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇貼圖尺寸和格式，然後將已接受的版本導出併發布到貼圖庫。"
+          }
+        }
+      }
+    },
+    "Ping-pong" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "往返"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "往返"
+          }
+        }
+      }
+    },
+    "PLAN" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案"
+          }
+        }
+      }
+    },
+    "Planning sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在规划贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在規劃貼圖"
+          }
+        }
+      }
+    },
+    "Please open %@ and sign in again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请打开 %@ 并重新登录。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請打開 %@ 並重新登入。"
+          }
+        }
+      }
+    },
+    "Popular" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "热门"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "熱門"
+          }
+        }
+      }
+    },
+    "Preparing exports…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备导出…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在準備導出…"
+          }
+        }
+      }
+    },
+    "Preparing files…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备文件…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在準備檔案…"
+          }
+        }
+      }
+    },
+    "Privacy Policy" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私政策"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱私政策"
+          }
+        }
+      }
+    },
+    "Project deletion could not start. Your sticker is unchanged; please try again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法开始删除项目。你的贴纸未发生更改；请重试。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開始刪除專案。你的貼圖未發生更改；請重試。"
+          }
+        }
+      }
+    },
+    "Project deletion could not start. Your sticker is unchanged." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法开始删除项目。你的贴纸未发生更改。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開始刪除專案。你的貼圖未發生更改。"
+          }
+        }
+      }
+    },
+    "Publish a pack and it will appear here." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布贴纸包后，它会显示在这里。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈貼圖包後，它會顯示在這裏。"
+          }
+        }
+      }
+    },
+    "Publish a sticker first — a pack can only contain published stickers." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先发布贴纸——贴纸包只能包含已发布的贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先發布貼圖——貼圖包只能包含已發佈的貼圖。"
+          }
+        }
+      }
+    },
+    "Publish for Messages" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布到“信息”"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈到“訊息”"
+          }
+        }
+      }
+    },
+    "Published" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已發佈"
+          }
+        }
+      }
+    },
+    "Publishing…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在发布…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在發佈…"
+          }
+        }
+      }
+    },
+    "Ready to publish" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可以发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可以發佈"
+          }
+        }
+      }
+    },
+    "Reconnect" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新连接"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新連線"
+          }
+        }
+      }
+    },
+    "Redrawing a layer" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重绘图层"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重繪圖層"
+          }
+        }
+      }
+    },
+    "Reference image attachment" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考图像附件"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "參考影像附件"
+          }
+        }
+      }
+    },
+    "Reference images" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考图像"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "參考影像"
+          }
+        }
+      }
+    },
+    "Reference images are uploaded privately and become part of this sticker’s persistent chat and revision history until project deletion." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考图像会以私密方式上传，并成为此贴纸持续保留的聊天和修订历史的一部分，直至项目被删除。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "參考影像會以私密方式上傳，併成為此貼圖持續保留的聊天和修訂歷史的一部分，直至專案被刪除。"
+          }
+        }
+      }
+    },
+    "Reject" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒绝"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒絕"
+          }
+        }
+      }
+    },
+    "Reject candidate" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒绝候选版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒絕候選版本"
+          }
+        }
+      }
+    },
+    "Reject this plan?" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒绝此方案？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒絕此方案？"
+          }
+        }
+      }
+    },
+    "Rejected" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已拒绝"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已拒絕"
+          }
+        }
+      }
+    },
+    "Remove %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除%@"
+          }
+        }
+      }
+    },
+    "Remove from library" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从贴纸库移除"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從貼圖庫移除"
+          }
+        }
+      }
+    },
+    "Remove reference" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除参考图"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除參考圖"
+          }
+        }
+      }
+    },
+    "Removed" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移除"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移除"
+          }
+        }
+      }
+    },
+    "Rename" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名"
+          }
+        }
+      }
+    },
+    "Rename sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名貼圖"
+          }
+        }
+      }
+    },
+    "Restoring your sticker library…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在恢复你的贴纸库…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在恢復你的貼圖庫…"
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重試"
+          }
+        }
+      }
+    },
+    "Retrying…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重试…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重試…"
+          }
+        }
+      }
+    },
+    "Revert" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢復"
+          }
+        }
+      }
+    },
+    "Revert to this" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复到此版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢復到此版本"
+          }
+        }
+      }
+    },
+    "Review" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查"
+          }
+        }
+      }
+    },
+    "Review the assistant’s plan before generation, then accept or reject the finished candidate." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成前检查助理的方案，然后接受或拒绝完成的候选版本。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成前檢查助理的方案，然後接受或拒絕完成的候選版本。"
+          }
+        }
+      }
+    },
+    "Review the candidate, compare it with the current sticker, then accept or reject it." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查候选版本，将它与当前贴纸比较，然后接受或拒绝。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查候選版本，將它與當前貼圖比較，然後接受或拒絕。"
+          }
+        }
+      }
+    },
+    "Reviewing the sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检查贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在檢查貼圖"
+          }
+        }
+      }
+    },
+    "Revising the plan" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在修改方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在修改方案"
+          }
+        }
+      }
+    },
+    "Running…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在运行…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在運行…"
+          }
+        }
+      }
+    },
+    "Save" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存"
+          }
+        }
+      }
+    },
+    "Save Anyway" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍要保存"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍要保存"
+          }
+        }
+      }
+    },
+    "Save as draft" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存为草稿"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存為草稿"
+          }
+        }
+      }
+    },
+    "Saved to your Library" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存到你的贴纸库"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存到你的貼圖庫"
+          }
+        }
+      }
+    },
+    "Saving replaces it with an unpublished draft. Export again to put it back in Messages." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存后会将其替换为未发布的草稿。请再次导出以重新放回“信息”。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存後會將其替換為未發佈的草稿。請再次導出以重新放回“訊息”。"
+          }
+        }
+      }
+    },
+    "Say what is wrong and the assistant will draft a new plan right away. Leave it blank to just dismiss this one." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说明问题所在，助理会立即起草新方案。留空则只关闭此方案。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "説明問題所在，助理會立即起草新方案。留空則只關閉此方案。"
+          }
+        }
+      }
+    },
+    "Search packs" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索貼圖包"
+          }
+        }
+      }
+    },
+    "Search stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索貼圖"
+          }
+        }
+      }
+    },
+    "Searching…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在搜索…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在搜索…"
+          }
+        }
+      }
+    },
+    "Section" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分区"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分區"
+          }
+        }
+      }
+    },
+    "Send" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發送"
+          }
+        }
+      }
+    },
+    "Separate %lld parts" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分离 %lld 个部分"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分離 %lld 個部分"
+          }
+        }
+      }
+    },
+    "Separate 1 part" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分离 1 个部分"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分離 1 個部分"
+          }
+        }
+      }
+    },
+    "Share" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享"
+          }
+        }
+      }
+    },
+    "Shared credentials and cached iMessage stickers will be removed from this device." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享凭证和缓存的 iMessage 贴纸将从此设备移除。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享憑證和快取的 iMessage 貼圖將從此設備移除。"
+          }
+        }
+      }
+    },
+    "Showing the plan" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在顯示方案"
+          }
+        }
+      }
+    },
+    "Showing the sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在顯示貼圖"
+          }
+        }
+      }
+    },
+    "Sign in with RxLab" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 RxLab 登录"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 RxLab 登入"
+          }
+        }
+      }
+    },
+    "Sign Out" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出登录"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登出"
+          }
+        }
+      }
+    },
+    "Sign out of %@?" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出 %@？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出 %@？"
+          }
+        }
+      }
+    },
+    "Signed In" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已登录"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已登入"
+          }
+        }
+      }
+    },
+    "Signed in as %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Signed in as %1$@, %2$@"
+          }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已以 %@（%@）登录"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已以 %@（%@）登入"
+          }
+        }
+      }
+    },
+    "Signed in with RxLab" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 RxLab 登录"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用 RxLab 登入"
+          }
+        }
+      }
+    },
+    "Signing out removes shared credentials and cached iMessage stickers from this device." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出登录会从此设备移除共享凭证和缓存的 iMessage 贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登出會從此設備移除共享憑證和快取的 iMessage 貼圖。"
+          }
+        }
+      }
+    },
+    "Small" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小"
+          }
+        }
+      }
+    },
+    "Sort" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序"
+          }
+        }
+      }
+    },
+    "Start with a prompt and optional photos. The assistant will propose a plan before it generates anything." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先输入提示词并按需添加照片。助理会在生成任何内容前提出方案。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先輸入提示詞並按需加入相片。助理會在生成任何內容前提出方案。"
+          }
+        }
+      }
+    },
+    "Starting securely…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在安全启动…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在安全啓動…"
+          }
+        }
+      }
+    },
+    "Starting…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在开始…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在開始…"
+          }
+        }
+      }
+    },
+    "Static" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "静态"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "靜態"
+          }
+        }
+      }
+    },
+    "STATIC REFERENCE" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "静态参考图"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "靜態參考圖"
+          }
+        }
+      }
+    },
+    "Sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖"
+          }
+        }
+      }
+    },
+    "Sticker actions" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸操作"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖操作"
+          }
+        }
+      }
+    },
+    "Sticker attachment" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸附件"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖附件"
+          }
+        }
+      }
+    },
+    "Sticker maker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸创作者"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖創作者"
+          }
+        }
+      }
+    },
+    "Sticker name" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸名称"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖名稱"
+          }
+        }
+      }
+    },
+    "Sticker size" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸尺寸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖尺寸"
+          }
+        }
+      }
+    },
+    "Sticker type" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸类型"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖類型"
+          }
+        }
+      }
+    },
+    "Sticker, GIF, and MP4 — everything this sticker can be." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸、GIF 和 MP4——此贴纸的所有可用格式。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖、GIF 和 MP4——此貼圖的所有可用格式。"
+          }
+        }
+      }
+    },
+    "Stickers (%lld selected)" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸（已选择 %lld 张）"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖（已選擇 %lld 張）"
+          }
+        }
+      }
+    },
+    "Still being drafted." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在起草中。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在起草中。"
+          }
+        }
+      }
+    },
+    "Stop" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止"
+          }
+        }
+      }
+    },
+    "Stopped" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止"
+          }
+        }
+      }
+    },
+    "Sunrise gradient" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "日出渐变"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "日出漸變"
+          }
+        }
+      }
+    },
+    "Superseded" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已被取代"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已被取代"
+          }
+        }
+      }
+    },
+    "Superseded by a newer plan." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已被更新的方案取代。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已被更新的方案取代。"
+          }
+        }
+      }
+    },
+    "Superseded by a newer revision of this plan." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已被此方案的更新修订版本取代。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已被此方案的更新修訂版本取代。"
+          }
+        }
+      }
+    },
+    "Tap to view" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点查看"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輕點查看"
+          }
+        }
+      }
+    },
+    "Tap to view or edit" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点查看或编辑"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輕點查看或編輯"
+          }
+        }
+      }
+    },
+    "Terms of Service" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务条款"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服務條款"
+          }
+        }
+      }
+    },
+    "Text “%@”" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文本“%@”"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文本“%@”"
+          }
+        }
+      }
+    },
+    "That image format could not be read." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取该图像格式。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取該影像格式。"
+          }
+        }
+      }
+    },
+    "The animation document is invalid." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "动画文档无效。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動畫文檔無效。"
+          }
+        }
+      }
+    },
+    "The authentication service is temporarily unavailable." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "认证服务暂时不可用。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認證服務暫時不可用。"
+          }
+        }
+      }
+    },
+    "The creator is still working on it. Anything they publish shows up here automatically." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创作者仍在制作中。他们发布的任何内容都会自动显示在这里。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "創作者仍在製作中。他們發佈的任何內容都會自動顯示在這裏。"
+          }
+        }
+      }
+    },
+    "The export file could not be created." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法创建导出文件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法建立導出檔案。"
+          }
+        }
+      }
+    },
+    "The failed AI turn no longer has a retryable source message." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败的 AI 对话已没有可重试的源消息。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失敗的 AI 對話已沒有可重試的源訊息。"
+          }
+        }
+      }
+    },
+    "The final frame could not be described" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法描述最终画面"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法描述最終畫面"
+          }
+        }
+      }
+    },
+    "The final frame could not be timed" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法设置最终画面的时间"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法設定最終畫面的時間"
+          }
+        }
+      }
+    },
+    "The media upload could not be completed." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法完成媒体上传。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法完成媒體上傳。"
+          }
+        }
+      }
+    },
+    "The MP4 export failed: %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MP4 导出失败：%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MP4 導出失敗：%@"
+          }
+        }
+      }
+    },
+    "The normalized image is still larger than 25 MB." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "规范化后的图像仍大于 25 MB。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "規範化後的影像仍大於 25 MB。"
+          }
+        }
+      }
+    },
+    "The request failed (HTTP %lld)." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求失败（HTTP %lld）。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求失敗（HTTP %lld）。"
+          }
+        }
+      }
+    },
+    "The secure token bundle is invalid." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全令牌包无效。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全令牌包無效。"
+          }
+        }
+      }
+    },
+    "The secure token store failed (%d)." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全令牌存储失败（%d）。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全令牌存儲失敗（%d）。"
+          }
+        }
+      }
+    },
+    "The server could not load this document (%lld)." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器无法载入此文档（%lld）。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器無法載入此文檔（%lld）。"
+          }
+        }
+      }
+    },
+    "The server returned an invalid response." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器返回了无效响应。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器返回了無效回應。"
+          }
+        }
+      }
+    },
+    "The server returned an unreadable document." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器返回了无法读取的文档。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器返回了無法讀取的文檔。"
+          }
+        }
+      }
+    },
+    "The shared Keychain access group is not configured." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置共享钥匙串访问组。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置共享鑰匙串訪問組。"
+          }
+        }
+      }
+    },
+    "The shared session is temporarily unavailable." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享会话暂时不可用。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享會話暫時不可用。"
+          }
+        }
+      }
+    },
+    "The sticker rendition could not be rendered." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法渲染贴纸版本。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法渲染貼圖版本。"
+          }
+        }
+      }
+    },
+    "This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the sticker is a still frame. The animated GIF and MP4 exports are unaffected. Shortening the animation, or switching a ping-pong loop to a plain loop, brings the motion back." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此动画在任何帧率下都无法符合 Apple 贴纸 500 KB 的限制，因此贴纸将使用静态帧。动态 GIF 和 MP4 导出不受影响。缩短动画，或将往返循环改为普通循环，即可恢复动态效果。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此動畫在任何幀率下都無法符合 Apple 貼圖 500 KB 的限制，因此貼圖將使用靜態幀。動態 GIF 和 MP4 導出不受影響。縮短動畫，或將往返循環改為普通循環，即可恢復動態效果。"
+          }
+        }
+      }
+    },
+    "This assembles %lld layers. No images need to be generated." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作会组合 %lld 个图层，无需生成图像。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作會組合 %lld 個圖層，無需生成影像。"
+          }
+        }
+      }
+    },
+    "This creator has not published anything yet." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此创作者尚未发布任何内容。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此創作者尚未發佈任何內容。"
+          }
+        }
+      }
+    },
+    "This generates %lld separate images and assembles them. It takes longer than a single sticker." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作会生成 %lld 张独立图像并进行组合，所需时间比单张贴纸更长。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作會生成 %lld 張獨立影像並進行組合，所需時間比單張貼圖更長。"
+          }
+        }
+      }
+    },
+    "This generates 1 separate image and assembles it. It takes longer than a single sticker." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作会生成 1 张独立图像并进行组合，所需时间比单张贴纸更长。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作會生成 1 張獨立影像並進行組合，所需時間比單張貼圖更長。"
+          }
+        }
+      }
+    },
+    "This sticker is published" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此贴纸已发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此貼圖已發佈"
+          }
+        }
+      }
+    },
+    "This sticker was made with a newer version of the app (document version %lld)." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此贴纸由更新版本的 App 制作（文档版本 %lld）。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此貼圖由更新版本的 App 製作（文檔版本 %lld）。"
+          }
+        }
+      }
+    },
+    "This uses the approved static reference to assemble %lld existing layers and add motion." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作会使用已批准的静态参考图组合 %lld 个现有图层并添加动画。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作會使用已批准的靜態參考圖組合 %lld 個現有圖層並加入動畫。"
+          }
+        }
+      }
+    },
+    "This uses the approved static reference to generate %lld matching transparent parts, assembles the layers, and adds motion." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作会使用已批准的静态参考图生成 %lld 个匹配的透明部分，组合图层并添加动画。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作會使用已批准的靜態參考圖生成 %lld 個匹配的透明部分，組合圖層並加入動畫。"
+          }
+        }
+      }
+    },
+    "This uses the approved static reference to generate 1 matching transparent part, assembles the layers, and adds motion." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作会使用已批准的静态参考图生成 1 个匹配的透明部分，组合图层并添加动画。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作會使用已批准的靜態參考圖生成 1 個匹配的透明部分，組合圖層並加入動畫。"
+          }
+        }
+      }
+    },
+    "This version has no published files to share yet." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本尚无可分享的已发布文件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本尚無可分享的已發佈檔案。"
+          }
+        }
+      }
+    },
+    "Tool %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Tool %1$@, %2$@"
+          }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具 %@，%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具 %@，%@"
+          }
+        }
+      }
+    },
+    "Try a different search or filter." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请尝试其他搜索内容或筛选条件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請嘗試其他搜索內容或篩選條件。"
+          }
+        }
+      }
+    },
+    "Try Again" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重試"
+          }
+        }
+      }
+    },
+    "Tuning a layer" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在微调图层"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在微調圖層"
+          }
+        }
+      }
+    },
+    "Turn an idea or a favorite photo into an expressive sticker you can keep, share, and use in Messages." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将灵感或喜爱的照片变成富有表现力的贴纸，供你保留、分享并在“信息”中使用。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將靈感或喜愛的相片變成富有表現力的貼圖，供你保留、分享並在“訊息”中使用。"
+          }
+        }
+      }
+    },
+    "Unable to Load" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法载入"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入"
+          }
+        }
+      }
+    },
+    "Unknown" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知"
+          }
+        }
+      }
+    },
+    "Unlisted" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未上架"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未上架"
+          }
+        }
+      }
+    },
+    "Unsupported writer settings" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支持的写入器设置"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支援的寫入器設定"
+          }
+        }
+      }
+    },
+    "Use it in Messages" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“信息”中使用"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“訊息”中使用"
+          }
+        }
+      }
+    },
+    "Use these reference images for the sticker." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用这些参考图像制作贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用這些參考影像製作貼圖。"
+          }
+        }
+      }
+    },
+    "user: %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用户：%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用戶：%@"
+          }
+        }
+      }
+    },
+    "Using personal photos" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用个人照片"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用個人相片"
+          }
+        }
+      }
+    },
+    "v%lld" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "v%lld"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "v%lld"
+          }
+        }
+      }
+    },
+    "Version" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本"
+          }
+        }
+      }
+    },
+    "Version history" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本历史"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本歷史"
+          }
+        }
+      }
+    },
+    "Video" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影片"
+          }
+        }
+      }
+    },
+    "Wait for the current AI edit to finish before sending another." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待当前 AI 编辑完成后再发送另一条消息。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請等待當前 AI 編輯完成後再發送另一條訊息。"
+          }
+        }
+      }
+    },
+    "Welcome to %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "欢迎使用 %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歡迎使用 %@"
+          }
+        }
+      }
+    },
+    "What are we making?" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我们要制作什么？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我們要製作什麼？"
+          }
+        }
+      }
+    },
+    "What is wrong with it?" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "哪里需要修改？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "哪裏需要修改？"
+          }
+        }
+      }
+    },
+    "White" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "白色"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "白色"
+          }
+        }
+      }
+    },
+    "Working" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理中"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "處理中"
+          }
+        }
+      }
+    },
+    "Working…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理中…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "處理中…"
+          }
+        }
+      }
+    },
+    "Writer did not complete" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写入器未完成操作"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "寫入器未完成操作"
+          }
+        }
+      }
+    },
+    "Writing a reply" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在撰写回复"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在撰寫回復"
+          }
+        }
+      }
+    },
+    "you" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你"
+          }
+        }
+      }
+    },
+    "You created this pack" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你创建了此贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你建立了此貼圖包"
+          }
+        }
+      }
+    },
+    "You’ll review a static visual reference, confirm it, then we’ll separate the artwork into parts and animate them." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你将检查并确认静态视觉参考图，然后我们会将图稿分成多个部分并制作动画。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你將檢查並確認靜態視覺參考圖，然後我們會將圖稿分成多個部分並製作動畫。"
+          }
+        }
+      }
+    },
+    "Your accepted revision is ready" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你接受的修订版本已就绪"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你接受的修訂版本已就緒"
+          }
+        }
+      }
+    },
+    "Your files are ready to share" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的文件已可分享"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的檔案已可分享"
+          }
+        }
+      }
+    },
+    "Your session expired. Please sign in again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的会话已过期。请重新登录。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的會話已過期。請重新登入。"
+          }
+        }
+      }
+    },
+    "Your versions are safe" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的版本已妥善保留"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的版本已妥善保留"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

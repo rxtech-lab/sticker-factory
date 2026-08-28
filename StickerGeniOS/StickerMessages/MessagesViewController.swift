@@ -32,6 +32,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     private var libraryService: MessagesLibraryService?
     private var loadTask: Task<Void, Never>?
     private var hintTask: Task<Void, Never>?
+    private var insertGate = StickerInsertGate()
 
     /// `activeConversation` can lag on the first activation in non-Messages hosts, while the
     /// conversation handed to `willBecomeActive(with:)` is guaranteed valid for that activation.
@@ -122,7 +123,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         statusLabel.adjustsFontForContentSizeCategory = true
 
         var buttonConfiguration = UIButton.Configuration.filled()
-        buttonConfiguration.title = "Open Sticker Factory"
+        buttonConfiguration.title = String(localized: "Open Sticker Factory")
         buttonConfiguration.cornerStyle = .capsule
         openAppButton.configuration = buttonConfiguration
         openAppButton.accessibilityIdentifier = "open-sticker-factory"
@@ -143,7 +144,7 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     private func configureOfflineBadge() {
         offlineLabel.translatesAutoresizingMaskIntoConstraints = false
-        offlineLabel.text = "Offline · cached"
+        offlineLabel.text = String(localized: "Offline · cached")
         offlineLabel.font = .preferredFont(forTextStyle: .caption1)
         offlineLabel.textColor = .secondaryLabel
         offlineLabel.backgroundColor = .secondarySystemBackground.withAlphaComponent(0.85)
@@ -222,6 +223,13 @@ final class MessagesViewController: MSMessagesAppViewController {
         // scalars across the actor hop and re-resolves the conversation on the main actor.
         let fileURL = sticker.imageFileURL
         let filename = sticker.localizedDescription
+        guard insertGate.shouldInsert(
+            stickerURL: fileURL,
+            uptime: ProcessInfo.processInfo.systemUptime
+        ) else {
+            logger.debug("insert skipped: duplicate tap for \(fileURL.lastPathComponent, privacy: .private)")
+            return
+        }
 
         conversation.insert(sticker) { [weak self] error in
             // The imported completion handler is a plain, non-Sendable ObjC block and
@@ -300,7 +308,7 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     private func showLoading() {
         statusContainer.isHidden = false
-        statusLabel.text = "Refreshing your stickers…"
+        statusLabel.text = String(localized: "Refreshing your stickers…")
         activityIndicator.startAnimating()
         openAppButton.isHidden = true
         offlineLabel.isHidden = true
@@ -311,8 +319,8 @@ final class MessagesViewController: MSMessagesAppViewController {
         // Telling someone to publish a sticker is unhelpful when they added packs and it is the
         // packs that are currently empty.
         statusLabel.text = hasInstalledPacks
-            ? "The packs you added have nothing published right now. Open Sticker Factory to add more."
-            : "Create and publish a sticker in Sticker Factory, then return here."
+            ? String(localized: "The packs you added have nothing published right now. Open Sticker Factory to add more.")
+            : String(localized: "Create and publish a sticker in Sticker Factory, then return here.")
         activityIndicator.stopAnimating()
         openAppButton.isHidden = false
         offlineLabel.isHidden = true
@@ -321,7 +329,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     private func showError(_ error: Error, offersOpenApp: Bool) {
         statusContainer.isHidden = false
         statusLabel.text = (error as? LocalizedError)?.errorDescription
-            ?? "Your sticker library is unavailable."
+            ?? String(localized: "Your sticker library is unavailable.")
         activityIndicator.stopAnimating()
         openAppButton.isHidden = !offersOpenApp
         offlineLabel.isHidden = true
@@ -335,7 +343,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             Task { @MainActor in
                 guard let self else { return }
                 self.logger.error("extensionContext.open refused (context=\(self.presentationContext.rawValue))")
-                self.statusLabel.text = "Open Sticker Factory from the Home Screen and sign in."
+                self.statusLabel.text = String(localized: "Open Sticker Factory from the Home Screen and sign in.")
             }
         }
     }

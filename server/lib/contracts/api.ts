@@ -20,6 +20,10 @@ export const CreateStickerRequestSchema = z.object({
   referenceAssetIds: z.array(z.string().uuid()).max(8).default([]),
 }).strict();
 
+export const UpdateStickerRequestSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+}).strict();
+
 export const PostChatMessageRequestSchema = z.object({
   text: z.string().trim().min(1).max(8_000),
   intent: z.enum(["generate", "edit", "animate", "chat"]),
@@ -335,6 +339,7 @@ export const UnpublishPackRequestSchema = z.object({
 }).strict();
 
 export type CreateStickerRequest = z.infer<typeof CreateStickerRequestSchema>;
+export type UpdateStickerRequest = z.infer<typeof UpdateStickerRequestSchema>;
 export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceRequestSchema>;
 export type CreatePackRequest = z.infer<typeof CreatePackRequestSchema>;
 export type UpdatePackRequest = z.infer<typeof UpdatePackRequestSchema>;

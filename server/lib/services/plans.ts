@@ -8,7 +8,7 @@ import {
   type PlanV1,
 } from "@/lib/contracts/plan";
 import type { Database } from "@/lib/db/client";
-import { chatMessages, chatThreads, generationEvents, generationJobs, plans, stickers } from "@/lib/db/schema";
+import { assets, chatMessages, chatThreads, generationEvents, generationJobs, plans, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { isActiveJobConstraint } from "@/lib/services/stickers";
 
@@ -240,6 +240,23 @@ export async function confirmPlan(
   const plan = PlanV1Schema.parse(row.planJson);
   if (plan.kind !== sticker.kind) {
     throw new ApiError(422, "PLAN_KIND_MISMATCH", `This plan builds a ${plan.kind} sticker but the project is ${sticker.kind}`);
+  }
+  if (plan.kind === "animated") {
+    const reference = row.conceptAssetId
+      ? await db.select({ id: assets.id }).from(assets).where(and(
+        eq(assets.id, row.conceptAssetId),
+        eq(assets.ownerId, ownerId),
+        eq(assets.stickerId, stickerId),
+        eq(assets.state, "ready"),
+      )).get()
+      : undefined;
+    if (!reference) {
+      throw new ApiError(
+        409,
+        "PLAN_REFERENCE_REQUIRED",
+        "Generate the plan's static visual reference before confirming it",
+      );
+    }
   }
   const jobId = crypto.randomUUID();
   // The confirmation is its own user turn rather than a reuse of the assistant's plan message.

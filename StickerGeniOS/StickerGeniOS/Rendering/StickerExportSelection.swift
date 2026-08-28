@@ -21,9 +21,9 @@ nonisolated enum StickerExportSelection: String, CaseIterable, Identifiable, Cod
 
     var label: String {
         switch self {
-        case .sticker: "Sticker"
-        case .video: "Video"
-        case .both: "Both"
+        case .sticker: String(localized: "Sticker")
+        case .video: String(localized: "Video")
+        case .both: String(localized: "Both")
         }
     }
 
@@ -33,11 +33,11 @@ nonisolated enum StickerExportSelection: String, CaseIterable, Identifiable, Cod
     /// - Parameter isAnimated: a static sticker has no video to offer, so the picker is hidden and
     ///   this description never names one.
     func detail(isAnimated: Bool) -> String {
-        guard isAnimated else { return "A transparent PNG sticker." }
+        guard isAnimated else { return String(localized: "A transparent PNG sticker.") }
         return switch self {
-        case .sticker: "A transparent sticker and GIF, sized for Messages."
-        case .video: "An MP4 with a solid background, for video-only apps."
-        case .both: "Sticker, GIF, and MP4 — everything this sticker can be."
+        case .sticker: String(localized: "A transparent sticker and GIF, sized for Messages.")
+        case .video: String(localized: "An MP4 with a solid background, for video-only apps.")
+        case .both: String(localized: "Sticker, GIF, and MP4 — everything this sticker can be.")
         }
     }
 }

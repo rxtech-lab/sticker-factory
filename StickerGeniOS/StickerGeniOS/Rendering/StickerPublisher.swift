@@ -264,12 +264,12 @@ nonisolated enum StickerPublishError: Error, LocalizedError {
     case systemRenditionUnavailable
     var errorDescription: String? {
         switch self {
-        case .systemRenditionUnavailable: "The sticker rendition could not be rendered."
-        case .revisionNotAccepted: "Accept this revision before publishing exports."
-        case .animationRequired: "Add motion before publishing this animated sticker. You can still export the current image locally."
-        case .missingVerifiedAssets: "All image and mask assets must finish verified download before export. Try again when the preview is ready."
-        case .publishedExportsUnavailable: "This version has no published files to share yet."
-        case .exportDownloadFailed: "Couldn't fetch the published files. Check your connection and try again."
+        case .systemRenditionUnavailable: String(localized: "The sticker rendition could not be rendered.")
+        case .revisionNotAccepted: String(localized: "Accept this revision before publishing exports.")
+        case .animationRequired: String(localized: "Add motion before publishing this animated sticker. You can still export the current image locally.")
+        case .missingVerifiedAssets: String(localized: "All image and mask assets must finish verified download before export. Try again when the preview is ready.")
+        case .publishedExportsUnavailable: String(localized: "This version has no published files to share yet.")
+        case .exportDownloadFailed: String(localized: "Couldn't fetch the published files. Check your connection and try again.")
         }
     }
 }

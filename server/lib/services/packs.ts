@@ -13,7 +13,14 @@ import {
   type StickerPackRow,
 } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
-import { listStickers, serializeStickerSummary, type StickerSummaryRow } from "@/lib/services/stickers";
+import {
+  listStickers,
+  previewAssetSummaryColumns,
+  serializeStickerSummary,
+  stickerSummaryColumns,
+  systemAssetSummaryColumns,
+  type StickerSummaryRow,
+} from "@/lib/services/stickers";
 
 /** A pack is a curated set, not a dumping ground; the Messages grid also has to stay scrollable. */
 export const MAX_PACK_ITEMS = 60;
@@ -114,8 +121,8 @@ export interface CreatorV1 {
 /**
  * The public creator byline.
  *
- * `creator_profiles.display_name` wins over `users.display_name` because `ensureUser()` rewrites
- * the latter from the OAuth token whenever it drifts. The handle is the last resort, so the
+ * `creator_profiles.display_name` wins over the legacy `users.display_name`. New user rows are
+ * id-only because OAuth remains the profile source of truth. The handle is the last resort, so the
  * result is never blank — and the email is never a fallback.
  */
 export function serializeCreator(
@@ -219,16 +226,23 @@ function selectPacks(db: Database) {
 async function loadPackMembers(
   db: Database,
   packIds: string[],
-  options: { perPack?: number } = {},
+  options: { perPack?: number; query?: string | null } = {},
 ): Promise<Map<string, StickerSummaryRow[]>> {
   const byPack = new Map<string, StickerSummaryRow[]>();
   if (packIds.length === 0) return byPack;
+  const conditions = [
+    inArray(stickerPackItems.packId, packIds),
+    eq(stickers.status, "published"),
+    isNull(stickers.deletedAt),
+  ];
+  const query = options.query?.trim();
+  if (query) conditions.push(sql`instr(lower(${stickers.title}), lower(${query})) > 0`);
   const rows = await db.select({
     packId: stickerPackItems.packId,
     position: stickerPackItems.position,
-    sticker: stickers,
-    systemAsset: systemAssets,
-    previewAsset: previewAssets,
+    sticker: stickerSummaryColumns,
+    systemAsset: systemAssetSummaryColumns,
+    previewAsset: previewAssetSummaryColumns,
   })
     .from(stickerPackItems)
     .innerJoin(stickers, eq(stickers.id, stickerPackItems.stickerId))
@@ -238,11 +252,7 @@ async function loadPackMembers(
       eq(systemAssets.state, "ready"),
     ))
     .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql))
-    .where(and(
-      inArray(stickerPackItems.packId, packIds),
-      eq(stickers.status, "published"),
-      isNull(stickers.deletedAt),
-    ))
+    .where(and(...conditions))
     .orderBy(asc(stickerPackItems.packId), asc(stickerPackItems.position), asc(stickerPackItems.stickerId));
 
   const perPack = options.perPack ?? MAX_PACK_ITEMS;
@@ -739,12 +749,14 @@ export interface LibrarySectionV1 {
 export async function listLibrarySections(
   db: Database,
   userId: string,
-  options: { status?: "published" | "all" } = {},
+  options: { status?: "published" | "all"; query?: string | null } = {},
 ): Promise<{ sections: LibrarySectionV1[]; generatedAt: string }> {
   const status = options.status ?? "published";
+  const query = options.query?.trim();
   const mine = await listStickers(db, userId, {
     limit: 100,
     status: status === "all" ? undefined : "published",
+    query,
   });
 
   const installed = await db.select({ pack: stickerPacks, profile: creatorProfiles, user: users, install: packInstalls })
@@ -762,7 +774,7 @@ export async function listLibrarySections(
 
   // A separate members query, so a pack whose every member fell back to `draft` still yields a
   // section with an empty sticker list rather than silently disappearing from the user's library.
-  const members = await loadPackMembers(db, installed.map((row) => row.pack.id));
+  const members = await loadPackMembers(db, installed.map((row) => row.pack.id), { query });
 
   const latest = (rows: { updatedAt: string }[], fallback: string) =>
     rows.reduce((newest, row) => (row.updatedAt > newest ? row.updatedAt : newest), fallback);
@@ -792,7 +804,7 @@ export async function listLibrarySections(
       updatedAt: latest(packStickers, row.pack.updatedAt.toISOString()),
       stickers: packStickers,
     };
-  });
+  }).filter((section) => !query || section.stickers.length > 0);
 
   return { sections: [mineSection, ...packSections], generatedAt: new Date().toISOString() };
 }

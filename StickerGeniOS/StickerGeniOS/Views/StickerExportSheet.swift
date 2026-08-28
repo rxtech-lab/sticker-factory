@@ -1,5 +1,6 @@
 import AnimatedView
 import SwiftUI
+import TipKit
 import UIKit
 
 struct StickerExportSheet: View {
@@ -14,6 +15,8 @@ struct StickerExportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isPresentingFullScreen = false
     @State private var isPresentingShareSheet = false
+    private let publishTip = PublishStickerTip()
+    private let useTip = UseStickerTip()
 
     private var assets: [String: UIImage] { assetStore.images }
     private var verifiedAssetIDs: Set<String> { assetStore.verifiedAssetIDs }
@@ -39,6 +42,10 @@ struct StickerExportSheet: View {
                     GlassCard(padding: 20) {
                         VStack(alignment: .leading, spacing: 18) {
                             statusHeader
+                            if isPublished {
+                                TipView(useTip)
+                                    .tipViewStyle(.miniTip)
+                            }
                             if revision.canPublishExports { exportSettings }
                             actionRow
                             shareRow
@@ -380,6 +387,7 @@ struct StickerExportSheet: View {
             .accessibilityIdentifier("export-progress")
         } else if !actionIsComplete {
             Button {
+                publishTip.invalidate(reason: .actionPerformed)
                 Haptics.tap(.medium)
                 Task {
                     await model.exportOrPublish(
@@ -408,6 +416,7 @@ struct StickerExportSheet: View {
             .buttonStyle(.glassProminent)
             .tint(AppColors.accent)
             .controlSize(.large)
+            .popoverTip(revision.canPublishExports ? publishTip : nil, arrowEdge: .bottom)
             .accessibilityIdentifier(revision.canPublishExports ? "publish-exports" : "export-files")
         }
     }

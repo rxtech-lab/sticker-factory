@@ -40,10 +40,9 @@ nonisolated extension MessageListItem {
 /// `placesLatestTurnOnAppear` is set, one initial placement when the transcript
 /// first has content.
 ///
-/// **The reservation outlives the session.** It is not a side effect of sending:
-/// a transcript that arrives already answered rebuilds it from its newest user
-/// message, so reopening a chat looks like the moment its last turn was sent
-/// rather than dropping the reader at the raw end of the content.
+/// **The reservation belongs to the live session.** It starts when the user sends
+/// a message. Reopening an already-answered chat scrolls to its real end without
+/// rebuilding the reservation, so loaded history does not gain an empty tail.
 ///
 /// The bottom spacing is therefore *computed*, never a fixed padding: it is
 /// `viewport - turnHeight`, remeasured whenever the viewport changes (rotation,
@@ -166,7 +165,6 @@ struct MessageList<
             .task {
                 guard placesLatestTurnOnAppear, !hasPlacedInitialContent, !messages.isEmpty else { return }
                 hasPlacedInitialContent = true
-                restoreLatestTurnReservation()
                 scrollLatestTurnIntoView(proxy: proxy, animated: false)
             }
             .onChange(of: isStreaming) { oldValue, newValue in
@@ -346,13 +344,9 @@ struct MessageList<
                 isUserMessage: true,
                 isStreaming: isStreaming
             )
-        } else if isInitialPlacement, newToken.latestUserMessageID != nil {
-            // A transcript that arrives already answered has no send to react to,
-            // so the branch above never fires and the reservation would be missing
-            // for the rest of the session. Rebuild it from the newest user message,
-            // then place it — restoring keeps the measurements it already has, so
-            // this deliberately skips the reset the freshly-sent path does below.
-            restoreLatestTurnReservation()
+        } else if isInitialPlacement {
+            // Loaded history should land at its real end. Rebuilding the newest
+            // turn's reservation here would add a viewport-sized empty tail.
             scrollLatestTurnIntoView(proxy: proxy, animated: false)
             return
         } else {
@@ -418,20 +412,6 @@ struct MessageList<
             guard !Task.isCancelled, pinning.isPinningUserMessage else { return }
             canReleasePinnedUserMessageByScroll = true
         }
-    }
-
-    /// Rebuilds the tail reservation for a transcript that was already loaded when
-    /// the list appeared — the `.task` counterpart to the `handleMessageListChange`
-    /// path, for when there is no transcript change to react to at all.
-    private func restoreLatestTurnReservation() {
-        guard let latestUserMessageID else { return }
-        pinning.restoreLatestTurn(id: latestUserMessageID)
-        canReleasePinnedUserMessageByScroll = false
-        // Adopt whatever the rows have already reported rather than resetting. On a
-        // reopened transcript the layout is settled, so a cleared measurement would
-        // never be replaced; re-ratcheting from zero picks up the current turn.
-        activeTurnMaxMeasuredHeight = 0
-        updateActiveTurnMaxMeasuredHeight()
     }
 
     private func releasePinnedUserMessage() {

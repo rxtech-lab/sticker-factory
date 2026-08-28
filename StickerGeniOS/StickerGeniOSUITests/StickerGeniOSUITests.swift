@@ -7,7 +7,12 @@ final class StickerGeniOSUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reduce-motion"]
+        app.launchArguments = [
+            "--ui-testing",
+            "--reduce-motion",
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+        ]
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 8))
     }
@@ -27,7 +32,63 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(element("signed-in-profile").exists)
         XCTAssertTrue(element("privacy-policy-link").exists)
         XCTAssertTrue(element("terms-of-service-link").exists)
+        XCTAssertTrue(app.buttons["How Winky Sticker House works"].exists)
+        XCTAssertTrue(element("about-page-link").exists)
         XCTAssertTrue(element("sign-out-button").exists)
+
+        element("about-page-link").tap()
+        XCTAssertTrue(element("about-page-view").waitForExistence(timeout: 3))
+        XCTAssertTrue(element("app-version").waitForExistence(timeout: 3))
+        XCTAssertFalse(app.tabBars.buttons["Library"].exists)
+    }
+
+    @MainActor
+    func testLegalDocumentHidesTabBar() {
+        app.tabBars.buttons["Account"].tap()
+        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 3))
+
+        element("privacy-policy-link").tap()
+        XCTAssertTrue(element("legal-document-view").waitForExistence(timeout: 3))
+        XCTAssertFalse(app.tabBars.buttons["Library"].exists)
+    }
+
+    @MainActor
+    func testLibrarySearchShowsRemoteNoResultsState() {
+        let search = app.searchFields["Search stickers"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("No such sticker")
+
+        XCTAssertTrue(app.staticTexts["No matching stickers"].waitForExistence(timeout: 5))
+        XCTAssertFalse(element("library-sticker-sticker-demo").exists)
+    }
+
+    @MainActor
+    func testLibraryStickerContextMenuOffersRenameAndConfirmedDelete() {
+        let card = element("library-sticker-sticker-demo")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        card.press(forDuration: 1)
+
+        let rename = element("rename-library-sticker-sticker-demo")
+        XCTAssertTrue(rename.waitForExistence(timeout: 3))
+        XCTAssertTrue(element("delete-library-sticker-sticker-demo").exists)
+        rename.tap()
+
+        // SwiftUI's alert hosts the field outside the app's ordinary accessibility container and
+        // drops its custom identifier, while preserving the visible prompt as the field label.
+        let renameField = app.textFields["Sticker name"]
+        XCTAssertTrue(renameField.waitForExistence(timeout: 3))
+        XCTAssertEqual(renameField.value as? String, "Happy bounce")
+        app.buttons["Cancel"].tap()
+
+        card.press(forDuration: 1)
+        element("delete-library-sticker-sticker-demo").tap()
+        XCTAssertTrue(app.staticTexts["Delete this sticker project?"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Delete “Happy bounce”"].exists)
+        // On this compact confirmation-dialog presentation XCTest exposes the destructive action
+        // but not SwiftUI's cancel role, so dismiss through the modal backdrop as a user can.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        XCTAssertTrue(card.exists)
     }
 
     @MainActor
@@ -80,6 +141,7 @@ final class StickerGeniOSUITests: XCTestCase {
         menu.tap()
 
         XCTAssertTrue(app.buttons["export-sticker"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["rename-sticker"].exists)
         XCTAssertTrue(app.buttons["view-versions"].exists)
         XCTAssertTrue(app.buttons["delete-project"].exists)
     }
@@ -90,7 +152,7 @@ final class StickerGeniOSUITests: XCTestCase {
         let picker = app.segmentedControls.firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 3))
         picker.buttons["Animated"].tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'confirm the base image'")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'review a static visual reference'")).firstMatch.exists)
 
         element("dismiss-create-button").tap()
         let card = element("library-sticker-sticker-demo")
@@ -174,6 +236,31 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(element("sticker-kind-picker").waitForExistence(timeout: 3))
         XCTAssertTrue(element("sticker-prompt").isHittable)
         XCTAssertTrue(element("generate-sticker-button").exists)
+    }
+
+    @MainActor
+    func testFirstLaunchWelcomeExplainsTheFullWorkflow() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-welcome"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker House"].waitForExistence(timeout: 8))
+
+        for title in ["1. Generate", "2. Confirm", "3. Keep every version", "4. Publish", "5. Use it"] {
+            app.buttons["Next"].tap()
+            expectation(
+                for: NSPredicate(format: "hittable == true"),
+                evaluatedWith: app.staticTexts[title]
+            )
+            waitForExpectations(timeout: 3)
+        }
+
+        let getStarted = app.buttons["Get started"]
+        XCTAssertTrue(getStarted.exists)
+        getStarted.tap()
+        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["5. Use it"].exists)
     }
 
     private func openCreateSheet() {

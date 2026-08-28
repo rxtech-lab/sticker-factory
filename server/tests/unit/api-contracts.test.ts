@@ -10,6 +10,7 @@ import {
   PackListResponseV1Schema,
   PublishExportsRequestSchema,
   StickerListResponseV1Schema,
+  UpdateStickerRequestSchema,
 } from "@/lib/contracts/api";
 
 describe("shared API fixtures", () => {
@@ -53,6 +54,13 @@ describe("shared API fixtures", () => {
     expect(() => CreatePackRequestSchema.parse({ title: "" })).toThrow();
     // `.strict()` keeps a client from smuggling in fields the server would silently ignore.
     expect(() => CreatePackRequestSchema.parse({ title: "Fine", installCount: 9000 })).toThrow();
+  });
+
+  it("validates sticker renames", () => {
+    expect(UpdateStickerRequestSchema.parse({ title: "  Happy Cloud  " })).toEqual({ title: "Happy Cloud" });
+    expect(() => UpdateStickerRequestSchema.parse({ title: "   " })).toThrow();
+    expect(() => UpdateStickerRequestSchema.parse({ title: "x".repeat(101) })).toThrow();
+    expect(() => UpdateStickerRequestSchema.parse({ title: "Cloud", status: "published" })).toThrow();
   });
 
   it("enforces the system rendition and export MIME matrix", () => {

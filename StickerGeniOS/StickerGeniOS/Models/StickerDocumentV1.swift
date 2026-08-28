@@ -12,7 +12,9 @@ nonisolated enum StickerKind: String, Codable, CaseIterable, Hashable, Sendable,
     case `static`
     case animated
     var id: Self { self }
-    var label: String { self == .static ? "Static" : "Animated" }
+    var label: String {
+        self == .static ? String(localized: "Static") : String(localized: "Animated")
+    }
     var symbol: String { self == .static ? "photo" : "sparkles.rectangle.stack" }
 
     /// The document's own spelling of the same distinction.
@@ -23,6 +25,14 @@ nonisolated enum StickerKind: String, Codable, CaseIterable, Hashable, Sendable,
 
 nonisolated enum StickerLoopBehavior: String, Codable, CaseIterable, Hashable, Sendable {
     case once, loop, pingPong
+
+    var label: String {
+        switch self {
+        case .once: String(localized: "Once")
+        case .loop: String(localized: "Loop")
+        case .pingPong: String(localized: "Ping-pong")
+        }
+    }
 
     var animatedLoop: AnimatedLoop {
         switch self {
@@ -117,7 +127,7 @@ nonisolated enum StickerDocumentValidationError: Error, Equatable, LocalizedErro
     var errorDescription: String? {
         switch self {
         case .unsupportedVersion(let version):
-            "This sticker was made with a newer version of the app (document version \(version))."
+            String(localized: "This sticker was made with a newer version of the app (document version \(version)).")
         }
     }
 }

@@ -1,4 +1,6 @@
 import SwiftUI
+import TipKit
+import UIKit
 
 /// A sticker design the assistant drafted, shown in the transcript for the user to confirm.
 ///
@@ -7,6 +9,7 @@ import SwiftUI
 /// that is otherwise still live. Such a card is a record of what was proposed, not a button.
 struct PlanCard: View {
     let record: PlanRecord
+    let referenceImage: UIImage?
     let isBusy: Bool
     let onConfirm: () -> Void
     let onReject: (String?) -> Void
@@ -14,14 +17,19 @@ struct PlanCard: View {
     @State private var confirming = false
     @State private var rejecting = false
     @State private var rejectionReason = ""
+    private let confirmTip = ConfirmPlanTip()
 
     private var plan: Plan { record.plan }
     private var generationCount: Int { record.generationCount }
+    private var isWaitingForReference: Bool { plan.kind == .animated && referenceImage == nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 header
+                if plan.kind == .animated, record.conceptAssetId != nil {
+                    PlanReferencePreview(image: referenceImage)
+                }
                 PlanLayoutPreview(layers: plan.layers)
                 layerList
                 if plan.kind == .animated { timingNote }
@@ -42,6 +50,7 @@ struct PlanCard: View {
         .accessibilityIdentifier("composition-plan-card")
         .confirmationDialog("Build this plan?", isPresented: $confirming, titleVisibility: .visible) {
             Button("Build") {
+                confirmTip.invalidate(reason: .actionPerformed)
                 // Heavier than an ordinary tap: this commits to generating images.
                 Haptics.tap(.medium)
                 onConfirm()
@@ -145,7 +154,7 @@ struct PlanCard: View {
 
     private var timingNote: some View {
         Label(
-            "\(formatted(plan.timing.durationSeconds))s · \(plan.timing.fps) fps · \(plan.timing.loop.rawValue)",
+            "\(formatted(plan.timing.durationSeconds))s · \(plan.timing.fps) fps · \(plan.timing.loop.label)",
             systemImage: "waveform.path"
         )
         .font(.caption)
@@ -160,8 +169,8 @@ struct PlanCard: View {
                     confirming = true
                 } label: {
                     HStack(spacing: 6) {
-                        if isBusy { ProgressView().controlSize(.small) }
-                        Text(confirmLabel)
+                        if isBusy || isWaitingForReference { ProgressView().controlSize(.small) }
+                        Text(isWaitingForReference ? "Loading reference…" : confirmLabel)
                             .font(.subheadline.weight(.semibold))
                     }
                     .frame(maxWidth: .infinity)
@@ -169,7 +178,8 @@ struct PlanCard: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(AppColors.accent)
-                .disabled(isBusy)
+                .disabled(isBusy || isWaitingForReference)
+                .popoverTip(confirmTip, arrowEdge: .top)
                 .accessibilityIdentifier("composition-plan-generate")
 
                 Divider().frame(height: 24).overlay(Color.secondary.opacity(0.2))
@@ -189,35 +199,95 @@ struct PlanCard: View {
     }
 
     private var layerHeading: String {
-        let layers = plan.layers.count == 1 ? "1 LAYER" : "\(plan.layers.count) LAYERS"
+        let layers = plan.layers.count == 1
+            ? String(localized: "1 LAYER")
+            : String(localized: "\(plan.layers.count) LAYERS")
         guard generationCount < plan.layers.count else { return layers }
-        return "\(layers) · \(generationCount) GENERATED"
+        return String(localized: "\(layers) · \(generationCount) GENERATED")
     }
 
     private var confirmLabel: String {
-        generationCount == 0
-            ? "Build sticker"
-            : generationCount == 1 ? "Generate 1 image" : "Generate \(generationCount) images"
+        if plan.kind == .animated {
+            return generationCount == 0
+                ? String(localized: "Build animation")
+                : generationCount == 1
+                    ? String(localized: "Separate 1 part")
+                    : String(localized: "Separate \(generationCount) parts")
+        }
+        return generationCount == 0
+            ? String(localized: "Build sticker")
+            : generationCount == 1
+                ? String(localized: "Generate 1 image")
+                : String(localized: "Generate \(generationCount) images")
     }
 
     private var confirmationMessage: String {
-        generationCount == 0
-            ? "This assembles \(plan.layers.count) layers. No images need to be generated."
-            : "This generates \(generationCount) separate \(generationCount == 1 ? "image" : "images") and assembles them. It takes longer than a single sticker."
+        if plan.kind == .animated {
+            return generationCount == 0
+                ? String(localized: "This uses the approved static reference to assemble \(plan.layers.count) existing layers and add motion.")
+                : generationCount == 1
+                    ? String(localized: "This uses the approved static reference to generate 1 matching transparent part, assembles the layers, and adds motion.")
+                    : String(localized: "This uses the approved static reference to generate \(generationCount) matching transparent parts, assembles the layers, and adds motion.")
+        }
+        return generationCount == 0
+            ? String(localized: "This assembles \(plan.layers.count) layers. No images need to be generated.")
+            : generationCount == 1
+                ? String(localized: "This generates 1 separate image and assembles it. It takes longer than a single sticker.")
+                : String(localized: "This generates \(generationCount) separate images and assembles them. It takes longer than a single sticker.")
     }
 
     private var statusNote: String {
         switch record.state {
-        case .draft: "Still being drafted."
-        case .finalized: "Superseded by a newer revision of this plan."
-        case .confirmed: "Building."
-        case .superseded: "Superseded by a newer plan."
-        case .cancelled: record.decisionReason.map { "Dismissed — \($0)" } ?? "Dismissed."
+        case .draft: String(localized: "Still being drafted.")
+        case .finalized: String(localized: "Superseded by a newer revision of this plan.")
+        case .confirmed: String(localized: "Building.")
+        case .superseded: String(localized: "Superseded by a newer plan.")
+        case .cancelled:
+            record.decisionReason.map { String(localized: "Dismissed — \($0)") }
+                ?? String(localized: "Dismissed.")
         }
     }
 
     private func formatted(_ value: Double) -> String {
         value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+    }
+}
+
+/// The visual source of truth generated before an animated plan becomes actionable.
+private struct PlanReferencePreview: View {
+    let image: UIImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("STATIC REFERENCE")
+                .font(.caption2.weight(.semibold))
+                .tracking(0.7)
+                .foregroundStyle(.secondary)
+
+            Group {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                        Text("Loading reference…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 14))
+            .clipShape(.rect(cornerRadius: 14))
+            .accessibilityIdentifier("plan-static-reference")
+
+            Text("Confirm this look, then the artwork is separated into parts for animation.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

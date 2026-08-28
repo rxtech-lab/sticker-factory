@@ -1,12 +1,15 @@
 import Foundation
 
 nonisolated struct AppConfiguration: Sendable {
+    static let defaultAppName = "Winky Sticker House"
     static let appGroupIdentifier = "group.app.rxlab.stickerfactory"
     static let keychainService = "app.rxlab.sticker-factory.oauth"
     static let keychainAccount = "oauth-token-bundle"
     static let keychainAccessGroupInfoKey = "StickerFactoryKeychainAccessGroup"
     static let refreshLockFilename = "oauth-refresh.lock"
 
+    let appVersion: String?
+    let appBuild: String?
     let apiBaseURL: URL
     let oauthIssuer: URL
     let oauthTokenURL: URL
@@ -25,18 +28,24 @@ nonisolated struct AppConfiguration: Sendable {
     #endif
 
     static func live(bundle: Bundle = .main) -> Self {
-        func value(_ key: String, fallback: String) -> String {
-            let raw = bundle.object(forInfoDictionaryKey: key) as? String
-            guard let raw, !raw.isEmpty, !raw.contains("$(") else { return fallback }
-            return raw
-        }
-
         return Self(
-            apiBaseURL: URL(string: value("StickerFactoryAPIBaseURL", fallback: defaultAPIBaseURL))!,
-            oauthIssuer: URL(string: value("StickerFactoryOAuthIssuer", fallback: "https://auth.rxlab.app"))!,
-            oauthTokenURL: URL(string: value("StickerFactoryAuthTokenURL", fallback: "https://auth.rxlab.app/api/oauth/token"))!,
-            oauthClientID: value("StickerFactoryIOSClientID", fallback: "client_1ce3e6efd6da4214a61df67949a71622"),
-            oauthRedirectURI: value("StickerFactoryOAuthRedirectURI", fallback: "stickerfactory://oauth/callback")
+            appVersion: optionalConfiguredValue("CFBundleShortVersionString", bundle: bundle),
+            appBuild: optionalConfiguredValue("CFBundleVersion", bundle: bundle),
+            apiBaseURL: URL(string: configuredValue("StickerFactoryAPIBaseURL", bundle: bundle, fallback: defaultAPIBaseURL))!,
+            oauthIssuer: URL(string: configuredValue("StickerFactoryOAuthIssuer", bundle: bundle, fallback: "https://auth.rxlab.app"))!,
+            oauthTokenURL: URL(string: configuredValue("StickerFactoryAuthTokenURL", bundle: bundle, fallback: "https://auth.rxlab.app/api/oauth/token"))!,
+            oauthClientID: configuredValue("StickerFactoryIOSClientID", bundle: bundle, fallback: "client_1ce3e6efd6da4214a61df67949a71622"),
+            oauthRedirectURI: configuredValue("StickerFactoryOAuthRedirectURI", bundle: bundle, fallback: "stickerfactory://oauth/callback")
         )
+    }
+
+    private static func configuredValue(_ key: String, bundle: Bundle, fallback: String) -> String {
+        optionalConfiguredValue(key, bundle: bundle) ?? fallback
+    }
+
+    private static func optionalConfiguredValue(_ key: String, bundle: Bundle) -> String? {
+        let raw = bundle.object(forInfoDictionaryKey: key) as? String
+        guard let raw, !raw.isEmpty, !raw.contains("$(") else { return nil }
+        return raw
     }
 }

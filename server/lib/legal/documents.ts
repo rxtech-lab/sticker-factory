@@ -82,10 +82,13 @@ To the extent permitted by law, RxLab is not responsible for indirect, incidenta
 We may update these Terms as the service changes. Continued use after updated Terms take effect means you accept the revised Terms. The effective date above identifies the current version. Contact RxLab support with questions about these Terms.
 `;
 
-export function markdownDocumentResponse(markdown: string): Response {
+export function markdownDocumentResponse(
+  markdown: string,
+  cacheControl = "public, max-age=3600, stale-while-revalidate=86400",
+): Response {
   return new Response(markdown, {
     headers: {
-      "cache-control": "public, max-age=3600, stale-while-revalidate=86400",
+      "cache-control": cacheControl,
       "content-language": "en",
       "content-type": "text/markdown; charset=utf-8",
       "x-content-type-options": "nosniff",

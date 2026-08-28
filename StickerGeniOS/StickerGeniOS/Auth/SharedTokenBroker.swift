@@ -56,10 +56,11 @@ nonisolated enum TokenBrokerError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .missingSession: "Please open Sticker Factory and sign in again."
-        case .refreshRejected: "Your session expired. Please sign in again."
-        case .transientRefresh: "The authentication service is temporarily unavailable."
-        case .lockUnavailable: "The shared session is temporarily unavailable."
+        case .missingSession:
+            String(localized: "Please open \(AppConfiguration.defaultAppName) and sign in again.")
+        case .refreshRejected: String(localized: "Your session expired. Please sign in again.")
+        case .transientRefresh: String(localized: "The authentication service is temporarily unavailable.")
+        case .lockUnavailable: String(localized: "The shared session is temporarily unavailable.")
         }
     }
 }

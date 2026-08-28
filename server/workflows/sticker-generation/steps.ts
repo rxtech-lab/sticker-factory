@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, max } from "drizzle-orm";
 import { FatalError } from "workflow";
 import { compactTranscript } from "@/lib/ai/compaction";
 import {
+  assertAnimatedPlanUsesReferenceBackedArtwork,
   assertPlanReuseIsResolvable,
   compilePlanAnimations,
   planLayerAnchor,
@@ -398,8 +399,8 @@ async function generateAndStoreAsset(
     conversationContext?: string;
     mode: "generate" | "conversation_edit";
     /**
-     * A storyboard of a plan rather than a sticker. Concept boards are deliberately opaque, so they
-     * skip the transparency gate and land as a `preview` asset instead of a `master`.
+     * A complete static plan reference rather than one separated sticker part. References are
+     * deliberately opaque, so they skip the transparency gate and land as a `preview` asset.
      */
     concept?: boolean;
   },
@@ -431,7 +432,7 @@ async function generateAndStoreAsset(
     return;
   }
   const generated = await traceSpan("generateImage", trace, () => params.concept
-    ? provider.generateConceptImage(params.prompt)
+    ? provider.generateConceptImage({ prompt: params.prompt, references: params.references })
     : provider.generateStickerImage({
       prompt: params.prompt,
       references: params.references,
@@ -665,38 +666,80 @@ async function upsertPlanCard(
   return id;
 }
 
-/** Best-effort storyboard for a plan. A failure must never sink the drafting turn. */
+function planReferencePrompt(plan: PlanV1): string | undefined {
+  if (plan.conceptPrompt) return plan.conceptPrompt;
+  if (plan.kind !== "animated") return undefined;
+
+  const parts = plan.layers.map((layer) => {
+    const source = layer.source;
+    const description = source.kind === "generate"
+      ? source.prompt
+      : source.kind === "existing"
+        ? `the existing approved artwork named ${layer.name}`
+        : source.kind === "text"
+          ? `the text "${source.text}" in ${source.color}`
+          : source.kind === "shape"
+            ? `a ${source.fill} ${source.shape}`
+            : `${source.color} ${source.preset}`;
+    return `${layer.name}: ${description}, centred near (${layer.x}, ${layer.y})`;
+  });
+  return [
+    `${plan.title}. ${plan.summary}`,
+    "Draw the complete finished sticker in its resting pose as one polished, coherent still image.",
+    `Include these parts in the same composition: ${parts.join("; ")}.`,
+  ].join(" ");
+}
+
+/**
+ * Generates the static visual source of truth for a plan revision.
+ *
+ * Animated plans cannot proceed without it. The asset id includes the revision because `show_plan`
+ * may render a draft which the agent subsequently updates; reusing that old image would ask the
+ * user to approve artwork that no longer describes the plan they are confirming.
+ */
 async function renderPlanConcept(
   job: typeof generationJobs.$inferSelect,
   stickerId: string,
   planId: string,
+  revision: number,
   plan: PlanV1,
+  references: Array<{ bytes: Uint8Array; mimeType: string }>,
 ): Promise<void> {
-  if (!plan.conceptPrompt) return;
+  const prompt = planReferencePrompt(plan);
+  if (!prompt) return;
   const db = getDatabase();
   const row = await db.select({ conceptAssetId: plans.conceptAssetId }).from(plans)
     .where(eq(plans.id, planId)).get();
-  if (row?.conceptAssetId) return;
-  try {
-    const assetId = derivedAssetId(planId, "concept");
+  const assetId = derivedAssetId(planId, `concept:${revision}`);
+  if (row?.conceptAssetId === assetId) return;
+
+  const generate = async () => {
     await generateAndStoreAsset(job, stickerId, {
       assetId,
-      prompt: plan.conceptPrompt,
-      references: [],
+      prompt,
+      references,
       mode: "generate",
       concept: true,
     });
     await attachPlanConcept(db, planId, assetId);
-  } catch {
-    // The plan is fully usable without a picture, so a failed storyboard is silent.
+  };
+  if (plan.kind === "animated") {
+    await generate();
+  } else {
+    try {
+      await generate();
+    } catch {
+      // Static plans do not depend on a reference image, so an optional preview stays best-effort.
+    }
   }
 }
 
 /**
  * Runs the agent's plan-drafting loop and ends the turn with a card for the user to decide on.
  *
- * Nothing is generated here. The model creates a draft, revises it as many times as it needs, and
- * finalizes it; only a user confirmation starts a `compose` job that spends money on images.
+ * The model creates and revises a draft, then an animated plan renders one static reference for the
+ * user to approve. Only confirmation starts the `compose` job that separates generated artwork into
+ * transparent parts and assembles the animation.
  */
 async function executePlanTurn(
   job: typeof generationJobs.$inferSelect,
@@ -705,6 +748,7 @@ async function executePlanTurn(
   instruction: string,
   history: string,
   activeDocument: StickerDocument | undefined,
+  references: Array<{ bytes: Uint8Array; mimeType: string }>,
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
   const db = getDatabase();
@@ -721,6 +765,7 @@ async function executePlanTurn(
     createPlan: async (plan) => {
       const call = await beginToolCall(job, "create_plan");
       try {
+        assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument);
         const created = await createPlan(db, {
           ownerId: job.ownerId,
@@ -746,6 +791,7 @@ async function executePlanTurn(
       // stuck spinner instead of each revision.
       const call = await beginToolCall(job, "update_plan", undefined, `update_plan #${updates}`);
       try {
+        assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument);
         const updated = await updatePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId, plan });
         latest = { planId: updated.planId, revision: updated.revision, plan };
@@ -760,7 +806,7 @@ async function executePlanTurn(
       const call = await beginToolCall(job, "show_plan");
       try {
         if (!latest) throw new Error("There is no plan to show yet");
-        await renderPlanConcept(job, sticker.id, planId, latest.plan);
+        await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references);
         await upsertPlanCard(job, planId, latest.revision, latest.plan.summary);
         await finishToolCall(job, call);
         return { planId, revision: latest.revision };
@@ -772,6 +818,8 @@ async function executePlanTurn(
     finalizePlan: async (planId) => {
       const call = await beginToolCall(job, "finalize_plan");
       try {
+        if (!latest) throw new Error("There is no plan to finalize yet");
+        await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references);
         const finalized = await finalizePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId });
         latest = { planId: finalized.planId, revision: finalized.revision, plan: finalized.plan };
         await finishToolCall(job, call);
@@ -796,6 +844,7 @@ async function executePlanTurn(
   // The loop can also stop on its step cap. A draft the user can look at and reject beats a dead
   // turn, so finalize whatever the model got to rather than failing.
   if (!result?.finalized) {
+    await renderPlanConcept(job, sticker.id, latest.planId, latest.revision, latest.plan, references);
     const finalized = await finalizePlan(db, {
       ownerId: job.ownerId,
       stickerId: sticker.id,
@@ -1353,6 +1402,26 @@ async function refineBuiltLayout(
   return result?.finalized ? working : (reviewed ?? document);
 }
 
+/** Loads the exact static reference attached to the confirmed animated plan. */
+async function loadPlanVisualReference(
+  planRow: typeof plans.$inferSelect,
+  ownerId: string,
+  stickerId: string,
+): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  if (!planRow.conceptAssetId) {
+    throw new Error("Confirmed animated plan is missing its approved static reference");
+  }
+  const asset = await getDatabase().select().from(assets).where(and(
+    eq(assets.id, planRow.conceptAssetId),
+    eq(assets.ownerId, ownerId),
+    eq(assets.stickerId, stickerId),
+    eq(assets.state, "ready"),
+  )).get();
+  if (!asset) throw new Error("Approved static plan reference is unavailable");
+  const object = await getObjectStore().get(asset.r2Key);
+  return { bytes: object.bytes, mimeType: asset.mimeType };
+}
+
 /**
  * Builds a confirmed plan: one image per generate layer, then the document the plan describes.
  *
@@ -1382,6 +1451,9 @@ async function executePlanBuildTurn(
   if (!planRow) throw new Error("Plan not found for this job");
   const plan = PlanV1Schema.parse(planRow.planJson);
   const generated = generatedLayers(plan, job.id);
+  const visualReference = plan.kind === "animated"
+    ? await loadPlanVisualReference(planRow, job.ownerId, sticker.id)
+    : undefined;
 
   const primaryToolCallId = await beginToolCall(job, "build-plan");
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
@@ -1398,8 +1470,17 @@ async function executePlanBuildTurn(
     try {
       await generateAndStoreAsset(job, sticker.id, {
         assetId: item.assetId,
-        prompt: item.prompt,
-        references: [],
+        prompt: visualReference
+          ? [
+              `Separate only the "${item.layer.name}" part from the approved static sticker reference.`,
+              "Copy it from the approved reference instead of redesigning or simplifying it.",
+              "Preserve its exact silhouette, design, colours, outlines, bevels, highlights,",
+              "shadows, texture, and proportions.",
+              "Return that one part isolated on a transparent background; omit every other part.",
+              `Part description: ${item.prompt}`,
+            ].join(" ")
+          : item.prompt,
+        references: visualReference ? [visualReference] : [],
         conversationContext: history,
         mode: "generate",
       });
@@ -1525,6 +1606,41 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     : undefined;
   const activeDocument = activeRevision ? StickerDocumentSchema.parse(activeRevision.documentJson) : undefined;
   if (activeDocument) await assertDocumentAssetsOwned(activeDocument, job.ownerId, sticker.id);
+  const objectStore = getObjectStore();
+  const referenceRows = attachments.filter((row) => row.attachment.kind === "reference");
+  let referenceImagesPromise: Promise<Array<{ bytes: Uint8Array; mimeType: string }>> | undefined;
+  const loadReferenceImages = () => {
+    referenceImagesPromise ??= (async () => {
+      const userReferenceImages = await Promise.all(referenceRows.map(async (row) => {
+        const object = await objectStore.get(row.asset.r2Key);
+        return { bytes: object.bytes, mimeType: row.asset.mimeType };
+      }));
+      // A re-plan should preserve the artwork already on screen as faithfully as a newly attached
+      // photo. Fill any reference slots the user did not occupy with the current document's image
+      // layers, in layer order, and never send the same asset twice.
+      const attachedAssetIds = new Set(referenceRows.map((row) => row.asset.id));
+      const reusableReferenceIds = activeDocument?.layers.flatMap((layer) => (
+        layer.type === "image" && !attachedAssetIds.has(layer.assetId) ? [layer.assetId] : []
+      )).filter((id, index, all) => all.indexOf(id) === index).slice(0, 8 - userReferenceImages.length) ?? [];
+      const reusableReferenceRows = reusableReferenceIds.length > 0
+        ? await db.select().from(assets).where(and(
+          eq(assets.ownerId, job.ownerId),
+          eq(assets.stickerId, sticker.id),
+          eq(assets.state, "ready"),
+          inArray(assets.id, reusableReferenceIds),
+        ))
+        : [];
+      const reusableById = new Map(reusableReferenceRows.map((asset) => [asset.id, asset]));
+      const reusableReferenceImages = await Promise.all(reusableReferenceIds.flatMap((id) => {
+        const asset = reusableById.get(id);
+        return asset
+          ? [objectStore.get(asset.r2Key).then((object) => ({ bytes: object.bytes, mimeType: asset.mimeType }))]
+          : [];
+      }));
+      return [...userReferenceImages, ...reusableReferenceImages].slice(0, 8);
+    })();
+    return referenceImagesPromise;
+  };
   const existingRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, job.id)).get();
   if (existingRevision) {
     const existingDocument = StickerDocumentSchema.parse(existingRevision.documentJson);
@@ -1559,6 +1675,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       sourceMessage.content,
       history,
       activeDocument,
+      await loadReferenceImages(),
       await beginToolCall(job, "plan-sticker"),
     );
   }
@@ -1640,6 +1757,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         action.instruction,
         history,
         undefined,
+        await loadReferenceImages(),
         await beginToolCall(job, "plan-sticker"),
       );
     }
@@ -1658,7 +1776,16 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
                 : "reply";
     primaryToolCallId = await beginToolCall(job, toolName, action.type === "show" ? activeRevision?.id : undefined);
     if (action.type === "plan") {
-      return executePlanTurn(job, sticker, thread.id, action.instruction, history, activeDocument, primaryToolCallId);
+      return executePlanTurn(
+        job,
+        sticker,
+        thread.id,
+        action.instruction,
+        history,
+        activeDocument,
+        await loadReferenceImages(),
+        primaryToolCallId,
+      );
     }
     if (action.type === "reply") {
       await finishToolCall(job, primaryToolCallId);
@@ -1709,6 +1836,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       instruction,
       history,
       undefined,
+      await loadReferenceImages(),
       await beginToolCall(job, "plan-sticker"),
     );
   } else {
@@ -1740,14 +1868,9 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   }
 
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "preparing_context", progress: 0.15 });
+  const referenceImages = await loadReferenceImages();
 
-  const objectStore = getObjectStore();
   const maskRow = attachments.find((row) => row.attachment.kind === "mask");
-  const referenceRows = attachments.filter((row) => row.attachment.kind === "reference");
-  const referenceImages = await Promise.all(referenceRows.map(async (row) => {
-    const object = await objectStore.get(row.asset.r2Key);
-    return { bytes: object.bytes, mimeType: row.asset.mimeType };
-  }));
 
   // Everything that changes a sticker the user already has goes through the edit loop, which owns
   // the whole layer stack rather than one image. The exception is a masked edit: the user painted

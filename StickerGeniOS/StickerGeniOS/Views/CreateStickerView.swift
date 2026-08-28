@@ -30,7 +30,7 @@ struct CreateStickerView: View {
 
                             if kind == .animated {
                                 Label(
-                                    "You’ll confirm the base image, describe the motion in chat, preview valid streamed animation snapshots, then export.",
+                                    "You’ll review a static visual reference, confirm it, then we’ll separate the artwork into parts and animate them.",
                                     systemImage: "list.number"
                                 )
                                 .font(.callout)

@@ -25,6 +25,7 @@ import {
   retryFailedChatTurn,
   revertRevision,
   saveEditedRevision,
+  updateSticker,
 } from "@/lib/services/stickers";
 import { MemoryObjectStore, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
 import { cancelGenerationWorkflow } from "@/lib/services/workflows";
@@ -42,6 +43,22 @@ describe("Sticker Factory services", () => {
   afterEach(async () => {
     setObjectStoreForTests(undefined);
     await close();
+  });
+
+  it("renames only an owned live sticker", async () => {
+    const sticker = await createSticker(db, "owner-a", {
+      title: "First name", kind: "static", prompt: "Cloud", referenceAssetIds: [],
+    });
+    const renamed = await updateSticker(db, "owner-a", sticker.stickerId, { title: "Cloud Nine" });
+    expect(renamed.title).toBe("Cloud Nine");
+
+    await db.insert(users).values({ id: "owner-b", createdAt: new Date(), updatedAt: new Date() });
+    await expect(updateSticker(db, "owner-b", sticker.stickerId, { title: "Not mine" }))
+      .rejects.toMatchObject({ code: "STICKER_NOT_FOUND" });
+
+    await createCleanupJob(db, "owner-a", sticker.stickerId);
+    await expect(updateSticker(db, "owner-a", sticker.stickerId, { title: "Too late" }))
+      .rejects.toMatchObject({ code: "STICKER_NOT_FOUND" });
   });
 
   it("orders persistent chat, enforces one active turn, and bounds retries", async () => {

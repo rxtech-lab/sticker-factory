@@ -36,6 +36,18 @@ struct StickerMessagesContractTests {
         #expect(SharedStickerCache.maximumByteCount == 500_000)
     }
 
+    @Test("Rapid duplicate sticker insertions are suppressed without throttling other stickers")
+    func duplicateStickerInsertionsAreSuppressed() {
+        let first = URL(fileURLWithPath: "/tmp/first.png")
+        let second = URL(fileURLWithPath: "/tmp/second.png")
+        var gate = StickerInsertGate()
+
+        #expect(gate.shouldInsert(stickerURL: first, uptime: 10))
+        #expect(!gate.shouldInsert(stickerURL: first, uptime: 10.2))
+        #expect(gate.shouldInsert(stickerURL: second, uptime: 10.3))
+        #expect(gate.shouldInsert(stickerURL: first, uptime: 10.7))
+    }
+
     @Test("Only PNG, APNG, and GIF cache formats are accepted")
     func supportedCacheFormats() throws {
         let pngHeader = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])

@@ -62,28 +62,28 @@ nonisolated enum StickerToolLabel {
 
     private static let known: [String: String] = [
         // Phases.
-        "reply": "Writing a reply",
-        "generate-sticker": "Making your sticker",
-        "generate-image": "Drawing artwork",
-        "edit-sticker": "Editing sticker",
-        "animate-sticker": "Animating sticker",
-        "plan-sticker": "Planning sticker",
-        "build-plan": "Building plan",
-        "show-sticker": "Showing the sticker",
+        "reply": String(localized: "Writing a reply"),
+        "generate-sticker": String(localized: "Making your sticker"),
+        "generate-image": String(localized: "Drawing artwork"),
+        "edit-sticker": String(localized: "Editing sticker"),
+        "animate-sticker": String(localized: "Animating sticker"),
+        "plan-sticker": String(localized: "Planning sticker"),
+        "build-plan": String(localized: "Building plan"),
+        "show-sticker": String(localized: "Showing the sticker"),
         // Tool calls.
-        "create_plan": "Drafting a plan",
-        "update_plan": "Revising the plan",
-        "show_plan": "Showing the plan",
-        "finalize_plan": "Finishing the plan",
-        "create_animation": "Creating animation",
-        "update_animation": "Adjusting animation",
-        "edit_layer_animation": "Tuning a layer",
-        "finalize_animation": "Finishing animation",
-        "edit_layers": "Editing layers",
-        "edit_image_layer": "Redrawing a layer",
-        "add_image_layer": "Adding a layer",
-        "finalize_edit": "Finishing the edit",
-        "view_sticker": "Reviewing the sticker",
+        "create_plan": String(localized: "Drafting a plan"),
+        "update_plan": String(localized: "Revising the plan"),
+        "show_plan": String(localized: "Showing the plan"),
+        "finalize_plan": String(localized: "Finishing the plan"),
+        "create_animation": String(localized: "Creating animation"),
+        "update_animation": String(localized: "Adjusting animation"),
+        "edit_layer_animation": String(localized: "Tuning a layer"),
+        "finalize_animation": String(localized: "Finishing animation"),
+        "edit_layers": String(localized: "Editing layers"),
+        "edit_image_layer": String(localized: "Redrawing a layer"),
+        "add_image_layer": String(localized: "Adding a layer"),
+        "finalize_edit": String(localized: "Finishing the edit"),
+        "view_sticker": String(localized: "Reviewing the sticker"),
     ]
 
     /// An unknown tool still has to read as English, because the server can ship a new one before
@@ -92,7 +92,7 @@ nonisolated enum StickerToolLabel {
         let words = toolName.replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
             .trimmingCharacters(in: .whitespaces)
-        guard let first = words.first else { return "Working" }
+        guard let first = words.first else { return String(localized: "Working") }
         return first.uppercased() + words.dropFirst()
     }
 }

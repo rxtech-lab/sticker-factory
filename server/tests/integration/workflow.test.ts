@@ -868,7 +868,7 @@ describe("durable sticker workflow", () => {
     expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(0);
     await close();
   });
-  it("drafts a plan, generates nothing until it is confirmed, then builds it with compiled motion", async () => {
+  it("generates an approvable static reference, then separates matching parts after confirmation", async () => {
     const { db, close } = await createTestDatabase();
     setDatabaseForTests(db);
     setObjectStoreForTests(new MemoryObjectStore());
@@ -884,13 +884,18 @@ describe("durable sticker workflow", () => {
     });
     expect((await stickerGenerationWorkflow(planTurn.jobId)).workflowStatus).toBe("succeeded");
 
-    // The planning turn is cheap: a draft and nothing else.
+    // The planning turn makes exactly the still image the user must approve, but no animation
+    // parts and no candidate revision yet.
     const proposed = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
     expect(proposed).toHaveLength(1);
     expect(proposed[0].state).toBe("finalized");
+    expect(proposed[0].planJson.layers.every((layer) => (
+      layer.source.kind === "generate" || layer.source.kind === "existing"
+    ))).toBe(true);
     // create_plan then update_plan, so the draft was revised before it was frozen.
     expect(proposed[0].revision).toBe(2);
-    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(0);
+    const [referenceAsset] = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
+    expect(referenceAsset).toMatchObject({ id: proposed[0].conceptAssetId, kind: "preview", state: "ready" });
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.stickerId, sticker.stickerId))).toHaveLength(0);
 
     const planMessage = (await listChatMessages(db, "owner-c", sticker.stickerId)).data
@@ -919,9 +924,10 @@ describe("durable sticker workflow", () => {
     expect((await stickerGenerationWorkflow(confirmed.jobId)).workflowStatus).toBe("succeeded");
 
     const composedAssets = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
-    expect(composedAssets).toHaveLength(partCount);
-    expect(composedAssets.map((asset) => asset.id).sort())
+    expect(composedAssets).toHaveLength(partCount + 1);
+    expect(composedAssets.filter((asset) => asset.kind === "master").map((asset) => asset.id).sort())
       .toEqual(Array.from({ length: partCount }, (_, index) => derivedAssetId(confirmed.jobId, index)).sort());
+    expect(composedAssets.find((asset) => asset.kind === "preview")?.id).toBe(referenceAsset.id);
 
     const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).get();
     const document = StickerDocumentSchema.parse(revision!.documentJson);
@@ -960,7 +966,7 @@ describe("durable sticker workflow", () => {
     await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, confirmed.jobId));
     const replay = await executeAiJobStep(confirmed.jobId);
     expect(replay.revisionId).toBe(confirmed.jobId);
-    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(partCount);
+    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(partCount + 1);
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.stickerId, sticker.stickerId))).toHaveLength(1);
 
     await close();
@@ -983,9 +989,9 @@ describe("durable sticker workflow", () => {
     await stickerGenerationWorkflow(built.jobId);
     await acceptRevision(db, "owner-f", sticker.stickerId, built.jobId);
 
-    const originalAssetIds = (await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId)))
-      .map((asset) => asset.id).sort();
-    expect(originalAssetIds.length).toBeGreaterThan(0);
+    const originalAssets = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
+    const originalAssetIds = originalAssets.map((asset) => asset.id).sort();
+    expect(originalAssets.some((asset) => asset.kind === "preview")).toBe(true);
 
     // A second planning turn against the sticker that now exists. Nothing about it is new artwork,
     // so the plan carries the layers it already has rather than describing them again.
@@ -1008,10 +1014,13 @@ describe("durable sticker workflow", () => {
     const rebuilt = await confirmPlan(db, "owner-f", sticker.stickerId, revised.id);
     expect((await stickerGenerationWorkflow(rebuilt.jobId)).workflowStatus).toBe("succeeded");
 
-    // The whole point: building the revision cost no image generations and the sticker still points
-    // at exactly the artwork the user already approved.
-    expect((await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).map((asset) => asset.id).sort())
-      .toEqual(originalAssetIds);
+    // Re-planning creates one new static reference for the new decision. Building it creates no new
+    // master images, and the document still points at exactly the artwork previously approved.
+    const finalAssets = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
+    expect(finalAssets.filter((asset) => asset.kind === "master").map((asset) => asset.id).sort())
+      .toEqual(originalAssets.filter((asset) => asset.kind === "master").map((asset) => asset.id).sort());
+    expect(finalAssets.map((asset) => asset.id).sort())
+      .toEqual([...originalAssetIds, revised.conceptAssetId!].sort());
     const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, rebuilt.jobId)).get();
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     expect(document.layers.flatMap((layer) => (layer.type === "image" ? [layer.assetId] : [])).sort())
@@ -1085,7 +1094,8 @@ describe("durable sticker workflow", () => {
 
     expect(await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId)))
       .toHaveLength(1);
-    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(0);
+    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId)))
+      .toEqual([expect.objectContaining({ kind: "preview", state: "ready" })]);
     await close();
   });
 
@@ -1109,8 +1119,9 @@ describe("durable sticker workflow", () => {
 
     expect(await db.select().from(planRows).where(eq(planRows.stickerId, animated.stickerId)))
       .toHaveLength(1);
-    // Nothing is drawn until the user confirms the plan.
-    expect(await db.select().from(assets).where(eq(assets.stickerId, animated.stickerId))).toHaveLength(0);
+    // Only the static visual reference is drawn until the user confirms the plan.
+    expect(await db.select().from(assets).where(eq(assets.stickerId, animated.stickerId)))
+      .toEqual([expect.objectContaining({ kind: "preview", state: "ready" })]);
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animatedTurn.jobId)).get())
       .toBeFalsy();
 

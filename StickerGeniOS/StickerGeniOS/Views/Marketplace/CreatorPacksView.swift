@@ -27,10 +27,10 @@ struct CreatorPacksView: View {
                         if response.items.isEmpty {
                             EmptyStateView(
                                 symbol: "square.stack.3d.up",
-                                title: "No packs yet",
+                                title: String(localized: "No packs yet"),
                                 message: response.creator.isSelf
-                                    ? "Publish a pack and it will appear here."
-                                    : "This creator has not published anything yet."
+                                    ? String(localized: "Publish a pack and it will appear here.")
+                                    : String(localized: "This creator has not published anything yet.")
                             )
                         } else {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: 16)], spacing: 16) {
@@ -50,7 +50,7 @@ struct CreatorPacksView: View {
                 }
             }
         }
-        .navigationTitle(response?.creator.displayName ?? "Creator")
+        .navigationTitle(response?.creator.displayName ?? String(localized: "Creator"))
         .navigationBarTitleDisplayMode(.inline)
         .task(id: handle) { await store.loadCreator(handle: handle) }
     }
