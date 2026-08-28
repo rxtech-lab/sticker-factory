@@ -211,16 +211,53 @@ extension AnimatedDocument {
             keyframe: { try $0.settingEffects(value, index: $1) }
         )
     }
+
+    /// Like `applyingEffects`, these three have no anchor and so always land on a keyframe.
+    public func applyingWipe(_ value: AnimatedWipe, toLayer id: String, atDocumentTime time: Double) throws -> Self {
+        try applying(
+            channel: .wipe,
+            toLayer: id,
+            atDocumentTime: time,
+            anchor: nil,
+            keyframe: { try $0.settingWipe(value, index: $1) }
+        )
+    }
+
+    public func applyingSheen(_ value: AnimatedSheen, toLayer id: String, atDocumentTime time: Double) throws -> Self {
+        try applying(
+            channel: .sheen,
+            toLayer: id,
+            atDocumentTime: time,
+            anchor: nil,
+            keyframe: { try $0.settingSheen(value, index: $1) }
+        )
+    }
+
+    public func applyingGlow(_ value: AnimatedGlow, toLayer id: String, atDocumentTime time: Double) throws -> Self {
+        try applying(
+            channel: .glow,
+            toLayer: id,
+            atDocumentTime: time,
+            anchor: nil,
+            keyframe: { try $0.settingGlow(value, index: $1) }
+        )
+    }
 }
 
 extension AnimationChannel {
     /// Whether `AnimatedAnchor` can hold a resting value for this channel.
     ///
-    /// Only `effects` cannot: the anchor has no blur/hue/saturation fields, so an effect exists
-    /// solely on the timeline. Two consequences the UI has to state out loud — an effect always
-    /// creates a keyframe, and converting an animated sticker to a static one bakes position,
-    /// scale, rotation, opacity, and trim into anchors while dropping the effects.
-    public var hasAnchorValue: Bool { self != .effects }
+    /// `effects`, `wipe`, `sheen` and `glow` cannot: the anchor has no fields for blur, hue,
+    /// saturation, a wipe window, a highlight band or a glow, so those exist solely on the timeline.
+    /// Two consequences the UI has to state out loud — setting one of them always creates a
+    /// keyframe, and converting an animated sticker to a static one bakes position, scale, rotation,
+    /// opacity and trim into anchors while dropping the other four.
+    public var hasAnchorValue: Bool {
+        switch self {
+        case .effects, .wipe, .sheen, .glow: false
+        case .position, .scale, .rotation, .opacity, .trim: true
+        }
+    }
 
     public var label: String {
         switch self {
@@ -230,6 +267,9 @@ extension AnimationChannel {
         case .opacity: "Opacity"
         case .effects: "Effects"
         case .trim: "Trim"
+        case .wipe: "Wipe"
+        case .sheen: "Shine"
+        case .glow: "Bloom"
         }
     }
 
@@ -241,6 +281,9 @@ extension AnimationChannel {
         case .opacity: "circle.lefthalf.filled"
         case .effects: "camera.filters"
         case .trim: "scissors"
+        case .wipe: "rectangle.lefthalf.filled"
+        case .sheen: "sparkles"
+        case .glow: "sun.max"
         }
     }
 }

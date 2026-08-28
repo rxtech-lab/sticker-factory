@@ -236,6 +236,13 @@ extension AnimationEffectType {
         case .drawOn: "Draw On"
         case .drawOff: "Draw Off"
         case .trimTo: "Trim To"
+        case .wipeIn: "Wipe In"
+        case .wipeOut: "Wipe Out"
+        case .wipeTo: "Wipe To"
+        case .shine: "Shine"
+        case .bloomIn: "Bloom In"
+        case .bloomOut: "Bloom Out"
+        case .bloomPulse: "Bloom Pulse"
         }
     }
 }

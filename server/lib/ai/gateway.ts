@@ -10,6 +10,8 @@ import {
 import sharp from "sharp";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
+import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
+import { countKeyframes } from "@/lib/animation/compile";
 import { PlanV1Schema, reusableAssetIds, type PlanV1 } from "@/lib/contracts/plan";
 import {
   StickerOperationV1Schema,
@@ -103,7 +105,7 @@ export interface AiAnimationContext {
  * database — an animation draft only ever lives in the step's memory, because unlike a plan it
  * costs nothing to rebuild and is never handed to the user for a decision until it is finished.
  */
-export interface AnimationDraftingSession {
+export interface AnimationDraftingSession extends RenderableSession {
   /** Applies the first operation set to the base document. Retryable until one succeeds. */
   createAnimation(
     operations: StickerOperationV1[],
@@ -162,6 +164,27 @@ export type AnimateTurnResult = {
  * Shared by the animation and edit loops: both drive a session the workflow step owns, so both have
  * the same two classes of failure — the model's own mistakes, and everything else.
  */
+/**
+ * A picture of the working document, for the agent to look at.
+ *
+ * The one capability the loops had no way to get on their own: every export is rendered by the iOS
+ * client, so until this existed the server — and therefore the model — could only ever read a
+ * document as JSON. An agent asked to "make the entrance snappier" was reasoning entirely about
+ * numbers it had written itself.
+ */
+export type StickerRenderResult = {
+  png: Uint8Array;
+  /** The instants drawn, in document seconds. One entry for a static sticker. */
+  times: number[];
+  width: number;
+  height: number;
+};
+
+/** Sessions that can show the model what it has built. Shared by the animate and edit loops. */
+export interface RenderableSession {
+  renderSticker(): Promise<StickerRenderResult>;
+}
+
 export class TurnAbort extends Error {
   constructor(public readonly reason: unknown) {
     super("The turn was aborted");
@@ -241,12 +264,7 @@ export function summarizeDocument(document: StickerDocument) {
         delay: spec.delay,
         duration: spec.duration,
       })),
-      keyframes:
-        layer.animation.position.length +
-        layer.animation.scale.length +
-        layer.animation.rotation.length +
-        layer.animation.opacity.length +
-        layer.animation.effects.length,
+      keyframes: countKeyframes(layer.animation),
     })),
   };
 }
@@ -287,7 +305,7 @@ export interface AiEditContext {
  * because half of these calls have already bought an image. So each one is applied to the result of
  * the last, and there is no undo.
  */
-export interface EditDraftingSession {
+export interface EditDraftingSession extends RenderableSession {
   /** Redraws one image layer's artwork in place. Costs one image generation. */
   editImageLayer(input: {
     layerId: string;
@@ -749,6 +767,7 @@ class GatewayAiProvider implements AiProvider {
     };
 
     const tools = {
+      view_sticker: viewStickerTool(session, { animated: true }),
       create_animation: tool({
         description:
           "Apply your first set of operations to the sticker. Call this once, before any other animation tool.",
@@ -885,6 +904,31 @@ class GatewayAiProvider implements AiProvider {
         "edit_layer_animation when the error names a single layer. Do not",
         "give up and do not repeat the same rejected operations.",
         "",
+        // The transcript marks these rows explicitly (see `lineFor` in lib/ai/compaction), but the
+        // marker only helps if the model knows to act on it. Without this paragraph the loop plans
+        // against the document it remembers producing and silently undoes the user's own edit.
+        "The user can edit the sticker directly in the on-device editor between your turns, and the",
+        "transcript shows that as a bracketed system note saying they did. When you see one, the",
+        "sticker has been changed by someone other than you: the StickerDocument you are given below",
+        "is the up-to-date one and already includes their edit. Read it before you decide anything,",
+        "treat it as the truth over your own memory of what you last produced, and build on top of",
+        "their change rather than reapplying operations that would revert it. If their edit already",
+        "achieves what the request asked for, say so instead of redoing it.",
+        "",
+        // The loop had no way to see its own work before this tool existed, so every instruction
+        // about motion was being followed blind. Saying "look before you finalize" explicitly is
+        // what turns the tool from available into used.
+        "Look at what you have made. view_sticker returns a contact sheet of frames across the",
+        "cycle, and it is the only way to actually see the motion rather than re-reading the numbers",
+        "you just wrote. Call it after your first set of operations and again before finalizing, and",
+        "fix what it shows you: a layer that never appears because its entrance runs past the end, a",
+        "layer still off-canvas in the last frame, two layers landing on top of each other, an idle",
+        "so small it reads as nothing. It costs nothing and buys no artwork.",
+        "Do not call it twice in a row without changing something in between — a second look at an",
+        "unchanged sticker tells you what the first one did and spends a step you may need.",
+        "It is a review render from the server, not the app's own: judge timing, position, coverage",
+        "and colour from it, not the exact curve of a shape or the metrics of a font.",
+        "",
         "Strongly prefer setLayerAnimations: it takes named effects with a delay and a duration in",
         "seconds, and the server compiles them into keyframes for you. Stagger layers by giving each a",
         "larger delay. The full vocabulary is:",
@@ -893,7 +937,24 @@ class GatewayAiProvider implements AiProvider {
         "idles — wiggle, pulse, bounce, float;",
         "effects — blurIn, blurOut, hueShift;",
         "stroke drawing — drawOn, drawOff, trimTo, which only do anything on a shape with a stroke or",
-        "an SVG layer, and are how a signature, an outline, or an underline draws itself in.",
+        "an SVG layer, and are how a signature, an outline, or an underline draws itself in;",
+        "wipes — wipeIn, wipeOut, wipeTo, a directional reveal that masks the layer along an axis.",
+        "Unlike the stroke-drawing effects these need no path, so they are how an image, a photo, or a",
+        "word of text is revealed edge-to-edge. wipeIn takes a direction — the way the reveal travels,",
+        "so right uncovers the layer starting at its left edge — and a softness, where 0 is a hard line",
+        "and 0.2 is a soft gradient. wipeTo is the general form for angled or partial reveals;",
+        "light — shine, bloomIn, bloomOut, bloomPulse. shine sweeps a bright band across the layer, the",
+        "glint that reads as gloss or polish on a logo or a badge; give it a width, an intensity, and a",
+        "cycles count if you want it to repeat. bloom is glow rather than a sweep: the layer stays sharp",
+        "and sheds a halo of its own colours, for anything magical, hot, or neon. bloomPulse breathes it.",
+        "",
+        // Three separate channels precisely so these combinations are legal; saying so stops the model
+        // sequencing them defensively and wasting the sticker's duration on effects that could overlap.
+        "Wipes and light do not collide with anything else, so they layer freely over motion: a layer",
+        "can wipeIn while it slides, and shine and bloom can run over each other and over a wipe at the",
+        "very same instant. Two wipes, or two shines, still cannot overlap each other.",
+        "shine ignores its easing — the band has to travel at constant speed or it reads as a stutter —",
+        "so use cycles to repeat it rather than several shine effects back to back.",
         "",
         // moveTo compiles to two keyframes and the interpolator blends them linearly, so no easing
         // can bend it. Every "throw it across the screen" request used to come back as a layer
@@ -932,10 +993,20 @@ class GatewayAiProvider implements AiProvider {
         "spin all drive scale or position, and slideIn, slideOut, moveTo, arcTo, bounce and float all",
         "drive position in particular. Sequence them — popIn with delay 0 and duration 0.5 means",
         "the pulse after it starts at delay 0.5, not 0. Two effects on different layers, or on the",
-        "same layer driving different properties, may overlap freely.",
+        "same layer driving different properties, may overlap freely — and the wipe, shine and bloom",
+        "families each own a property of their own, so they never conflict with the effects above.",
         "Fall back to the raw setXKeyframes operations only for motion no named effect can express;",
         "their timeSeconds values are absolute seconds, never percentages or deltas, and they cannot",
         "be used on a layer that already has named animations.",
+        "Look at what you have made. view_sticker renders the sticker as it currently stands and",
+        "returns it as an image. Call it when you are unsure a change landed the way you meant, and",
+        "before finalizing: it is how you catch a layer hidden behind another, a new layer placed",
+        "off-canvas or at the wrong size, or artwork whose colours fight the ones already there.",
+        "It costs nothing and generates no artwork, so it is never the expensive choice — but do not",
+        "call it twice without changing anything in between.",
+        "It is a review render from the server rather than the app's own, so judge layout, size,",
+        "coverage and colour from it, never the fine detail of a glyph or a curve. Never redraw",
+        "artwork just because an edge looks a little different there.",
         "You may add validated text, shape, or allowlisted particle layers. Do not add/remove image layers or replace assets. Do not emit Swift, JavaScript, URLs, shaders, expressions, or external asset identifiers.",
         // Narrower than the document contract allows on purpose: v2 documents can hold 12 layers
         // and run up to 30s, but those exist for a person editing directly. Handing the planner the
@@ -963,7 +1034,10 @@ class GatewayAiProvider implements AiProvider {
       // model that keeps polishing forever; the caller ships whatever landed when it trips.
       stopWhen: [
         hasToolCall("finalize_animation"),
-        stepCountIs(10),
+        // Raised from 10 when `view_sticker` landed: a loop that looks, fixes what it saw and looks
+        // again spends three steps doing it, and the old budget left no room to act on the second
+        // look before the loop was cut off.
+        stepCountIs(14),
         () => fatal !== undefined,
       ],
       maxRetries: 2,
@@ -1001,6 +1075,9 @@ class GatewayAiProvider implements AiProvider {
     };
 
     const tools = {
+      view_sticker: viewStickerTool(session, {
+        animated: input.document?.kind === "animated",
+      }),
       edit_layers: tool({
         description: [
           "Change the layer stack: this is how layers are added, removed, reordered, renamed, and",
@@ -1142,7 +1219,7 @@ class GatewayAiProvider implements AiProvider {
       // that keeps polishing forever; the caller ships whatever landed when it trips.
       stopWhen: [
         hasToolCall("finalize_edit"),
-        stepCountIs(10),
+        stepCountIs(14),
         () => fatal !== undefined,
       ],
       maxRetries: 2,
@@ -1551,6 +1628,16 @@ class GatewayAiProvider implements AiProvider {
         "moveTo/arcTo and bounce and float all drive position.",
         "Every animation must finish within the sticker's duration (delay + duration <= durationSeconds).",
         "Static stickers cannot carry any animations at all.",
+        "Reveals and light. wipeIn/wipeOut/wipeTo uncover or cover a layer along an axis — wipeIn takes",
+        "the direction the reveal travels and a softness for how hard the edge is. They work on every",
+        "layer including images and text, which is what makes them the way to reveal a photo or a word",
+        "edge-to-edge; drawOn/drawOff/trimTo only ever affect a stroked shape or an SVG.",
+        "shine sweeps a bright band across a layer for gloss or polish, and ignores its easing because",
+        "the band has to move at a constant speed; repeat it with cycles rather than with two shines.",
+        "bloomIn/bloomOut/bloomPulse are glow — the layer stays sharp and sheds a halo of its own",
+        "colours — for anything magical, hot or neon. Each of these three families drives a property of",
+        "its own, so they can overlap each other and any of the animations above; only two wipes, or",
+        "two shines, or two blooms on one layer need separating in time.",
         // moveTo is two keyframes blended linearly, so nothing can bend it into an arc. Without this
         // paragraph every thrown or falling subject came back travelling along a ruler.
         "Curves. moveTo travels in a dead straight line, which looks mechanical for anything thrown,",
@@ -1566,6 +1653,12 @@ class GatewayAiProvider implements AiProvider {
         "must use linear: they compile to a sampled sine and any other easing eases each sample on its",
         "own, which makes them stutter. arcTo wants linear too, unless the throw should slow into its",
         "landing.",
+        "",
+        "",
+        "The user can edit the sticker directly in the on-device editor between turns, and the history",
+        "shows that as a bracketed system note. When you see one, the current StickerDocument above",
+        "already contains their edit: plan from that document rather than from anything earlier in the",
+        "conversation, and keep what they changed unless the new request is specifically to undo it.",
         "",
         "The summary is shown to the user as your chat message: one or two friendly sentences.",
       ].join("\n"),
@@ -1975,7 +2068,7 @@ class MockAiProvider implements AiProvider {
     }
     if (
       input.stickerKind === "animated" &&
-      /\b(animate|bounce|move|motion|rotate|spin|wiggle|wave)\b/.test(
+      /\b(animate|bounce|move|motion|rotate|spin|wiggle|wave|wipe|reveal|shine|sweep|glow|bloom)\b/.test(
         normalized,
       )
     ) {

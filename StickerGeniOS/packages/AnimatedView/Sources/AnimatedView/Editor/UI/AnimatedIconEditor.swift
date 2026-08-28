@@ -136,7 +136,7 @@ public struct AnimatedIconEditor: View {
                     .padding(12)
                 transport
                 if editor.document.kind == .animated {
-                    AnimatedEditorTimeline(editor: editor).frame(height: 150)
+                    AnimatedEditorTimeline(editor: editor).frame(height: AnimatedEditorTimeline.preferredHeight)
                 }
             }
 

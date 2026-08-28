@@ -52,7 +52,9 @@ describe("media and animation hardening", () => {
         blendMode: "normal" as const,
         anchor: { position: { x: 0.5, y: 0.5 }, scale: { x: 1, y: 1 }, rotationDegrees: 0, opacity: 1, trim: { start: 0, end: 1 } },
         animations: [],
-        animation: { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] },
+        animation: {
+          position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [], wipe: [], sheen: [], glow: [],
+        },
       },
     };
     expect(validatePlannedAnimationOperation(shape)).toBe(shape);
@@ -96,7 +98,9 @@ describe("media and animation hardening", () => {
         paint: { type: "solid", color: "#FFFFFF" }, seed: 7, blendMode: "normal",
         anchor: { position: { x: 0.5, y: 0.5 }, scale: { x: 1, y: 1 }, rotationDegrees: 0, opacity: 1, trim: { start: 0, end: 1 } },
         animations: [],
-        animation: { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] },
+        animation: {
+          position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [], wipe: [], sheen: [], glow: [],
+        },
       },
     }, "hero")).toThrow(/outside/);
   });

@@ -1,11 +1,26 @@
 #if os(iOS)
 import SwiftUI
 
-/// Six channel tracks, a playhead, and the keyframes on them.
+/// One track per channel, a playhead, and the keyframes on them.
 ///
 /// This is the surface raw keyframe editing actually happens on. It is shown only for animated
 /// documents: a static one is required to keep every keyframe at t=0, so it has no timeline to draw.
 struct AnimatedEditorTimeline: View {
+    /// Height of one channel's track, including the gap under it.
+    private static let trackHeight: CGFloat = 22
+
+    /// The tracks alone, without the header.
+    static var tracksHeight: CGFloat {
+        CGFloat(AnimationChannel.allCases.count) * trackHeight
+    }
+
+    /// What a caller placing this in a fixed-height slot should give it.
+    ///
+    /// Derived rather than a constant because the track count is `AnimationChannel.allCases`: the
+    /// regular-width editor used to pin this to 150pt, which fitted exactly six tracks and silently
+    /// clipped the bottom ones the moment the model grew a channel.
+    static var preferredHeight: CGFloat { tracksHeight + 18 }
+
     @Bindable var editor: AnimatedDocumentEditor
 
     @State private var pendingDetachLayerID: String?
@@ -29,7 +44,7 @@ struct AnimatedEditorTimeline: View {
                         playhead(width: proxy.size.width)
                     }
                 }
-                .frame(height: CGFloat(AnimationChannel.allCases.count) * 22)
+                .frame(height: Self.tracksHeight)
                 // Preset motion is generated, so its tracks are shown but not touchable. Dimming
                 // rather than hiding keeps the shape of the motion visible, which is what you want
                 // when deciding whether to convert it.

@@ -1,0 +1,98 @@
+import Foundation
+
+/// Human wording for the tool ids the server streams, and which of them are *phases*.
+///
+/// The distinction is not cosmetic, and it already exists in the data. `workflows/sticker-generation`
+/// opens two different kinds of row through the same call:
+///
+///   - **phases**, named in kebab-case (`plan-sticker`, `animate-sticker`, `build-plan`), are the
+///     turn's overall stage. There is one at a time and it is what the user means by "what is it
+///     doing right now" — so it belongs in the navigation bar, where it cannot scroll away.
+///   - **tool calls**, named in snake_case (`create_animation`, `edit_layers`), are the individual
+///     steps the model takes inside a phase. There are many per turn and they are a record of work
+///     done, so they stay in the transcript as rows the user can scroll back through.
+///
+/// Matching on the naming convention rather than on an explicit list would be too clever to trust,
+/// so the phases are enumerated. A tool id nobody has listed is treated as a tool call, which is the
+/// safe default: it shows up in the transcript rather than silently taking over the title chip.
+///
+/// `nonisolated` because it is a pure string lookup with no state: the view reads it on the main
+/// actor, and the tests read it off one.
+nonisolated enum StickerToolLabel {
+    /// The workflow stages, which drive the second line of the navigation bar's title chip.
+    private static let phases: Set<String> = [
+        "generate-sticker",
+        "generate-image",
+        "edit-sticker",
+        "animate-sticker",
+        "plan-sticker",
+        "build-plan",
+        "show-sticker",
+        "reply",
+    ]
+
+    /// Whether this row is the turn's overall stage rather than one step inside it.
+    static func isPhase(_ toolName: String) -> Bool {
+        phases.contains(base(of: toolName))
+    }
+
+    /// Sentence-cased wording for a tool id.
+    ///
+    /// The server appends a `#2` suffix to tell repeat calls within one turn apart (`toolCallLabeller`
+    /// in `workflows/sticker-generation/steps.ts`), so the suffix is split off before matching and
+    /// re-attached as an ordinal — "Drawing artwork (2)" rather than a label that fails to match and
+    /// falls back to a raw id.
+    static func text(for toolName: String) -> String {
+        let stem = base(of: toolName)
+        let ordinal = self.ordinal(of: toolName)
+        let label = known[stem] ?? fallback(for: stem)
+        return ordinal.isEmpty ? label : "\(label) (\(ordinal))"
+    }
+
+    private static func base(of toolName: String) -> String {
+        String(toolName.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0])
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func ordinal(of toolName: String) -> String {
+        let parts = toolName.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count > 1 else { return "" }
+        return String(parts[1]).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static let known: [String: String] = [
+        // Phases.
+        "reply": "Writing a reply",
+        "generate-sticker": "Making your sticker",
+        "generate-image": "Drawing artwork",
+        "edit-sticker": "Editing sticker",
+        "animate-sticker": "Animating sticker",
+        "plan-sticker": "Planning sticker",
+        "build-plan": "Building plan",
+        "show-sticker": "Showing the sticker",
+        // Tool calls.
+        "create_plan": "Drafting a plan",
+        "update_plan": "Revising the plan",
+        "show_plan": "Showing the plan",
+        "finalize_plan": "Finishing the plan",
+        "create_animation": "Creating animation",
+        "update_animation": "Adjusting animation",
+        "edit_layer_animation": "Tuning a layer",
+        "finalize_animation": "Finishing animation",
+        "edit_layers": "Editing layers",
+        "edit_image_layer": "Redrawing a layer",
+        "add_image_layer": "Adding a layer",
+        "finalize_edit": "Finishing the edit",
+        "view_sticker": "Reviewing the sticker",
+    ]
+
+    /// An unknown tool still has to read as English, because the server can ship a new one before
+    /// this build knows about it. `some_new_tool` becomes "Some new tool".
+    private static func fallback(for toolName: String) -> String {
+        let words = toolName.replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        guard let first = words.first else { return "Working" }
+        return first.uppercased() + words.dropFirst()
+    }
+}

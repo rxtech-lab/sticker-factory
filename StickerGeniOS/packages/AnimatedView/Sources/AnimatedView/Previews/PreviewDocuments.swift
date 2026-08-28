@@ -181,6 +181,55 @@ public enum AnimatedPreviewDocuments {
         )),
     ])
 
+    // MARK: - 5b. Wipe, shine and bloom
+
+    /// The three v3 compositing channels, each on its own layer and then all three at once.
+    ///
+    /// Worth having as a fixture because these are the only effects that cannot be checked by
+    /// reading keyframes: they are compositing, so the only way to know a wipe reaches the corners
+    /// or a shine stays inside the artwork is to rasterise it.
+    public static let lightAndWipe = animated(durationSeconds: 3, [
+        .shape(.init(
+            base: base(
+                "card", "Card",
+                at: .init(x: 0.5, y: 0.28),
+                scale: .init(x: 0.8, y: 0.34),
+                specs: [
+                    .wipeIn(.right, softness: 0.08, duration: 1.1),
+                    .shine(angleDegrees: -30, width: 0.28, intensity: 0.85, cycles: 2, delay: 1.1, duration: 1.9),
+                ]
+            ),
+            shape: .roundedRectangle,
+            fill: .linearGradient("#3D2E6B", "#7A5CC4", angleDegrees: 60),
+            cornerRadius: 0.18
+        )),
+        .shape(.init(
+            base: base(
+                "orb", "Glowing orb",
+                at: .init(x: 0.28, y: 0.72),
+                scale: .init(x: 0.3, y: 0.3),
+                specs: [.bloomPulse(radius: 0.12, intensity: 0.9, cycles: 3, duration: 3)]
+            ),
+            shape: .circle,
+            fill: .radialGradient("#FFF3C4", "#FF9F45", radius: 0.6)
+        )),
+        .shape(.init(
+            base: base(
+                "star", "Wiping star",
+                at: .init(x: 0.72, y: 0.72),
+                scale: .init(x: 0.34, y: 0.34),
+                // A diagonal wipe, which is the case that catches a sweep axis that stops short of
+                // the corners: at the end the star has to be whole, not clipped.
+                specs: [
+                    .init(.wipeTo(start: 0, end: 1, angleDegrees: 45, softness: 0.15), duration: 1.4),
+                    .bloomIn(radius: 0.07, intensity: 0.6, delay: 1.4, duration: 0.8),
+                ]
+            ),
+            shape: .star(points: 5, innerRatio: 0.45),
+            fill: .solid("#FFD166")
+        )),
+    ])
+
     // MARK: - 6. Text
 
     /// Staggered per-letter entrance, gradient paint, all four font families.
@@ -363,6 +412,7 @@ public enum AnimatedPreviewDocuments {
         ("SVG with text", svgWithText),
         ("Custom path", customPath),
         ("Signature", signature),
+        ("Wipe, shine and bloom", lightAndWipe),
         ("Text", text),
         ("Image", image),
         ("Particles", particles),

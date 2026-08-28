@@ -35,6 +35,21 @@ struct GlassCard<Content: View>: View {
     }
 }
 
+extension View {
+    /// A Liquid Glass capsule chip: padded content over glass, sized to hug what is inside it.
+    ///
+    /// The padding is baked in ahead of the glass on purpose — the capsule is meant to fit the text,
+    /// so any framing belongs *after* this, not before. Bare `.regular` with no tint and no
+    /// `.interactive()`, which is what keeps a chip reading as a floating label rather than as a
+    /// control the user is meant to press.
+    func glassChip() -> some View {
+        self
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .glassEffect(.regular, in: .capsule)
+    }
+}
+
 struct EmptyStateView: View {
     let symbol: String
     let title: String

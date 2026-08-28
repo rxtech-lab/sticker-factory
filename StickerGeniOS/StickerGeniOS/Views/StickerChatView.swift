@@ -87,6 +87,32 @@ struct StickerChatView: View {
             .joined(separator: ",")
     }
 
+    /// The transcript, minus the phase rows that the navigation bar's title chip now carries.
+    ///
+    /// Only the phases are taken out. The individual tool calls stay as rows: they are a record of
+    /// work the user can scroll back through, and a turn makes several of them, so they were never
+    /// something one line of chrome could stand in for.
+    ///
+    /// Filtered here rather than upstream because everything else — plan lookups, the haptic
+    /// signature, the job's own bookkeeping — still wants the whole list.
+    private var conversation: [ChatMessage] {
+        messages.filter { !($0.role == .system && $0.kind == .status && StickerToolLabel.isPhase($0.content)) }
+    }
+
+    /// What the title chip's second line says the app is doing, if anything.
+    ///
+    /// The newest *streaming* phase row is the live one; a finished row is history and belongs to no
+    /// status. Falling back to a generic label while `isComputing` matters because a turn spends its
+    /// first moments queued, before any phase has opened a row, and a bar that says nothing for two
+    /// seconds after sending reads as the tap having missed.
+    private var activeStatus: String? {
+        guard isComputing else { return nil }
+        let phase = messages.last {
+            $0.kind == .status && $0.status == .streaming && StickerToolLabel.isPhase($0.content)
+        }
+        return phase.map { StickerToolLabel.text(for: $0.content) } ?? "Working…"
+    }
+
     /// The revision the sticker actions operate on. Nothing renders it — the assistant attaches
     /// the sticker to its own message — but export needs its assets loaded and verified.
     private var workingDocument: AnimatedDocument? {
@@ -114,11 +140,16 @@ struct StickerChatView: View {
                 bottomBar
             }
         }
+        // Still set even though `.principal` draws the bar: this is what names the back button on
+        // the screen that pushed us, and what VoiceOver reads for the screen itself.
         .navigationTitle(detail?.title ?? "Sticker")
         .navigationBarTitleDisplayMode(.inline)
         // Chat is the whole detail screen; the tab bar would sit under the composer.
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                ChatTitleChip(title: detail?.title ?? "Sticker", status: activeStatus)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 StickerChatActionsMenu(
                     candidate: candidate,
@@ -272,7 +303,7 @@ struct StickerChatView: View {
     /// below the fold until the reader goes there. See `MessageList`.
     private var transcript: some View {
         MessageList(
-            messages: messages,
+            messages: conversation,
             isStreaming: isComputing
         ) { message in
             transcriptRow(message)
@@ -774,6 +805,8 @@ private struct ChatBubble: View {
     @ViewBuilder
     var body: some View {
         if message.role == .system && message.kind == .status {
+            // Phase rows never reach here — `conversation` filters those out and the title chip
+            // shows the live one. What is left is the model's own tool calls.
             ToolCallRow(message: message)
         } else if message.role == .user {
             HStack {

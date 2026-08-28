@@ -76,6 +76,59 @@ export const TrimKeyframeV1Schema = KeyframeBaseSchema.extend({
   end: z.number().min(0).max(1).default(1),
 }).strict();
 
+/**
+ * A directional band-pass over the layer's alpha, driving wipe reveals.
+ *
+ * The layer is visible where its coordinate along the axis at `angleDegrees` falls inside
+ * `start...end`, with `softness` feathering both edges. Unlike `trim` — which sweeps along a
+ * *path's arc length* and so only means anything on a stroked shape or an SVG — this is spatial and
+ * applies to every layer kind, including images and text.
+ *
+ * `angleDegrees` follows the same convention as `AnimatedPaint.linearGradient`: 0° runs
+ * left-to-right and angles increase clockwise. Identity is `{start: 0, end: 1, softness: 0}`, which
+ * is what an empty channel means.
+ */
+export const WipeKeyframeV1Schema = KeyframeBaseSchema.extend({
+  start: z.number().min(0).max(1).default(0),
+  end: z.number().min(0).max(1).default(1),
+  angleDegrees: z.number().min(-360).max(360).default(0),
+  softness: z.number().min(0).max(0.5).default(0),
+}).strict();
+
+/**
+ * A travelling highlight band — the "light sweep" that reads as a specular glint.
+ *
+ * `position` is the band's *centre* along the axis at `angleDegrees`, so the band is fully
+ * off-canvas at `-width / 2` and again at `1 + width / 2`. The range is the position channel's
+ * `-1...2` rather than `0...1` precisely so those two extremes are representable: clamping to
+ * `0...1` would silently pin a sweep's opening keyframe to the layer's leading edge.
+ *
+ * Identity is `intensity: 0` — the band is always somewhere, it is just invisible.
+ */
+export const SheenKeyframeV1Schema = KeyframeBaseSchema.extend({
+  position: z.number().min(-1).max(2).default(0),
+  width: z.number().min(0.02).max(1).default(0.25),
+  angleDegrees: z.number().min(-360).max(360).default(0),
+  intensity: z.number().min(0).max(1).default(0),
+}).strict();
+
+/**
+ * Glow / light bleed: a blurred additive copy of the layer sitting under the crisp one.
+ *
+ * Distinct from `effects.blurRadius`, which blurs the layer *instead of* showing it. Here the layer
+ * stays sharp and grows a halo, so it reads as brightness rather than defocus — which is why this is
+ * its own channel and not another field on `effects`: `blurOut` while blooming is a good-looking
+ * combination that a shared channel would reject as a conflict.
+ *
+ * `radius` is a fraction of the layer's box width, so a bloom means the same thing at any canvas
+ * size. There is no tint: the halo is the layer's own pixels, which is both free and the physically
+ * right answer. Identity is `amount: 0`.
+ */
+export const GlowKeyframeV1Schema = KeyframeBaseSchema.extend({
+  amount: z.number().min(0).max(1).default(0),
+  radius: z.number().min(0.01).max(0.5).default(0.08),
+}).strict();
+
 export const LayerAnimationV1Schema = z.object({
   position: z.array(PositionKeyframeV1Schema).max(32).default([]),
   scale: z.array(ScaleKeyframeV1Schema).max(32).default([]),
@@ -89,6 +142,18 @@ export const LayerAnimationV1Schema = z.object({
    * additive-field convention `anchor` and `animations` already rely on.
    */
   trim: z.array(TrimKeyframeV1Schema).max(32).default([]),
+  /**
+   * Channels seven through nine, added in v3 for wipe, light-sweep, and bloom.
+   *
+   * Three separate channels rather than one shared "compositing" channel because the compiler
+   * rejects two specs that drive the same channel over overlapping windows. Merging them would make
+   * `wipeIn` + `shine` (whose `angleDegrees` usually differ) and `blurOut` + `bloomIn` unauthorable.
+   *
+   * Same additive defaulting as `trim`: a document stored before these existed still parses.
+   */
+  wipe: z.array(WipeKeyframeV1Schema).max(32).default([]),
+  sheen: z.array(SheenKeyframeV1Schema).max(32).default([]),
+  glow: z.array(GlowKeyframeV1Schema).max(32).default([]),
 }).strict();
 
 export const EMPTY_LAYER_ANIMATION = {
@@ -98,12 +163,25 @@ export const EMPTY_LAYER_ANIMATION = {
   opacity: [],
   effects: [],
   trim: [],
+  wipe: [],
+  sheen: [],
+  glow: [],
 } as const;
 
 /**
- * The six channels a spec can write, named exactly as `LayerAnimationV1` keys.
+ * The nine channels a spec can write, named exactly as `LayerAnimationV1` keys.
  */
-export const ANIMATION_CHANNELS = ["position", "scale", "rotation", "opacity", "effects", "trim"] as const;
+export const ANIMATION_CHANNELS = [
+  "position",
+  "scale",
+  "rotation",
+  "opacity",
+  "effects",
+  "trim",
+  "wipe",
+  "sheen",
+  "glow",
+] as const;
 export type AnimationChannel = (typeof ANIMATION_CHANNELS)[number];
 
 /**
@@ -248,6 +326,70 @@ export const AnimationSpecV1Schema = z.discriminatedUnion("type", [
     start: z.number().min(0).max(1).default(0),
     end: z.number().min(0).max(1).default(1),
   }).strict(),
+
+  // --- spatial wipes (v3) ------------------------------------------------------------------
+  //
+  // Unlike the trim specs above, these work on every layer kind: they mask the layer's alpha along a
+  // spatial axis rather than sweeping a path's length.
+  SpecBaseSchema.extend({
+    type: z.literal("wipeIn"),
+    /** The direction the reveal travels, so `right` uncovers the layer from its left edge. */
+    direction: DirectionSchema,
+    /** Feathering at the wipe edge, as a fraction of the layer. `0` is a hard edge. */
+    softness: z.number().min(0).max(0.5).default(0),
+  }).strict(),
+  SpecBaseSchema.extend({
+    type: z.literal("wipeOut"),
+    direction: DirectionSchema,
+    softness: z.number().min(0).max(0.5).default(0),
+  }).strict(),
+  /** The general form, for angled wipes and barn-door reveals a direction cannot express. */
+  SpecBaseSchema.extend({
+    type: z.literal("wipeTo"),
+    start: z.number().min(0).max(1).default(0),
+    end: z.number().min(0).max(1).default(1),
+    angleDegrees: z.number().min(-360).max(360).default(0),
+    softness: z.number().min(0).max(0.5).default(0),
+  }).strict(),
+
+  // --- light (v3) --------------------------------------------------------------------------
+  /**
+   * A highlight band sweeping across the layer, like light catching a glossy surface.
+   *
+   * `easing` is ignored: the band must travel at constant speed or it reads as a stutter. Repeats
+   * are a `cycles` count rather than several specs, because two `shine` specs whose windows merely
+   * touch would put two different band positions on one timestamp and be rejected.
+   */
+  SpecBaseSchema.extend({
+    type: z.literal("shine"),
+    /** The sweep axis. The default rakes slightly upward, which is what reads as a gloss. */
+    angleDegrees: z.number().min(-360).max(360).default(-30),
+    width: z.number().min(0.02).max(1).default(0.25),
+    intensity: z.number().min(0).max(1).default(0.6),
+    cycles: z.number().int().min(1).max(4).default(1),
+  }).strict(),
+  /**
+   * Glow / light bleed. The layer stays sharp and grows a halo of its own colours.
+   *
+   * `radius` is a fraction of the layer's box width. Distinct from `blurIn`/`blurOut`, which drive
+   * the `effects` channel and defocus the layer itself — the two compose.
+   */
+  SpecBaseSchema.extend({
+    type: z.literal("bloomIn"),
+    radius: z.number().min(0.01).max(0.5).default(0.08),
+    intensity: z.number().min(0).max(1).default(0.7),
+  }).strict(),
+  SpecBaseSchema.extend({
+    type: z.literal("bloomOut"),
+    radius: z.number().min(0.01).max(0.5).default(0.08),
+    intensity: z.number().min(0).max(1).default(0.7),
+  }).strict(),
+  SpecBaseSchema.extend({
+    type: z.literal("bloomPulse"),
+    radius: z.number().min(0.01).max(0.5).default(0.08),
+    intensity: z.number().min(0).max(1).default(0.7),
+    cycles: z.number().int().min(1).max(8).default(2),
+  }).strict(),
 ]);
 
 export const AnimationSpecsV1Schema = z.array(AnimationSpecV1Schema).max(12);
@@ -263,6 +405,9 @@ export type RotationKeyframeV1 = z.infer<typeof RotationKeyframeV1Schema>;
 export type OpacityKeyframeV1 = z.infer<typeof OpacityKeyframeV1Schema>;
 export type EffectKeyframeV1 = z.infer<typeof EffectKeyframeV1Schema>;
 export type TrimKeyframeV1 = z.infer<typeof TrimKeyframeV1Schema>;
+export type WipeKeyframeV1 = z.infer<typeof WipeKeyframeV1Schema>;
+export type SheenKeyframeV1 = z.infer<typeof SheenKeyframeV1Schema>;
+export type GlowKeyframeV1 = z.infer<typeof GlowKeyframeV1Schema>;
 
 /**
  * Which channels each spec type writes.
@@ -293,10 +438,19 @@ export const SPEC_CHANNELS: Record<AnimationSpecType, readonly AnimationChannel[
   drawOn: ["trim"],
   drawOff: ["trim"],
   trimTo: ["trim"],
+  wipeIn: ["wipe"],
+  wipeOut: ["wipe"],
+  wipeTo: ["wipe"],
+  shine: ["sheen"],
+  bloomIn: ["glow"],
+  bloomOut: ["glow"],
+  bloomPulse: ["glow"],
 };
 
 /** Specs sampled over a curve, whose sample density the budget allocator may reduce. */
-export const CYCLIC_SPEC_TYPES = new Set<AnimationSpecType>(["wiggle", "pulse", "bounce", "float"]);
+export const CYCLIC_SPEC_TYPES = new Set<AnimationSpecType>([
+  "wiggle", "pulse", "bounce", "float", "shine", "bloomPulse",
+]);
 
 /** The resting state a layer returns to; supplied by the plan's layout. */
 export type AnimationAnchorV1 = {

@@ -726,7 +726,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = StickerGeniOS/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = GenSticker;
+				INFOPLIST_KEY_CFBundleDisplayName = Winky;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -762,7 +762,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = StickerGeniOS/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = GenSticker;
+				INFOPLIST_KEY_CFBundleDisplayName = Winky;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (

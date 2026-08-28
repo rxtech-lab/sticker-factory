@@ -205,6 +205,60 @@ describe("per spec type", () => {
       input: { type: "hueShift", degrees: -90, duration: 0.5 },
       expect: (c) => expect(c.effects.map((f) => f.hueDegrees)).toEqual([0, -90]),
     },
+    {
+      name: "wipeIn opens the window from nothing to the whole layer",
+      input: { type: "wipeIn", direction: "right", duration: 0.5 },
+      expect: (c) => {
+        expect(c.wipe.map((f) => [f.start, f.end])).toEqual([[0, 0], [0, 1]]);
+        // `right` means the reveal travels rightwards, which is the paint convention's 0°.
+        expect(c.wipe.every((f) => f.angleDegrees === 0)).toBe(true);
+      },
+    },
+    {
+      name: "wipeOut eats the layer from the edge it was revealed from",
+      input: { type: "wipeOut", direction: "up", duration: 0.5 },
+      expect: (c) => {
+        expect(c.wipe.map((f) => [f.start, f.end])).toEqual([[0, 1], [1, 1]]);
+        expect(c.wipe.every((f) => f.angleDegrees === 270)).toBe(true);
+      },
+    },
+    {
+      name: "wipeTo starts from the fully open window",
+      input: { type: "wipeTo", start: 0.25, end: 0.75, angleDegrees: 45, duration: 0.5 },
+      expect: (c) => {
+        expect(c.wipe.map((f) => [f.start, f.end])).toEqual([[0, 1], [0.25, 0.75]]);
+        expect(c.wipe.every((f) => f.angleDegrees === 45)).toBe(true);
+      },
+    },
+    {
+      name: "shine sweeps a band clean across and off the far edge",
+      input: { type: "shine", width: 0.2, intensity: 0.8, duration: 1 },
+      expect: (c) => {
+        expect(c.sheen).toHaveLength(4);
+        // Fully off-canvas at both ends: the band is centred on `position`, so half a width past.
+        expect(c.sheen.at(0)?.position).toBe(-0.1);
+        expect(c.sheen.at(-1)?.position).toBe(1.1);
+        // Trapezoid, not a triangle — full brightness is held across the middle of the traverse.
+        expect(c.sheen.map((f) => f.intensity)).toEqual([0, 0.8, 0.8, 0]);
+      },
+    },
+    {
+      name: "bloomIn ramps the halo up and bloomOut takes it away",
+      input: { type: "bloomIn", intensity: 0.5, radius: 0.1, duration: 0.5 },
+      expect: (c) => {
+        expect(c.glow.map((f) => f.amount)).toEqual([0, 0.5]);
+        expect(c.glow.every((f) => f.radius === 0.1)).toBe(true);
+      },
+    },
+    {
+      name: "bloomPulse breathes back to dark on every cycle",
+      input: { type: "bloomPulse", intensity: 0.6, cycles: 2, duration: 1 },
+      expect: (c) => {
+        // 2n+1, not the 4n+1 a sine sampling would cost: a glow only brightens.
+        expect(c.glow.map((f) => f.amount)).toEqual([0, 0.6, 0, 0.6, 0]);
+        expect(c.glow.map((f) => f.timeSeconds)).toEqual([0, 0.25, 0.5, 0.75, 1]);
+      },
+    },
   ];
 
   for (const testCase of cases) {
@@ -212,6 +266,77 @@ describe("per spec type", () => {
       testCase.expect(compileLayerAnimation([spec(testCase.input)], DEFAULT_ANCHOR, ANIMATED));
     });
   }
+});
+
+describe("shine", () => {
+  const shine = (value: Record<string, unknown>) =>
+    compileLayerAnimation([spec({ type: "shine", duration: 1, ...value })], DEFAULT_ANCHOR, ANIMATED).sheen;
+
+  it("travels at a constant speed", () => {
+    // Position and time both advance linearly in the same phase, so equal time gaps cover equal
+    // distance. A band that accelerates reads as a stutter rather than as light moving.
+    const frames = shine({ width: 0.2 });
+    for (let index = 1; index < frames.length; index += 1) {
+      const dt = frames[index].timeSeconds - frames[index - 1].timeSeconds;
+      const dx = frames[index].position - frames[index - 1].position;
+      expect(dx / dt).toBeCloseTo(1.2 / (1 * 0.88), 6);
+    }
+  });
+
+  it("ignores the spec easing entirely", () => {
+    // Easing the closing keyframe would decelerate only the second half of the traverse.
+    const frames = shine({ easing: "springBouncy" });
+    expect(frames.every((frame) => frame.easing === "linear")).toBe(true);
+  });
+
+  it("repeats without ever putting two positions on one timestamp", () => {
+    // The reason `cycles` can exist at all: the retreat to the next cycle's leading edge happens
+    // during the reserved tail, at zero intensity, so it needs no discontinuity.
+    const frames = shine({ cycles: 3 });
+    expect(frames).toHaveLength(12);
+    const times = frames.map((frame) => frame.timeSeconds);
+    expect(new Set(times).size).toBe(times.length);
+    expect([...times]).toEqual([...times].sort((a, b) => a - b));
+  });
+
+  it("is dark whenever the band is outside the layer", () => {
+    const frames = shine({ width: 0.2, cycles: 2 });
+    for (const frame of frames) {
+      if (frame.position <= -0.1 || frame.position >= 1.1) expect(frame.intensity).toBe(0);
+    }
+  });
+
+  it("composes with a wipe over the very same window", () => {
+    // The whole reason wipe and sheen are separate channels: these two would collide on one.
+    const compiled = compileLayerAnimation(
+      [spec({ type: "wipeIn", direction: "right", duration: 1 }), spec({ type: "shine", duration: 1 })],
+      DEFAULT_ANCHOR,
+      ANIMATED,
+    );
+    expect(compiled.wipe).toHaveLength(2);
+    expect(compiled.sheen).toHaveLength(4);
+  });
+
+  it("composes with a blur, which a shared effects channel would have rejected", () => {
+    const compiled = compileLayerAnimation(
+      [spec({ type: "blurOut", duration: 1 }), spec({ type: "bloomIn", duration: 1 })],
+      DEFAULT_ANCHOR,
+      ANIMATED,
+    );
+    expect(compiled.effects).toHaveLength(2);
+    expect(compiled.glow).toHaveLength(2);
+  });
+
+  it("still rejects two shines that genuinely overlap", () => {
+    expect(() => compileLayerAnimation(
+      [
+        spec({ type: "shine", delay: 0, duration: 1 }),
+        spec({ type: "shine", delay: 0.5, duration: 1 }),
+      ],
+      DEFAULT_ANCHOR,
+      ANIMATED,
+    )).toThrow(AnimationCompileError);
+  });
 });
 
 describe("arcTo", () => {

@@ -727,11 +727,29 @@ struct StoreAndPublisherTests {
         store.reset()
     }
 
-    @Test("Library refresh consumes every cursor before replacing state")
+    @Test("Library requests each sticker page separately as the user reaches it")
     func libraryPagination() async {
-        let store = StickerStore(api: PaginatedLibraryAPI())
+        let api = PaginatedLibraryAPI()
+        let store = StickerStore(api: api)
+
         await store.refresh()
+        #expect(store.stickers.map(\.id) == ["page-1"])
+        #expect(store.nextStickerCursor == "2")
+        #expect(await api.requestedCursors() == ["<first>"])
+
+        await store.loadMoreStickers()
+        #expect(store.stickers.map(\.id) == ["page-1", "page-2"])
+        #expect(store.nextStickerCursor == "3")
+        #expect(await api.requestedCursors() == ["<first>", "2"])
+
+        await store.loadMoreStickers()
         #expect(store.stickers.map(\.id) == ["page-1", "page-2", "page-3"])
+        #expect(store.nextStickerCursor == nil)
+        #expect(await api.requestedCursors() == ["<first>", "2", "3"])
+
+        // Once the server ends the listing, another sentinel event is a no-op.
+        await store.loadMoreStickers()
+        #expect(await api.requestedCursors() == ["<first>", "2", "3"])
     }
 
     @Test("A cancelled Library refresh keeps its content and does not show an error")
@@ -993,7 +1011,10 @@ private extension StickerAPIClientProtocol {
 }
 
 private actor PaginatedLibraryAPI: StickerAPIClientProtocol {
+    private var cursors: [String] = []
+
     func listStickers(cursor: String?) async throws -> Page<Sticker> {
+        cursors.append(cursor ?? "<first>")
         let index = cursor.flatMap(Int.init) ?? 1
         let sticker = Sticker(
             id: "page-\(index)", title: "Page \(index)", kind: .static, status: .published,
@@ -1001,6 +1022,8 @@ private actor PaginatedLibraryAPI: StickerAPIClientProtocol {
         )
         return .init(data: [sticker], nextCursor: index < 3 ? String(index + 1) : nil)
     }
+
+    func requestedCursors() -> [String] { cursors }
 }
 
 private actor CancelledLibraryAPI: StickerAPIClientProtocol {

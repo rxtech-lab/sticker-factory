@@ -59,6 +59,17 @@ public enum AnimationCompiler {
     /// schema allows stays well under a pixel at export sizes, and few enough that eight arcing
     /// layers still fit the document's 128-keyframe ceiling.
     static let arcSegments = 10
+    /// The fraction of a `shine` cycle spent traversing; the rest is an invisible return leg.
+    ///
+    /// A repeating sweep has to jump back to the leading edge, and two keyframes cannot share a
+    /// timestamp. Reserving a slice at the end of each cycle — travelled at zero intensity, so
+    /// nothing is on screen — is what lets `cycles > 1` exist without a discontinuity.
+    static let shineSweepFraction = 0.88
+    /// Where a `shine` reaches full brightness, as a fraction of its traverse, and its mirror.
+    ///
+    /// A triangular envelope reads as a brightening blob rather than a travelling highlight; holding
+    /// full intensity across the middle and ramping only at the ends is what makes it read as light.
+    static let shineRampFraction = 0.18
 
     // MARK: - Rounding
 
@@ -117,6 +128,53 @@ public enum AnimationCompiler {
 
     static func trim(_ t: Double, _ start: Double, _ end: Double, _ easing: AnimatedEasing) -> TrimKeyframe {
         .init(timeSeconds: roundTime(t), start: roundValue(clamp(start, 0, 1)), end: roundValue(clamp(end, 0, 1)), easing: easing)
+    }
+
+    static func wipe(
+        _ t: Double,
+        _ start: Double,
+        _ end: Double,
+        _ angleDegrees: Double,
+        _ softness: Double,
+        _ easing: AnimatedEasing
+    ) -> WipeKeyframe {
+        .init(
+            timeSeconds: roundTime(t),
+            start: roundValue(clamp(start, 0, 1)),
+            end: roundValue(clamp(end, 0, 1)),
+            angleDegrees: roundValue(clamp(angleDegrees, -360, 360)),
+            softness: roundValue(clamp(softness, 0, 0.5)),
+            easing: easing
+        )
+    }
+
+    static func sheen(
+        _ t: Double,
+        _ position: Double,
+        _ width: Double,
+        _ angleDegrees: Double,
+        _ intensity: Double,
+        _ easing: AnimatedEasing
+    ) -> SheenKeyframe {
+        .init(
+            timeSeconds: roundTime(t),
+            // Clamped to the position channel's range, not 0…1: the band has to be representable
+            // fully off-canvas at both ends or a sweep starts at the layer's leading edge.
+            position: roundValue(clamp(position, -1, 2)),
+            width: roundValue(clamp(width, 0.02, 1)),
+            angleDegrees: roundValue(clamp(angleDegrees, -360, 360)),
+            intensity: roundValue(clamp(intensity, 0, 1)),
+            easing: easing
+        )
+    }
+
+    static func glow(_ t: Double, _ amount: Double, _ radius: Double, _ easing: AnimatedEasing) -> GlowKeyframe {
+        .init(
+            timeSeconds: roundTime(t),
+            amount: roundValue(clamp(amount, 0, 1)),
+            radius: roundValue(clamp(radius, 0.01, 0.5)),
+            easing: easing
+        )
     }
 
     // MARK: - Conflict detection
@@ -264,11 +322,15 @@ public enum AnimationCompiler {
         out.opacity.sort { $0.timeSeconds < $1.timeSeconds }
         out.effects.sort { $0.timeSeconds < $1.timeSeconds }
         out.trim.sort { $0.timeSeconds < $1.timeSeconds }
+        out.wipe.sort { $0.timeSeconds < $1.timeSeconds }
+        out.sheen.sort { $0.timeSeconds < $1.timeSeconds }
+        out.glow.sort { $0.timeSeconds < $1.timeSeconds }
 
-        let counts: [(AnimationChannel, Int)] = [
-            (.position, out.position.count), (.scale, out.scale.count), (.rotation, out.rotation.count),
-            (.opacity, out.opacity.count), (.effects, out.effects.count), (.trim, out.trim.count),
-        ]
+        // Counted through `AnimationChannel.allCases` and the exhaustive `count(of:)` rather than a
+        // hand-written list, so a channel added later cannot silently escape the per-channel cap.
+        // The sorts above still have to be written out — the arrays have nine different element
+        // types — but an unsorted track shows up as a rendering glitch, not a wrong-looking cap.
+        let counts = AnimationChannel.allCases.map { ($0, out.count(of: $0)) }
         for (channel, count) in counts where count > maximumChannelKeyframes {
             throw AnimationCompileError(
                 "The \(channel.rawValue) channel compiled to \(count) keyframes, over the "
@@ -468,6 +530,96 @@ public enum AnimationCompiler {
                 trim(start, anchorTrim.start, anchorTrim.end, .linear),
                 trim(end, trimStart, trimEnd, ease),
             ], .trim)
+
+        case .wipeIn(let direction, let softness):
+            // Only `end` moves: the visible window grows from the leading edge across the layer.
+            let angle = wipeDirectionAngle(direction)
+            try merge(&out.wipe, [
+                wipe(start, 0, 0, angle, softness, .linear),
+                wipe(end, 0, 1, angle, softness, ease),
+            ], .wipe)
+
+        case .wipeOut(let direction, let softness):
+            // Only `start` moves, so the layer is eaten from the same edge a matching wipeIn
+            // revealed from — it reads as the reveal running on rather than as it rewinding.
+            let angle = wipeDirectionAngle(direction)
+            try merge(&out.wipe, [
+                wipe(start, 0, 1, angle, softness, .linear),
+                wipe(end, 1, 1, angle, softness, ease),
+            ], .wipe)
+
+        case .wipeTo(let wipeStart, let wipeEnd, let angleDegrees, let softness):
+            try merge(&out.wipe, [
+                wipe(start, 0, 1, angleDegrees, softness, .linear),
+                wipe(end, wipeStart, wipeEnd, angleDegrees, softness, ease),
+            ], .wipe)
+
+        case .shine(let angleDegrees, let width, let intensity, let specCycles):
+            let cycles = Swift.min(specCycles, cycleCap)
+            let step = spec.duration / Double(cycles)
+            // The band is centred on `position`, so half a width past each edge is fully off-canvas.
+            let from = -width / 2
+            let span = 1 + width
+            var frames: [SheenKeyframe] = []
+            for index in 0..<cycles {
+                let base = start + Double(index) * step
+                let traverse = shineSweepFraction * step
+                for phase in [0, shineRampFraction, 1 - shineRampFraction, 1] {
+                    frames.append(sheen(
+                        base + phase * traverse,
+                        from + phase * span,
+                        width,
+                        angleDegrees,
+                        // Dark at both extremes, full brightness across the middle. The dark ends are
+                        // also what make the retreat to the next cycle's leading edge invisible.
+                        phase == 0 || phase == 1 ? 0 : intensity,
+                        // Always linear, whatever the spec asked for. Easing the closing keyframe
+                        // would decelerate only the second half of the traverse, which reads as a
+                        // stutter rather than a glint — the same reason `arcTo` pins its samples.
+                        .linear
+                    ))
+                }
+            }
+            try merge(&out.sheen, frames, .sheen)
+
+        case .bloomIn(let radius, let intensity):
+            try merge(&out.glow, [
+                glow(start, 0, radius, .linear),
+                glow(end, intensity, radius, ease),
+            ], .glow)
+
+        case .bloomOut(let radius, let intensity):
+            try merge(&out.glow, [
+                glow(start, intensity, radius, .linear),
+                glow(end, 0, radius, ease),
+            ], .glow)
+
+        case .bloomPulse(let radius, let intensity, let specCycles):
+            let cycles = Swift.min(specCycles, cycleCap)
+            let step = spec.duration / Double(cycles)
+            // Shaped like `bounce` rather than `pulse`: a glow only brightens, so sampling a full
+            // sine would spend half of every cycle clamped flat at zero and cost twice the
+            // keyframes for the same breathing motion.
+            var frames: [GlowKeyframe] = [glow(start, 0, radius, .linear)]
+            for index in 0..<cycles {
+                frames.append(glow(start + (Double(index) + 0.5) * step, intensity, radius, ease))
+                frames.append(glow(start + (Double(index) + 1) * step, 0, radius, ease))
+            }
+            try merge(&out.glow, frames, .glow)
+        }
+    }
+
+    /// The wipe axis for a direction, in the paint convention: 0° left-to-right, clockwise.
+    ///
+    /// Names the *direction of travel*, matching `directionOffset` — a `wipeIn` with direction
+    /// `right` uncovers the layer starting at its left edge and sweeps rightwards, the same way a
+    /// `slideIn` with direction `right` ends up travelling rightwards.
+    static func wipeDirectionAngle(_ direction: AnimationDirection) -> Double {
+        switch direction {
+        case .right: 0
+        case .down: 90
+        case .left: 180
+        case .up: 270
         }
     }
 
@@ -523,7 +675,8 @@ public enum AnimationCompiler {
         let maxCycles = layers.reduce(1) { highest, layer in
             layer.specs.reduce(highest) { inner, spec in
                 switch spec.effect {
-                case .wiggle(_, let cycles), .pulse(_, _, let cycles), .float(_, let cycles):
+                case .wiggle(_, let cycles), .pulse(_, _, let cycles), .float(_, let cycles),
+                     .shine(_, _, _, let cycles), .bloomPulse(_, _, let cycles):
                     Swift.max(inner, cycles)
                 case .bounce(_, let bounces):
                     Swift.max(inner, bounces)
@@ -578,6 +731,21 @@ extension OpacityKeyframe: CompiledKeyframe {
 
 extension EffectKeyframe: CompiledKeyframe {
     public var valueSignature: [Double] { [timeSeconds, blurRadius, hueDegrees, saturation] }
+}
+
+// Every value field has to appear below. The TypeScript side compares the whole keyframe object
+// minus easing, so a signature that omits a field would let Swift accept a boundary the server
+// rejects — and the client would then be writing documents the server refuses to store.
+extension WipeKeyframe: CompiledKeyframe {
+    public var valueSignature: [Double] { [timeSeconds, start, end, angleDegrees, softness] }
+}
+
+extension SheenKeyframe: CompiledKeyframe {
+    public var valueSignature: [Double] { [timeSeconds, position, width, angleDegrees, intensity] }
+}
+
+extension GlowKeyframe: CompiledKeyframe {
+    public var valueSignature: [Double] { [timeSeconds, amount, radius] }
 }
 
 extension TrimKeyframe: CompiledKeyframe {

@@ -105,23 +105,34 @@ public struct AnimatedIconFrame: View {
     @ViewBuilder
     private func layerContent(_ layer: AnimatedLayer, state: AnimatedLayerState, canvasSize: CGSize) -> some View {
         let box = CGSize(width: canvasSize.width * Self.layerFit, height: canvasSize.height * Self.layerFit)
-        switch layer {
-        case .image(let imageLayer):
-            imageContent(imageLayer, box: box)
-        case .text(let textLayer):
-            textContent(textLayer, box: box)
-        case .shape(let shapeLayer):
-            shapeContent(shapeLayer, state: state, box: box)
-        case .svg(let svgLayer):
-            svgContent(svgLayer, state: state, box: box)
-        case .particle(let particleLayer):
-            ParticleCanvas(
-                layer: particleLayer,
-                time: documentTime,
-                duration: max(document.durationSeconds, 1)
-            )
-            .frame(width: canvasSize.width, height: canvasSize.height)
+        // Wipe, sheen and glow wrap the artwork itself rather than the transformed layer, so they
+        // are expressed in the layer's own coordinates. Every layer kind gets them, including images
+        // and text, which `trim` can never reach.
+        //
+        // Two caveats worth knowing rather than working around: a text layer is framed to the whole
+        // box regardless of how wide the glyphs actually are, so a wipe across a short centred word
+        // appears to start late; and a particle layer is framed to the canvas rather than the box,
+        // so its wipe spans a slightly different extent than every other kind's.
+        Group {
+            switch layer {
+            case .image(let imageLayer):
+                imageContent(imageLayer, box: box)
+            case .text(let textLayer):
+                textContent(textLayer, box: box)
+            case .shape(let shapeLayer):
+                shapeContent(shapeLayer, state: state, box: box)
+            case .svg(let svgLayer):
+                svgContent(svgLayer, state: state, box: box)
+            case .particle(let particleLayer):
+                ParticleCanvas(
+                    layer: particleLayer,
+                    time: documentTime,
+                    duration: max(document.durationSeconds, 1)
+                )
+                .frame(width: canvasSize.width, height: canvasSize.height)
+            }
         }
+        .animatedSweeps(state, boxWidth: box.width)
     }
 
     @ViewBuilder

@@ -5,6 +5,7 @@ import type {
   PublishExportsRequest,
   SaveEditedDocumentRequest,
 } from "@/lib/contracts/api";
+import { countKeyframes } from "@/lib/animation/compile";
 import { EXPORT_LOOP_HOLD_SECONDS, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import { previewAssetIdSql, previewAssets, systemAssets } from "@/lib/db/columns";
@@ -1214,12 +1215,9 @@ export async function bindExports(
     if (document.kind !== "animated") {
       throw new ApiError(422, "REVISION_KIND_MISMATCH", "Animated revision metadata must contain an animated sticker document");
     }
-    const keyframeCount = document.layers.reduce((total, layer) => total
-      + layer.animation.position.length
-      + layer.animation.scale.length
-      + layer.animation.rotation.length
-      + layer.animation.opacity.length
-      + layer.animation.effects.length, 0);
+    // Counted through the shared helper rather than by hand: this sum used to omit `trim`, which
+    // rejected a perfectly good draw-on-only sticker here with a confusing 422.
+    const keyframeCount = document.layers.reduce((total, layer) => total + countKeyframes(layer.animation), 0);
     if (keyframeCount === 0) {
       throw new ApiError(422, "ANIMATION_KEYFRAMES_REQUIRED", "Animated exports require at least one accepted animation keyframe");
     }
