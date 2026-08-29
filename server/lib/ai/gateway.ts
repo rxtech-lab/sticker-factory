@@ -229,7 +229,9 @@ export type AnimateTurnResult = {
  * numbers it had written itself.
  */
 export type StickerRenderResult = {
-  png: Uint8Array;
+  bytes: Uint8Array;
+  /** The encoding of `bytes`; see `SHEET_MIME`. Never assume PNG. */
+  mimeType: string;
   /** The instants drawn, in document seconds. One entry for a static sticker. */
   times: number[];
   width: number;
@@ -247,6 +249,16 @@ export interface AiLayoutContext {
   /** The approved plan's human-readable intent. */
   instruction: string;
   history: string;
+  /**
+   * The static reference the user approved, when the plan had one.
+   *
+   * The parts of this build were each separated out of this exact image, so it is the only statement
+   * of what the finished composition was supposed to look like. Without it the reviewer can tell
+   * that a layout is unbalanced but not that it is *wrong* — that a title meant to arc over a head
+   * is sitting in a band above it — because the assembled render is the only picture it has ever
+   * seen. Optional because a capture-led plan renders no concept.
+   */
+  reference?: AiReferenceImage;
 }
 
 export type LayoutDraftState = {
@@ -921,6 +933,10 @@ class GatewayAiProvider implements AiProvider {
   ): Promise<LayoutTurnResult | undefined> {
     let state: LayoutTurnResult | undefined;
     let fatal: unknown;
+    // Undecodable artwork drops out here rather than failing the review: a layout pass with no
+    // reference is the behaviour this whole path had until now, and it is worth more than a build
+    // that dies after every part has already been paid for.
+    const [reference] = await viewableReferences(input.reference ? [input.reference] : []);
 
     const guard = async (run: () => Promise<LayoutDraftState>) => {
       try {
@@ -949,6 +965,9 @@ class GatewayAiProvider implements AiProvider {
           "Every generated asset, layer, and animation is preserved automatically. Use the actual",
           "visible artwork from view_sticker, not just the nominal square layer boxes, to decide",
           "whether overlap is intentional. Keep the main subject readable at thumbnail size.",
+          "image and sequence layers hold square artwork fitted inside its box, so send them equal",
+          "scaleX and scaleY: an unequal pair is applied as the smaller of the two, never as a",
+          "stretch. To make one of them bigger, raise both.",
         ].join(" "),
         inputSchema: LayoutAdjustmentSchema,
         execute: async (adjustment) => guard(() => session.applyLayout(adjustment)),
@@ -983,13 +1002,30 @@ class GatewayAiProvider implements AiProvider {
         "After every adjustment, call view_sticker again. Finish with finalize_layout only after",
         "viewing the exact final revision. If the first render is already strong, change nothing and",
         "finalize it.",
-      ].join(" "),
-      prompt: [
+        "",
+        // The reviewer used to see only its own render, so it had no way to know the build had
+        // drifted from the picture the user actually said yes to.
+        reference
+          ? "You are given the static reference image the user approved. Every layer in this sticker"
+            + " was separated out of that exact image, so it is the target composition, not merely an"
+            + " inspiration: match its placement, relative sizes, spacing, and overlap. Where the"
+            + " assembled render disagrees with it, the render is wrong and the reference is right."
+            + " Reproducing an overlap it shows — a title arcing over a head, a badge sitting on a"
+            + " shoulder — is the correct outcome, not a collision to separate. It is a still frame,"
+            + " so ignore any difference that is only a moment of the animation, and do not try to"
+            + " reproduce detail that lives inside a layer's own artwork."
+          : "",
+      ].filter(Boolean).join(" "),
+      messages: userTurn([
         `Approved design intent:\n${input.instruction}`,
+        reference
+          ? "The approved static reference is attached at the end of this message. It is the"
+            + " composition this build is meant to reproduce."
+          : "",
         `Current layer summary:\n${JSON.stringify(summarizeDocument(input.document))}`,
         `Conservative geometry diagnostics:\n${JSON.stringify(layoutDiagnostics(input.document))}`,
         `Recoverable project context:\n${input.history}`,
-      ].join("\n\n"),
+      ].filter(Boolean).join("\n\n"), reference ? [reference] : []),
       tools,
       toolChoice: "required",
       stopWhen: [hasToolCall("finalize_layout"), stepCountIs(8), () => fatal !== undefined],
@@ -1925,6 +1961,16 @@ class GatewayAiProvider implements AiProvider {
         "Text layers. Give them equal scaleX and scaleY: a glyph is fitted inside its box without",
         "stretching, so unequal values only shrink it. Size a text layer by the box you want the",
         "words to occupy, not by their letter count.",
+        "",
+        // Generated artwork is a square PNG drawn to fill its frame, so a wide box used to stretch
+        // it. The build now fits the artwork inside the box instead, which makes an unequal pair
+        // silently equal to its smaller half — say so, or a wide caption is planned as a wide box
+        // and arrives a third of the size that was intended.
+        "Image layers keep their aspect. generate, existing, and sequence layers hold square artwork",
+        "that is fitted inside its box rather than stretched to fill it, so give them equal scaleX",
+        "and scaleY too. An unequal pair is built as the smaller of the two, which makes a wide,",
+        "short box a small square. To get a wide caption, ask the prompt for wide lettering inside a",
+        "square frame and give the layer one square box big enough to hold it.",
         "For a staged text reveal, split the phrase into at most 6 chunks and prefer whole words:",
         '"Hello World" is two layers, not eleven. A plan may use at most 8 layers, so one layer',
         "per letter only works for very short words, and cramming a phrase into it produces uneven",

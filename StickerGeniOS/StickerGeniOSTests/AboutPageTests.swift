@@ -12,4 +12,14 @@ struct AboutPageTests {
 
         #expect(url.absoluteString == "https://sticker.rxlab.app/api/v1/about")
     }
+
+    @Test("A cancelled request never surfaces as a document failure")
+    func cancelledRequestIsNotAFailure() {
+        // `URLSession` reports a cancelled request as `URLError.cancelled`, so pull-to-refresh used
+        // to render "Unable to Load — cancelled" until the user refreshed a second time.
+        #expect(StickerStore.isCancellation(URLError(.cancelled)))
+        #expect(StickerStore.isCancellation(CancellationError()))
+        #expect(!StickerStore.isCancellation(URLError(.timedOut)))
+        #expect(!StickerStore.isCancellation(MarkdownDocumentLoadingError.httpStatus(500)))
+    }
 }

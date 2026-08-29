@@ -651,8 +651,10 @@ final class StickerStore {
     }
 
     /// A view disappearing cancels its `.task`, which must read as "nothing happened" rather than
-    /// as an error banner. Shared with `MarketplaceStore`, which needs the same distinction.
-    static func isCancellation(_ error: Error) -> Bool {
+    /// as an error banner. Shared with `MarketplaceStore` and the document views, which need the
+    /// same distinction. `URLSession` reports cancellation as `URLError.cancelled`, never as
+    /// `CancellationError`, so checking only the latter misses every cancelled request.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         let nsError = error as NSError
         return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled

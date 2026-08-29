@@ -64,6 +64,26 @@ describe("composition layout refinement", () => {
     })).toThrow(/Keep every complete layer box on canvas.*hero/);
   });
 
+  // A reviewer looking at a caption the build already stretched reaches for a wider box, and
+  // honouring that literally would stretch it further. The narrower dimension is the one the
+  // artwork can actually fit inside, and shrinking a layer can never invalidate the off-canvas and
+  // overlap checks the rest of the layout was approved against.
+  it("fits pixel artwork inside a non-square box instead of stretching it", () => {
+    const result = applyLayoutAdjustment(fixture(), {
+      placements: [{ layerId: "hero", x: 0.5, y: 0.5, scaleX: 0.9, scaleY: 0.35, rotationDegrees: 0 }],
+    });
+    expect(result.layers.find((layer) => layer.id === "hero")!.anchor.scale)
+      .toEqual({ x: 0.35, y: 0.35 });
+  });
+
+  it("leaves an app-drawn layer free to occupy a non-square box", () => {
+    const result = applyLayoutAdjustment(fixture(), {
+      placements: [{ layerId: "spark", x: 0.5, y: 0.5, scaleX: 0.9, scaleY: 0.35, rotationDegrees: 0 }],
+    });
+    expect(result.layers.find((layer) => layer.id === "spark")!.anchor.scale)
+      .toEqual({ x: 0.9, y: 0.35 });
+  });
+
   it("requires a complete layer-order permutation", () => {
     expect(() => applyLayoutAdjustment(fixture(), { order: ["hero"] }))
       .toThrow(/order must contain every layer exactly once/);

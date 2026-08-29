@@ -64,60 +64,11 @@ export async function ensureSequencePosters(
   );
   if (pending.length === 0) return document;
 
-  const store = getObjectStore();
   const posters = new Map<string, string>();
   for (const layer of pending) {
     if (posters.has(layer.id)) continue;
-    const posterId = derivedAssetId(layer.assetId, "poster");
-    try {
-      const existing = await db.select({ id: assets.id, state: assets.state }).from(assets)
-        .where(and(eq(assets.id, posterId), eq(assets.ownerId, ownerId))).get();
-      if (existing?.state === "ready") {
-        posters.set(layer.id, posterId);
-        continue;
-      }
-
-      const atlas = await db.select().from(assets)
-        .where(and(eq(assets.id, layer.assetId), eq(assets.ownerId, ownerId), eq(assets.state, "ready"))).get();
-      if (!atlas?.width || !atlas.height) continue;
-      const source = await store.get(atlas.r2Key);
-      // Integer division on the pixel dimensions, matching how the renderer slices tiles, so the
-      // poster is exactly the frame a playing client shows at t=0 rather than an off-by-a-pixel crop.
-      const bytes = await sharp(Buffer.from(source.bytes))
-        .extract({
-          left: 0,
-          top: 0,
-          width: Math.floor(atlas.width / layer.columns),
-          height: Math.floor(atlas.height / layer.rows),
-        })
-        .png()
-        .toBuffer();
-      const inspection = await inspectImage(bytes);
-      const r2Key = objectKey(ownerId, posterId, "image/png");
-      await store.put(r2Key, { bytes, contentType: "image/png", metadata: { sha256: inspection.sha256 } });
-      await db.insert(assets).values({
-        id: posterId,
-        ownerId,
-        stickerId,
-        // `master` rather than a kind of its own: it is a finished still of the sticker's artwork,
-        // which is exactly what an image layer is allowed to reference.
-        kind: "master",
-        state: "ready",
-        r2Key,
-        mimeType: "image/png",
-        byteSize: inspection.byteSize,
-        width: inspection.width,
-        height: inspection.height,
-        sha256: inspection.sha256,
-        hasAlpha: inspection.hasTransparentPixels,
-        originalFilename: "capture-poster.png",
-        createdAt: new Date(),
-        readyAt: new Date(),
-      }).onConflictDoNothing();
-      posters.set(layer.id, posterId);
-    } catch {
-      // Deliberately swallowed: see the note above about not failing a save over a fallback.
-    }
+    const posterId = await ensureAtlasPoster(db, ownerId, stickerId, layer);
+    if (posterId) posters.set(layer.id, posterId);
   }
   if (posters.size === 0) return document;
 
@@ -129,6 +80,75 @@ export async function ensureSequencePosters(
         : layer
     )),
   } as StickerDocument;
+}
+
+/**
+ * Tile 0 of a frame atlas, stored as its own PNG asset. Returns its id, or nothing if it could not
+ * be made.
+ *
+ * Shared by the poster path above and by plan cards, which show it as the preview for a capture-led
+ * plan. Such a plan renders no generated concept — the footage *is* the reference — so without this
+ * the card had nothing to show but its layout boxes, and the user was asked to approve a design of
+ * their own face sight unseen.
+ *
+ * Idempotent: the id is derived from the atlas, and an existing ready row short-circuits, so a
+ * revision that keeps the same footage and a workflow replay both cost one lookup.
+ */
+export async function ensureAtlasPoster(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  atlas: { assetId: string; columns: number; rows: number },
+): Promise<string | undefined> {
+  const posterId = derivedAssetId(atlas.assetId, "poster");
+  try {
+    const existing = await db.select({ id: assets.id, state: assets.state }).from(assets)
+      .where(and(eq(assets.id, posterId), eq(assets.ownerId, ownerId))).get();
+    if (existing?.state === "ready") return posterId;
+
+    const source = await db.select().from(assets)
+      .where(and(eq(assets.id, atlas.assetId), eq(assets.ownerId, ownerId), eq(assets.state, "ready"))).get();
+    if (!source?.width || !source.height) return undefined;
+    const object = await getObjectStore().get(source.r2Key);
+    // Integer division on the pixel dimensions, matching how the renderer slices tiles, so the
+    // poster is exactly the frame a playing client shows at t=0 rather than an off-by-a-pixel crop.
+    const bytes = await sharp(Buffer.from(object.bytes))
+      .extract({
+        left: 0,
+        top: 0,
+        width: Math.floor(source.width / atlas.columns),
+        height: Math.floor(source.height / atlas.rows),
+      })
+      .png()
+      .toBuffer();
+    const inspection = await inspectImage(bytes);
+    const r2Key = objectKey(ownerId, posterId, "image/png");
+    await getObjectStore().put(r2Key, { bytes, contentType: "image/png", metadata: { sha256: inspection.sha256 } });
+    await db.insert(assets).values({
+      id: posterId,
+      ownerId,
+      stickerId,
+      // `master` rather than a kind of its own: it is a finished still of the sticker's artwork,
+      // which is exactly what an image layer is allowed to reference.
+      kind: "master",
+      state: "ready",
+      r2Key,
+      mimeType: "image/png",
+      byteSize: inspection.byteSize,
+      width: inspection.width,
+      height: inspection.height,
+      sha256: inspection.sha256,
+      hasAlpha: inspection.hasTransparentPixels,
+      originalFilename: "capture-poster.png",
+      createdAt: new Date(),
+      readyAt: new Date(),
+    }).onConflictDoNothing();
+    return posterId;
+  } catch {
+    // Deliberately swallowed: a poster is a nicety on both call sites — an older client's fallback
+    // and a card's thumbnail — and neither is worth failing a save or a planning turn over.
+    return undefined;
+  }
 }
 
 async function assertOwnedSticker(db: Database, ownerId: string, stickerId?: string): Promise<void> {

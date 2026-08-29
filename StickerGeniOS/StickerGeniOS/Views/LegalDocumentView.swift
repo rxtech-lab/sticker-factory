@@ -103,7 +103,7 @@ struct LegalDocumentView: View {
                         .frame(maxWidth: 720, alignment: .leading)
                         .frame(maxWidth: .infinity)
                 }
-                .refreshable { await load() }
+                .refreshable { await load(showingPlaceholder: false) }
             case .failed(let message):
                 ContentUnavailableView {
                     Label("Unable to Load", systemImage: "wifi.exclamationmark")
@@ -122,15 +122,20 @@ struct LegalDocumentView: View {
         .accessibilityIdentifier("legal-document-view")
     }
 
-    private func load() async {
-        state = .loading
+    /// Pull-to-refresh must not swap the loaded markdown out for the placeholder: the scroll view
+    /// owning the refresh gesture only exists in the `.loaded` branch, so returning to `.loading`
+    /// tears down the very task doing the reload, and the cancelled request then renders as a
+    /// failure. Refreshing keeps the old document on screen behind the system's own spinner.
+    private func load(showingPlaceholder: Bool = true) async {
+        if showingPlaceholder {
+            state = .loading
+        }
         do {
             let markdown = try await LegalDocumentLoader.load(document, baseURL: baseURL)
             guard !Task.isCancelled else { return }
             state = .loaded(markdown)
-        } catch is CancellationError {
-            return
         } catch {
+            guard !StickerStore.isCancellation(error) else { return }
             state = .failed(error.localizedDescription)
         }
     }

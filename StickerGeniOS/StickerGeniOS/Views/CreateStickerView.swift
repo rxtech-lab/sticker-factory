@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import TipKit
 import UIKit
 
 struct CreateStickerView: View {
@@ -14,6 +15,15 @@ struct CreateStickerView: View {
     @State private var localError: String?
     /// The photo waiting for the user to choose a subject in it, when the lift flow is on.
     @State private var pendingLift: PendingLift?
+    private let liftTip = LiftSubjectTip()
+
+    /// Only one thumbnail may carry the tip: a popover on each of eight references at once would
+    /// stack them on the same spot. The first photo that has not been lifted yet is the one the tip
+    /// is about, so a row of finished cut-outs asks nothing.
+    private var liftTipTarget: UUID? {
+        guard AppConfiguration.subjectLiftEnabled else { return nil }
+        return references.first { $0.sequence == nil }?.id
+    }
 
     var body: some View {
         StickerBackground {
@@ -102,9 +112,14 @@ struct CreateStickerView: View {
                                             ReferenceThumbnail(
                                                 reference: reference,
                                                 lift: AppConfiguration.subjectLiftEnabled ? {
+                                                    // Invalidated here rather than in the thumbnail
+                                                    // so opening a lift from any photo retires the
+                                                    // tip, not only from the one showing it.
+                                                    liftTip.invalidate(reason: .actionPerformed)
                                                     Haptics.tap(.light)
                                                     Task { pendingLift = await SubjectLiftPresenter.lift(from: reference) }
                                                 } : nil,
+                                                tip: reference.id == liftTipTarget ? liftTip : nil,
                                                 remove: {
                                                     Haptics.selection()
                                                     references.removeAll { $0.id == reference.id }
@@ -200,6 +215,8 @@ private struct ReferenceThumbnail: View {
     let reference: PendingMediaAttachment
     /// Tapping the photo reopens the lift flow on it. Nil hides the affordance entirely.
     var lift: (() -> Void)?
+    /// Set on the one thumbnail that should explain the tap. Nil on every other.
+    var tip: LiftSubjectTip?
     let remove: () -> Void
 
     private var isCapture: Bool { reference.sequence != nil }
@@ -232,6 +249,7 @@ private struct ReferenceThumbnail: View {
             }
             .buttonStyle(.plain)
             .disabled(lift == nil)
+            .popoverTip(tip, arrowEdge: .top)
             .accessibilityLabel(isCapture ? "Lifted subject. Tap to choose a different one." : "Reference photo. Tap to lift a subject out of it.")
 
             Button(action: remove) {

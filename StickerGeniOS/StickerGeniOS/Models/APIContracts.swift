@@ -235,10 +235,15 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
     case text(text: String, color: String)
     case shape(shape: String, fill: String)
     case particle(preset: String, color: String)
+    /// Frames the user captured, played back in place. Costs no generation and needs no concept
+    /// render — the footage is its own reference, which is what makes such a plan capture-led.
+    case sequence(assetId: String, frameCount: Int)
     /// A layer kind this build does not know about, kept so the card still renders.
     case unknown(kind: String)
 
-    private enum CodingKeys: String, CodingKey { case kind, prompt, assetId, text, color, shape, fill, preset }
+    private enum CodingKeys: String, CodingKey {
+        case kind, prompt, assetId, text, color, shape, fill, preset, frameCount
+    }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -262,6 +267,11 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
             self = .particle(
                 preset: (try? container.decode(String.self, forKey: .preset)) ?? "sparkles",
                 color: (try? container.decode(String.self, forKey: .color)) ?? "#FFFFFF"
+            )
+        case "sequence":
+            self = .sequence(
+                assetId: (try? container.decode(String.self, forKey: .assetId)) ?? "",
+                frameCount: (try? container.decode(Int.self, forKey: .frameCount)) ?? 1
             )
         default:
             self = .unknown(kind: kind)
@@ -289,6 +299,10 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
             try container.encode("particle", forKey: .kind)
             try container.encode(preset, forKey: .preset)
             try container.encode(color, forKey: .color)
+        case .sequence(let assetId, let frameCount):
+            try container.encode("sequence", forKey: .kind)
+            try container.encode(assetId, forKey: .assetId)
+            try container.encode(frameCount, forKey: .frameCount)
         case .unknown(let kind):
             try container.encode(kind, forKey: .kind)
         }
@@ -301,6 +315,10 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
         case .text(let text, _): String(localized: "Text “\(text)”")
         case .shape(let shape, _): Self.humanized(shape)
         case .particle(let preset, _): Self.humanized(preset)
+        case .sequence(_, let frameCount):
+            frameCount == 1
+                ? String(localized: "Capture")
+                : String(localized: "Capture · \(frameCount) frames")
         case .unknown(let kind): Self.humanized(kind)
         }
     }

@@ -1,6 +1,8 @@
 import AnimatedView
+import os
 import PhotosUI
 import SwiftUI
+import TipKit
 import UIKit
 
 struct StickerChatView: View {
@@ -19,6 +21,7 @@ struct StickerChatView: View {
     @State private var showingPrivacy = false
     /// The photo waiting for the user to choose a subject in it, when the lift flow is on.
     @State private var pendingLift: PendingLift?
+    private let liftTip = LiftSubjectTip()
     @State private var localError: String?
     @State private var assetStore = StickerAssetStore()
     @State private var exportModel = StickerExportModel()
@@ -522,6 +525,14 @@ struct StickerChatView: View {
         }
     }
 
+    /// Only one chip may carry the tip: a popover on each of eight references at once would stack
+    /// them on the same spot. The first photo that has not been lifted yet is the one the tip is
+    /// about, so a row of finished cut-outs asks nothing.
+    private var liftTipTarget: UUID? {
+        guard AppConfiguration.subjectLiftEnabled else { return nil }
+        return references.first { $0.sequence == nil }?.id
+    }
+
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !references.isEmpty {
@@ -531,9 +542,14 @@ struct StickerChatView: View {
                             ComposerMediaChip(
                                 media: reference,
                                 lift: AppConfiguration.subjectLiftEnabled ? {
+                                    // Invalidated here rather than in the chip so opening a lift
+                                    // from any photo retires the tip, not only from the one
+                                    // showing it.
+                                    liftTip.invalidate(reason: .actionPerformed)
                                     Haptics.tap(.light)
                                     Task { pendingLift = await SubjectLiftPresenter.lift(from: reference) }
                                 } : nil,
+                                tip: reference.id == liftTipTarget ? liftTip : nil,
                                 remove: {
                                     Haptics.selection()
                                     references.removeAll { $0.id == reference.id }
@@ -601,9 +617,16 @@ struct StickerChatView: View {
                         Task { await send(draft) }
                     }
                 } label: {
+                    // Stop is drawn larger than send. It is the only control here with a clock on
+                    // it — the turn is already spending — and at send's size it was a small target
+                    // to find in a hurry, next to a text field that wants the same thumb.
                     Image(systemName: isComputing ? "stop.circle.fill" : "arrow.up.circle.fill")
-                        .font(.title2)
+                        .font(isComputing ? .system(size: 30) : .title2)
                         .foregroundStyle(isComputing ? Color.red : AppColors.accent)
+                        // Fixed so the composer does not resize as the glyph swaps, and so the
+                        // smaller send state still gets a target the size of the larger one.
+                        .frame(width: 34, height: 34)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .disabled(isComputing ? store.stoppingStickerIDs.contains(stickerID) : !canSend)
@@ -632,6 +655,19 @@ struct StickerChatView: View {
 
     private func preloadMessageMedia() async {
         for message in messages {
+            if let plan = message.plan, plan.plan.kind == .animated, plan.actionable {
+                // A plan card's confirm button waits on this image, so a card that never becomes
+                // tappable is either a plan with no concept to load — capture-led plans have none —
+                // or an asset fetch that failed, and the two look identical on screen.
+                StickerAssetStore.log.debug(
+                    """
+                    plan-reference: plan=\(plan.id, privacy: .public) \
+                    concept=\(plan.conceptAssetId ?? "none", privacy: .public) \
+                    generated=\(plan.generationCount) \
+                    loaded=\(plan.conceptAssetId.map { assetStore.images[$0] != nil } ?? false)
+                    """
+                )
+            }
             if let referenceID = message.plan?.conceptAssetId {
                 await assetStore.load(assetID: referenceID, api: store.api)
             }
@@ -1142,6 +1178,8 @@ private struct ComposerMediaChip: View {
     let media: PendingMediaAttachment
     /// Tapping the thumbnail reopens the lift flow on it. Nil hides the affordance entirely.
     var lift: (() -> Void)?
+    /// Set on the one chip that should explain the tap. Nil on every other.
+    var tip: LiftSubjectTip?
     let remove: () -> Void
 
     var body: some View {
@@ -1170,6 +1208,8 @@ private struct ComposerMediaChip: View {
             }
             .buttonStyle(.plain)
             .disabled(lift == nil)
+            // The chips sit directly above the keyboard, so the popover has to open upward.
+            .popoverTip(tip, arrowEdge: .bottom)
             .accessibilityLabel(media.sequence != nil
                 ? "Lifted subject. Tap to choose a different one."
                 : "Reference photo. Tap to lift a subject out of it.")

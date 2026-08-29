@@ -1,4 +1,5 @@
 import AnimatedView
+import os
 import SwiftUI
 import UIKit
 
@@ -33,6 +34,12 @@ struct StickerPlayer: View {
 @MainActor
 @Observable
 final class StickerAssetStore: AnimatedAssetProvider {
+    /// Why a bitmap never arrived. Loading degrades to a placeholder by design, which is right for
+    /// the renderer and leaves anyone debugging a permanently-empty slot with nothing to read.
+    ///
+    /// `xcrun simctl spawn booted log stream --predicate 'category == "assets"'`
+    nonisolated static let log = Logger(subsystem: "app.rxlab.sticker-factory", category: "assets")
+
     private(set) var images: [String: UIImage] = [:]
     private(set) var verifiedAssetIDs: Set<String> = []
     private var loading: Set<String> = []
@@ -67,6 +74,7 @@ final class StickerAssetStore: AnimatedAssetProvider {
         } catch {
             // The renderer keeps its deterministic placeholder and can retry when the layer becomes
             // visible again or connectivity returns.
+            Self.log.error("asset: load failed id=\(assetID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
     }
 }

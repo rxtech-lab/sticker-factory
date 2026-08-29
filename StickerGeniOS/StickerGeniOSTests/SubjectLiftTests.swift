@@ -14,19 +14,96 @@ import UIKit
 struct SubjectLiftTests {
     /// A frame with an opaque square at `rect` (normalized, top-left origin) on transparency.
     private func frame(subjectAt rect: CGRect, side: Int = 200) -> CGImage {
+        frame(subjectsAt: [rect], side: side)
+    }
+
+    /// The same, with more than one region — for asserting an asymmetry a single square cannot show.
+    private func frame(subjectsAt rects: [CGRect], side: Int = 200) -> CGImage {
+        frame(subjectsAt: rects, size: CGSize(width: side, height: side))
+    }
+
+    /// The same again on an arbitrary canvas. Camera footage is never square, and a square fixture
+    /// cannot show an aspect-ratio bug at all — every ratio is 1.
+    private func frame(subjectsAt rects: [CGRect], size: CGSize) -> CGImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.systemPink.setFill()
+            for rect in rects {
+                context.fill(CGRect(
+                    x: rect.minX * size.width,
+                    y: rect.minY * size.height,
+                    width: rect.width * size.width,
+                    height: rect.height * size.height
+                ))
+            }
+        }
+        return image.cgImage!
+    }
+
+    /// A tile-sized cut-out with one opaque region, in pixels rather than normalized units — which
+    /// is the frame of reference `StickerOutline` works in.
+    private func tile(side: Int, square: CGRect) -> CGImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = false
         let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
             UIColor.systemPink.setFill()
-            context.fill(CGRect(
-                x: rect.minX * CGFloat(side),
-                y: rect.minY * CGFloat(side),
-                width: rect.width * CGFloat(side),
-                height: rect.height * CGFloat(side)
-            ))
+            context.fill(square)
         }
         return image.cgImage!
+    }
+
+    /// Raw premultiplied RGBA, so a test can assert on a colour and not only on a shape.
+    ///
+    /// Same shape as `SubjectSegmenter.hitMask`: copy-blended from a zeroed buffer, so transparent
+    /// really reads as zero rather than as whatever the context was last used for.
+    private func rgba(of image: CGImage) -> [UInt8] {
+        let width = image.width
+        let height = image.height
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+            context?.setBlendMode(.copy)
+            context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        return bytes
+    }
+
+    private func pixel(_ bytes: [UInt8], x: Int, y: Int, width: Int) -> (r: UInt8, g: UInt8, b: UInt8, a: UInt8) {
+        let index = (y * width + x) * 4
+        return (bytes[index], bytes[index + 1], bytes[index + 2], bytes[index + 3])
+    }
+
+    /// Whether any fully opaque pixel is white — the rim's colour, which the systemPink fixtures
+    /// cannot produce on their own.
+    private func containsWhite(_ image: CGImage) -> Bool {
+        let bytes = rgba(of: image)
+        for index in stride(from: 0, to: bytes.count, by: 4) where bytes[index + 3] == 255 {
+            if bytes[index] > 250, bytes[index + 1] > 250, bytes[index + 2] > 250 { return true }
+        }
+        return false
+    }
+
+    /// One grid cell of an encoded sheet.
+    private func cell(of sheet: CGImage, index: Int, metadata: SequenceMetadata) -> CGImage? {
+        let width = sheet.width / metadata.columns
+        let height = sheet.height / metadata.rows
+        return sheet.cropping(to: CGRect(
+            x: (index % metadata.columns) * width,
+            y: (index / metadata.columns) * height,
+            width: width,
+            height: height
+        ))
     }
 
     // MARK: - Describing a cut-out
@@ -173,6 +250,66 @@ struct SubjectLiftTests {
         #expect(centroids[2] - centroids[0] > 0.2)
     }
 
+    /// The other way the encoder can be silently wrong: right crop, wrong way up.
+    ///
+    /// `UIGraphicsImageRenderer` hands out a UIKit context — origin top-left, y increasing down —
+    /// and `CGContext.draw(_:in:)` places an image bottom-up in *user* space, so drawing a frame
+    /// through the raw context mirrors every tile vertically. Nothing else notices: the atlas is
+    /// still the right size, still transparent, and the subject still moves left to right, so every
+    /// other test here passes while the sticker plays upside down.
+    ///
+    /// A single square cannot catch it — it is symmetric, and the shared crop centres it. This uses
+    /// a heavy block near the top and a light one near the bottom, which puts the alpha-weighted
+    /// centroid well above the middle of the crop and keeps it there only if the tile is upright.
+    @Test("A tile is packed the same way up as the frame it came from")
+    func packsTilesUpright() throws {
+        let source = frame(subjectsAt: [
+            CGRect(x: 0.30, y: 0.10, width: 0.4, height: 0.2),
+            CGRect(x: 0.45, y: 0.70, width: 0.1, height: 0.1),
+        ])
+        #expect(try #require(SubjectSegmenter.describe(source)).centroid.y < 0.4)
+
+        let encoded = try FrameAtlasEncoder.encode(frames: [source], settings: .still)
+        let sheet = try #require(UIImage(data: encoded.data)?.cgImage)
+        let described = try #require(SubjectSegmenter.describe(sheet))
+        #expect(described.centroid.y < 0.45, "the tile is mirrored vertically against its source frame")
+    }
+
+    /// The bug every animated sticker cut from a Live Photo shipped with.
+    ///
+    /// The crop is squared so one grid cell is one frame with no aspect correction — but squaring a
+    /// padded, selfie-framed subject on portrait footage produces a rect wider than the photo, and
+    /// clamping it back inside the frame un-squares it. The tile then stretched a tall crop into a
+    /// square cell and the subject played ~30% too wide. Only a non-square *source* can show it: on
+    /// the square fixtures the rest of this suite uses, every ratio is 1 either way.
+    @Test("A subject keeps its proportions when the crop runs off the edge of the frame")
+    func preservesAspectWhenCropOverflowsTheFrame() throws {
+        // Tall and narrow, and tall enough that padding pushes the squared crop past both sides.
+        let subject = CGRect(x: 0.3, y: 0.05, width: 0.4, height: 0.9)
+        let size = CGSize(width: 200, height: 300)
+        let expected = (subject.width * size.width) / (subject.height * size.height)
+
+        // The rim is switched off deliberately: this test pins the crop's geometry, and a rim adds
+        // the same absolute thickness to both axes, which pulls a narrow subject's measured ratio
+        // toward 1 — to 0.353 here, past the tolerance that separates a true 0.30 from the 0.44 the
+        // stretch bug produced. Widening the tolerance would give the bug room to come back.
+        var settings = SubjectLiftSettings.still
+        settings.outlineFraction = 0
+        let encoded = try FrameAtlasEncoder.encode(
+            frames: [frame(subjectsAt: [subject], size: size)],
+            settings: settings
+        )
+        let sheet = try #require(UIImage(data: encoded.data)?.cgImage)
+        #expect(sheet.width == sheet.height, "one tile, so the sheet is the tile")
+
+        // The tile is square, so normalized bounds are pixel proportions.
+        let bounds = try #require(SubjectSegmenter.describe(sheet)).bounds
+        let actual = bounds.width / bounds.height
+        // Stretching to fill reports ~0.44 here against a true 0.30, so the tolerance separates the
+        // two comfortably while absorbing `describe`'s sampling stride.
+        #expect(abs(actual - expected) < 0.05, "subject is \(actual) wide per tall, expected \(expected)")
+    }
+
     @Test("Frames that failed to lift are dropped, not left as holes")
     func skipsMissingFrames() throws {
         let good = frame(subjectAt: CGRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2))
@@ -187,6 +324,187 @@ struct SubjectLiftTests {
     func refusesAnEmptyLift() {
         #expect(throws: MediaNormalizationError.self) {
             try FrameAtlasEncoder.encode(frames: [nil, nil], settings: .default)
+        }
+    }
+
+    // MARK: - The die-cut rim
+
+    @Test("A rim grows the silhouette by its own width")
+    func aRimGrowsTheSilhouetteByItsWidth() throws {
+        let source = tile(side: 200, square: CGRect(x: 60, y: 60, width: 80, height: 80))
+        let rim = try #require(StickerOutline.rim(for: source, widthPixels: 10))
+        let bounds = try #require(SubjectSegmenter.describe(rim)).bounds
+        // 80 + 2 × 10 in a 200px tile. `widthPixels` is a disc *radius*, and a disc grows a shape by
+        // exactly its radius in every direction — so the parameter is the visible thickness, with no
+        // factor of two hiding at the call site. This is the test that catches that confusion.
+        #expect(abs(bounds.width * 200 - 100) < 8, "rim spans \(bounds.width * 200)px, expected 100")
+        #expect(abs(bounds.height * 200 - 100) < 8)
+    }
+
+    /// The one that catches a colour matrix applied in unpremultiplied space.
+    ///
+    /// `CIColorMatrix` and the rest of the colour category operate on unpremultiplied values and
+    /// re-premultiply on output, so the obvious "set RGB to alpha" formulation yields (a², a², a², a)
+    /// — white in the middle, ringed by a gamma-squared grey fringe that reads as a dark halo
+    /// against a light Messages bubble. Premultiplied white has every channel equal to alpha at
+    /// every level of coverage, which is what this asserts.
+    @Test("A rim is premultiplied white at every level of coverage")
+    func aRimIsPremultipliedWhite() throws {
+        // Fractional edges so UIKit antialiases the fill, which guarantees the partial coverage
+        // this test needs something to say about.
+        let source = tile(side: 200, square: CGRect(x: 60.5, y: 60.5, width: 79, height: 79))
+        let rim = try #require(StickerOutline.rim(for: source, widthPixels: 12))
+        let bytes = rgba(of: rim)
+
+        let solid = pixel(bytes, x: 54, y: 100, width: 200)
+        #expect(solid.a == 255)
+        #expect(solid.r == 255 && solid.g == 255 && solid.b == 255, "solid rim pixel is \(solid)")
+
+        var partials = 0
+        for index in stride(from: 0, to: bytes.count, by: 4) {
+            let alpha = bytes[index + 3]
+            guard alpha > 0, alpha < 255 else { continue }
+            partials += 1
+            #expect(
+                bytes[index] == alpha && bytes[index + 1] == alpha && bytes[index + 2] == alpha,
+                "partially covered rim pixel is not premultiplied white"
+            )
+        }
+        #expect(partials > 0, "no partially covered pixels, so this test proved nothing")
+    }
+
+    @Test("A rim never leaves the tile it was built from")
+    func aRimNeverLeavesItsTile() throws {
+        // Flush against the right edge, where the dilation has nowhere to go. This is the property
+        // the whole per-cell design exists for: the rim of a subject at a cell border must stop at
+        // that border rather than grow into the next frame.
+        let source = tile(side: 200, square: CGRect(x: 150, y: 60, width: 50, height: 80))
+        let rim = try #require(StickerOutline.rim(for: source, widthPixels: 12))
+        #expect(rim.width == 200 && rim.height == 200, "the rim changed its tile's dimensions")
+        #expect(pixel(rgba(of: rim), x: 199, y: 100, width: 200).a == 255, "the rim stopped short of the edge")
+    }
+
+    @Test("A rim thinner than the antialiasing that would draw it is not drawn")
+    func aSubPixelRimIsSkipped() {
+        let source = tile(side: 100, square: CGRect(x: 30, y: 30, width: 40, height: 40))
+        #expect(StickerOutline.rim(for: source, widthPixels: 0.4) == nil)
+    }
+
+    /// The most likely way the encoder's second pass goes wrong, and one a whole-sheet assertion
+    /// cannot see: a sheet with only its first cell outlined still contains white.
+    @Test("Every tile gets a rim, not just the first")
+    func outlinesEveryTile() throws {
+        let frames = [
+            frame(subjectAt: CGRect(x: 0.05, y: 0.4, width: 0.2, height: 0.2)),
+            frame(subjectAt: CGRect(x: 0.40, y: 0.4, width: 0.2, height: 0.2)),
+            frame(subjectAt: CGRect(x: 0.75, y: 0.4, width: 0.2, height: 0.2)),
+        ]
+        var settings = SubjectLiftSettings.default
+        settings.frameCount = 3
+        var bare = settings
+        bare.outlineFraction = 0
+
+        let outlined = try FrameAtlasEncoder.encode(frames: frames, settings: settings)
+        let plain = try FrameAtlasEncoder.encode(frames: frames, settings: bare)
+        let outlinedSheet = try #require(UIImage(data: outlined.data)?.cgImage)
+        let plainSheet = try #require(UIImage(data: plain.data)?.cgImage)
+
+        for index in 0..<outlined.metadata.frameCount {
+            #expect(containsWhite(try #require(cell(of: outlinedSheet, index: index, metadata: outlined.metadata))), "tile \(index) has no rim")
+            #expect(!containsWhite(try #require(cell(of: plainSheet, index: index, metadata: plain.metadata))), "tile \(index) has a rim it was not asked for")
+        }
+    }
+
+    /// The direct test of the crop window's expansion.
+    ///
+    /// The window is opened by exactly the rim's own width on each side, so the outermost ring of a
+    /// tile stays transparent. Take that expansion away — or compute it as a flat fraction of the
+    /// un-expanded side, which comes up a few per cent short — and the rim runs into the tile edge
+    /// and flattens against it on whichever side the subject sat nearest.
+    @Test("The rim has room, and does not clip against the tile's edge")
+    func theRimDoesNotClipAtTheTileEdge() throws {
+        let encoded = try FrameAtlasEncoder.encode(
+            frames: [frame(subjectAt: CGRect(x: 0.35, y: 0.35, width: 0.3, height: 0.3))],
+            settings: .still
+        )
+        let sheet = try #require(UIImage(data: encoded.data)?.cgImage)
+        #expect(containsWhite(sheet), "nothing was outlined, so the border below proves nothing")
+
+        let bytes = rgba(of: sheet)
+        var opaqueOnBorder = 0
+        for x in 0..<sheet.width {
+            if pixel(bytes, x: x, y: 0, width: sheet.width).a > 0 { opaqueOnBorder += 1 }
+            if pixel(bytes, x: x, y: sheet.height - 1, width: sheet.width).a > 0 { opaqueOnBorder += 1 }
+        }
+        for y in 0..<sheet.height {
+            if pixel(bytes, x: 0, y: y, width: sheet.width).a > 0 { opaqueOnBorder += 1 }
+            if pixel(bytes, x: sheet.width - 1, y: y, width: sheet.width).a > 0 { opaqueOnBorder += 1 }
+        }
+        #expect(opaqueOnBorder == 0, "\(opaqueOnBorder) border pixels are painted, so the rim is clipping")
+    }
+
+    /// `packsTilesUpright` guards the subject sheet, and it passes on a vertically flipped *rim* —
+    /// its centroid lands at 0.409 against a 0.45 bar. The rim makes a second round trip through
+    /// Core Image and back, which is a second chance to pick up a flip, so it gets its own bar.
+    @Test("The rim lands on the subject, not on its mirror image")
+    func theRimIsNotVerticallyMirrored() throws {
+        let source = frame(subjectsAt: [
+            CGRect(x: 0.30, y: 0.10, width: 0.4, height: 0.2),
+            CGRect(x: 0.45, y: 0.70, width: 0.1, height: 0.1),
+        ])
+        let encoded = try FrameAtlasEncoder.encode(frames: [source], settings: .still)
+        let sheet = try #require(UIImage(data: encoded.data)?.cgImage)
+        let bytes = rgba(of: sheet)
+
+        // The big block is near the top, so most of the rim's perimeter is too.
+        var top = 0
+        var bottom = 0
+        for y in 0..<sheet.height {
+            for x in 0..<sheet.width {
+                let sample = pixel(bytes, x: x, y: y, width: sheet.width)
+                guard sample.a == 255, sample.r > 250, sample.g > 250, sample.b > 250 else { continue }
+                if y < sheet.height / 2 { top += 1 } else { bottom += 1 }
+            }
+        }
+        #expect(top > 0 && bottom > 0, "both blocks should be outlined")
+        #expect(top > bottom * 2, "the rim is heavier at the bottom (\(top) vs \(bottom)), so it is mirrored")
+    }
+
+    /// A preset that quietly lost the rim would surface only as "my photos have a border and my
+    /// Live Photos don't", which is a long way from the line that caused it.
+    @Test("A still lift is outlined too")
+    func aStillIsOutlinedToo() throws {
+        let encoded = try FrameAtlasEncoder.encode(
+            frames: [frame(subjectAt: CGRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2))],
+            settings: .still
+        )
+        #expect(containsWhite(try #require(UIImage(data: encoded.data)?.cgImage)))
+    }
+
+    @Test("Turning the rim off leaves the encoder exactly as it was")
+    func aZeroOutlineIsTheOldEncoder() throws {
+        var settings = SubjectLiftSettings.still
+        settings.outlineFraction = 0
+        let encoded = try FrameAtlasEncoder.encode(
+            frames: [frame(subjectAt: CGRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2))],
+            settings: settings
+        )
+        let sheet = try #require(UIImage(data: encoded.data)?.cgImage)
+        #expect(!containsWhite(sheet))
+        // The pre-rim window: the subject padded 8% per axis and squared, so it spans 1/1.16 of the
+        // tile. If the expansion leaked into the disabled path this would come back smaller.
+        let bounds = try #require(SubjectSegmenter.describe(sheet)).bounds
+        #expect(abs(bounds.width - 1 / 1.16) < 0.05, "the window moved with the rim switched off")
+    }
+
+    @Test("Every preset's rim survives the clamp the crop window applies")
+    func theRimIsNeverSilentlyClamped() {
+        #expect(FrameAtlasEncoder.outlineMargin(.default) > 0)
+        // The crop window and the dilation both go through `outlineMargin`, so a preset outside its
+        // range would make the window reserve one width and the rim draw another — which clips on
+        // every side, and looks nothing like a clamp.
+        for preset in [SubjectLiftSettings.default, .smooth, .still] {
+            #expect(preset.outlineFraction == FrameAtlasEncoder.outlineMargin(preset))
         }
     }
 

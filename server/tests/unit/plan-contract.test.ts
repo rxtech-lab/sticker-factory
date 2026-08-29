@@ -174,14 +174,38 @@ describe("plan animations", () => {
   it("derives the anchor from the plan layout", () => {
     const parsed = PlanV1Schema.parse(plan());
     // The anchor gained a resting trim window in v2. A plan never trims — draw-on is authored as a
-    // spec — so a planned layer always starts out showing its whole path.
+    // spec — so a planned layer always starts out showing its whole path. The scale is square
+    // rather than the authored 0.4 x 0.6 because this layer's artwork is pixels; see below.
     expect(planLayerAnchor(parsed.layers[0])).toEqual({
       trim: { start: 0, end: 1 },
       position: { x: 0.3, y: 0.5 },
-      scale: { x: 0.4, y: 0.6 },
+      scale: { x: 0.4, y: 0.4 },
       rotationDegrees: 0,
       opacity: 1,
     });
+  });
+
+  // Both renderers draw a layer into a square box and then apply the anchor's scale as a plain
+  // `scale(x, y)`, so a wide box used to stretch the square PNG behind a generated layer — which is
+  // what turned an approved title into a squashed banner. Fitting the artwork inside the planned
+  // box is the only reading that leaves it undistorted, and it can only shrink a layer, so a layout
+  // that passed the overlap and off-canvas checks still passes.
+  it("squares off the scale of a layer whose artwork is pixels", () => {
+    const parsed = PlanV1Schema.parse(plan());
+    expect(planLayerAnchor(parsed.layers[0]).scale).toEqual({ x: 0.4, y: 0.4 });
+  });
+
+  it("leaves an app-drawn layer free to occupy a non-square box", () => {
+    for (const source of [
+      { kind: "shape", shape: "roundedRectangle", fill: "#FF8800" },
+      { kind: "particle", preset: "sparkles", color: "#FFD400" },
+    ]) {
+      const parsed = PlanV1Schema.parse(plan({
+        kind: "static",
+        layers: [{ ...plan().layers[0], animations: [], source }],
+      }));
+      expect(planLayerAnchor(parsed.layers[0]).scale).toEqual({ x: 0.4, y: 0.6 });
+    }
   });
 });
 
