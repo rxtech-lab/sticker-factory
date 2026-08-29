@@ -27,6 +27,27 @@ private enum LibraryFilter: String, CaseIterable, Identifiable {
 
 private let libraryColumns = [GridItem(.adaptive(minimum: 156), spacing: 16)]
 
+/// A library edit that is waiting on the server. Both rewrite the grid underneath, so the list is
+/// covered while one runs rather than left tappable against soon-to-be-stale rows.
+private enum LibraryPendingEdit {
+    case renaming
+    case deleting
+
+    var message: String {
+        switch self {
+        case .renaming: String(localized: "Renaming…")
+        case .deleting: String(localized: "Deleting…")
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .renaming: "library-rename-progress"
+        case .deleting: "library-delete-progress"
+        }
+    }
+}
+
 struct LibraryView: View {
     @Bindable var store: StickerStore
     /// Only needed so a pack section header can push that pack's detail without leaving the tab.
@@ -43,7 +64,15 @@ struct LibraryView: View {
     @State private var showingRename = false
     @State private var deletionCandidate: Sticker?
     @State private var confirmingDelete = false
+    @State private var pendingEdit: LibraryPendingEdit?
     private let generateTip = GenerateStickerTip()
+
+    private var isRenaming: Binding<Bool> {
+        Binding(
+            get: { pendingEdit == .renaming },
+            set: { pendingEdit = $0 ? .renaming : nil }
+        )
+    }
 
     private var normalizedSearchQuery: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -206,6 +235,21 @@ struct LibraryView: View {
                     .accessibilityIdentifier("library-search-progress")
             }
         }
+        .overlay {
+            if let pendingEdit {
+                ZStack {
+                    // Also swallows taps: the rows underneath are about to be renamed or removed.
+                    Color.black.opacity(0.15).ignoresSafeArea()
+                    ProgressView(pendingEdit.message)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                }
+                .accessibilityIdentifier(pendingEdit.accessibilityIdentifier)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: pendingEdit)
         .navigationDestination(for: String.self) { id in
             StickerChatView(store: store, stickerID: id)
         }
@@ -268,7 +312,8 @@ struct LibraryView: View {
             stickerID: renamingSticker?.id ?? "",
             currentTitle: renamingSticker?.title ?? "",
             isPresented: $showingRename,
-            title: $renameTitle
+            title: $renameTitle,
+            isRenaming: isRenaming
         )
         .confirmationDialog(
             "Delete this sticker project?",
@@ -279,6 +324,8 @@ struct LibraryView: View {
             Button("Delete “\(sticker.title)”", role: .destructive) {
                 Haptics.tap(.heavy)
                 Task {
+                    pendingEdit = .deleting
+                    defer { pendingEdit = nil }
                     if await store.delete(stickerID: sticker.id) {
                         Haptics.success()
                     } else {
@@ -354,7 +401,9 @@ private struct SectionPlaceholder: View {
 
 /// Read-only artwork for a pack member. There is no editor here by design — the sticker belongs
 /// to its creator, and the viewer only has permission to look at it.
-private struct PackStickerPreview: View {
+///
+/// Shared with the marketplace's pack detail, which presents a borrowed sticker on the same terms.
+struct PackStickerPreview: View {
     let sticker: Sticker
     let api: StickerAPIClientProtocol
 

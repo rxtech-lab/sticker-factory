@@ -106,6 +106,26 @@ export interface AiPlanContext {
    * once as the numbers the plan has to copy, and once as a contact sheet the planner can look at.
    */
   references: AiReferenceImage[];
+  /**
+   * What the project already looks like: pictures from earlier turns rather than from this one.
+   *
+   * The planner used to be shown `references` and nothing else, which meant a turn where the user
+   * attached nothing — every "make the text bigger", every re-plan — was planned blind. It had the
+   * document's JSON and the transcript's prose, and no way to see the artwork it was revising, so it
+   * would redesign details nobody asked it to change. These are that missing evidence.
+   *
+   * Kept apart from `references` because the two mean opposite things to the prompt: an attachment
+   * is material the user handed over for the sticker to draw *from*, while this is the sticker
+   * *itself*. Conflating them is how a planner starts treating its own last render as a mood board.
+   */
+  priorArt: AiPlanVisual[];
+}
+
+/** One piece of prior art, with the words the prompt introduces it by. */
+export interface AiPlanVisual {
+  /** Names the picture, so a model looking at four images knows which one it is reading. */
+  label: string;
+  image: AiReferenceImage;
 }
 
 /**
@@ -683,6 +703,45 @@ async function viewableReferences(
 }
 
 /**
+ * How many pictures of the project itself the planner is shown.
+ *
+ * Three, and they answer three different questions: what the user gave us to work from, what the
+ * sticker looks like now, and what they last approved. A fourth would cost a step's worth of tokens
+ * on every step of a twelve-step loop to say something the first three already said.
+ */
+const PLAN_VISUAL_LIMIT = 3;
+
+/**
+ * Prepares the project's own artwork for a planner that is going to look at it.
+ *
+ * The same downscale `viewableReferences` applies, and the same tolerance for an image that will not
+ * decode: prior art is context, so planning without one of these pictures is worse than planning
+ * with it and far better than failing the turn over it. The label travels with the bytes so a
+ * dropped image takes its line out of the prompt too, and the numbering never describes an image
+ * that is not there.
+ */
+async function viewablePlanVisuals(
+  visuals: AiPlanVisual[],
+): Promise<AiPlanVisual[]> {
+  const prepared = await Promise.all(
+    visuals.slice(0, PLAN_VISUAL_LIMIT).map(async (visual) => {
+      try {
+        return [{ ...visual, image: await downscaleForModelInput(visual.image.bytes) }];
+      } catch (error) {
+        traceEvent("ai.priorArt.undecodable", {
+          label: visual.label,
+          mimeType: visual.image.mimeType,
+          byteSize: visual.image.bytes.byteLength,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return [];
+      }
+    }),
+  );
+  return prepared.flat();
+}
+
+/**
  * The one user message a loop starts from: its instructions, and the pictures they are about.
  *
  * `generateText` takes either a `prompt` string or a `messages` list, and an image can only travel
@@ -715,10 +774,33 @@ function userTurn(text: string, images: AiReferenceImage[]): ModelMessage[] {
 function attachedImagesNote(count: number, extra?: string): string {
   if (count === 0) return "";
   return [
-    `The user attached ${count} image${count === 1 ? "" : "s"} to this turn, shown to you at the`,
-    "end of this message. They are reference material the user handed over, not the sticker itself,",
-    "so never treat their background, framing, or surroundings as something the sticker contains.",
+    `The user attached ${count} image${count === 1 ? "" : "s"} to this turn, shown to you as the`,
+    "last images in this message. They are reference material the user handed over, not the sticker",
+    "itself, so never treat their background, framing, or surroundings as something the sticker",
+    "contains.",
     extra ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * Introduces the pictures of the project itself, which come before any attachment.
+ *
+ * Numbered rather than described in a lump because the model is handed a flat list of images and has
+ * no other way to tell the current render from the last approved reference — and it needs to, since
+ * they say different things: one is what the user is looking at, the other is what they signed off.
+ */
+function priorArtNote(visuals: AiPlanVisual[]): string {
+  if (visuals.length === 0) return "";
+  return [
+    `The first ${visuals.length} image${visuals.length === 1 ? "" : "s"} in this message`,
+    `${visuals.length === 1 ? "is" : "are"} this project as it already exists, in order:`,
+    visuals.map((visual, index) => `(${index + 1}) ${visual.label}`).join(" "),
+    "Look at them before you plan. A request that arrives on top of existing artwork is a change to",
+    "what the user can already see, so carry over its subject, style, palette, proportions, and",
+    "composition, and change only what was actually asked for. If what you are looking at does not",
+    "match the plan you would have written from the text alone, believe the picture.",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1818,6 +1900,9 @@ class GatewayAiProvider implements AiProvider {
     // the plan by id on every subsequent call and only the session knows the id it was given.
     let state: PlanTurnResult | undefined;
     const reusable = reusableAssetIds(input.document);
+    // Prior art first and attachments after, because both notes below describe the images by their
+    // position in the message and `userTurn` appends them in this order.
+    const priorArt = await viewablePlanVisuals(input.priorArt);
     const viewable = await viewableReferences(input.references);
 
     const requirePlan = (planId: string) => {
@@ -1904,6 +1989,18 @@ class GatewayAiProvider implements AiProvider {
         "approves this image before the generated artwork is separated into independent parts, so",
         "it is the visual source of truth for style, colour, proportions, and composition.",
         "",
+        "Likeness. The photos the user uploaded to this project are handed to the image model along",
+        "with your conceptPrompt and your layer prompts, on every turn, including turns where the",
+        "user attached nothing new. So write those prompts to *point at* the reference rather than to",
+        "replace it: say \"the person in the supplied reference photo\", and keep the description to",
+        "what the picture cannot say for itself — the sticker style, the crop, the pose, the palette.",
+        "A written description cannot carry a face. \"Short tousled black hair, rectangular dark grey",
+        "glasses, fair warm skin\" fits thousands of people, and a prompt built out of clauses like",
+        "that returns a stranger who matches the words. Never re-describe a real person's features",
+        "in place of the reference, and never let a later turn's prompt drift further from the photo",
+        "than the first turn's did: the user's face is the one thing in this sticker that has a",
+        "correct answer.",
+        "",
         "Layers. At most 8. Every layer picks its own source. The six options are:",
         "  generate — artwork drawn from a prompt by an image model onto a transparent background.",
         "    This is the only source that can draw a subject: a character, creature, face, animal,",
@@ -1911,7 +2008,9 @@ class GatewayAiProvider implements AiProvider {
         "    per element that must move on its own — one per letter for a typewriter effect, one per",
         "    character for a scene. The prompt must describe a single element filling its frame edge",
         "    to edge on a transparent background, with no other elements and no text unless that",
-        "    layer IS the text.",
+        "    layer IS the text. When the element is a real person the user uploaded, the prompt names",
+        "    the supplied reference photo and says to preserve that likeness exactly — it does not",
+        "    rebuild their face out of adjectives.",
         "  existing — an image layer the current sticker already has, reused exactly as it is and",
         "    free. Copy the assetId verbatim from an image layer of the current StickerDocument.",
         "  text — words drawn by the app in a system font.",
@@ -1919,10 +2018,15 @@ class GatewayAiProvider implements AiProvider {
         "  particle — a preset field of sparkles, confetti, hearts, bubbles, or snow.",
         "  sequence — real frames the user captured from a Live Photo, with the subject already cut",
         "    out on their device. Free, and the only source that carries genuine motion: the subject",
-        "    actually moves the way they moved. You may only use this when the turn supplies one, and",
-        "    you must copy its assetId, columns, rows, frameCount, and frameRate exactly as given.",
-        "    Never invent those numbers and never describe a capture with a generate prompt — an",
-        "    image model cannot draw this person as well as their own camera already did.",
+        "    actually moves the way they moved. You may use any capture listed for this turn below,",
+        "    whether the user attached it on this turn or earlier in the project, and you must copy",
+        "    its assetId, columns, rows, frameCount, and frameRate exactly as given. Never invent",
+        "    those numbers and never describe a capture with a generate prompt — an image model",
+        "    cannot draw this person as well as their own camera already did.",
+        "    A capture does not expire. If the project already has one, keep it: a request to add",
+        "    text, change a colour, or adjust the motion is not a request to redraw the person, and",
+        "    replacing their footage with a generate layer that describes their face is the single",
+        "    worst thing you can do to this sticker. Only drop it if the user asks you to.",
         "Animated visual fidelity. In an animated plan, every new visible element must use generate,",
         "including styled lettering, bursts, stars, underlines, badges, and decorative accents. The",
         "approved static image is later separated into these generated layers, which is how the final",
@@ -2036,6 +2140,7 @@ class GatewayAiProvider implements AiProvider {
       ].join("\n"),
       messages: userTurn([
         `Sticker kind: ${input.stickerKind}`,
+        priorArtNote(priorArt),
         attachedImagesNote(
           viewable.length,
           "Read them for the subject, likeness, style, and colours the user wants, and write the"
@@ -2059,9 +2164,14 @@ class GatewayAiProvider implements AiProvider {
         // Spelled out as fields rather than left for the model to read off the contact sheet it can
         // see: the grid was fixed when the atlas was encoded on device, and a plan that guesses it
         // wrong slices the footage into the wrong frames.
+        // Not "attached to this turn": these are every capture the project has, carried forward from
+        // whichever turn it arrived on. A capture that is only legal on the turn it was uploaded is
+        // a capture the next turn has to replace with a drawing of the user's face.
         input.sequenceAssets.length > 0
-          ? "The user attached captured footage of themselves, already cut out. Make it the hero "
-            + "layer with a sequence source and build the sticker around it. Copy these fields "
+          ? "This project has captured footage of the user, already cut out — attached on this turn "
+            + "or earlier in the conversation, and available to you either way. Make it the hero "
+            + "layer with a sequence source and build the sticker around it; if a previous plan "
+            + "already used it, keep using it. Copy these fields "
             + `exactly:\n${input.sequenceAssets
               .map((asset) => `- assetId ${asset.assetId}, columns ${asset.columns}, rows ${asset.rows}, `
                 + `frameCount ${asset.frameCount}, frameRate ${asset.frameRate}`)
@@ -2076,7 +2186,7 @@ class GatewayAiProvider implements AiProvider {
         `Latest user request:\n${input.instruction}`,
       ]
         .filter(Boolean)
-        .join("\n\n"), viewable),
+        .join("\n\n"), [...priorArt.map((visual) => visual.image), ...viewable]),
       tools,
       toolChoice: "required",
       // The heaviest of the three loops: `update_plan` is a complete `PlanV1` every time, so twelve

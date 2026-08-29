@@ -24,6 +24,15 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
+    func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker> {
+        let published = stickers.filter { $0.status == .published }
+        guard let query, !query.isEmpty else { return .init(data: published, nextCursor: nil) }
+        return .init(
+            data: published.filter { $0.title.localizedCaseInsensitiveContains(query) },
+            nextCursor: nil
+        )
+    }
+
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse {
         if failCreationAsUpload { throw StickerAPIError.uploadFailed(status: 403) }
         let value = Sticker(
@@ -220,18 +229,22 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     // MARK: - Marketplace
 
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> {
-        let matched = query.flatMap { needle in
-            needle.isEmpty ? nil : packs.filter { $0.title.localizedCaseInsensitiveContains(needle) }
-        } ?? packs
-        let visible = matched.filter { !$0.isMine || $0.state == .published }
+        let visible = Self.matching(query, in: packs).filter { !$0.isMine || $0.state == .published }
         return .init(
             data: sort == .popular ? visible.sorted { $0.installCount > $1.installCount } : visible,
             nextCursor: nil
         )
     }
 
-    func myPacks(cursor: String?) async throws -> Page<StickerPack> {
-        .init(data: packs.filter(\.isMine), nextCursor: nil)
+    func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        .init(data: Self.matching(query, in: packs.filter(\.isMine)), nextCursor: nil)
+    }
+
+    /// The server matches a pack by title; the mock matches the same way so a search behaves the
+    /// same in previews as it does against a real backend.
+    private static func matching(_ query: String?, in packs: [StickerPack]) -> [StickerPack] {
+        guard let query, !query.isEmpty else { return packs }
+        return packs.filter { $0.title.localizedCaseInsensitiveContains(query) }
     }
 
     func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse {

@@ -109,6 +109,73 @@ describe("compactTranscript", () => {
   });
 });
 
+describe("compactTranscript with keepChatVerbatim", () => {
+  const verbatim = { keepChatVerbatim: true };
+
+  it("keeps every chat message in full on a thread far past the budget", () => {
+    const transcript = [
+      userMessage("a cat wearing a hat"),
+      assistantMessage("y".repeat(4_000)),
+      userMessage("x".repeat(4_000)),
+      userMessage("actually make it a dog"),
+    ];
+    const compacted = compactTranscript(transcript, 2_000, verbatim);
+    // None of the four is clipped, digested, or dropped — the point of the flag.
+    expect(compacted).toContain("user: a cat wearing a hat");
+    expect(compacted).toContain("x".repeat(4_000));
+    expect(compacted).toContain("y".repeat(4_000));
+    expect(compacted.endsWith("user: actually make it a dog")).toBe(true);
+    expect(compacted).not.toContain("…");
+  });
+
+  it("preserves the order of the conversation", () => {
+    const transcript = [
+      userMessage("first"),
+      toolUse("generate-sticker"),
+      assistantMessage("second"),
+      userMessage("third"),
+    ];
+    expect(compactTranscript(transcript, 24_000, verbatim)).toBe(
+      ["user: first", "system: generate-sticker", "assistant: second", "user: third"].join("\n"),
+    );
+  });
+
+  it("still marks a device edit rather than rendering it as something the user typed", () => {
+    const rendered = compactTranscript([deviceEdit("Moved the star")], 24_000, verbatim);
+    expect(rendered).not.toBe("user: Moved the star");
+    expect(rendered).toContain("on-device editor");
+  });
+
+  it("budgets the tool rows and says so without implying a chat message went missing", () => {
+    const transcript: TranscriptMessage[] = [];
+    for (let index = 0; index < 400; index += 1) {
+      transcript.push(toolUse(`edit-sticker-${index}`));
+    }
+    transcript.push(userMessage("and now make it blue"));
+    const compacted = compactTranscript(transcript, 8_000, verbatim);
+    const toolLines = compacted
+      .split("\n")
+      .filter((line) => line.startsWith("system: edit-sticker-"));
+    // The reserve is 20% of 8,000 and each row is around 24 characters, so most rows do not fit.
+    expect(toolLines.length).toBeGreaterThan(0);
+    expect(toolLines.length).toBeLessThan(400);
+    // What survives is the most recent machinery, not the oldest.
+    expect(toolLines.at(-1)).toBe("system: edit-sticker-399");
+    expect(compacted).toContain("earlier tool-call rows omitted");
+    expect(compacted).toContain("no chat message is missing");
+    expect(compacted).toContain("user: and now make it blue");
+  });
+
+  it("says nothing about omissions when everything fits", () => {
+    const compacted = compactTranscript(
+      [userMessage("a cat"), toolUse("plan-sticker"), assistantMessage("Here is a plan.")],
+      24_000,
+      verbatim,
+    );
+    expect(compacted).not.toContain("omitted");
+  });
+});
+
 describe("estimateTokens", () => {
   const withImage = (bytes: number): ModelMessage[] => [
     {

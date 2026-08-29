@@ -1,6 +1,7 @@
 import AnimatedView
 import CryptoKit
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 @testable import StickerGeniOS
@@ -855,6 +856,160 @@ struct StoreAndPublisherTests {
         #expect(await api.requestedCursors() == ["<first>", "2", "3"])
     }
 
+    @Test("The pack picker pages published stickers and restarts paging on a new search")
+    func packStickerPickerPaging() async {
+        let api = PublishedStickerPickerAPI()
+        let model = StickerPickerModel(api: api)
+
+        await model.load(query: "", debounce: .zero)
+        #expect(model.stickers.map(\.id) == ["published-1"])
+        #expect(model.nextCursor == "2")
+
+        await model.loadMore()
+        #expect(model.stickers.map(\.id) == ["published-1", "published-2"])
+        #expect(model.nextCursor == nil)
+        #expect(await api.requestedPages() == ["<all>:<first>", "<all>:2"])
+
+        // A finished listing means the sentinel can fire again without asking for anything.
+        await model.loadMore()
+        #expect(await api.requestedPages().count == 2)
+
+        // Searching is a fresh listing, not an append: the previous page must not linger under it.
+        await model.load(query: "  cat  ", debounce: .zero)
+        #expect(model.stickers.map(\.id) == ["published-1"])
+        #expect(await api.requestedPages().last == "cat:<first>")
+
+        await model.loadMore()
+        #expect(await api.requestedPages().last == "cat:2")
+    }
+
+    @Test("The Marketplace pages both feeds and stops when the server repeats a cursor")
+    func marketplacePagination() async {
+        let api = PagedPacksAPI()
+        let store = MarketplaceStore(api: api)
+
+        await store.refresh()
+        #expect(store.packs.map(\.id) == ["browse-1"])
+        #expect(store.myPacks.map(\.id) == ["mine-1"])
+        #expect(store.nextCursor == "2")
+        #expect(store.nextMyPacksCursor == "2")
+
+        await store.loadMore()
+        #expect(store.packs.map(\.id) == ["browse-1", "browse-2"])
+        #expect(store.nextCursor == nil)
+
+        await store.loadMoreMyPacks()
+        #expect(store.myPacks.map(\.id) == ["mine-1", "mine-2"])
+        // The stub answers the second page with the cursor it was given; repeating it must end the
+        // feed rather than leave the sentinel asking for the same page forever.
+        #expect(store.nextMyPacksCursor == nil)
+
+        let requests = await api.requestedPages()
+        await store.loadMoreMyPacks()
+        #expect(await api.requestedPages() == requests)
+    }
+
+    @Test("A pack tile is the same height whatever its cover holds")
+    func packCardHeightIsIndependentOfItsCover() {
+        // A cover that took its height from the artwork gave the same pack two different tiles:
+        // a short one while its cells still held spinners, a tall one once the images were cached.
+        // Coming back from a search — where the artwork is already in hand — is where it showed.
+        let empty = Self.packCardHeight(coverStickers: [])
+        let single = Self.packCardHeight(coverStickers: [PreviewFixtures.borrowedSticker])
+        let full = Self.packCardHeight(coverStickers: Array(repeating: PreviewFixtures.borrowedSticker, count: 4))
+        let withArtwork = Self.packCardHeight(coverStickers: (0..<4).map { index in
+            var sticker = PreviewFixtures.borrowedSticker
+            sticker.id = "cover-\(index)"
+            sticker.previewAsset = AssetRecord(
+                id: "asset-\(index)",
+                stickerId: sticker.id,
+                kind: .preview,
+                state: .ready,
+                mimeType: "image/png",
+                sha256: nil
+            )
+            return sticker
+        })
+
+        #expect(single == empty)
+        #expect(full == empty)
+        #expect(withArtwork == empty)
+    }
+
+    @MainActor
+    private static func packCardHeight(coverStickers: [Sticker]) -> CGFloat {
+        var pack = PreviewFixtures.pack
+        pack.coverStickers = coverStickers
+        let renderer = ImageRenderer(
+            content: PackCard(pack: pack, api: MockStickerAPIClient()).frame(width: 165)
+        )
+        renderer.scale = 1
+        return renderer.uiImage?.size.height ?? 0
+    }
+
+    @Test("Marketplace search reaches both feeds and clearing it reloads them")
+    func marketplaceSearch() async {
+        let api = SearchablePacksAPI()
+        let store = MarketplaceStore(api: api)
+
+        await store.refresh()
+        #expect(store.packs.map(\.title) == ["Cozy Cats", "Angry Dogs"])
+        #expect(store.myPacks.map(\.title) == ["My Cats"])
+        #expect(store.appliedQuery.isEmpty)
+
+        // "My packs" used to ignore the query outright, so its feed is asserted alongside browse.
+        store.searchQuery = "  cats  "
+        await store.refresh()
+        #expect(store.packs.map(\.title) == ["Cozy Cats"])
+        #expect(store.myPacks.map(\.title) == ["My Cats"])
+        #expect(store.appliedQuery == "cats")
+
+        // Dismissing the search field clears the text without submitting. The results have to come
+        // back, and the empty state has to stop claiming a search is in effect.
+        store.searchQuery = ""
+        await store.refresh()
+        #expect(store.packs.map(\.title) == ["Cozy Cats", "Angry Dogs"])
+        #expect(store.appliedQuery.isEmpty)
+
+        #expect(await api.browseQueries() == [nil, "cats", nil])
+        #expect(await api.mineQueries() == [nil, "cats", nil])
+    }
+
+    @Test("A search started while a reload is in flight is not answered by the old one")
+    func marketplaceSearchSupersedesInFlightRefresh() async throws {
+        let api = SearchablePacksAPI()
+        let store = MarketplaceStore(api: api)
+        await api.hold()
+
+        let first = Task { await store.refresh() }
+        try await waitForBrowseRequests(api, count: 1)
+
+        store.searchQuery = "cats"
+        let second = Task { await store.refresh() }
+        try await waitForBrowseRequests(api, count: 2)
+        await api.release()
+        _ = await (first.value, second.value)
+
+        // Both requests were made and the search's answer is the one on screen: sharing the
+        // in-flight reload was what left a typed query showing the unfiltered feed.
+        #expect(store.packs.map(\.title) == ["Cozy Cats"])
+        #expect(store.appliedQuery == "cats")
+    }
+
+    /// `waitUntil` takes a synchronous condition, and asking an actor stub how many requests it has
+    /// seen is not one.
+    private func waitForBrowseRequests(
+        _ api: SearchablePacksAPI,
+        count: Int,
+        timeout: Duration = .seconds(10)
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await api.browseQueries().count >= count { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
     @Test("Renaming updates detail, Library, and active search caches together")
     func renameSticker() async {
         let api = MockStickerAPIClient()
@@ -1113,6 +1268,7 @@ private final class NotificationProbe: @unchecked Sendable {
 private extension StickerAPIClientProtocol {
     func listStickers(cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
     func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
+    func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse { throw TestFixtureError.stub }
     func sticker(id: String) async throws -> StickerDetail { throw TestFixtureError.stub }
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail { throw TestFixtureError.stub }
@@ -1138,7 +1294,7 @@ private extension StickerAPIClientProtocol {
     func unregisterDevice(token: String) async throws {}
 
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
-    func myPacks(cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
+    func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
     func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse { throw TestFixtureError.stub }
     func pack(id: String) async throws -> StickerPackDetail { throw TestFixtureError.stub }
     func createPack(_ request: CreatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail { throw TestFixtureError.stub }
@@ -1174,6 +1330,104 @@ private actor PaginatedLibraryAPI: StickerAPIClientProtocol {
     }
 
     func requestedCursors() -> [String] { cursors }
+}
+
+private actor PagedPacksAPI: StickerAPIClientProtocol {
+    private var pages: [String] = []
+
+    func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        pages.append("browse:\(cursor ?? "<first>")")
+        return page(prefix: "browse", cursor: cursor)
+    }
+
+    func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        pages.append("mine:\(cursor ?? "<first>")")
+        // The second page deliberately answers with the cursor it was handed, which is how a server
+        // that has run out of pages without saying so looks from here.
+        return page(prefix: "mine", cursor: cursor, repeatsCursor: true)
+    }
+
+    func requestedPages() -> [String] { pages }
+
+    private func page(prefix: String, cursor: String?, repeatsCursor: Bool = false) -> Page<StickerPack> {
+        let index = cursor.flatMap(Int.init) ?? 1
+        var pack = PreviewFixtures.pack
+        pack.id = "\(prefix)-\(index)"
+        let next = index < 2 ? String(index + 1) : (repeatsCursor ? cursor : nil)
+        return .init(data: [pack], nextCursor: next)
+    }
+}
+
+/// A marketplace that answers both feeds by title, and can be held open mid-request so a second
+/// reload can overtake the first.
+private actor SearchablePacksAPI: StickerAPIClientProtocol {
+    private var browse: [String?] = []
+    private var mine: [String?] = []
+    private var isHolding = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func hold() { isHolding = true }
+
+    func release() {
+        isHolding = false
+        for continuation in waiting { continuation.resume() }
+        waiting = []
+    }
+
+    func browseQueries() -> [String?] { browse }
+    func mineQueries() -> [String?] { mine }
+
+    func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        browse.append(query)
+        await waitForRelease()
+        return .init(data: Self.packs(titled: ["Cozy Cats", "Angry Dogs"], matching: query), nextCursor: nil)
+    }
+
+    func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        mine.append(query)
+        await waitForRelease()
+        return .init(data: Self.packs(titled: ["My Cats"], matching: query), nextCursor: nil)
+    }
+
+    private func waitForRelease() async {
+        guard isHolding else { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    private static func packs(titled titles: [String], matching query: String?) -> [StickerPack] {
+        titles
+            .filter { query.map($0.localizedCaseInsensitiveContains) ?? true }
+            .map { title in
+                var pack = PreviewFixtures.pack
+                pack.id = title
+                pack.title = title
+                return pack
+            }
+    }
+}
+
+private actor PublishedStickerPickerAPI: StickerAPIClientProtocol {
+    private var pages: [String] = []
+
+    func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker> {
+        pages.append("\(query ?? "<all>"):\(cursor ?? "<first>")")
+        let index = cursor.flatMap(Int.init) ?? 1
+        return .init(data: [
+            .init(
+                id: "published-\(index)",
+                title: "Published \(index)",
+                kind: .static,
+                status: .published,
+                activeRevisionId: nil,
+                createdAt: Date(),
+                updatedAt: Date(),
+                previewAsset: nil,
+                systemSticker: nil
+            ),
+        ], nextCursor: index < 2 ? String(index + 1) : nil)
+    }
+
+    func requestedPages() -> [String] { pages }
 }
 
 private actor RemoteSearchLibraryAPI: StickerAPIClientProtocol {

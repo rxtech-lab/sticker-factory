@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, max, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, max, ne } from "drizzle-orm";
 import {
   isActionablePlanState,
   isEditablePlanState,
@@ -410,6 +410,22 @@ export async function cancelPlan(
     });
   });
   return { planId, state: "cancelled" as const, messageId, jobId };
+}
+
+/**
+ * The most recent plan on this sticker that got as far as rendering a static reference.
+ *
+ * Read by the planning turn so a re-plan can be *shown* what the last one settled on rather than
+ * only told about it in prose. Deliberately not filtered by state: a superseded, cancelled, or
+ * confirmed plan's reference is still an accurate picture of what this project looked like a turn
+ * ago, and that is the only question being asked of it.
+ */
+export async function latestPlanConcept(db: Database, ownerId: string, stickerId: string) {
+  return db.select().from(plans).where(and(
+    eq(plans.ownerId, ownerId),
+    eq(plans.stickerId, stickerId),
+    isNotNull(plans.conceptAssetId),
+  )).orderBy(desc(plans.updatedAt)).limit(1).get();
 }
 
 /** Plans the user turned down, newest first, for feeding back into the next planning turn. */

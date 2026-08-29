@@ -15,13 +15,31 @@ private enum MarketplaceTab: String, CaseIterable, Identifiable {
 
 struct MarketplaceView: View {
     @Bindable var store: MarketplaceStore
-    /// The library store, so the composer can offer this user's published stickers.
-    @Bindable var library: StickerStore
     @State private var tab: MarketplaceTab = .browse
     @State private var showingComposer = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var visible: [StickerPack] {
         tab == .mine ? store.myPacks : store.packs
+    }
+
+    /// Fixed columns rather than adaptive ones: adaptive sizing leaves the row's leftover width as a
+    /// gap, which is what made the tiles look mismatched and stranded short of the screen edge.
+    private var columns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: 16),
+            count: horizontalSizeClass == .regular ? 3 : 2
+        )
+    }
+
+    private var nextCursor: String? {
+        tab == .mine ? store.nextMyPacksCursor : store.nextCursor
+    }
+
+    /// Re-arms the sentinel for every cursor: keyed on the view alone it would fire once and the
+    /// feed would stop after two pages.
+    private var paginationTaskID: String? {
+        nextCursor.map { "\(tab.rawValue):\($0)" }
     }
 
     var body: some View {
@@ -30,23 +48,29 @@ struct MarketplaceView: View {
                 if store.isLoading && visible.isEmpty {
                     ProgressView("Loading packs…")
                 } else if visible.isEmpty {
+                    // Keyed on `appliedQuery`, never the live search text: the two disagree while a
+                    // search is being typed or has just been dismissed, and the results on screen
+                    // belong to the applied one.
                     EmptyStateView(
-                        symbol: "square.stack.3d.up",
-                        title: tab == .mine
-                            ? String(localized: "No packs yet")
-                            : String(localized: "Nothing here yet"),
-                        message: tab == .mine
-                            ? String(localized: "Bundle stickers you have published and share them with everyone.")
-                            : store.searchQuery.isEmpty
-                                ? String(localized: "Be the first to publish a sticker pack.")
-                                : String(localized: "No packs match “\(store.searchQuery)”.")
+                        symbol: store.appliedQuery.isEmpty ? "square.stack.3d.up" : "magnifyingglass",
+                        title: store.appliedQuery.isEmpty
+                            ? (tab == .mine
+                                ? String(localized: "No packs yet")
+                                : String(localized: "Nothing here yet"))
+                            : String(localized: "No matching packs"),
+                        message: store.appliedQuery.isEmpty
+                            ? (tab == .mine
+                                ? String(localized: "Bundle stickers you have published and share them with everyone.")
+                                : String(localized: "Be the first to publish a sticker pack."))
+                            : String(localized: "No packs match “\(store.appliedQuery)”.")
                     )
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: 16)], spacing: 16) {
+                        LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(visible) { pack in
                                 NavigationLink(value: PackRoute(packID: pack.id)) {
                                     PackCard(pack: pack, api: store.api)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("marketplace-pack-\(pack.id)")
@@ -54,10 +78,18 @@ struct MarketplaceView: View {
                         }
                         .padding()
 
-                        if tab == .browse && store.nextCursor != nil {
-                            ProgressView()
+                        if nextCursor != nil {
+                            ProgressView("Loading more packs…")
+                                .frame(maxWidth: .infinity)
                                 .padding(.bottom, 24)
-                                .task { await store.loadMore() }
+                                .accessibilityIdentifier("marketplace-pagination-progress")
+                                .task(id: paginationTaskID) {
+                                    if tab == .mine {
+                                        await store.loadMoreMyPacks()
+                                    } else {
+                                        await store.loadMore()
+                                    }
+                                }
                         }
                     }
                     .refreshable { await store.refresh() }
@@ -72,6 +104,9 @@ struct MarketplaceView: View {
             CreatorPacksView(store: store, handle: route.handle)
         }
         .searchable(text: $store.searchQuery, prompt: "Search packs")
+        // Both tabs search: the query goes to browse and to the authoring list in the same reload,
+        // so switching tabs mid-search shows that tab's matches rather than its whole contents.
+        .onChange(of: store.searchQuery) { store.searchQueryChanged() }
         .onSubmit(of: .search) { Task { await store.refresh() } }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -102,7 +137,7 @@ struct MarketplaceView: View {
         .onChange(of: store.sort) { Task { await store.refresh() } }
         .sheet(isPresented: $showingComposer) {
             NavigationStack {
-                PackComposerView(store: store, library: library, onCreated: { showingComposer = false })
+                PackComposerView(store: store, onCreated: { showingComposer = false })
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close") { showingComposer = false }
@@ -123,9 +158,6 @@ struct CreatorRoute: Hashable {
 
 #Preview {
     NavigationStack {
-        MarketplaceView(
-            store: MarketplaceStore(api: MockStickerAPIClient()),
-            library: StickerStore(api: MockStickerAPIClient())
-        )
+        MarketplaceView(store: MarketplaceStore(api: MockStickerAPIClient()))
     }
 }

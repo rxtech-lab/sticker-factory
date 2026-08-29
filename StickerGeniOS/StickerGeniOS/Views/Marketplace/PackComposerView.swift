@@ -6,18 +6,18 @@ import SwiftUI
 /// be invisible in every surface a pack feeds — the server refuses it for the same reason.
 struct PackComposerView: View {
     @Bindable var store: MarketplaceStore
-    @Bindable var library: StickerStore
     var onCreated: () -> Void
 
     @State private var title = ""
     @State private var summary = ""
-    @State private var selected: Set<String> = []
+    /// Whole stickers, in the order they were picked: the composer shows only the selection, so it
+    /// cannot look them up in a library feed it no longer holds.
+    @State private var selected: [Sticker] = []
+    @State private var showingPicker = false
     @State private var isSubmitting = false
+    /// Which round trip of the submission is running, or `nil` when nothing is in flight.
+    @State private var submissionStatus: String?
     @State private var errorMessage: String?
-
-    private var eligible: [Sticker] {
-        library.stickers.filter { $0.status == .published }
-    }
 
     private var canSubmit: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !selected.isEmpty && !isSubmitting
@@ -34,36 +34,37 @@ struct PackComposerView: View {
             }
 
             Section {
-                if eligible.isEmpty {
-                    Text("Publish a sticker first — a pack can only contain published stickers.")
+                if selected.isEmpty {
+                    Text("Nothing chosen yet — add the stickers this pack should contain.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 12)], spacing: 12) {
-                        ForEach(eligible) { sticker in
+                        ForEach(selected) { sticker in
                             Button {
                                 Haptics.selection()
-                                if selected.contains(sticker.id) {
-                                    selected.remove(sticker.id)
-                                } else {
-                                    selected.insert(sticker.id)
-                                }
+                                selected.removeAll { $0.id == sticker.id }
                             } label: {
                                 StickerThumbnail(sticker: sticker, api: store.api)
                                     .aspectRatio(1, contentMode: .fit)
                                     .overlay(alignment: .topTrailing) {
-                                        Image(systemName: selected.contains(sticker.id) ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(
-                                                selected.contains(sticker.id) ? AppColors.accent : Color.secondary
-                                            )
+                                        Image(systemName: "minus.circle.fill")
+                                            .symbolRenderingMode(.palette)
+                                            .foregroundStyle(.white, .red)
                                             .padding(6)
                                     }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityIdentifier("pack-pick-\(sticker.id)")
+                            .accessibilityLabel(String(localized: "Remove \(sticker.title)"))
+                            .accessibilityIdentifier("pack-remove-\(sticker.id)")
                         }
                     }
                 }
+
+                Button("Choose stickers", systemImage: "plus.circle") {
+                    showingPicker = true
+                }
+                .accessibilityIdentifier("pack-choose-stickers-button")
             } header: {
                 Text("Stickers (\(selected.count) selected)")
             }
@@ -73,37 +74,62 @@ struct PackComposerView: View {
             }
 
             Section {
-                Button("Create and publish") {
-                    Haptics.tap(.medium)
-                    Task { await submit(publish: true) }
+                // Creating a pack is three round trips, and the sheet stays open for all of them.
+                // Showing which one is running is the difference between "working" and "stuck".
+                if let submissionStatus {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text(submissionStatus).foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("pack-submission-progress")
+                } else {
+                    Button("Create and publish") {
+                        Haptics.tap(.medium)
+                        Task { await submit(publish: true) }
+                    }
+                        .disabled(!canSubmit)
+                        .accessibilityIdentifier("pack-create-publish-button")
+                    Button("Save as draft") {
+                        Haptics.tap(.light)
+                        Task { await submit(publish: false) }
+                    }
+                        .disabled(!canSubmit)
+                        .accessibilityIdentifier("pack-create-draft-button")
                 }
-                    .disabled(!canSubmit)
-                    .accessibilityIdentifier("pack-create-publish-button")
-                Button("Save as draft") {
-                    Haptics.tap(.light)
-                    Task { await submit(publish: false) }
-                }
-                    .disabled(!canSubmit)
-                    .accessibilityIdentifier("pack-create-draft-button")
             }
         }
+        // The fields and the picker are the submission's input; editing them mid-flight would
+        // describe a pack the server is no longer being asked for.
+        .disabled(isSubmitting)
         .navigationTitle("New pack")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if library.stickers.isEmpty { await library.refresh() } }
+        .sheet(isPresented: $showingPicker) {
+            StickerPickerSheet(api: store.api, selection: $selected)
+        }
     }
 
     private func submit(publish: Bool) async {
         isSubmitting = true
-        defer { isSubmitting = false }
+        errorMessage = nil
+        submissionStatus = String(localized: "Creating pack…")
+        defer {
+            isSubmitting = false
+            submissionStatus = nil
+        }
         do {
-            // The order the user tapped is not meaningful; the library order is.
-            let ordered = eligible.map(\.id).filter(selected.contains)
+            // Pick order is the pack's order: the picker pages and searches, so there is no single
+            // library ordering left to fall back on — and what the composer showed is what ships.
             let detail = try await store.createPack(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 summary: summary.isEmpty ? nil : summary,
-                stickerIDs: ordered
+                stickerIDs: selected.map(\.id)
             )
-            if publish { try await store.publish(packID: detail.id) }
+            if publish {
+                submissionStatus = String(localized: "Publishing pack…")
+                try await store.publish(packID: detail.id)
+            }
+            submissionStatus = String(localized: "Updating your packs…")
             await store.refresh()
             Haptics.success()
             onCreated()
@@ -118,7 +144,6 @@ struct PackComposerView: View {
     NavigationStack {
         PackComposerView(
             store: MarketplaceStore(api: MockStickerAPIClient()),
-            library: StickerStore(api: MockStickerAPIClient()),
             onCreated: {}
         )
     }

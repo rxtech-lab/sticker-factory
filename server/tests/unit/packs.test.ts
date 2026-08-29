@@ -303,6 +303,24 @@ describe("sticker packs", () => {
     }
     const hits = await listMarketplacePacks(db, "installer", { query: "cats" });
     expect(hits.data.map((row) => row.title)).toEqual(["Cozy Cats"]);
+
+    // A wildcard typed into a search field is a character, not a pattern.
+    expect((await listMarketplacePacks(db, "installer", { query: "%" })).data).toHaveLength(0);
+  });
+
+  it("filters the authoring list by title, drafts included", async () => {
+    for (const title of ["Cozy Cats", "Angry Dogs"]) {
+      const sticker = await seedPublishedSticker(db, "creator");
+      await createPack(db, "creator", { title, stickerIds: [sticker.stickerId], state: "published" });
+    }
+    const draftSticker = await seedPublishedSticker(db, "creator");
+    await createPack(db, "creator", { title: "Draft Cats", stickerIds: [draftSticker.stickerId] });
+
+    const hits = await listOwnPacks(db, "creator", { query: "cats" });
+    expect(hits.data.map((row) => row.title).sort()).toEqual(["Cozy Cats", "Draft Cats"]);
+    expect((await listOwnPacks(db, "creator", { query: "nothing here" })).data).toHaveLength(0);
+    // An empty query is not a filter: it is the unsearched list.
+    expect((await listOwnPacks(db, "creator", { query: "   " })).data).toHaveLength(3);
   });
 
   it("drops a hard-deleted member from every pack that held it", async () => {

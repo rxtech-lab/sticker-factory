@@ -6,6 +6,9 @@ private struct StickerRenameAlertModifier: ViewModifier {
     let currentTitle: String
     @Binding var isPresented: Bool
     @Binding var title: String
+    /// Raised while the rename request is in flight, so a caller can cover its list with a
+    /// progress overlay. Callers that do not care leave it as a constant binding.
+    @Binding var isRenaming: Bool
 
     private var trimmedTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -20,6 +23,8 @@ private struct StickerRenameAlertModifier: ViewModifier {
                 Button("Rename") {
                     let submittedTitle = trimmedTitle
                     Task {
+                        isRenaming = true
+                        defer { isRenaming = false }
                         if await store.rename(stickerID: stickerID, title: submittedTitle) {
                             Haptics.success()
                         } else {
@@ -45,14 +50,16 @@ extension View {
         stickerID: String,
         currentTitle: String,
         isPresented: Binding<Bool>,
-        title: Binding<String>
+        title: Binding<String>,
+        isRenaming: Binding<Bool> = .constant(false)
     ) -> some View {
         modifier(StickerRenameAlertModifier(
             store: store,
             stickerID: stickerID,
             currentTitle: currentTitle,
             isPresented: isPresented,
-            title: title
+            title: title,
+            isRenaming: isRenaming
         ))
     }
 }

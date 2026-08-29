@@ -161,6 +161,61 @@ function isToolUse(message: TranscriptMessage): boolean {
   return message.role === "system" && message.kind === "status";
 }
 
+export interface TranscriptOptions {
+  /**
+   * Keep every message a person or the assistant actually wrote, in full.
+   *
+   * The digest below is the right trade for a loop that is *changing* something: an edit turn works
+   * from the document in front of it, and the wording of a request from nine turns ago adds little.
+   * Planning is the opposite. A plan is a design brief, and the brief is spread across the whole
+   * conversation — the character the user named in their first message, the style they rejected in
+   * their third, the "actually make it a cat" in their sixth. Clipped to two hundred characters
+   * apiece those survive as gist, which is precisely the part a re-plan needs verbatim, so under this
+   * flag only the tool-call rows are budgeted and the conversation itself is never cut.
+   */
+  keepChatVerbatim?: boolean;
+}
+
+/**
+ * Renders a thread with every chat message intact, budgeting only the tool-call rows around them.
+ *
+ * The one thing here that is bounded is the machinery: tool rows are collected newest-first out of
+ * `toolBudget` and counted when they do not fit. The chat itself has no ceiling by design — see
+ * `keepChatVerbatim`. That makes the prompt's size a function of how long the user's conversation is,
+ * which is a cost worth knowing about: a hundred-turn thread is a hundred turns of prompt.
+ */
+function verbatimChatTranscript(
+  messages: TranscriptMessage[],
+  toolBudget: number,
+): string {
+  const lines: string[] = [];
+  let toolUsed = 0;
+  let dropped = 0;
+
+  // Backwards, so the tool rows that survive a spent budget are the most recent ones.
+  for (const message of [...messages].reverse()) {
+    const line = lineFor(message);
+    if (!isToolUse(message)) {
+      lines.push(line);
+      continue;
+    }
+    if (toolUsed + line.length > toolBudget) {
+      dropped += 1;
+      continue;
+    }
+    toolUsed += line.length;
+    lines.push(line);
+  }
+
+  if (dropped > 0) {
+    lines.push(
+      `[${dropped} earlier tool-call row${dropped === 1 ? "" : "s"} omitted from this transcript; `
+        + "no chat message is missing]",
+    );
+  }
+  return lines.reverse().join("\n");
+}
+
 /**
  * Renders one row as prompt text.
  *
@@ -205,13 +260,20 @@ function clip(line: string, characters: number): string {
  * Anything that still does not fit is counted, and the count is stated in the output — a model told
  * that eleven messages are missing asks about them, where one that is simply handed a truncated
  * history assumes it has the whole story.
+ *
+ * `options.keepChatVerbatim` opts out of the digest entirely and keeps every chat message; the plan
+ * loop is the one caller that asks for it.
  */
 export function compactTranscript(
   messages: TranscriptMessage[],
   maxCharacters = 24_000,
+  options: TranscriptOptions = {},
 ): string {
-  const verbatimBudget = Math.floor(maxCharacters * VERBATIM_SHARE);
   const toolBudget = Math.floor(maxCharacters * TOOL_USE_SHARE);
+  // Under `keepChatVerbatim` the character budget governs the tool rows alone; the prose is exempt
+  // from it rather than measured against it.
+  if (options.keepChatVerbatim) return verbatimChatTranscript(messages, toolBudget);
+  const verbatimBudget = Math.floor(maxCharacters * VERBATIM_SHARE);
   const lines: string[] = [];
   let verbatimUsed = 0;
   let digestUsed = 0;

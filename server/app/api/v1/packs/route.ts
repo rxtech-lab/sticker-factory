@@ -10,16 +10,17 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const limit = integerQuery(url.searchParams.get("limit"), { name: "limit", min: 1, max: 100, defaultValue: 30 });
     const cursor = url.searchParams.get("cursor");
+    const query = url.searchParams.get("q");
     // `mine=true` is the authoring list: it includes drafts, which browse must never show.
     if (url.searchParams.get("mine") === "true") {
-      return noStoreJson(await listOwnPacks(db, principal.sub, { limit, cursor }));
+      return noStoreJson(await listOwnPacks(db, principal.sub, { limit, cursor, query }));
     }
     const sort = PackSortSchema.safeParse(url.searchParams.get("sort"));
     return noStoreJson(await listMarketplacePacks(db, principal.sub, {
       limit,
       cursor,
       sort: sort.success ? sort.data : "recent",
-      query: url.searchParams.get("q"),
+      query,
     }));
   });
 }
