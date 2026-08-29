@@ -42,6 +42,16 @@ struct StickerThumbnail: View {
     let api: StickerAPIClientProtocol
 
     var body: some View {
+        // `Color.clear` takes exactly the size it is offered and the artwork is laid over it, so a
+        // tile occupies the same space whether it is still loading, holds a tall sticker, or holds
+        // a wide one. Letting the image size the tile made a grid row's height depend on which of
+        // its images had arrived — cards visibly grew once the artwork was cached.
+        Color.clear
+            .overlay { artwork }
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
         // The system rendition first, not the preview: both show the same artwork, but the
         // preview for an animated sticker is the 1024² sharing GIF — tens of megabytes to fill a
         // thumbnail the system sticker covers in under 500 KB.

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNull, like, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import { previewAssetIdSql, previewAssets, systemAssets } from "@/lib/db/columns";
 import {
@@ -293,6 +293,19 @@ async function serializePackPage(db: Database, rows: PackJoinRow[], viewerId: st
 // Browse
 // ---------------------------------------------------------------------------
 
+/**
+ * A title contains-match, or `undefined` for a query that asks for nothing.
+ *
+ * The wildcards are escaped: `%` and `_` are ordinary characters in a search field, and left raw a
+ * lone `%` would quietly match every pack there is.
+ */
+function titleSearch(query: string | null | undefined) {
+  const trimmed = query?.trim();
+  if (!trimmed) return undefined;
+  const escaped = trimmed.replace(/[\\%_]/g, (character) => `\\${character}`);
+  return sql`${stickerPacks.title} LIKE ${`%${escaped}%`} ESCAPE '\\'`;
+}
+
 export async function listMarketplacePacks(
   db: Database,
   viewerId: string,
@@ -302,7 +315,8 @@ export async function listMarketplacePacks(
   const sort = options.sort ?? "recent";
   const cursor = decodePackCursor(options.cursor);
   const conditions = [eq(stickerPacks.state, "published")];
-  if (options.query?.trim()) conditions.push(like(stickerPacks.title, `%${options.query.trim()}%`));
+  const search = titleSearch(options.query);
+  if (search) conditions.push(search);
 
   // Popularity and recency need different cursor keys, but both stay (key, id) so ties are stable.
   const sortColumn = sort === "popular" ? stickerPacks.installCount : stickerPacks.publishedAt;
@@ -330,15 +344,17 @@ export async function listMarketplacePacks(
   };
 }
 
-/** The creator's own packs, in every state, newest first. */
+/** The creator's own packs, in every state, newest first. Searchable by title, as browse is. */
 export async function listOwnPacks(
   db: Database,
   creatorId: string,
-  options: { limit?: number; cursor?: string | null } = {},
+  options: { limit?: number; cursor?: string | null; query?: string | null } = {},
 ) {
   const limit = Math.min(Math.max(options.limit ?? 30, 1), 100);
   const cursor = decodePackCursor(options.cursor);
   const conditions = [eq(stickerPacks.creatorId, creatorId), ne(stickerPacks.state, "removed")];
+  const search = titleSearch(options.query);
+  if (search) conditions.push(search);
   if (cursor) {
     const updatedAt = new Date(cursor.sortKey);
     conditions.push(or(

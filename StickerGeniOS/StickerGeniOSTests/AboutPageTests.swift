@@ -13,6 +13,14 @@ struct AboutPageTests {
         #expect(url.absoluteString == "https://sticker.rxlab.app/api/v1/about")
     }
 
+    @Test("The support address opens the user's mail client")
+    func supportEmailURL() throws {
+        let url = try #require(AboutPage.supportEmailURL)
+
+        #expect(AboutPage.supportEmail == "support@rxlab.app")
+        #expect(url.absoluteString == "mailto:support@rxlab.app")
+    }
+
     @Test("A cancelled request never surfaces as a document failure")
     func cancelledRequestIsNotAFailure() {
         // `URLSession` reports a cancelled request as `URLError.cancelled`, so pull-to-refresh used

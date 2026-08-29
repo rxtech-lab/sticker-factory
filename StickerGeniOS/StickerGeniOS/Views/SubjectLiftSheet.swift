@@ -73,7 +73,6 @@ struct SubjectLiftSheet: View {
             }
             .safeAreaInset(edge: .bottom) { footer }
         }
-        .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isWorking)
     }
 

@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, inArray, max } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, max, ne } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { compactTranscript } from "@/lib/ai/compaction";
+import { compactTranscript, type TranscriptOptions } from "@/lib/ai/compaction";
 import {
   assertAnimatedPlanUsesReferenceBackedArtwork,
   assertPlanReuseIsResolvable,
@@ -42,6 +42,7 @@ import {
   type EditDraftingSession,
   type LayoutDraftingSession,
   type PlanDraftingSession,
+  type AiPlanVisual,
   type AiSequenceAsset,
 } from "@/lib/ai/gateway";
 import { applyLayoutAdjustment, layoutDiagnostics } from "@/lib/layout/composition";
@@ -57,6 +58,7 @@ import {
   attachPlanConcept,
   createPlan,
   finalizePlan,
+  latestPlanConcept,
   recentlyRejectedPlans,
   stickerHasPlan,
   updatePlan,
@@ -321,8 +323,12 @@ async function assertJobStillRunning(jobId: string): Promise<void> {
  * Thin wrapper over `compactTranscript` so the compaction rules live in one place with the tool-loop
  * ones and can be unit-tested without a database.
  */
-function boundedTranscript(messages: Array<typeof chatMessages.$inferSelect>, maxCharacters = 24_000): string {
-  return compactTranscript(messages, maxCharacters);
+function boundedTranscript(
+  messages: Array<typeof chatMessages.$inferSelect>,
+  maxCharacters = 24_000,
+  options: TranscriptOptions = {},
+): string {
+  return compactTranscript(messages, maxCharacters, options);
 }
 
 /**
@@ -823,12 +829,18 @@ async function executePlanTurn(
   sticker: typeof stickers.$inferSelect,
   threadId: string,
   instruction: string,
+  /**
+   * The whole conversation, not the digest the other turns get: this is the only loop whose job is
+   * to re-read the brief rather than to change a document, so it is built with `keepChatVerbatim`.
+   */
   history: string,
   activeDocument: StickerDocument | undefined,
   /** Everything a concept render draws from: the user's attachments, padded with existing artwork. */
   references: Array<{ bytes: Uint8Array; mimeType: string }>,
   /** The subset the planner itself is shown — only what the user attached this turn. */
   attachedImages: Array<{ bytes: Uint8Array; mimeType: string }>,
+  /** What the project already looks like, so a turn with no attachment is not planned blind. */
+  priorArt: AiPlanVisual[],
   sequenceAssets: AiSequenceAsset[],
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
@@ -920,6 +932,7 @@ async function executePlanTurn(
     rejectedReasons: rejected.map((row) => row.decisionReason).filter((reason): reason is string => Boolean(reason)),
     sequenceAssets,
     references: attachedImages,
+    priorArt,
   }, session);
 
   if (!latest) throw new Error("The planner finished without drafting a plan");
@@ -1532,6 +1545,14 @@ async function executePlanBuildTurn(
   sourceMessage: typeof chatMessages.$inferSelect,
   history: string,
   activeRevision: typeof stickerRevisions.$inferSelect | undefined,
+  /**
+   * The project's own reference photos, for the plans that have no approved concept to copy from.
+   *
+   * `planRequiresConcept` is false for every static plan, so a static sticker of a real person used
+   * to have its layers drawn from the layer prompt and nothing else — the same likeness hole the
+   * concept render had, one step further down the pipeline.
+   */
+  references: Array<{ bytes: Uint8Array; mimeType: string }>,
 ): Promise<AiTurnResult> {
   const db = getDatabase();
   const planRow = await db.select().from(plans).where(and(
@@ -1570,7 +1591,10 @@ async function executePlanBuildTurn(
               `Part description: ${item.prompt}`,
             ].join(" ")
           : item.prompt,
-        references: visualReference ? [visualReference] : [],
+        // The approved concept when there is one — it is the style contract the user signed off, and
+        // adding raw photographs beside it only pulls the part back toward photographic realism.
+        // With no concept, the photos are all the likeness this layer will ever get.
+        references: visualReference ? [visualReference] : references,
         conversationContext: history,
         mode: "generate",
       });
@@ -1677,12 +1701,32 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   }
   const thread = await db.select().from(chatThreads).where(eq(chatThreads.stickerId, sticker.id)).get();
   if (!thread) throw new Error("Chat thread not found");
-  // Wider than the 60 rows this used to read. Most of a thread's rows are tool-call rows — a single
-  // edit turn writes one per tool it runs — so 60 was rarely more than a handful of real turns, and
-  // the character budget, not the row count, is what the prompt is actually bounded by now.
-  const transcript = (await db.select().from(chatMessages).where(eq(chatMessages.threadId, thread.id))
-    .orderBy(desc(chatMessages.sequence)).limit(200)).reverse();
+  // Two reads rather than one capped read. A single capped read spends most of its rows on tool
+  // calls — an edit turn writes one per tool it runs — so a 200-row window on a busy thread can
+  // reach back only a handful of real turns, and the chat the planner needs is what falls off the
+  // end. Chat rows are therefore read without a cap, and the cap stays on the machinery.
+  const [chatRows, toolRows] = await Promise.all([
+    db.select().from(chatMessages)
+      .where(and(eq(chatMessages.threadId, thread.id), ne(chatMessages.kind, "status")))
+      .orderBy(asc(chatMessages.sequence)),
+    db.select().from(chatMessages)
+      .where(and(eq(chatMessages.threadId, thread.id), eq(chatMessages.kind, "status")))
+      .orderBy(desc(chatMessages.sequence)).limit(200),
+  ]);
+  const transcript = [...chatRows, ...toolRows].sort((left, right) => left.sequence - right.sequence);
   const history = boundedTranscript(transcript);
+  // The planner is prompted with this one instead. Everything else in a turn works from the document
+  // in front of it, so a digest of the older conversation costs it little; a plan is a brief, and the
+  // brief is spread across the whole thread — the character named in the first message, the style
+  // turned down in the third, the "make it a cat" in the sixth. See `keepChatVerbatim`.
+  const planHistory = boundedTranscript(transcript, 24_000, { keepChatVerbatim: true });
+  traceEvent("runAiTurn:transcript", {
+    jobId,
+    chatRows: chatRows.length,
+    toolRows: toolRows.length,
+    historyCharacters: history.length,
+    planHistoryCharacters: planHistory.length,
+  });
   const attachments = await db.select({
     attachment: chatAttachments,
     asset: assets,
@@ -1699,22 +1743,74 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   if (activeDocument) await assertDocumentAssetsOwned(activeDocument, job.ownerId, sticker.id);
   const objectStore = getObjectStore();
   const referenceRows = attachments.filter((row) => row.attachment.kind === "reference");
-  // Captures ride in as ordinary `reference` attachments — the atlas is a PNG, so nothing about the
-  // wire format needed widening — and are told apart here by their asset kind. The grid comes off
-  // the asset row rather than out of the image, because a sprite sheet cannot describe itself.
-  const sequenceAssets: AiSequenceAsset[] = referenceRows.flatMap((row) => (
-    row.asset.kind === "sequence"
-      && row.asset.frameCount && row.asset.fps
-      && row.asset.sequenceColumns && row.asset.sequenceRows
-      ? [{
-        assetId: row.asset.id,
-        columns: row.asset.sequenceColumns,
-        rows: row.asset.sequenceRows,
-        frameCount: row.asset.frameCount,
-        frameRate: row.asset.fps,
-      }]
-      : []
-  ));
+  /**
+   * Every reference the user has attached anywhere in this project, oldest first.
+   *
+   * Read thread-wide rather than per-message because an attachment does not stop being what the
+   * sticker is *of* on the turn after it arrives. Scoping it to the source message is what let a
+   * turn whose whole request was "add some text" replace the user's own captured footage with a
+   * generated lookalike: with no capture in `sequenceAssets`, a `sequence` source was not merely
+   * invisible to the planner but illegal, so describing the person in a prompt was the only move
+   * left open to it.
+   */
+  const threadReferenceRows = await db.select({
+    attachment: chatAttachments,
+    asset: assets,
+    sequence: chatMessages.sequence,
+  }).from(chatAttachments)
+    .innerJoin(assets, eq(chatAttachments.assetId, assets.id))
+    .innerJoin(chatMessages, eq(chatAttachments.messageId, chatMessages.id))
+    .where(and(
+      eq(chatMessages.threadId, thread.id),
+      eq(chatAttachments.kind, "reference"),
+      eq(assets.state, "ready"),
+      eq(assets.ownerId, job.ownerId),
+    ))
+    .orderBy(asc(chatMessages.sequence), asc(chatAttachments.position));
+  /** Newest first, and never this turn's own rows — those already travel as attachments. */
+  const carriedReferenceRows = threadReferenceRows
+    .filter((row) => row.attachment.messageId !== sourceMessage.id)
+    .reverse();
+  /**
+   * A capture, as opposed to a photo: an atlas whose grid the plan has to copy exactly.
+   *
+   * Captures ride in as ordinary `reference` attachments — the atlas is a PNG, so nothing about the
+   * wire format needed widening — and are told apart by their asset kind. The grid comes off the
+   * asset row rather than out of the image, because a sprite sheet cannot describe itself.
+   */
+  const capturedFrames = (asset: typeof assets.$inferSelect): AiSequenceAsset | undefined => (
+    asset.kind === "sequence"
+      && asset.frameCount && asset.fps
+      && asset.sequenceColumns && asset.sequenceRows
+      ? {
+        assetId: asset.id,
+        columns: asset.sequenceColumns,
+        rows: asset.sequenceRows,
+        frameCount: asset.frameCount,
+        frameRate: asset.fps,
+      }
+      : undefined
+  );
+  // This turn's captures first so a fresh one outranks an old one, then everything the project has
+  // carried. These are numbers rather than pixels, so listing them all costs the prompt almost
+  // nothing and is what keeps every capture a legal source for as long as the project lasts.
+  const sequenceAssets: AiSequenceAsset[] = [];
+  const seenCaptureIds = new Set<string>();
+  for (const row of [...referenceRows, ...carriedReferenceRows]) {
+    const capture = capturedFrames(row.asset);
+    if (!capture || seenCaptureIds.has(capture.assetId)) continue;
+    seenCaptureIds.add(capture.assetId);
+    sequenceAssets.push(capture);
+  }
+  /**
+   * The one carried attachment the planner is shown, on top of anything attached this turn.
+   *
+   * A capture wins over a photo because a capture *is* the sticker's subject rather than a reference
+   * for one. Only one is shown: the prior-art budget also has to cover the current render and the
+   * last approved concept, and those say things no attachment can.
+   */
+  const carriedSubjectRow = carriedReferenceRows.find((row) => capturedFrames(row.asset))
+    ?? carriedReferenceRows[0];
   let attachedImagesPromise: Promise<Array<{ bytes: Uint8Array; mimeType: string }>> | undefined;
   /**
    * What the user actually attached to this turn, and nothing else.
@@ -1730,17 +1826,132 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     }));
     return attachedImagesPromise;
   };
+  let priorArtPromise: Promise<AiPlanVisual[]> | undefined;
+  /**
+   * The pictures of the project the planner is shown, on top of anything the user attached.
+   *
+   * Both are best-effort. A render can fail on a document whose artwork has been swept, and a plan's
+   * static reference can be missing or unreadable; neither is a reason to fail a planning turn that
+   * would otherwise succeed, so each failure is traced and the picture is simply left out.
+   */
+  const loadPlanPriorArt = () => {
+    priorArtPromise ??= (async () => {
+      const visuals: AiPlanVisual[] = [];
+      // First, because it outranks anything the planner drew: this is the user's own material, and
+      // on a turn with no fresh attachment it is the only sight of the subject there is.
+      if (carriedSubjectRow) {
+        const capture = capturedFrames(carriedSubjectRow.asset);
+        try {
+          const object = await getObjectStore().get(carriedSubjectRow.asset.r2Key);
+          visuals.push({
+            label: capture
+              ? "footage the user captured of themselves earlier in this project, already cut out and "
+                + `laid out as a contact sheet of ${capture.frameCount} frames read left to right, top `
+                + "to bottom. It is one subject moving, not several subjects. It is still listed below "
+                + "as a sequence source you can use, and it is the sticker's subject"
+              : "a photo the user attached earlier in this project, still the reference for who or "
+                + "what this sticker is of",
+            image: { bytes: object.bytes, mimeType: carriedSubjectRow.asset.mimeType },
+          });
+        } catch (error) {
+          traceEvent("plan:priorArt:carriedUnreadable", {
+            jobId,
+            assetId: carriedSubjectRow.asset.id,
+            error: describeError(error),
+          });
+        }
+      }
+      if (activeDocument) {
+        try {
+          const render = await renderWorkingDocument(activeDocument, job.ownerId);
+          visuals.push({
+            // Says which of the two shapes the picture is, because an animated render is a contact
+            // sheet and a planner that reads one as a single composition sees a sticker with the
+            // same subject drawn six times. The review-render caveat rides along for the same
+            // reason the `view_sticker` tool carries it: this is drawn by the server, not by the app
+            // that ships the sticker, so it is evidence about layout and colour and not about
+            // kerning or a few pixels of curve.
+            label: render.times.length > 1
+              ? "the sticker as it stands now, as a contact sheet of frames sampled across its "
+                + "animation and read left to right, top to bottom — one sticker, not several. "
+                + "It is a server-side review render, so judge layout, coverage and colour from it "
+                + "and not fine typography"
+              : "the sticker exactly as it looks right now, which is what the user is looking at. "
+                + "It is a server-side review render, so judge layout, coverage and colour from it "
+                + "and not fine typography",
+            image: { bytes: render.bytes, mimeType: render.mimeType },
+          });
+        } catch (error) {
+          traceEvent("plan:priorArt:renderFailed", { jobId, error: describeError(error) });
+        }
+      }
+      const previousPlan = await latestPlanConcept(db, job.ownerId, sticker.id);
+      if (previousPlan) {
+        try {
+          visuals.push({
+            label: "the static reference the previous plan produced, which the user has already seen",
+            image: await loadPlanVisualReference(previousPlan, job.ownerId, sticker.id),
+          });
+        } catch (error) {
+          traceEvent("plan:priorArt:conceptUnavailable", {
+            jobId,
+            planId: previousPlan.id,
+            error: describeError(error),
+          });
+        }
+      }
+      traceEvent("plan:priorArt", { jobId, count: visuals.length });
+      return visuals;
+    })();
+    return priorArtPromise;
+  };
   let referenceImagesPromise: Promise<Array<{ bytes: Uint8Array; mimeType: string }>> | undefined;
   const loadReferenceImages = () => {
     referenceImagesPromise ??= (async () => {
       const userReferenceImages = await loadAttachedImages();
+      const attachedAssetIds = new Set(referenceRows.map((row) => row.asset.id));
+      /**
+       * Everything the user has handed this project on an earlier turn, newest first.
+       *
+       * This is what keeps a face a face. The image model is the only thing in the pipeline that
+       * ever sees a photograph, and it used to see one only on the turn it was uploaded: a later
+       * turn with no attachment and no built document rendered its concept from the plan's prose
+       * alone. A written description cannot carry a likeness — "short tousled black hair,
+       * rectangular dark grey glasses, fair warm skin" describes thousands of people — so the
+       * subject was quietly reinvented on every turn that did not re-upload them.
+       *
+       * Unreadable ones are skipped rather than thrown. A carried reference is an improvement on
+       * having none, and failing a turn because a photo from six turns ago has gone from the store
+       * would be a worse trade than rendering without it.
+       */
+      const carriedReferenceImages = (await Promise.all(
+        carriedReferenceRows
+          .filter((row) => !attachedAssetIds.has(row.asset.id))
+          .slice(0, Math.max(0, 8 - userReferenceImages.length))
+          .map(async (row) => {
+            try {
+              const object = await objectStore.get(row.asset.r2Key);
+              return [{ bytes: object.bytes, mimeType: row.asset.mimeType }];
+            } catch (error) {
+              traceEvent("references:carried:unreadable", {
+                jobId,
+                assetId: row.asset.id,
+                error: describeError(error),
+              });
+              return [];
+            }
+          }),
+      )).flat();
       // A re-plan should preserve the artwork already on screen as faithfully as a newly attached
       // photo. Fill any reference slots the user did not occupy with the current document's image
       // layers, in layer order, and never send the same asset twice.
-      const attachedAssetIds = new Set(referenceRows.map((row) => row.asset.id));
+      const carriedAssetIds = new Set(carriedReferenceRows.map((row) => row.asset.id));
+      const spentSlots = userReferenceImages.length + carriedReferenceImages.length;
       const reusableReferenceIds = activeDocument?.layers.flatMap((layer) => (
-        layer.type === "image" && !attachedAssetIds.has(layer.assetId) ? [layer.assetId] : []
-      )).filter((id, index, all) => all.indexOf(id) === index).slice(0, 8 - userReferenceImages.length) ?? [];
+        layer.type === "image" && !attachedAssetIds.has(layer.assetId) && !carriedAssetIds.has(layer.assetId)
+          ? [layer.assetId]
+          : []
+      )).filter((id, index, all) => all.indexOf(id) === index).slice(0, Math.max(0, 8 - spentSlots)) ?? [];
       const reusableReferenceRows = reusableReferenceIds.length > 0
         ? await db.select().from(assets).where(and(
           eq(assets.ownerId, job.ownerId),
@@ -1756,7 +1967,9 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
           ? [objectStore.get(asset.r2Key).then((object) => ({ bytes: object.bytes, mimeType: asset.mimeType }))]
           : [];
       }));
-      return [...userReferenceImages, ...reusableReferenceImages].slice(0, 8);
+      // This turn's attachments first, then what the project has carried, then its own artwork:
+      // the closer a picture is to what the user just handed over, the more it should weigh.
+      return [...userReferenceImages, ...carriedReferenceImages, ...reusableReferenceImages].slice(0, 8);
     })();
     return referenceImagesPromise;
   };
@@ -1780,7 +1993,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   }
 
   if (job.kind === "compose") {
-    return executePlanBuildTurn(job, sticker, sourceMessage, history, activeRevision);
+    return executePlanBuildTurn(job, sticker, sourceMessage, history, activeRevision, await loadReferenceImages());
   }
 
   // A turn the user started by turning a plan down with a reason. It skips the router on purpose:
@@ -1792,10 +2005,11 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       sticker,
       thread.id,
       sourceMessage.content,
-      history,
+      planHistory,
       activeDocument,
       await loadReferenceImages(),
       await loadAttachedImages(),
+      await loadPlanPriorArt(),
       sequenceAssets,
       await beginToolCall(job, "plan-sticker"),
     );
@@ -1880,10 +2094,11 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         sticker,
         thread.id,
         action.instruction,
-        history,
+        planHistory,
         undefined,
         await loadReferenceImages(),
         await loadAttachedImages(),
+        await loadPlanPriorArt(),
         sequenceAssets,
         await beginToolCall(job, "plan-sticker"),
       );
@@ -1908,10 +2123,11 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         sticker,
         thread.id,
         action.instruction,
-        history,
+        planHistory,
         activeDocument,
         await loadReferenceImages(),
         await loadAttachedImages(),
+        await loadPlanPriorArt(),
         sequenceAssets,
         primaryToolCallId,
       );
@@ -1963,10 +2179,11 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       sticker,
       thread.id,
       instruction,
-      history,
+      planHistory,
       undefined,
       await loadReferenceImages(),
       await loadAttachedImages(),
+      await loadPlanPriorArt(),
       sequenceAssets,
       await beginToolCall(job, "plan-sticker"),
     );

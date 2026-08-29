@@ -6,6 +6,11 @@ import os
 nonisolated protocol StickerAPIClientProtocol: Sendable {
     func listStickers(cursor: String?) async throws -> Page<Sticker>
     func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker>
+    /// The owner's published stickers, paged, and optionally narrowed by a title query.
+    ///
+    /// Filtered server-side rather than by sieving `listStickers`: a page of thirty may contain no
+    /// published sticker at all, and a client-side filter turns that into an empty picker.
+    func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker>
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse
     func sticker(id: String) async throws -> StickerDetail
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail
@@ -29,7 +34,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
 
     // Marketplace
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
-    func myPacks(cursor: String?) async throws -> Page<StickerPack>
+    func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack>
     func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse
     func pack(id: String) async throws -> StickerPackDetail
     func createPack(_ request: CreatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail
@@ -81,6 +86,13 @@ actor StickerAPIClient: StickerAPIClientProtocol {
 
     func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> {
         var items = [URLQueryItem(name: "q", value: query)]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await send(path: "api/v1/stickers", query: items)
+    }
+
+    func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker> {
+        var items = [URLQueryItem(name: "status", value: "published")]
+        if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
         return try await send(path: "api/v1/stickers", query: items)
     }
@@ -228,8 +240,9 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     }
 
     /// The authoring list. Unlike browse it includes drafts, so it must never back a public view.
-    func myPacks(cursor: String?) async throws -> Page<StickerPack> {
+    func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack> {
         var items = [URLQueryItem(name: "mine", value: "true")]
+        if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
         return try await send(path: "api/v1/packs", query: items)
     }

@@ -2,6 +2,11 @@ import Foundation
 import SwiftUI
 
 nonisolated enum AboutPage {
+    static let supportEmail = "support@rxlab.app"
+
+    /// `mailto:` hands the address to whichever mail client the user has installed.
+    static let supportEmailURL = URL(string: "mailto:\(supportEmail)")
+
     static func url(relativeTo baseURL: URL) -> URL {
         ["api", "v1", "about"].reduce(baseURL) { url, component in
             url.appendingPathComponent(component)
@@ -52,6 +57,20 @@ struct AboutPageView: View {
                 .background(.thinMaterial, in: .rect(cornerRadius: 16))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("app-version")
+
+                if let supportEmailURL = AboutPage.supportEmailURL {
+                    Link(destination: supportEmailURL) {
+                        HStack(spacing: 12) {
+                            Label("Contact support", systemImage: "envelope")
+                            Spacer(minLength: 8)
+                            Text(AboutPage.supportEmail)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(16)
+                    .background(.thinMaterial, in: .rect(cornerRadius: 16))
+                    .accessibilityIdentifier("support-email")
+                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 24)

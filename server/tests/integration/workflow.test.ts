@@ -1055,6 +1055,239 @@ describe("durable sticker workflow", () => {
     await close();
   });
 
+  it("shows the planner the existing artwork on a turn with nothing attached", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-replan", createdAt: new Date(), updatedAt: new Date() });
+
+    const sticker = await createSticker(db, "owner-replan", { title: "Cloud", kind: "animated", prompt: "Happy cloud", referenceAssetIds: [] });
+    const baseTurn = await drawnAnimatedBase(db, "owner-replan", sticker.stickerId, "Happy cloud");
+    expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
+    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
+    await acceptRevision(db, "owner-replan", sticker.stickerId, baseRevision!.id);
+
+    let planned: { references: number; priorArt: Array<{ label: string; bytes: number }> } | undefined;
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: async (input) => ({ type: "plan", instruction: input.instruction }),
+      generateConceptImage: async () => ({
+        bytes: new Uint8Array(await sharp({
+          create: { width: 1024, height: 1024, channels: 4, background: { r: 200, g: 120, b: 60, alpha: 1 } },
+        }).png().toBuffer()),
+        mimeType: "image/png",
+      }),
+      planSticker: async (input, session) => {
+        planned = {
+          references: input.references.length,
+          priorArt: input.priorArt.map((visual) => ({
+            label: visual.label,
+            bytes: visual.image.bytes.byteLength,
+          })),
+        };
+        const created = await session.createPlan(PlanV1Schema.parse({
+          title: "Cloud", summary: "Bigger cloud.", kind: "animated",
+          conceptPrompt: "A polished sticker of a happy cloud, filling the frame.",
+          timing: { durationSeconds: 2, fps: 30, loop: "loop" },
+          layers: [{
+            layerId: "hero", name: "Cloud",
+            source: { kind: "generate", prompt: "A happy cloud on a transparent background." },
+            x: 0.5, y: 0.5, scaleX: 0.8, scaleY: 0.8,
+          }],
+        }));
+        const finalized = await session.finalizePlan(created.planId);
+        return { ...finalized, finalized: true };
+      },
+    });
+
+    const replan = await createChatTurn(db, "owner-replan", sticker.stickerId, {
+      text: "make the cloud bigger",
+      intent: "chat",
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(replan.jobId)).workflowStatus).toBe("succeeded");
+
+    // The regression this guards: the planner was shown `references` and nothing else, so a turn
+    // where the user attached nothing — every "make it bigger", every re-plan — was designed from
+    // JSON and prose with no sight of the artwork, and came back having redrawn things nobody had
+    // asked it to touch.
+    expect(planned?.references).toBe(0);
+    expect(planned?.priorArt.length).toBeGreaterThan(0);
+    // An animated project renders as a sheet of sampled frames, and the label has to say so — a
+    // planner that reads one as a single composition sees the same subject drawn six times over.
+    expect(planned?.priorArt[0].label).toContain("contact sheet");
+    expect(planned?.priorArt[0].label).toContain("review render");
+    // Real pixels, not an empty buffer that happens to satisfy the type.
+    for (const visual of planned!.priorArt) expect(visual.bytes).toBeGreaterThan(0);
+    await close();
+  });
+
+  it("keeps a capture usable on later turns that attach nothing", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-capture", createdAt: new Date(), updatedAt: new Date() });
+
+    // A Live Photo capture, cut out on device: 12 frames in a 4x3 atlas, the shape the iOS client
+    // uploads and the shape a plan has to copy verbatim.
+    const captureId = crypto.randomUUID();
+    const captureKey = objectKey("owner-capture", captureId, "image/png");
+    const captureBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    await db.insert(assets).values({
+      id: captureId, ownerId: "owner-capture", kind: "sequence", state: "ready",
+      r2Key: captureKey, mimeType: "image/png", byteSize: captureBytes.byteLength,
+      frameCount: 12, fps: 24, sequenceColumns: 4, sequenceRows: 3,
+      createdAt: new Date(), readyAt: new Date(),
+    });
+    await store.put(captureKey, { bytes: captureBytes, contentType: "image/png" });
+
+    const sequenceLayer = (assetId: string) => ({
+      layerId: "hero", name: "Me",
+      source: { kind: "sequence", assetId, columns: 4, rows: 3, frameCount: 12, frameRate: 24 },
+      x: 0.5, y: 0.5, scaleX: 0.8, scaleY: 0.8,
+    });
+    const planWith = (title: string, layers: unknown[]) => PlanV1Schema.parse({
+      title, summary: `${title}.`, kind: "animated",
+      conceptPrompt: "A polished sticker of the person in the capture, filling the frame.",
+      timing: { durationSeconds: 2, fps: 30, loop: "loop" },
+      layers,
+    });
+
+    const seen: Array<{ captures: string[]; priorArt: string[]; attached: number }> = [];
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: async (input) => ({ type: "plan", instruction: input.instruction }),
+      generateConceptImage: async () => ({
+        bytes: new Uint8Array(await sharp({
+          create: { width: 512, height: 512, channels: 4, background: { r: 30, g: 90, b: 200, alpha: 1 } },
+        }).png().toBuffer()),
+        mimeType: "image/png",
+      }),
+      planSticker: async (input, session) => {
+        seen.push({
+          captures: input.sequenceAssets.map((asset) =>
+            `${asset.assetId}:${asset.columns}x${asset.rows}:${asset.frameCount}@${asset.frameRate}`),
+          priorArt: input.priorArt.map((visual) => visual.label),
+          attached: input.references.length,
+        });
+        const created = await session.createPlan(planWith("Me", [sequenceLayer(captureId)]));
+        const finalized = await session.finalizePlan(created.planId);
+        return { ...finalized, finalized: true };
+      },
+    });
+
+    const sticker = await createSticker(db, "owner-capture", {
+      title: "Me", kind: "animated", prompt: "Me", referenceAssetIds: [captureId],
+    });
+    const first = await createChatTurn(db, "owner-capture", sticker.stickerId, {
+      text: "我要我的头像有个会动的皇冠",
+      intent: "chat",
+      attachments: [{ assetId: captureId, kind: "reference" }],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(first.jobId)).workflowStatus).toBe("succeeded");
+
+    // The turn that used to break it: a request to add text, with nothing attached.
+    const second = await createChatTurn(db, "owner-capture", sticker.stickerId, {
+      text: "加一个文字： 游戏大神",
+      intent: "chat",
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(second.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(seen).toHaveLength(2);
+    const [attachTurn, textOnlyTurn] = seen;
+    expect(attachTurn.captures).toEqual([`${captureId}:4x3:12@24`]);
+
+    // The regression. This turn attached nothing, and the capture used to vanish with it — not just
+    // from view but from `sequenceAssets`, which made the `sequence` source illegal and left the
+    // planner no way to keep the user's own footage. It answered by replacing them with a generate
+    // layer describing their face.
+    expect(textOnlyTurn.attached).toBe(0);
+    expect(textOnlyTurn.captures).toEqual([`${captureId}:4x3:12@24`]);
+    // And it is shown the footage, not merely told the numbers.
+    expect(textOnlyTurn.priorArt[0]).toContain("captured");
+    expect(textOnlyTurn.priorArt[0]).toContain("contact sheet");
+
+    // The plan the second turn produced still points at the capture rather than at a drawn stand-in.
+    const stored = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
+    const newest = stored.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).at(-1);
+    expect(newest?.planJson.layers[0].source).toMatchObject({ kind: "sequence", assetId: captureId });
+    await close();
+  });
+
+  it("still renders the concept from the user's photo on a later turn that attaches nothing", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-likeness", createdAt: new Date(), updatedAt: new Date() });
+    const photo = await attachablePhoto(db, store, "owner-likeness");
+
+    const conceptReferences: number[][][] = [];
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: async (input) => ({ type: "plan", instruction: input.instruction }),
+      generateConceptImage: async (input) => {
+        conceptReferences.push(attachedBytes(input.references));
+        return {
+          bytes: new Uint8Array(await sharp({
+            create: { width: 1024, height: 1024, channels: 4, background: { r: 90, g: 60, b: 30, alpha: 1 } },
+          }).png().toBuffer()),
+          mimeType: "image/png",
+        };
+      },
+      planSticker: async (input, session) => {
+        const created = await session.createPlan(PlanV1Schema.parse({
+          title: "Me", summary: "A sticker of you.", kind: "animated",
+          conceptPrompt: "The person in the supplied reference photo, as a polished sticker filling the frame.",
+          timing: { durationSeconds: 2, fps: 30, loop: "loop" },
+          layers: [{
+            layerId: "portrait", name: "Me",
+            source: { kind: "generate", prompt: "The person in the supplied reference photo, on a transparent background." },
+            x: 0.5, y: 0.5, scaleX: 0.8, scaleY: 0.8,
+          }],
+        }));
+        const finalized = await session.finalizePlan(created.planId);
+        return { ...finalized, finalized: true };
+      },
+    });
+
+    const sticker = await createSticker(db, "owner-likeness", {
+      title: "Me", kind: "animated", prompt: "Me", referenceAssetIds: [photo.id],
+    });
+    const first = await createChatTurn(db, "owner-likeness", sticker.stickerId, {
+      text: "Add a crown on top of my head",
+      intent: "chat",
+      attachments: [{ assetId: photo.id, kind: "reference" }],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(first.jobId)).workflowStatus).toBe("succeeded");
+
+    const second = await createChatTurn(db, "owner-likeness", sticker.stickerId, {
+      text: "Add text game master",
+      intent: "chat",
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(second.jobId)).workflowStatus).toBe("succeeded");
+
+    // The image model is the only thing in the pipeline that ever sees a photograph, and it used to
+    // see one only on the turn it was uploaded. A second turn with nothing attached and no built
+    // document rendered its concept from the plan's prose alone — and prose cannot carry a face, so
+    // the person came back a stranger who merely matched the adjectives.
+    expect(conceptReferences).toHaveLength(2);
+    expect(conceptReferences[0]).toEqual([photo.bytes]);
+    expect(conceptReferences[1]).toEqual([photo.bytes]);
+    await close();
+  });
+
   it("shows the animator the photo the user attached", async () => {
     const { db, close } = await createTestDatabase();
     const store = new MemoryObjectStore();

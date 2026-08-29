@@ -56,7 +56,7 @@ struct StickerFactoryTabView: View {
                 .tabItem { Label("Library", systemImage: "square.grid.2x2") }
                 .tag(0)
 
-            NavigationStack { MarketplaceView(store: environment.marketplace, library: environment.store) }
+            NavigationStack { MarketplaceView(store: environment.marketplace) }
                 .tabItem { Label("Marketplace", systemImage: "bag") }
                 .tag(1)
 
