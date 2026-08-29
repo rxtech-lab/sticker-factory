@@ -164,6 +164,19 @@ struct GenerateStickerTip: Tip {
     var options: [any TipOption] { Tips.MaxDisplayCount(1) }
 }
 
+/// Anchored on an attached reference photo, because the badge on the thumbnail is the only other
+/// thing saying that the photo is tappable at all — and a badge alone never said what the tap does.
+struct LiftSubjectTip: Tip {
+    var id: String { "sticker-factory.onboarding.lift-subject.v1" }
+    var title: Text { Text("Lift the subject out") }
+    var message: Text? { Text("Tap a photo you attached to cut its subject away from the background, so only the part you want reaches the sticker.") }
+    var image: Image? { Image(systemName: "person.and.background.dotted") }
+    var rules: [Rule] {
+        #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
+    }
+    var options: [any TipOption] { Tips.MaxDisplayCount(1) }
+}
+
 struct ConfirmPlanTip: Tip {
     var id: String { "sticker-factory.onboarding.confirm-plan.v1" }
     var title: Text { Text("Confirm before generation") }

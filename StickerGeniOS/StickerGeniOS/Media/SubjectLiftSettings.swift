@@ -8,8 +8,14 @@ import Foundation
 /// how many frames we take. None of it is a Vision setting, and naming them as if they were would
 /// invite someone to go looking for the API that backs them.
 ///
-/// Only two of these are ever surfaced in the UI. The rest are defaults tuned once against real
-/// footage; exposing them all would be a quality slider the user cannot evaluate.
+/// Only `outlineFraction` is ever surfaced in the UI, and only as on/off. The rest are defaults
+/// tuned once against real footage; exposing them would be a quality slider the user cannot
+/// evaluate. The rim is the exception because the sheet previews it — the user is looking at the
+/// answer rather than guessing at it.
+///
+/// Nothing encodes or decodes this today; the `Codable` conformance is vestigial. Worth knowing
+/// before persisting it, because the synthesised `init(from:)` does not fall back to these property
+/// initialisers, so any field added later would break decoding of anything already written.
 nonisolated struct SubjectLiftSettings: Sendable, Equatable, Codable {
     /// What resolution the segmenter runs at.
     ///
@@ -61,6 +67,16 @@ nonisolated struct SubjectLiftSettings: Sendable, Equatable, Codable {
     var frameRate: Double = 10
     /// The side of one square tile in the encoded atlas.
     var tilePixels: Int = 640
+    /// The white die-cut rim baked around the subject, as a fraction of one tile's side.
+    ///
+    /// A fraction, never pixels, and a fraction of the *tile* rather than of the source. The atlas
+    /// crop's side is whatever the subject's union happened to be — a few hundred pixels on one
+    /// capture, a few thousand on the next — so a source-pixel width would render a hairline on one
+    /// sticker and a slab on another. Measured against the tile it is the same rim every time, and
+    /// it stays the same rim down the encoder's 640/512/384 ladder because every rung scales the
+    /// whole tile. Zero disables it, and makes the encoder's output byte-identical to the atlas it
+    /// produced before the rim existed.
+    var outlineFraction: Double = 0.035
 
     static let `default` = SubjectLiftSettings()
 

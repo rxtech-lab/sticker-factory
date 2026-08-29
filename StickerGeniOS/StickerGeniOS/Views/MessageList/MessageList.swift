@@ -25,19 +25,25 @@ nonisolated extension MessageListItem {
 /// A chat transcript that pins the latest user message to the top of the
 /// viewport and leaves it there while the reply arrives below it.
 ///
-/// **The mechanism.** Sending a message does not `scrollTo(userMessage, .top)`.
-/// Instead a tail spacer is sized so that `turnHeight + spacer == viewport`, and
-/// a 1pt anchor sits *below* that spacer. Scrolling to the anchor puts the
-/// spacer's end at the viewport bottom, which is exactly the position where the
-/// user's message rests at the top with reserved space filling the rest. As the
-/// reply grows, the spacer shrinks toward zero, absorbing the growth in place.
+/// **The mechanism.** A tail spacer is sized so that `turnHeight + spacer ==
+/// viewport`, which is exactly the room the turn needs to be able to rest at the
+/// top with the reserved space filling the rest. Placement then scrolls the user
+/// message itself to the top of the viewport. As the reply grows, the spacer
+/// shrinks toward zero, absorbing the growth in place.
+///
+/// Anchoring the *message* rather than the end of the reserved space is what
+/// makes the placement self-correcting: a spacer that is momentarily too tall
+/// leaves harmless empty room below, where anchoring the tail would push the
+/// message up off the top of the screen and under the navigation bar by however
+/// much the reservation was over.
 ///
 /// **The list never follows the stream.** Once a turn is placed, the transcript
 /// stays where the reader put it: no scroll-to-bottom on new content, no
 /// re-anchoring while streaming, no throttled catch-up scrolls. A reply that
 /// outgrows the viewport simply continues below the fold until the reader
-/// scrolls. The only programmatic moves are placing a newly sent turn and, if
-/// `placesLatestTurnOnAppear` is set, one initial placement when the transcript
+/// scrolls. The only programmatic moves are placing a newly sent turn, holding
+/// the reader's place when an older page is prepended, and — if
+/// `placesLatestTurnOnAppear` is set — one initial placement when the transcript
 /// first has content.
 ///
 /// **The reservation belongs to the live session.** It starts when the user sends
@@ -73,13 +79,20 @@ struct MessageList<
     /// `containerSize` is already inset-adjusted — subtracting the insets from it
     /// double-counts them, which collapses the reservation to nothing.
     @State private var visibleContentHeight: CGFloat = 0
-    // Optional on purpose: `nil` is "not measured yet", which is a different thing
-    // from a measured 0 (the very top of the content). Collapsing the two lets an
-    // unmeasured user message read as sitting at the top, which makes the turn look
-    // as tall as the whole transcript and permanently ratchets the spacer to zero.
-    @State private var latestUserMinY: CGFloat?
-    @State private var tailMarkerMinY: CGFloat?
-    @State private var activeTurnMaxMeasuredHeight: CGFloat = 0
+    /// The active turn — the pinned user message and everything under it — measured
+    /// as ONE view.
+    ///
+    /// It used to be the distance between two separately reported anchors, a user
+    /// row's `minY` and a tail marker's. That subtraction is only correct while both
+    /// anchors describe the same layout pass, and every relayout *above* the turn
+    /// moves both: prepending a page of older messages, an image in old history
+    /// finishing its load. Whichever anchor reports first leaves the pair describing
+    /// two different layouts, and the difference between them is then off by the
+    /// whole inserted height — which, ratcheted, collapsed the reservation for good.
+    ///
+    /// One view's own height cannot disagree with itself, so none of that arises:
+    /// content above may move the turn, but never changes how tall it is.
+    @State private var activeTurnHeight: CGFloat = 0
     @State private var canReleasePinnedUserMessageByScroll = false
     @State private var hasPlacedInitialContent = false
     @State private var pinTask: Task<Void, Never>?
@@ -106,31 +119,13 @@ struct MessageList<
                 LazyVStack(alignment: .leading, spacing: 0) {
                     leadingContent()
 
-                    ForEach(messages, id: \.messageID) { message in
-                        let messageID = message.messageID
+                    ForEach(historyMessages, id: \.messageID) { message in
                         rowContent(message)
-                            .onGeometryChange(for: CGFloat.self) { geometry in
-                                geometry.frame(in: .named(MessageListConstants.coordinateSpaceName)).minY
-                            } action: { value in
-                                // Keyed off the transcript, NOT the pin. A row reports its
-                                // geometry when it lays out, and on a reopened chat that
-                                // happens before anything decides to pin — guarding on the
-                                // pin would drop the only report we ever get and leave the
-                                // turn height unmeasurable for the rest of the session.
-                                guard messageID == latestUserMessageID else { return }
-                                updateLatestUserMinY(value)
-                            }
-                            .id(messageID)
+                            .id(message.messageID)
                     }
 
-                    trailingContent()
+                    activeTurn
 
-                    tailMarker
-                    // The tail spacer is sized so that `turnHeight + spacer == viewport`
-                    // (see `pinTailSpacerHeight`). The bottom anchor therefore sits BELOW
-                    // the spacer: scrolling to it places the spacer's end at the viewport
-                    // bottom, which is exactly the position where the latest user message
-                    // rests at the top with the reserved space filling the rest.
                     pinTailSpacer
                     bottomAnchor
                 }
@@ -165,7 +160,7 @@ struct MessageList<
             .task {
                 guard placesLatestTurnOnAppear, !hasPlacedInitialContent, !messages.isEmpty else { return }
                 hasPlacedInitialContent = true
-                scrollLatestTurnIntoView(proxy: proxy, animated: false)
+                scroll(to: .transcriptEnd, proxy: proxy, animated: false)
             }
             .onChange(of: isStreaming) { oldValue, newValue in
                 applyPinningAction(
@@ -181,18 +176,31 @@ struct MessageList<
         }
     }
 
-    // MARK: - Sentinel rows
+    // MARK: - Content
 
-    private var tailMarker: some View {
-        Color.clear
-            .frame(height: 1)
-            .id(MessageListConstants.tailMarkerID)
-            .onGeometryChange(for: CGFloat.self) { geometry in
-                geometry.frame(in: .named(MessageListConstants.coordinateSpaceName)).minY
-            } action: { value in
-                updateTailMarkerMinY(value)
+    /// The pinned user message and everything under it, in one measured container.
+    ///
+    /// Not lazy, unlike the history above it: this is the turn the reader is looking
+    /// at, so its rows are on screen anyway, and a container only reports a height
+    /// once every row inside it has one.
+    private var activeTurn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(activeTurnMessages, id: \.messageID) { message in
+                rowContent(message)
+                    .id(message.messageID)
             }
+
+            trailingContent()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.height
+        } action: { height in
+            updateActiveTurnHeight(height)
+        }
     }
+
+    // MARK: - Sentinel rows
 
     private var pinTailSpacer: some View {
         Color.clear.frame(height: pinTailSpacerHeight)
@@ -239,25 +247,27 @@ struct MessageList<
         return max(0, visibleContentHeight - activeTurnHeight - MessageListConstants.minimumPinnedTailSpacing)
     }
 
-    /// `nil` until both ends of the turn have reported — never a guess.
-    private var rawActiveTurnMeasuredHeight: CGFloat? {
-        guard let latestUserMinY, let tailMarkerMinY else { return nil }
-        return max(0, tailMarkerMinY - latestUserMinY)
-    }
-
-    private var activeTurnHeight: CGFloat {
-        // Use only the settled, ratcheted height (committed from the scroll-geometry
-        // callback). Mixing in the live `rawActiveTurnMeasuredHeight` here would let a
-        // mid-frame desync between the two geometry anchors momentarily shrink the spacer.
-        activeTurnMaxMeasuredHeight
-    }
-
     private var pinnedTurnFillsViewport: Bool {
         guard visibleContentHeight > 0 else { return false }
         return activeTurnHeight >= visibleContentHeight - MessageListConstants.minimumPinnedTailSpacing
     }
 
     // MARK: - Derived transcript state
+
+    /// Where the active turn starts. `nil` means there is no reservation to make, and
+    /// the whole transcript is history.
+    private var activeTurnStartIndex: Int? {
+        guard let pinnedID = pinning.pinnedUserMessageID else { return nil }
+        return messages.firstIndex { $0.messageID == pinnedID }
+    }
+
+    private var historyMessages: ArraySlice<Message> {
+        activeTurnStartIndex.map { messages[..<$0] } ?? messages[...]
+    }
+
+    private var activeTurnMessages: ArraySlice<Message> {
+        activeTurnStartIndex.map { messages[$0...] } ?? messages[messages.endIndex...]
+    }
 
     private var latestContentItem: Message? {
         messages.last { !$0.isMessageListAccessory }
@@ -294,16 +304,6 @@ struct MessageList<
     // MARK: - Change handling
 
     private func handleSettledScrollGeometry() {
-        // Commit the active-turn height here rather than from the per-row geometry
-        // callbacks. This callback fires once the scroll view's geometry has settled
-        // for the frame, so `latestUserMinY` and `tailMarkerMinY` are guaranteed to
-        // reflect the same layout pass. Reading them from the individual row
-        // callbacks could capture a transient state where one anchor moved (e.g. a
-        // lazy row above the turn was just realized while scrolling) but the other
-        // had not — which would ratchet a bogus height and permanently collapse the
-        // reserved tail spacer.
-        updateActiveTurnMaxMeasuredHeight()
-
         // The turn now fills the viewport on its own; there is nothing left to hold
         // in place. Releasing only stops the re-assert — it never scrolls.
         if shouldReleasePinnedUserMessageForFilledTurn, !isUserDrivenScroll {
@@ -323,6 +323,25 @@ struct MessageList<
         if let pinnedID = pinning.pinnedUserMessageID,
            !messages.contains(where: { $0.messageID == pinnedID }) {
             clearPinnedUserMessage()
+        }
+
+        // A page of older messages arrived above everything the reader is looking at.
+        // The scroll view keeps its offset through an insertion, so without this the
+        // transcript silently jumps by the height of the whole inserted page — the
+        // reader is dumped in the middle of history, and the reserved tail ends up an
+        // unreachable screenful below.
+        if let previousFirstID = oldToken.ids.first,
+           previousFirstID != newToken.ids.first,
+           newToken.ids.count > oldToken.ids.count,
+           Array(newToken.ids.suffix(oldToken.ids.count)) == oldToken.ids {
+            // Held to whichever row the reader was reading from: the pinned turn if a
+            // turn is being held at the top, and otherwise the row that was first
+            // before the page arrived — the one the "load earlier" control sat above.
+            let anchorID = pinning.isPinningUserMessage
+                ? (pinning.pinnedUserMessageID ?? previousFirstID)
+                : previousFirstID
+            scroll(to: .messageTop(anchorID), proxy: proxy, animated: false)
+            return
         }
 
         // The first transcript to arrive is placed without animation: the reader is
@@ -347,7 +366,7 @@ struct MessageList<
         } else if isInitialPlacement {
             // Loaded history should land at its real end. Rebuilding the newest
             // turn's reservation here would add a viewport-sized empty tail.
-            scrollLatestTurnIntoView(proxy: proxy, animated: false)
+            scroll(to: .transcriptEnd, proxy: proxy, animated: false)
             return
         } else {
             action = pinning.handleLastMessageChange(
@@ -357,27 +376,32 @@ struct MessageList<
             )
         }
 
-        if case .pinUserMessageToTop = action {
-            resetPinnedTurnMeasurements()
+        if case .pinUserMessageToTop(let pinnedID) = action {
             canReleasePinnedUserMessageByScroll = false
-            scrollLatestTurnIntoView(proxy: proxy, animated: !isInitialPlacement)
+            scroll(to: .messageTop(pinnedID), proxy: proxy, animated: !isInitialPlacement)
             return
         }
 
         applyPinningAction(action)
         if isInitialPlacement {
-            scrollLatestTurnIntoView(proxy: proxy, animated: false)
+            scroll(to: .transcriptEnd, proxy: proxy, animated: false)
         }
     }
 
     // MARK: - Placement
     //
-    // The one and only scroll in this type. It runs when a turn is newly pinned,
-    // and once on first content. Nothing here reacts to content growing.
+    // The only scrolls in this type. They run when a turn is newly pinned, when an
+    // older page shifts the content out from under the reader, and once on first
+    // content. Nothing here reacts to content growing.
 
-    /// Positions the latest turn by scrolling to the bottom anchor — NOT by
-    /// scrolling the user message to the top. See the type's documentation for why.
-    private func scrollLatestTurnIntoView(proxy: ScrollViewProxy, animated: Bool) {
+    private enum PlacementTarget {
+        /// Rest this message against the top of the viewport.
+        case messageTop(Message.MessageID)
+        /// The real end of the transcript.
+        case transcriptEnd
+    }
+
+    private func scroll(to target: PlacementTarget, proxy: ScrollViewProxy, animated: Bool) {
         pinTask?.cancel()
         canReleasePinnedUserMessageByScroll = false
 
@@ -387,7 +411,7 @@ struct MessageList<
 
             if animated {
                 withAnimation(.spring(duration: MessageListConstants.pinAnimationSeconds, bounce: 0.05)) {
-                    proxy.scrollTo(MessageListConstants.bottomAnchorID, anchor: .bottom)
+                    apply(target, proxy: proxy)
                 }
                 try? await Task.sleep(for: MessageListConstants.pinAnimationDuration)
             }
@@ -402,7 +426,7 @@ struct MessageList<
                 var transaction = Transaction()
                 transaction.animation = nil
                 withTransaction(transaction) {
-                    proxy.scrollTo(MessageListConstants.bottomAnchorID, anchor: .bottom)
+                    apply(target, proxy: proxy)
                 }
                 try? await Task.sleep(for: .milliseconds(16))
             }
@@ -411,6 +435,15 @@ struct MessageList<
             // would immediately look like a user scroll and release the pin.
             guard !Task.isCancelled, pinning.isPinningUserMessage else { return }
             canReleasePinnedUserMessageByScroll = true
+        }
+    }
+
+    private func apply(_ target: PlacementTarget, proxy: ScrollViewProxy) {
+        switch target {
+        case .messageTop(let id):
+            proxy.scrollTo(id, anchor: .top)
+        case .transcriptEnd:
+            proxy.scrollTo(MessageListConstants.bottomAnchorID, anchor: .bottom)
         }
     }
 
@@ -423,7 +456,6 @@ struct MessageList<
     private func clearPinnedUserMessage() {
         pinTask?.cancel()
         pinning.clear()
-        resetPinnedTurnMeasurements()
         canReleasePinnedUserMessageByScroll = false
     }
 
@@ -447,15 +479,6 @@ struct MessageList<
         }
     }
 
-    /// Only for a turn that is *about to* lay out — a fresh send. Clearing the
-    /// measurements of a turn that is already on screen would strand them: the
-    /// geometry callbacks fire on change, and nothing is changing.
-    private func resetPinnedTurnMeasurements() {
-        latestUserMinY = nil
-        tailMarkerMinY = nil
-        activeTurnMaxMeasuredHeight = 0
-    }
-
     // MARK: - Measurement
     //
     // Every write below runs in an animation-suppressing transaction:
@@ -471,35 +494,12 @@ struct MessageList<
         }
     }
 
-    private func updateLatestUserMinY(_ value: CGFloat) {
-        guard latestUserMinY.map({ abs(value - $0) > 0.5 }) ?? true else { return }
+    private func updateActiveTurnHeight(_ value: CGFloat) {
+        guard abs(value - activeTurnHeight) > 0.5 else { return }
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
-            latestUserMinY = value
-        }
-    }
-
-    private func updateTailMarkerMinY(_ value: CGFloat) {
-        guard tailMarkerMinY.map({ abs(value - $0) > 0.5 }) ?? true else { return }
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
-            tailMarkerMinY = value
-        }
-    }
-
-    private func updateActiveTurnMaxMeasuredHeight() {
-        // Keep measuring the turn height while a latest user message is tracked, even
-        // after the pin "releases", so the persistent tail spacer stays correctly sized.
-        guard pinning.pinnedUserMessageID != nil, let measured = rawActiveTurnMeasuredHeight else { return }
-        // Ratcheted: only ever grows. A transient shrink would grow the spacer
-        // and visibly shove the transcript.
-        guard measured > activeTurnMaxMeasuredHeight + 0.5 else { return }
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
-            activeTurnMaxMeasuredHeight = measured
+            activeTurnHeight = value
         }
     }
 }
@@ -556,7 +556,6 @@ private nonisolated struct MessageListChangeToken<ID: Hashable & Sendable>: Equa
 
 private nonisolated enum MessageListConstants {
     static let bottomAnchorID = "message-list-bottom-anchor"
-    static let tailMarkerID = "message-list-tail-marker"
     static let coordinateSpaceName = "message-list-content"
     static let minimumPinnedTailSpacing: CGFloat = 16
     static let userScrollDelta: CGFloat = 4

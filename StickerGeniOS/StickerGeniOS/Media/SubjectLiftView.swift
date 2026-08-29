@@ -10,6 +10,13 @@ nonisolated struct LiftedSubject {
     var anchor: SubjectAnchorDescriptor
     /// The subject's rect in the lift view's own coordinates, so a callout can point at it.
     var bounds: CGRect
+    /// The white die-cut rim the atlas will bake, at the width the atlas will bake it, full-frame
+    /// like the cut-out and drawn underneath it.
+    ///
+    /// Filled in after the selection lands rather than as part of it, so a dilation never runs
+    /// inside a drag gesture. Nil means "not computed yet" and reads as the bare cut-out, which is
+    /// what the sheet showed before the rim existed.
+    var rim: CGImage?
 }
 
 /// How far along the search for subjects is.
@@ -37,6 +44,9 @@ nonisolated enum SubjectDetection: Equatable {
 /// which exists only to place a callout and never leaves the sheet.
 struct SubjectLiftView: View {
     let image: CGImage
+    /// Carried whole rather than as a loose flag because the rim's preview width has to be derived
+    /// the same way the encoder derives it, and that derivation takes the settings.
+    var settings: SubjectLiftSettings = .default
     @Binding var selection: LiftedSubject?
     @Binding var detection: SubjectDetection
     /// True while a finger is still down, so the callout waits for the release rather than
@@ -65,6 +75,12 @@ struct SubjectLiftView: View {
                 .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
         .task(id: imageSize) { await detectSubjects() }
+        .onChange(of: settings.outlineFraction) { _, _ in
+            // Switching the rim on for a subject that was picked while it was off. Turning it back
+            // off needs nothing: the rim is kept, just not drawn, so flipping back costs nothing.
+            guard let selection, selection.rim == nil else { return }
+            previewRim(for: selection.cutout, anchor: selection.anchor)
+        }
     }
 
     private func stage(box: CGSize) -> some View {
@@ -72,12 +88,23 @@ struct SubjectLiftView: View {
             Image(decorative: image, scale: 1, orientation: .up)
                 .resizable()
                 .frame(width: box.width, height: box.height)
-                // Dimming the photo behind the cut-out is the highlight. It is unambiguous in a way
-                // an outline is not: what stays bright is exactly what will be uploaded, so a mask
-                // that clipped an ear or swallowed the sofa is visible before the user commits.
+                // Dimming the photo behind the cut-out is the *selection* highlight, and it is
+                // unambiguous in a way a marching-ants outline is not: what stays bright is exactly
+                // what will be uploaded, so a mask that clipped an ear or swallowed the sofa is
+                // visible before the user commits. Not to be confused with the white rim below,
+                // which is not a highlight at all — it is part of the sticker.
                 .opacity(selection == nil ? 1 : 0.28)
 
             if let selection {
+                // The rim goes under the cut-out at the same rect — both are full-frame, so they
+                // register with each other and with the photo for free. Drawn only when the rim is
+                // switched on and has arrived; until then the bare cut-out stands in, which is what
+                // keeps the toggle instant in one direction and merely quick in the other.
+                if settings.outlineFraction > 0, let rim = selection.rim {
+                    Image(decorative: rim, scale: 1, orientation: .up)
+                        .resizable()
+                        .frame(width: box.width, height: box.height)
+                }
                 Image(decorative: selection.cutout, scale: 1, orientation: .up)
                     .resizable()
                     .frame(width: box.width, height: box.height)
@@ -108,7 +135,7 @@ struct SubjectLiftView: View {
         selection = nil
         subjects = []
         do {
-            let found = try await SubjectSegmenter(settings: .default).detect(in: image)
+            let found = try await SubjectSegmenter(settings: settings).detect(in: image)
             subjects = found
             let visible = found.filter(\.isInstance).count
             detection = .found(visible)
@@ -150,6 +177,37 @@ struct SubjectLiftView: View {
                 height: bounds.height * box.height
             )
         )
+        previewRim(for: hit.cutout, anchor: hit.descriptor)
+    }
+
+    /// Builds the rim the encoder would bake, off the gesture, and drops it into the selection.
+    ///
+    /// The width has to come from `FrameAtlasEncoder.window` rather than from anything this view
+    /// can see. The rim is a fraction of the *tile*, and the tile is the subject's padded, squared
+    /// crop scaled to a fixed side — so the equivalent width in source pixels depends on how big
+    /// that crop is, which is the one number the encoder and the preview must not compute two
+    /// different ways. A still lift crops to exactly this window, so the preview is not an
+    /// approximation of the result; it is the result.
+    private func previewRim(for cutout: CGImage, anchor: SubjectAnchorDescriptor) {
+        guard settings.outlineFraction > 0 else { return }
+        let size = CGSize(width: cutout.width, height: cutout.height)
+        let subject = CGRect(
+            x: anchor.bounds.minX * size.width,
+            y: anchor.bounds.minY * size.height,
+            width: anchor.bounds.width * size.width,
+            height: anchor.bounds.height * size.height
+        )
+        let window = FrameAtlasEncoder.window(around: subject, in: size, settings: settings)
+        let width = Double(window.width) * FrameAtlasEncoder.outlineMargin(settings)
+        Task {
+            let rim = await Task.detached(priority: .userInitiated) {
+                StickerOutline.rim(for: cutout, widthPixels: width)
+            }.value
+            // The finger may have moved on to another subject while this ran. Assigning anyway
+            // would hang the previous subject's rim off the current one's cut-out.
+            guard selection?.anchor == anchor else { return }
+            selection?.rim = rim
+        }
     }
 
     /// The largest aspect-correct box that fits inside `proposal`.

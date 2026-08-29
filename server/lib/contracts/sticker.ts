@@ -791,6 +791,42 @@ export function layerImageAssetIds(layer: StickerLayerV1): string[] {
   }
 }
 
+/**
+ * Whether a layer's artwork is bitmap pixels that a non-uniform scale would visibly stretch.
+ *
+ * Every layer is drawn into a *square* box before its anchor's scale is applied, and both renderers
+ * apply that scale as `scale(x, y)` on the whole group. For an app-drawn layer that is fine or even
+ * wanted — a rounded rectangle really can be a wide banner, and a glyph is re-fitted inside its box
+ * rather than stretched. For pixels it is distortion: an image asset is always a square 1024x1024
+ * PNG, and a capture atlas is encoded as square tiles, so unequal x and y squash the artwork.
+ */
+export function layerScaleIsAspectLocked(type: StickerLayerV1["type"]): boolean {
+  switch (type) {
+  case "image":
+  case "sequence":
+    return true;
+  case "text":
+  case "shape":
+  case "svg":
+  case "particle":
+    return false;
+  }
+}
+
+/**
+ * The scale an aspect-locked layer actually gets: the artwork fitted inside the planned box.
+ *
+ * Deliberately the smaller of the two rather than the larger or an average. The box a planner or a
+ * layout reviewer authored is a footprint promise — it is what the overlap and off-canvas checks are
+ * computed from, and what every other layer was placed around. Fitting inside it can only ever make
+ * a layer smaller than its own box, so a plan that passed those checks still passes; growing to the
+ * larger dimension instead would silently invalidate the layout that was approved.
+ */
+export function aspectLockedScale(scale: { x: number; y: number }): { x: number; y: number } {
+  const fitted = Math.min(scale.x, scale.y);
+  return { x: fitted, y: fitted };
+}
+
 function timingOf(document: StickerDocument): AnimationTiming {
   return { kind: document.kind, durationSeconds: document.durationSeconds };
 }

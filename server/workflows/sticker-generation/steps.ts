@@ -51,7 +51,7 @@ import {
   type GenerationOutcome,
 } from "@/lib/notifications/generation";
 import { describeError, traceEvent, traceSpan } from "@/lib/observability/trace";
-import { derivedAssetId } from "@/lib/services/assets";
+import { derivedAssetId, ensureAtlasPoster } from "@/lib/services/assets";
 import { appendGenerationEvent } from "@/lib/services/events";
 import {
   attachPlanConcept,
@@ -344,14 +344,29 @@ async function renderWorkingDocument(document: StickerDocument, ownerId: string)
   if (ids.length > 0) {
     const rows = await db.select().from(assets)
       .where(and(eq(assets.ownerId, ownerId), inArray(assets.id, ids)));
+    // Three different ways a referenced asset fails to arrive, and the render swallows all of them
+    // into the same purple placeholder. Separated here so a report of "my artwork is missing" can
+    // be answered without guessing: no row (wrong owner, or deleted), a row that never went ready,
+    // or a row whose object is gone from the store.
+    const byId = new Map(rows.map((asset) => [asset.id, asset]));
+    const unresolved = ids.filter((id) => !byId.has(id));
+    const notReady = rows.filter((asset) => asset.state !== "ready").map((asset) => asset.id);
+    if (unresolved.length > 0 || notReady.length > 0) {
+      traceEvent("render:assets:incomplete", { ownerId, referenced: ids.length, unresolved, notReady });
+    }
     await Promise.all(rows
       .filter((asset) => asset.state === "ready")
       .map(async (asset) => {
         try {
           const object = await objectStore.get(asset.r2Key);
           loaded.set(asset.id, { bytes: object.bytes, mimeType: asset.mimeType });
-        } catch {
+        } catch (error) {
           // Left out of the map on purpose; the renderer draws a placeholder for it.
+          traceEvent("render:assets:unreadable", {
+            assetId: asset.id,
+            r2Key: asset.r2Key,
+            error: describeError(error),
+          });
         }
       }));
   }
@@ -723,6 +738,36 @@ function planReferencePrompt(plan: PlanV1): string | undefined {
 }
 
 /**
+ * Gives a capture-led plan the one thing it can show: the first frame of the user's own footage.
+ *
+ * These plans render no concept — `planRequiresConcept` exempts them because the captured frames
+ * *are* the reference — which left the card with nothing above its layout boxes. The footage is the
+ * subject of the whole design, so showing tile 0 of the atlas is both the most useful preview
+ * available and the only one that costs no generation.
+ *
+ * Best-effort throughout: a plan card without a thumbnail is worse than one with, but neither is
+ * worth failing a planning turn over, and confirmation does not depend on this asset existing.
+ */
+async function attachCapturePreview(
+  db: ReturnType<typeof getDatabase>,
+  stickerId: string,
+  planId: string,
+  plan: PlanV1,
+): Promise<void> {
+  const capture = plan.layers.map((layer) => layer.source).find((source) => source.kind === "sequence");
+  if (!capture) return;
+  const row = await db.select({ conceptAssetId: plans.conceptAssetId }).from(plans)
+    .where(eq(plans.id, planId)).get();
+  const poster = derivedAssetId(capture.assetId, "poster");
+  if (row?.conceptAssetId === poster) return;
+  const sticker = await db.select({ ownerId: stickers.ownerId }).from(stickers)
+    .where(eq(stickers.id, stickerId)).get();
+  if (!sticker) return;
+  const attached = await ensureAtlasPoster(db, sticker.ownerId, stickerId, capture);
+  if (attached) await attachPlanConcept(db, planId, attached);
+}
+
+/**
  * Generates the static visual source of truth for a plan revision.
  *
  * Animated plans cannot proceed without it. The asset id includes the revision because `show_plan`
@@ -737,9 +782,9 @@ async function renderPlanConcept(
   plan: PlanV1,
   references: Array<{ bytes: Uint8Array; mimeType: string }>,
 ): Promise<void> {
-  const prompt = planReferencePrompt(plan);
-  if (!prompt) return;
   const db = getDatabase();
+  const prompt = planReferencePrompt(plan);
+  if (!prompt) return attachCapturePreview(db, stickerId, planId, plan);
   const row = await db.select({ conceptAssetId: plans.conceptAssetId }).from(plans)
     .where(eq(plans.id, planId)).get();
   const assetId = derivedAssetId(planId, `concept:${revision}`);
@@ -1357,6 +1402,8 @@ async function refineBuiltLayout(
   document: StickerDocument,
   instruction: string,
   history: string,
+  /** The approved static reference every part was separated from, when the plan had one. */
+  reference: { bytes: Uint8Array; mimeType: string } | undefined,
 ): Promise<StickerDocument> {
   // One layer has no inter-layer composition to repair. Skipping it also avoids adding a vision
   // round trip to plans whose only reason to exist is structured motion.
@@ -1430,7 +1477,7 @@ async function refineBuiltLayout(
   };
 
   const result = await getAiProvider().refineStickerLayout(
-    { document, instruction, history },
+    { document, instruction, history, reference },
     session,
   );
   await assertJobStillRunning(job.id);
@@ -1550,6 +1597,7 @@ async function executePlanBuildTurn(
     document,
     `${plan.title}. ${plan.summary}`,
     history,
+    visualReference,
   );
   const firstImageAssetId = document.layers.find((layer) => layer.type === "image")?.assetId;
   let snapshot = 0;

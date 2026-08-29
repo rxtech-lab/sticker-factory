@@ -28,6 +28,20 @@ const LAYER_FIT = 0.86;
 /** Assets the document references, already fetched. Keyed by asset id. */
 export type RenderAssets = Map<string, { bytes: Uint8Array; mimeType: string }>;
 
+/**
+ * The key one pre-cut cell of a frame atlas is stored under in `RenderAssets`.
+ *
+ * A sequence layer shows exactly one cell per sampled instant, but the atlas is a single asset, so
+ * inlining it whole put the *entire* sheet — every frame — into the markup once per tile. At the
+ * sizes the iOS encoder ships that was tens of megabytes of base64 for a few hundred kilobytes of
+ * visible pixels. `sticker-render` cuts the cells it needs ahead of time and files them here.
+ *
+ * `#` cannot appear in an asset id (they are UUIDs), so a cell key can never collide with one.
+ */
+export function sequenceCellKey(assetId: string, index: number): string {
+  return `${assetId}#${index}`;
+}
+
 const escapeText = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -205,6 +219,20 @@ function layerBody(
       + `preserveAspectRatio="${fit}" href="${href}"/>`;
   }
   case "sequence": {
+    // `sequenceFrameIndex` is the same function the Swift renderer uses, so the frame the agent
+    // reviews here is the frame the user will actually see.
+    const index = sequenceFrameIndex(layer, time);
+    const fit = layer.contentMode === "fill" ? "xMidYMid slice" : "xMidYMid meet";
+
+    // The cell on its own, when `sticker-render` has cut it out ahead of time. This is the path
+    // that runs in production; it inlines one tile-sized frame instead of the whole sheet.
+    const cell = assets.get(sequenceCellKey(layer.assetId, index));
+    if (cell) {
+      const href = `data:${cell.mimeType};base64,${Buffer.from(cell.bytes).toString("base64")}`;
+      return `<image x="${round(-half)}" y="${round(-half)}" width="${round(box)}" `
+        + `height="${round(box)}" preserveAspectRatio="${fit}" href="${href}"/>`;
+    }
+
     const asset = assets.get(layer.assetId);
     if (!asset) {
       return `<rect x="${-half}" y="${-half}" width="${box}" height="${box}" rx="${round(box * 0.12)}" `
@@ -212,20 +240,18 @@ function layerBody(
         + `<text x="0" y="0" font-size="${round(box * 0.1)}" fill="#311B92" text-anchor="middle" `
         + `dominant-baseline="middle" font-family="${FONT_STACKS.system}">capture</text>`;
     }
-    // One tile of the atlas, cropped with a nested viewport rather than by slicing pixels: librsvg
-    // resolves the `viewBox` itself, so this costs no image processing at all. `sequenceFrameIndex`
-    // is the same function the Swift renderer uses, so the frame the agent reviews here is the frame
-    // the user will actually see.
+    // Whole-atlas fallback, for a caller that hands over raw assets with no preparation step —
+    // `documentSvg` is exported and the unit tests use it that way. One tile of the atlas, cropped
+    // with a nested viewport rather than by slicing pixels: librsvg resolves the `viewBox` itself,
+    // so this costs no image processing at all.
     //
     // The sheet is drawn into a `columns` x `rows` *unit* grid rather than into its pixel
     // dimensions, so this needs no knowledge of how big the atlas actually is — `RenderAssets`
     // carries only bytes. That is exact because the encoder writes square tiles (it squares one
     // shared crop rect before scaling), so one grid cell is one tile with no distortion.
-    const index = sequenceFrameIndex(layer, time);
     const column = index % layer.columns;
     const row = Math.floor(index / layer.columns);
     const href = `data:${asset.mimeType};base64,${Buffer.from(asset.bytes).toString("base64")}`;
-    const fit = layer.contentMode === "fill" ? "xMidYMid slice" : "xMidYMid meet";
     return `<svg x="${round(-half)}" y="${round(-half)}" width="${round(box)}" height="${round(box)}" `
       + `viewBox="${column} ${row} 1 1" preserveAspectRatio="${fit}">`
       + `<image x="0" y="0" width="${layer.columns}" height="${layer.rows}" `

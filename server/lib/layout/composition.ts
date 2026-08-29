@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   applyStickerOperationsV1,
+  aspectLockedScale,
+  layerScaleIsAspectLocked,
   LayerIdSchema,
   StickerDocumentSchema,
   type StickerDocument,
@@ -123,6 +125,10 @@ export function applyLayoutAdjustment(
   for (const placement of value.placements ?? []) {
     const layer = document.layers.find((candidate) => candidate.id === placement.layerId);
     if (!layer) throw new Error(`Unknown layer ${placement.layerId}`);
+    // Same squaring-off the plan builder applies, for the same reason and at the same moment: a
+    // reviewer looking at a stretched caption reaches for a wider box, and honouring that literally
+    // would stretch it further. Fitting the artwork inside the requested box is what it meant.
+    const requested = { x: placement.scaleX, y: placement.scaleY };
     document = applyStickerOperationsV1(document, [{
       op: "setLayerAnimations",
       layerId: layer.id,
@@ -130,7 +136,7 @@ export function applyLayoutAdjustment(
       anchor: {
         ...layer.anchor,
         position: { x: placement.x, y: placement.y },
-        scale: { x: placement.scaleX, y: placement.scaleY },
+        scale: layerScaleIsAspectLocked(layer.type) ? aspectLockedScale(requested) : requested,
         rotationDegrees: placement.rotationDegrees,
       },
     }]);

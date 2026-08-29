@@ -22,6 +22,15 @@ struct SubjectLiftSheet: View {
     @State private var isPressing = false
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var isOutlined = true
+
+    /// The one setting this screen still asks about, folded into the struct everything downstream
+    /// already takes.
+    private var settings: SubjectLiftSettings {
+        var settings = SubjectLiftSettings.default
+        if !isOutlined { settings.outlineFraction = 0 }
+        return settings
+    }
 
     private var hint: String {
         switch detection {
@@ -71,6 +80,7 @@ struct SubjectLiftSheet: View {
     private var stage: some View {
         SubjectLiftView(
             image: capture.still,
+            settings: settings,
             selection: $selection,
             detection: $detection,
             isPressing: $isPressing
@@ -118,8 +128,39 @@ struct SubjectLiftSheet: View {
         .animation(.snappy(duration: 0.22), value: selection?.bounds)
     }
 
+    /// The white rim, on or off, shown only once there is a subject to put it around.
+    ///
+    /// A knob on this screen, which the note at the top of this file argues against — and the
+    /// exception that proves it. The objection to the old knobs was that they asked the user to
+    /// predict an outcome they could not see. This one is answered by looking: the stage behind it
+    /// is already drawing the rim it describes, at the width the atlas will bake.
+    private var outlineToggle: some View {
+        Button {
+            Haptics.tap(.light)
+            isOutlined.toggle()
+        } label: {
+            Label(
+                "White outline",
+                systemImage: isOutlined ? "checkmark.circle.fill" : "circle"
+            )
+            .font(.footnote.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .background(.white.opacity(isOutlined ? 0.22 : 0.08), in: .capsule)
+        .accessibilityIdentifier("subject-lift-outline-toggle")
+        .accessibilityLabel("White outline")
+        .accessibilityValue(isOutlined ? "On" : "Off")
+    }
+
     private var footer: some View {
         VStack(spacing: 8) {
+            if selection != nil, !isWorking {
+                outlineToggle
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+            }
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption)
@@ -139,6 +180,7 @@ struct SubjectLiftSheet: View {
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity)
         .animation(.snappy, value: hint)
+        .animation(.snappy(duration: 0.22), value: selection == nil)
     }
 
     private var workingOverlay: some View {
@@ -165,7 +207,7 @@ struct SubjectLiftSheet: View {
                 // this feature exists; if it does not, the pipeline produces a one-frame atlas that
                 // is structurally identical and nothing downstream can tell the difference.
                 includeMotion: capture.hasMotion,
-                settings: .default,
+                settings: settings,
                 basename: basename
             )
             Haptics.success()

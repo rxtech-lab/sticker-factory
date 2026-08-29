@@ -5,7 +5,13 @@ import {
   type LayerCompileInput,
 } from "@/lib/animation/compile";
 import { AnimationSpecV1Schema, type AnimationAnchorV1 } from "@/lib/contracts/animation";
-import { LayerIdSchema, type StickerDocument } from "@/lib/contracts/sticker";
+import {
+  aspectLockedScale,
+  layerScaleIsAspectLocked,
+  LayerIdSchema,
+  type StickerDocument,
+  type StickerLayerV1,
+} from "@/lib/contracts/sticker";
 
 const HexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/);
 
@@ -187,11 +193,42 @@ export function planTiming(plan: Pick<PlanV1, "kind" | "timing">): AnimationTimi
     : { kind: "animated", durationSeconds: plan.timing.durationSeconds };
 }
 
-/** The resting state a planned layer's motion departs from and returns to. */
+/**
+ * The layer type a plan source becomes once the plan is built.
+ *
+ * Only used to ask whether the layer will hold pixels, so `generate` and `existing` collapse onto
+ * the same answer they will have in the document: both are ordinary image layers by then.
+ */
+function plannedLayerType(source: PlanLayerSourceV1): StickerLayerV1["type"] {
+  switch (source.kind) {
+  case "generate":
+  case "existing":
+    return "image";
+  case "sequence":
+    return "sequence";
+  case "text":
+    return "text";
+  case "shape":
+    return "shape";
+  case "particle":
+    return "particle";
+  }
+}
+
+/**
+ * The resting state a planned layer's motion departs from and returns to.
+ *
+ * A pixel-backed layer's scale is squared off here rather than trusted as authored. Planners write
+ * `scaleX`/`scaleY` as the box they want an element to occupy, and for a wide caption they write a
+ * wide box — but the artwork behind it is a square PNG drawn to fill its frame, so the renderer's
+ * `scale(x, y)` stretched it to match. Fitting it inside the planned box instead is the only
+ * reading that keeps the picture the user approved undistorted.
+ */
 export function planLayerAnchor(layer: PlanLayerV1): AnimationAnchorV1 {
+  const scale = { x: layer.scaleX, y: layer.scaleY };
   return {
     position: { x: layer.x, y: layer.y },
-    scale: { x: layer.scaleX, y: layer.scaleY },
+    scale: layerScaleIsAspectLocked(plannedLayerType(layer.source)) ? aspectLockedScale(scale) : scale,
     rotationDegrees: layer.rotationDegrees,
     opacity: 1,
     // A plan never trims: draw-on is authored as a spec, not as a resting window, so a planned

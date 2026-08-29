@@ -58,7 +58,7 @@ struct AboutPageView: View {
             .frame(maxWidth: 720, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .refreshable { await load() }
+        .refreshable { await load(showingPlaceholder: false) }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
@@ -92,15 +92,20 @@ struct AboutPageView: View {
         return value
     }
 
-    private func load() async {
-        state = .loading
+    /// Pull-to-refresh must not swap the loaded markdown out for the placeholder: collapsing the
+    /// scroll content mid-gesture retracts the refresh control, which cancels the very task doing
+    /// the reload, and the cancelled request then renders as a failure. Refreshing keeps the old
+    /// document on screen behind the system's own spinner; only a first load shows the placeholder.
+    private func load(showingPlaceholder: Bool = true) async {
+        if showingPlaceholder {
+            state = .loading
+        }
         do {
             let markdown = try await AboutPage.load(baseURL: baseURL)
             guard !Task.isCancelled else { return }
             state = .loaded(markdown)
-        } catch is CancellationError {
-            return
         } catch {
+            guard !StickerStore.isCancellation(error) else { return }
             state = .failed(error.localizedDescription)
         }
     }

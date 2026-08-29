@@ -43,6 +43,9 @@ enum SubjectLiftPipeline {
         } else {
             lifted = [try await segmenter.lift(from: capture.still, near: anchor)?.image]
             effective = .still
+            // `.still` is a whole struct, not a patch, so it would quietly put the rim back on for a
+            // user who had just turned it off — the one setting on this screen they actually chose.
+            effective.outlineFraction = settings.outlineFraction
             SubjectLiftLog.logger.info(
                 "pipeline: still-only lift, subject=\(lifted.compactMap { $0 }.count == 1, privacy: .public)"
             )

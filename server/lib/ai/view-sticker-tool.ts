@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { RenderableSession, StickerRenderResult } from "@/lib/ai/gateway";
+import { describeError, traceEvent } from "@/lib/observability/trace";
 
 /**
  * The tool that lets a loop look at its own work.
@@ -52,17 +53,44 @@ export function viewStickerTool(session: RenderableSession, options: { animated:
     // would only invite it to ask for a frame that does not exist.
     inputSchema: z.object({}).strict(),
     execute: async (_input, { toolCallId }) => {
-      const render = await session.renderSticker();
-      renders.set(toolCallId, render);
-      return {
-        rendered: true,
-        frames: render.times.length,
-        timesSeconds: render.times.map((time) => Number(time.toFixed(2))),
-      };
+      const startedAt = Date.now();
+      try {
+        const render = await session.renderSticker();
+        renders.set(toolCallId, render);
+        traceEvent("view_sticker:ok", {
+          toolCallId,
+          ms: Date.now() - startedAt,
+          frames: render.times.length,
+          sheetBytes: render.bytes.byteLength,
+          mimeType: render.mimeType,
+        });
+        return {
+          rendered: true,
+          frames: render.times.length,
+          timesSeconds: render.times.map((time) => Number(time.toFixed(2))),
+        };
+      } catch (error) {
+        // The SDK turns this throw into a tool-error part and the loop carries on, so without a
+        // line here the only trace of the failure is the model's own reaction to it, several
+        // messages later. `renderSticker` logs the cause; this records that the *tool* is what
+        // broke, and which call it was.
+        traceEvent("view_sticker:fail", {
+          toolCallId,
+          ms: Date.now() - startedAt,
+          error: describeError(error),
+        });
+        throw error;
+      }
     },
     toModelOutput: ({ toolCallId, output }) => {
       const render = renders.get(toolCallId);
       renders.delete(toolCallId);
+      if (!render) {
+        // The silent failure this catches: `execute` succeeded, so the model is told a render
+        // exists, but the parked bytes are gone and the tool result carries text only. The model
+        // then "reviews" a sticker it was never shown and reports back with total confidence.
+        traceEvent("view_sticker:no-render", { toolCallId, frames: output.frames });
+      }
       const summary = render && render.times.length > 1
         ? `Frames at ${output.timesSeconds.map((t) => `${t}s`).join(", ")}, read left to right, top to bottom.`
         : "The sticker as it currently stands.";
@@ -73,8 +101,10 @@ export function viewStickerTool(session: RenderableSession, options: { animated:
           ...(render
             ? [{
               type: "file" as const,
-              mediaType: "image/png",
-              data: { type: "data" as const, data: render.png },
+              // Taken from the render rather than hard-coded: the sheet is WebP, and a `data:` part
+              // labelled `image/png` that is not one is rejected by the provider, not corrected.
+              mediaType: render.mimeType,
+              data: { type: "data" as const, data: render.bytes },
             }]
             : []),
         ],

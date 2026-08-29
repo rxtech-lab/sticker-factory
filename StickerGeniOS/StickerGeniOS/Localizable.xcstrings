@@ -1030,6 +1030,12 @@
         }
       }
     },
+    "Capture" : {
+
+    },
+    "Capture · %lld frames" : {
+
+    },
     "Check the layers, layout, and image count. Build only when the plan matches what you want." : {
       "localizations" : {
         "zh-CN" : {
@@ -2252,6 +2258,9 @@
     "Lift subject" : {
 
     },
+    "Lift the subject out" : {
+
+    },
     "Lifted subject. Tap to choose a different one." : {
 
     },
@@ -2912,6 +2921,12 @@
           }
         }
       }
+    },
+    "Off" : {
+
+    },
+    "On" : {
+
     },
     "Once" : {
       "localizations" : {
@@ -4544,6 +4559,9 @@
         }
       }
     },
+    "Tap a photo you attached to cut its subject away from the background, so only the part you want reaches the sticker." : {
+
+    },
     "Tap to view" : {
       "localizations" : {
         "zh-CN" : {
@@ -4738,6 +4756,9 @@
           }
         }
       }
+    },
+    "The first frame of your capture. It animates in place, with the other layers built around it." : {
+
     },
     "The media upload could not be completed (HTTP %lld)." : {
 
@@ -5484,6 +5505,9 @@
         }
       }
     },
+    "White outline" : {
+
+    },
     "Working" : {
       "localizations" : {
         "zh-CN" : {
@@ -5611,6 +5635,9 @@
           }
         }
       }
+    },
+    "YOUR CAPTURE" : {
+
     },
     "Your files are ready to share" : {
       "localizations" : {

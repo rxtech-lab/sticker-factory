@@ -1,7 +1,8 @@
 import sharp from "sharp";
-import { loopedTime } from "@/lib/animation/sample";
+import { loopedTime, sequenceFrameIndex } from "@/lib/animation/sample";
 import { layerImageAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
-import { frameFragment, IdFactory, type RenderAssets } from "@/lib/render/document-svg";
+import { describeError, traceEvent } from "@/lib/observability/trace";
+import { frameFragment, IdFactory, sequenceCellKey, type RenderAssets } from "@/lib/render/document-svg";
 
 /**
  * Renders a document to a PNG the agent can look at.
@@ -33,12 +34,31 @@ const FRAMES = 6;
 const CHECKER = 16;
 
 export type StickerRender = {
-  png: Uint8Array;
+  bytes: Uint8Array;
+  /** Always `SHEET_MIME`. Carried explicitly so callers never hard-code the encoding. */
+  mimeType: string;
   /** Instants drawn, in document seconds. One entry for a static document. */
   times: number[];
   width: number;
   height: number;
 };
+
+/**
+ * The encoding the sheet is handed back in.
+ *
+ * WebP rather than PNG: the sheet is fed straight into the model's context, where `estimateTokens`
+ * stringifies it, so its byte size is a running cost paid on every single `view_sticker` call. At
+ * this quality it is several times smaller than the palette PNG it replaces and the difference is
+ * invisible on a 224px tile — and the tiles are drawn over an opaque chequerboard, so the alpha
+ * PNG was carrying is not information the agent loses.
+ *
+ * **Only the finished sheet.** Assets inlined *into* the SVG must stay PNG: the librsvg inside
+ * `sharp` does not decode an embedded WebP `data:` URI and, worse, does not error on one — it
+ * draws nothing at all, which would hand the agent a blank tile it has no way to distinguish from
+ * a genuinely empty layer.
+ */
+export const SHEET_MIME = "image/webp";
+const SHEET_QUALITY = 72;
 
 /** Every asset id a render of this document needs. */
 export function referencedAssetIds(document: StickerDocument): string[] {
@@ -120,12 +140,252 @@ export function documentSvg(document: StickerDocument, assets: RenderAssets): { 
   return { svg, times, width, height };
 }
 
+/**
+ * The longest edge worth keeping for a bitmap that ends up inside one tile.
+ *
+ * Twice the tile, so a layer scaled up past 1 still has pixels to show rather than going soft.
+ */
+const ASSET_EDGE = TILE * 2;
+
+/**
+ * The longest edge of one atlas cell.
+ *
+ * Tighter than `ASSET_EDGE` because a cell's situation is known exactly rather than bounded: it is
+ * drawn into `LAYER_FIT * TILE` — about 193px — of a single tile, and there are up to six of them
+ * inlined in one sheet, so this is the number that decides how big the markup gets. `ASSET_EDGE`'s
+ * doubling buys headroom for a layer scaled past 1; at 224 a cell still has more pixels than the
+ * box it lands in, and the sheet is a review render where the tool description already tells the
+ * agent not to judge fine detail.
+ */
+const CELL_EDGE = TILE;
+
+/** How large each raster can usefully be, by asset id. Anything absent is left alone. */
+function assetEdges(document: StickerDocument): Map<string, number> {
+  const edges = new Map<string, number>();
+  const want = (id: string, edge: number) => edges.set(id, Math.max(edges.get(id) ?? 0, edge));
+  if (document.background.type === "image") want(document.background.assetId, ASSET_EDGE);
+  for (const layer of document.layers) {
+    // A sequence layer's atlas is handled by `sliceAtlases`, which replaces it with the individual
+    // cells — so it is deliberately not listed here and never inlined whole.
+    if (layer.type === "sequence") continue;
+    for (const id of layerImageAssetIds(layer)) want(id, ASSET_EDGE);
+  }
+  return edges;
+}
+
+/**
+ * Which cells of which atlas the sheet actually draws.
+ *
+ * At most one per sampled instant per sequence layer — six for an animated document, one for a
+ * static one — however many frames the capture holds. Deduplicated because a short capture on a
+ * long timeline shows the same frame in more than one tile.
+ */
+function requiredCells(document: StickerDocument, times: number[]): Map<string, Set<number>> {
+  const cells = new Map<string, Set<number>>();
+  for (const layer of document.layers) {
+    if (layer.type !== "sequence") continue;
+    const indices = cells.get(layer.assetId) ?? new Set<number>();
+    for (const time of times) indices.add(sequenceFrameIndex(layer, time));
+    cells.set(layer.assetId, indices);
+  }
+  return cells;
+}
+
+/**
+ * Cuts each frame atlas down to the cells the sheet draws, and drops the atlas itself.
+ *
+ * This is the whole reason `view_sticker` can look at a capture at all. The atlas is one asset —
+ * up to 64 tiles at 640px, which the iOS encoder only stops growing at 20 MB — and the previous
+ * implementation inlined it as a base64 `data:` URI *once per tile*, so a six-frame contact sheet
+ * carried six copies of every frame to show six of them. libxml2 caps a single attribute at 10 MB
+ * (`XML_MAX_HUGE_LENGTH`), which is what `view_sticker` used to die on, and even under that ceiling
+ * the markup ran to tens of megabytes.
+ *
+ * Cells are cut with `extract` on integer cell dimensions — the same floor division the renderer
+ * and `ensureAtlasPoster` use — so the cell the agent reviews is the cell a playing client shows.
+ *
+ * Best-effort per atlas: a failure leaves the atlas out entirely rather than falling back to
+ * inlining it whole, because inlining it whole is the failure being fixed. `document-svg` then
+ * draws its labelled "capture" placeholder, which is a worse render but still a render.
+ */
+async function sliceAtlases(
+  document: StickerDocument,
+  assets: RenderAssets,
+  times: number[],
+  into: RenderAssets,
+): Promise<void> {
+  await Promise.all([...requiredCells(document, times)].map(async ([assetId, indices]) => {
+    const atlas = assets.get(assetId);
+    if (!atlas) return;
+    const layer = document.layers.find(
+      (candidate) => candidate.type === "sequence" && candidate.assetId === assetId,
+    );
+    if (layer?.type !== "sequence") return;
+    try {
+      const source = sharp(atlas.bytes);
+      const { width = 0, height = 0 } = await source.metadata();
+      const cellWidth = Math.floor(width / layer.columns);
+      const cellHeight = Math.floor(height / layer.rows);
+      if (cellWidth < 1 || cellHeight < 1) throw new Error(`atlas is ${width}x${height}`);
+      await Promise.all([...indices].map(async (index) => {
+        const bytes = await sharp(atlas.bytes)
+          .extract({
+            left: (index % layer.columns) * cellWidth,
+            top: Math.floor(index / layer.columns) * cellHeight,
+            width: cellWidth,
+            height: cellHeight,
+          })
+          // PNG, not WebP: see the note on `SHEET_MIME`. Alpha is load-bearing here — the cell is a
+          // cut-out subject, and a white box behind it would read as a lift failure.
+          .resize(CELL_EDGE, CELL_EDGE, { fit: "inside", withoutEnlargement: true })
+          .png({ compressionLevel: 9 })
+          .toBuffer();
+        into.set(sequenceCellKey(assetId, index), { bytes: new Uint8Array(bytes), mimeType: "image/png" });
+      }));
+      traceEvent("render:atlas:sliced", {
+        assetId,
+        atlasBytes: atlas.bytes.byteLength,
+        grid: `${layer.columns}x${layer.rows}`,
+        cells: indices.size,
+        cellBytes: [...indices].reduce(
+          (total, index) => total + (into.get(sequenceCellKey(assetId, index))?.bytes.byteLength ?? 0),
+          0,
+        ),
+      });
+    } catch (error) {
+      traceEvent("render:atlas:fail", {
+        assetId,
+        atlasBytes: atlas.bytes.byteLength,
+        grid: `${layer.columns}x${layer.rows}`,
+        error: describeError(error),
+      });
+    }
+  }));
+}
+
+/**
+ * Shrinks every bitmap to the size the sheet can actually show it at.
+ *
+ * Not an optimisation — a correctness fix. Each raster is inlined as a base64 `data:` URI, once per
+ * tile, and libxml2 refuses any single attribute over 10 MB (`XML_MAX_HUGE_LENGTH`), so `sharp`
+ * rejects the whole SVG with "Buffer size limit exceeded, try XML_PARSE_HUGE" and `view_sticker`
+ * fails. A capture atlas walks straight into that: the iOS encoder packs up to 64 tiles at 640px
+ * and only gives up at 20 MB, which is 27 MB of base64 — so every animated sticker built from a
+ * Live Photo lost the one tool the agent has for looking at its own work.
+ *
+ * Failures drop the asset instead of passing the original through: the renderer draws a labelled
+ * placeholder for a missing bitmap, which is a worse render but still a render, whereas keeping an
+ * oversized one would fail the whole call again for the same reason.
+ */
+export async function prepareSheetAssets(
+  document: StickerDocument,
+  assets: RenderAssets,
+): Promise<RenderAssets> {
+  // `sampleTimes` is pure and deterministic, so deciding which atlas cells are needed here and
+  // drawing them in `documentSvg` cannot disagree about which instants the sheet shows.
+  const times = sampleTimes(document);
+  const edges = assetEdges(document);
+  const fitted: RenderAssets = new Map();
+  const atlases = requiredCells(document, times);
+  await Promise.all([...assets].map(async ([id, asset]) => {
+    // Replaced by its own cells below, and deliberately not copied across: leaving it in the map
+    // would let `document-svg`'s whole-atlas fallback inline it again.
+    if (atlases.has(id)) return;
+    const edge = edges.get(id);
+    // Not a bitmap this renderer rasterises — an SVG layer's source is embedded as markup.
+    if (edge === undefined) {
+      fitted.set(id, asset);
+      traceEvent("render:asset:passthrough", { assetId: id, bytes: asset.bytes.byteLength, mimeType: asset.mimeType });
+      return;
+    }
+    try {
+      const bytes = await sharp(asset.bytes)
+        .resize(edge, edge, { fit: "inside", withoutEnlargement: true })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+      fitted.set(id, { bytes: new Uint8Array(bytes), mimeType: "image/png" });
+      traceEvent("render:asset:fit", {
+        assetId: id,
+        edge,
+        // Both sizes, because the inlined `data:` URI is ~4/3 of the *after* number and the 10 MB
+        // libxml2 attribute ceiling is the thing this whole function exists to stay under.
+        beforeBytes: asset.bytes.byteLength,
+        afterBytes: bytes.byteLength,
+      });
+    } catch (error) {
+      // Dropped on purpose; see above. Logged because the render that follows is then quietly a
+      // placeholder, and a sheet full of purple boxes is indistinguishable from a layout bug.
+      traceEvent("render:asset:fail", {
+        assetId: id,
+        edge,
+        bytes: asset.bytes.byteLength,
+        mimeType: asset.mimeType,
+        error: describeError(error),
+      });
+    }
+  }));
+  await sliceAtlases(document, assets, times, fitted);
+  return fitted;
+}
+
+/**
+ * What the markup looks like from libxml2's side, for a failure line.
+ *
+ * Computed only when the rasterise throws: `href` is matched across a string that can be tens of
+ * megabytes, which is not worth doing on the happy path. `largestHrefBytes` is the number that
+ * matters — libxml2 caps a *single attribute* at 10 MB (`XML_MAX_HUGE_LENGTH`), so a sheet can be
+ * far past that in total and still parse, while one oversized atlas fails the whole document.
+ */
+function svgDiagnostics(svg: string): Record<string, number> {
+  let largest = 0;
+  let count = 0;
+  for (const match of svg.matchAll(/(?:xlink:)?href="data:[^"]*"/g)) {
+    count += 1;
+    largest = Math.max(largest, match[0].length);
+  }
+  return { svgBytes: svg.length, inlinedCount: count, largestHrefBytes: largest };
+}
+
 export async function renderSticker(document: StickerDocument, assets: RenderAssets): Promise<StickerRender> {
-  const { svg, times, width, height } = documentSvg(document, assets);
-  // `density` matters: librsvg rasterises at 72dpi by default, and the SVG's own width/height are in
-  // px, so leaving it alone is what keeps the output exactly `width`x`height`.
-  const png = await sharp(Buffer.from(svg), { density: 72 })
-    .png({ compressionLevel: 9, palette: true })
-    .toBuffer();
-  return { png: new Uint8Array(png), times, width, height };
+  const startedAt = Date.now();
+  const missing = referencedAssetIds(document).filter((id) => !assets.has(id));
+  traceEvent("render:sticker:start", {
+    kind: document.kind,
+    layers: document.layers.length,
+    assets: assets.size,
+    // Not an error — these draw as labelled placeholders — but it is the first thing to check when
+    // the agent reports that its artwork is not in the render.
+    missingAssets: missing,
+  });
+  const { svg, times, width, height } = documentSvg(document, await prepareSheetAssets(document, assets));
+  try {
+    // `density` matters: librsvg rasterises at 72dpi by default, and the SVG's own width/height are
+    // in px, so leaving it alone is what keeps the output exactly `width`x`height`.
+    const sheet = await sharp(Buffer.from(svg), { density: 72 })
+      .webp({ quality: SHEET_QUALITY })
+      .toBuffer();
+    traceEvent("render:sticker:ok", {
+      ms: Date.now() - startedAt,
+      width,
+      height,
+      frames: times.length,
+      svgBytes: svg.length,
+      sheetBytes: sheet.byteLength,
+      mimeType: SHEET_MIME,
+    });
+    return { bytes: new Uint8Array(sheet), mimeType: SHEET_MIME, times, width, height };
+  } catch (error) {
+    // The one line that says *why* `view_sticker` came back as a tool error rather than an image.
+    // librsvg's messages name neither the attribute nor the asset, so the sizes have to come from
+    // here or the next occurrence is as undiagnosable as the last.
+    traceEvent("render:sticker:fail", {
+      ms: Date.now() - startedAt,
+      width,
+      height,
+      frames: times.length,
+      ...svgDiagnostics(svg),
+      error: describeError(error),
+    });
+    throw error;
+  }
 }

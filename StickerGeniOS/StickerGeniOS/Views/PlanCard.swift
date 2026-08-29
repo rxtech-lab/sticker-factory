@@ -21,14 +21,34 @@ struct PlanCard: View {
 
     private var plan: Plan { record.plan }
     private var generationCount: Int { record.generationCount }
-    private var isWaitingForReference: Bool { plan.kind == .animated && referenceImage == nil }
+    /// Whether the footage the user captured is this plan's own reference.
+    ///
+    /// The server's `planRequiresConcept` draws the same line: a capture with nothing generated
+    /// around it needs no concept render, so its preview is a frame of the capture rather than
+    /// artwork the model drew. Adding a generated layer moves the plan back onto the concept path.
+    private var isCaptureLed: Bool {
+        generationCount == 0 && plan.layers.contains { layer in
+            if case .sequence = layer.source { true } else { false }
+        }
+    }
+
+    /// Only a plan that actually *has* a concept asset is waiting on one.
+    ///
+    /// A capture-led animated plan — a lifted subject plus text, shapes or particles, nothing
+    /// generated — renders no static reference at all: the frames the user captured *are* the
+    /// reference, so the server never attaches a `conceptAssetId` and `confirmPlan` never asks for
+    /// one. Gating on `kind == .animated` alone therefore left exactly those plans stuck behind a
+    /// disabled "Loading reference…" button, waiting for an image that was never coming.
+    private var isWaitingForReference: Bool {
+        plan.kind == .animated && record.conceptAssetId != nil && referenceImage == nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 if plan.kind == .animated, record.conceptAssetId != nil {
-                    PlanReferencePreview(image: referenceImage)
+                    PlanReferencePreview(image: referenceImage, isCapture: isCaptureLed)
                 }
                 PlanLayoutPreview(layers: plan.layers)
                 layerList
@@ -253,13 +273,19 @@ struct PlanCard: View {
     }
 }
 
-/// The visual source of truth generated before an animated plan becomes actionable.
+/// What the plan will be built from, shown before anything is committed to.
+///
+/// Two different things wear this frame, because a plan has one of two references. A generated plan
+/// gets a concept render the user is approving the *look* of; a capture-led plan gets the first
+/// frame of its own footage, which is not up for approval — it is what the user already shot. The
+/// copy has to say which, or the capture reads as artwork the model drew of them.
 private struct PlanReferencePreview: View {
     let image: UIImage?
+    let isCapture: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("STATIC REFERENCE")
+            Text(isCapture ? "YOUR CAPTURE" : "STATIC REFERENCE")
                 .font(.caption2.weight(.semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
@@ -284,7 +310,9 @@ private struct PlanReferencePreview: View {
             .clipShape(.rect(cornerRadius: 14))
             .accessibilityIdentifier("plan-static-reference")
 
-            Text("Confirm this look, then the artwork is separated into parts for animation.")
+            Text(isCapture
+                ? "The first frame of your capture. It animates in place, with the other layers built around it."
+                : "Confirm this look, then the artwork is separated into parts for animation.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
