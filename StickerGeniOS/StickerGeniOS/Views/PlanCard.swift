@@ -13,6 +13,8 @@ struct PlanCard: View {
     let isBusy: Bool
     let onConfirm: () -> Void
     let onReject: (String?) -> Void
+    let onAddImageToSticker: (UIImage) -> Void
+    let onSaveImageToPhotoLibrary: (UIImage) -> Void
 
     @State private var confirming = false
     @State private var rejecting = false
@@ -48,7 +50,12 @@ struct PlanCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 if plan.kind == .animated, record.conceptAssetId != nil {
-                    PlanReferencePreview(image: referenceImage, isCapture: isCaptureLed)
+                    PlanReferencePreview(
+                        image: referenceImage,
+                        isCapture: isCaptureLed,
+                        onAddToSticker: onAddImageToSticker,
+                        onSaveToPhotoLibrary: onSaveImageToPhotoLibrary
+                    )
                 }
                 PlanLayoutPreview(layers: plan.layers)
                 layerList
@@ -282,6 +289,8 @@ struct PlanCard: View {
 private struct PlanReferencePreview: View {
     let image: UIImage?
     let isCapture: Bool
+    let onAddToSticker: (UIImage) -> Void
+    let onSaveToPhotoLibrary: (UIImage) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -295,6 +304,17 @@ private struct PlanReferencePreview: View {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
+                        .contextMenu {
+                            Button("Add to Sticker", systemImage: "plus") {
+                                onAddToSticker(image)
+                            }
+                            .accessibilityIdentifier("add-plan-image-to-sticker")
+
+                            Button("Save to Photo Library", systemImage: "square.and.arrow.down") {
+                                onSaveToPhotoLibrary(image)
+                            }
+                            .accessibilityIdentifier("save-plan-image-to-photo-library")
+                        }
                 } else {
                     VStack(spacing: 8) {
                         ProgressView()

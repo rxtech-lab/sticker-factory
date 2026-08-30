@@ -2,6 +2,20 @@ import Foundation
 import UIKit
 import UserNotifications
 
+/// The notification API predates Swift concurrency, so its completion closure is not annotated
+/// `Sendable`. This box documents the single transfer to MainActor that UIKit requires.
+private nonisolated final class NotificationResponseCompletion: @unchecked Sendable {
+    private let handler: () -> Void
+
+    init(_ handler: @escaping () -> Void) {
+        self.handler = handler
+    }
+
+    func callAsFunction() {
+        handler()
+    }
+}
+
 /// Permission, APNs enrolment, and what a tapped banner opens.
 ///
 /// The banners themselves are the server's to send. Generation runs there, and the client's event
@@ -83,11 +97,19 @@ final class GenerationNotifier: NSObject, GenerationNotifying {
 extension GenerationNotifier: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
         // Read the payload out here: `userInfo` is not `Sendable`, but the id inside it is.
-        guard let stickerID = response.notification.request.content.userInfo[Self.stickerIDKey] as? String else { return }
-        await MainActor.run { onOpenSticker?(stickerID) }
+        let stickerID = response.notification.request.content.userInfo[Self.stickerIDKey] as? String
+        let completion = NotificationResponseCompletion(completionHandler)
+        Task { @MainActor [weak self] in
+            if let stickerID { self?.onOpenSticker?(stickerID) }
+            // UIKit continues launch/background state restoration from this callback. The async
+            // protocol witness can resume it on a cooperative-pool thread, which trips UIKit's
+            // main-thread assertion when a banner is tapped. Finish explicitly on MainActor.
+            completion()
+        }
     }
 
     nonisolated func userNotificationCenter(

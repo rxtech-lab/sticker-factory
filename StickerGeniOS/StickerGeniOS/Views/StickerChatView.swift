@@ -1,5 +1,6 @@
 import AnimatedView
 import os
+import Photos
 import PhotosUI
 import SwiftUI
 import TipKit
@@ -448,7 +449,11 @@ struct StickerChatView: View {
                 referenceImage: record.conceptAssetId.flatMap { assetStore.images[$0] },
                 isBusy: isConfirmingPlan || isComputing,
                 onConfirm: { Task { await confirmPlan(record) } },
-                onReject: { reason in Task { await rejectPlan(record, reason: reason) } }
+                onReject: { reason in Task { await rejectPlan(record, reason: reason) } },
+                onAddImageToSticker: addPlanImageToSticker,
+                onSaveImageToPhotoLibrary: { image in
+                    Task { await savePlanImageToPhotoLibrary(image) }
+                }
             )
         } else {
             ChatBubble(
@@ -709,6 +714,52 @@ struct StickerChatView: View {
         }
         references.append(contentsOf: loaded)
         if !loaded.isEmpty { Haptics.selection() }
+    }
+
+    /// Places a plan's visual in the composer as an ordinary reference, ready for the user's next
+    /// instruction. Keeping it in the composer instead of starting a turn immediately lets the user
+    /// say how the image should be used and makes the action reversible until they tap Send.
+    private func addPlanImageToSticker(_ image: UIImage) {
+        guard references.count < 8 else {
+            localError = String(localized: "A message can include up to 8 reference images.")
+            Haptics.failure()
+            return
+        }
+        do {
+            guard let data = image.pngData() else { throw MediaNormalizationError.unreadableImage }
+            let attachment = try MediaNormalizer.reference(
+                data: data,
+                basename: "plan-reference-\(references.count + 1)"
+            )
+            references.append(attachment)
+            localError = nil
+            composerFocused = true
+            Haptics.selection()
+        } catch {
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
+    }
+
+    /// Saves only the image the user long-pressed. Add-only authorization avoids asking to browse
+    /// the rest of the library for an operation that never reads it.
+    private func savePlanImageToPhotoLibrary(_ image: UIImage) async {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else {
+            localError = String(localized: "Allow photo-library access in Settings to save this image.")
+            Haptics.failure()
+            return
+        }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            localError = nil
+            Haptics.success()
+        } catch {
+            localError = error.localizedDescription
+            Haptics.failure()
+        }
     }
 
     /// What the composer held, taken out of it.

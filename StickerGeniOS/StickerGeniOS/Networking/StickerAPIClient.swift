@@ -334,30 +334,49 @@ actor StickerAPIClient: StickerAPIClientProtocol {
 
         var upload = URLRequest(url: intent.upload.url)
         upload.httpMethod = "PUT"
-        upload.httpBody = data
+        // These files can be close to the upload limit. Use URLSession's upload path instead of
+        // attaching the whole rendition as an ordinary request body, and give storage enough time
+        // to acknowledge it on a slow connection.
+        upload.timeoutInterval = 180
         upload.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         for (name, value) in intent.upload.headers { upload.setValue(value, forHTTPHeaderField: name) }
-        let (uploadBody, uploadResponse) = try await session.data(for: upload)
-        guard let http = uploadResponse as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
-        guard (200...299).contains(http.statusCode) else {
-            // Storage rejects for reasons the app can do something about — an expired presign, a
-            // content type that disagrees with what was declared, a body larger than the policy
-            // allows — and every one of them arrived as the same blank "upload could not be
-            // completed" until the status and body were written down.
-            let body = String(data: uploadBody.prefix(1_024), encoding: .utf8) ?? "<\(uploadBody.count) bytes>"
+        do {
+            let (uploadBody, uploadResponse) = try await session.upload(for: upload, from: data)
+            guard let http = uploadResponse as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
+            guard (200...299).contains(http.statusCode) else {
+                // Storage rejects for reasons the app can do something about — an expired presign,
+                // a content type that disagrees with what was declared, or a body larger than the
+                // policy allows. Record the response so none of those becomes a generic banner.
+                let body = String(data: uploadBody.prefix(1_024), encoding: .utf8) ?? "<\(uploadBody.count) bytes>"
+                Self.networkLog.error(
+                    "PUT storage → \(http.statusCode, privacy: .public) asset=\(intent.asset.id, privacy: .public) kind=\(kind.rawValue, privacy: .public) mime=\(mimeType, privacy: .public) bytes=\(data.count, privacy: .public), body: \(body, privacy: .public)"
+                )
+                throw StickerAPIError.uploadFailed(status: http.statusCode)
+            }
+        } catch let error as StickerAPIError {
+            throw error
+        } catch {
+            // A storage PUT can finish even when its response is lost. The completion endpoint
+            // verifies the stored size, checksum, and media before accepting it, so it is safe to
+            // use that verification to recover an ambiguous transport result.
             Self.networkLog.error(
-                "PUT storage → \(http.statusCode, privacy: .public) asset=\(intent.asset.id, privacy: .public) kind=\(kind.rawValue, privacy: .public) mime=\(mimeType, privacy: .public) bytes=\(data.count, privacy: .public), body: \(body, privacy: .public)"
+                "PUT storage response lost asset=\(intent.asset.id, privacy: .public) kind=\(kind.rawValue, privacy: .public) bytes=\(data.count, privacy: .public): \(error.localizedDescription, privacy: .public); verifying object"
             )
-            throw StickerAPIError.uploadFailed(status: http.statusCode)
+            try await completeUpload(assetID: intent.asset.id, digest: digest, idempotencyKey: idempotencyKey)
+            return intent.asset.id
         }
 
+        try await completeUpload(assetID: intent.asset.id, digest: digest, idempotencyKey: idempotencyKey)
+        return intent.asset.id
+    }
+
+    private func completeUpload(assetID: String, digest: String, idempotencyKey: String) async throws {
         let _: AssetRecord = try await send(
-            path: "api/v1/uploads/\(intent.asset.id)/complete",
+            path: "api/v1/uploads/\(assetID)/complete",
             method: "POST",
             body: CompleteUploadRequest(sha256: digest),
             idempotencyKey: idempotencyKey
         )
-        return intent.asset.id
     }
 
     func assetDownload(assetID: String) async throws -> AssetDownload {

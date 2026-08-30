@@ -10,10 +10,22 @@ import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation
 describe("media and animation hardening", () => {
   it("uses per-frame canvas height and verified timing for animated images", async () => {
     const gif = await sharp({
-      create: { width: 64, height: 128, pageHeight: 64, channels: 4, background: { r: 20, g: 40, b: 60, alpha: 0.5 } },
-    }).gif({ delay: [30, 40], keepDuplicateFrames: true }).toBuffer();
+      create: { width: 64, height: 128, pageHeight: 64, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).composite([{
+      input: { create: { width: 32, height: 128, channels: 4, background: { r: 20, g: 40, b: 60, alpha: 1 } } },
+      left: 0,
+      top: 0,
+    }]).gif({ delay: [30, 40], keepDuplicateFrames: true }).toBuffer();
     const inspected = await inspectImage(gif);
-    expect(inspected).toMatchObject({ width: 64, height: 64, frameCount: 2, durationSeconds: 0.07 });
+    expect(inspected).toMatchObject({
+      width: 64,
+      height: 64,
+      frameCount: 2,
+      durationSeconds: 0.07,
+      hasAlpha: true,
+      hasTransparentPixels: true,
+      hasNonTransparentPixels: true,
+    });
   });
 
   it("reads animated PNG timing from its own chunks", async () => {

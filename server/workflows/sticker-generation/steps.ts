@@ -1597,7 +1597,11 @@ async function executePlanBuildTurn(
         // With no concept, the photos are all the likeness this layer will ever get.
         references: visualReference ? [visualReference] : references,
         conversationContext: history,
-        mode: "generate",
+        // This is an edit of the approved pixels, not a fresh generation inspired by them. The
+        // Responses image-edit path is instructed to remove every other part while preserving this
+        // one; the generation path is free to reinterpret the reference and is why confirmed PNGs
+        // could drift visibly from the plan card.
+        mode: visualReference ? "conversation_edit" : "generate",
       });
     } catch (error) {
       await finishToolCall(job, partToolCallId, "failed");
@@ -1828,6 +1832,21 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     return attachedImagesPromise;
   };
   let priorArtPromise: Promise<AiPlanVisual[]> | undefined;
+  let latestPlanReferencePromise: Promise<{
+    planId: string;
+    image: { bytes: Uint8Array; mimeType: string };
+  } | undefined> | undefined;
+  const loadLatestPlanReference = () => {
+    latestPlanReferencePromise ??= (async () => {
+      const plan = await latestPlanConcept(db, job.ownerId, sticker.id);
+      if (!plan) return undefined;
+      return {
+        planId: plan.id,
+        image: await loadPlanVisualReference(plan, job.ownerId, sticker.id),
+      };
+    })();
+    return latestPlanReferencePromise;
+  };
   /**
    * The pictures of the project the planner is shown, on top of anything the user attached.
    *
@@ -1886,20 +1905,19 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
           traceEvent("plan:priorArt:renderFailed", { jobId, error: describeError(error) });
         }
       }
-      const previousPlan = await latestPlanConcept(db, job.ownerId, sticker.id);
-      if (previousPlan) {
-        try {
+      try {
+        const previousPlan = await loadLatestPlanReference();
+        if (previousPlan) {
           visuals.push({
             label: "the static reference the previous plan produced, which the user has already seen",
-            image: await loadPlanVisualReference(previousPlan, job.ownerId, sticker.id),
-          });
-        } catch (error) {
-          traceEvent("plan:priorArt:conceptUnavailable", {
-            jobId,
-            planId: previousPlan.id,
-            error: describeError(error),
+            image: previousPlan.image,
           });
         }
+      } catch (error) {
+        traceEvent("plan:priorArt:conceptUnavailable", {
+          jobId,
+          error: describeError(error),
+        });
       }
       traceEvent("plan:priorArt", { jobId, count: visuals.length });
       return visuals;
@@ -2023,6 +2041,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   let instruction = sourceMessage.content;
   let targetLayerId = sourceMessage.targetLayerId ?? undefined;
   let imagePlacement = sourceMessage.imagePlacement;
+  let usePlanImage = false;
   let primaryToolCallId: string | undefined;
   /**
    * Whether the turn is a change to the sticker as a whole, and so belongs in the edit loop.
@@ -2046,7 +2065,10 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   if (job.kind === "chat") {
     // Fetched before the span rather than inside it, so the router's own latency stays the model's
     // and not the object store's.
-    const attachedImages = await loadAttachedImages();
+    const [attachedImages, routerPriorArt] = await Promise.all([
+      loadAttachedImages(),
+      loadPlanPriorArt(),
+    ]);
     const action = await traceSpan("routeChatTurn", { jobId }, () => getAiProvider().routeChatTurn({
       instruction: sourceMessage.content,
       history,
@@ -2055,6 +2077,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       hasPlan,
       attachmentCount: referenceRows.length,
       references: attachedImages,
+      priorArt: routerPriorArt,
     }));
     traceEvent("routeChatTurn:routed", { jobId, action: action.type });
     // Motion is keyframed onto a live revision of this sticker — the one the user kept, or a
@@ -2158,6 +2181,8 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         ? "image"
         : "edit";
     instruction = action.instruction;
+    usePlanImage = (action.type === "generate" || action.type === "generate_image" || action.type === "edit")
+      && action.usePlanImage === true;
     targetLayerId = action.type === "edit" || action.type === "animate" ? action.targetLayerId : undefined;
     imagePlacement = action.type === "edit" ? action.imagePlacement : addsLayer ? "add" : "replace";
     editsThroughLoop = action.type === "edit";
@@ -2218,7 +2243,13 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   }
 
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "preparing_context", progress: 0.15 });
-  const referenceImages = await loadReferenceImages();
+  const ordinaryReferenceImages = await loadReferenceImages();
+  let referenceImages = ordinaryReferenceImages;
+  if (usePlanImage) {
+    const planReference = await loadLatestPlanReference();
+    if (!planReference) throw new FatalError("The plan image is no longer available");
+    referenceImages = [planReference.image, ...ordinaryReferenceImages].slice(0, 8);
+  }
 
   const maskRow = attachments.find((row) => row.attachment.kind === "mask");
 
@@ -2272,7 +2303,10 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     references,
     mask,
     conversationContext: history,
-    mode: replacesExistingImage ? "conversation_edit" : "generate",
+    // Explicitly reusing a plan image is also an edit, even on an otherwise empty canvas. Sending
+    // the same bytes through the fresh-generation path treats them as inspiration and can redraw
+    // the approved design instead of preserving it.
+    mode: replacesExistingImage || usePlanImage ? "conversation_edit" : "generate",
   });
 
   let document: StickerDocument;

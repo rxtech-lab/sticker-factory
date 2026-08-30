@@ -60,6 +60,30 @@
           }
         }
       }
+    },
+    "NSPhotoLibraryAddUsageDescription" : {
+      "comment" : "Explains why the app asks for add-only access when saving a plan image.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Winky Sticker House saves plan images you choose to your photo library."
+          }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Winky Sticker House 会将你选择的方案图片保存到照片图库。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Winky Sticker House 會將你選擇的方案影像儲存到相片圖庫。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -1057,6 +1057,76 @@ describe("durable sticker workflow", () => {
     await close();
   });
 
+  it("shows the router a previous plan image and reuses it when a text-only follow-up asks", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-plan-image", createdAt: new Date(), updatedAt: new Date() });
+
+    const conceptBytes = new Uint8Array(await sharp({
+      create: { width: 1024, height: 1024, channels: 4, background: { r: 230, g: 90, b: 150, alpha: 1 } },
+    }).png().toBuffer());
+    const generatedSubject = await sharp({
+      create: { width: 640, height: 640, channels: 4, background: { r: 80, g: 170, b: 240, alpha: 1 } },
+    }).png().toBuffer();
+    const generatedBytes = new Uint8Array(await sharp({
+      create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).composite([{ input: generatedSubject, left: 192, top: 192 }]).png().toBuffer());
+    let routedPlanImage: number[] | undefined;
+    let generatedReferences: number[][] | undefined;
+    let generatedMode: "generate" | "conversation_edit" | undefined;
+
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      planSticker: async (_input, session) => {
+        const created = await session.createPlan(PlanV1Schema.parse({
+          title: "Cartoon Words", summary: "Cartoon lettering with a playful bounce.", kind: "animated",
+          conceptPrompt: "Colourful cartoon lettering as a polished sticker filling the frame.",
+          timing: { durationSeconds: 2, fps: 30, loop: "loop" },
+          layers: [{
+            layerId: "words", name: "Words",
+            source: { kind: "generate", prompt: "Colourful cartoon lettering on a transparent background." },
+            x: 0.5, y: 0.5, scaleX: 0.8, scaleY: 0.8,
+          }],
+        }));
+        const finalized = await session.finalizePlan(created.planId);
+        return { ...finalized, finalized: true };
+      },
+      generateConceptImage: async () => ({ bytes: conceptBytes, mimeType: "image/png" }),
+      routeChatTurn: async (input) => {
+        const planVisual = input.priorArt.find((visual) => visual.label.includes("previous plan"));
+        routedPlanImage = planVisual ? [...planVisual.image.bytes] : undefined;
+        return { type: "generate", instruction: input.instruction, usePlanImage: true };
+      },
+      generateStickerImage: async (input) => {
+        generatedReferences = attachedBytes(input.references);
+        generatedMode = input.mode;
+        return { bytes: generatedBytes, mimeType: "image/png" };
+      },
+      showSticker: async () => "Generated from the plan image.",
+    });
+
+    const sticker = await createSticker(db, "owner-plan-image", {
+      title: "Cartoon Words", kind: "animated", prompt: "Cartoon words", referenceAssetIds: [],
+    });
+    const planTurn = await createChatTurn(db, "owner-plan-image", sticker.stickerId, {
+      text: "Plan some cartoon words", intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(planTurn.jobId)).workflowStatus).toBe("succeeded");
+
+    const reuseTurn = await createChatTurn(db, "owner-plan-image", sticker.stickerId, {
+      text: "Use the plan image as the reference", intent: "chat", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(reuseTurn.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(routedPlanImage?.length).toBeGreaterThan(0);
+    expect(generatedReferences?.[0]).toEqual(routedPlanImage);
+    expect(generatedMode).toBe("conversation_edit");
+    await close();
+  });
+
   it("shows the planner the existing artwork on a turn with nothing attached", async () => {
     const { db, close } = await createTestDatabase();
     setDatabaseForTests(db);

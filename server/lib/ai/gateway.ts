@@ -61,14 +61,15 @@ export interface AiImageOutput {
 
 export type AiChatAction =
   | { type: "reply"; message: string }
-  | { type: "generate"; instruction: string }
+  | { type: "generate"; instruction: string; usePlanImage?: boolean }
   /** Draws one new element on a transparent background and adds it as its own image layer. */
-  | { type: "generate_image"; instruction: string }
+  | { type: "generate_image"; instruction: string; usePlanImage?: boolean }
   | {
       type: "edit";
       instruction: string;
       imagePlacement: "add" | "replace";
       targetLayerId?: string;
+      usePlanImage?: boolean;
     }
   | { type: "animate"; instruction: string; targetLayerId?: string }
   | { type: "plan"; instruction: string }
@@ -486,6 +487,14 @@ export interface AiChatContext {
    */
   references: AiReferenceImage[];
   /**
+   * Pictures already present in the project, including the latest plan's static reference.
+   *
+   * A follow-up such as "use the plan image" normally has no new attachment. Without these, the
+   * router sees the words in the transcript but not the image the user is pointing at, and can only
+   * answer by incorrectly asking them to upload it again.
+   */
+  priorArt: AiPlanVisual[];
+  /**
    * Whether this project has ever been planned.
    *
    * An animated project that has never been planned has no set of independently moving layers to
@@ -596,7 +605,13 @@ export function resolveChatAction(
   }
   if (action.type !== "edit") return action;
   // There is nothing to edit at all, so the sticker the user is describing has to be drawn first.
-  if (!document) return { type: "generate", instruction: action.instruction };
+  if (!document) {
+    return {
+      type: "generate",
+      instruction: action.instruction,
+      ...(action.usePlanImage ? { usePlanImage: true } : {}),
+    };
+  }
   // An id that names no layer is a hallucination rather than a choice: forget it and let the edit
   // loop pick its own target from the layers the document really has.
   return action.targetLayerId &&
@@ -1644,6 +1659,7 @@ class GatewayAiProvider implements AiProvider {
   }
 
   async routeChatTurn(input: AiChatContext): Promise<AiChatAction> {
+    const priorArt = await viewablePlanVisuals(input.priorArt);
     const viewable = await viewableReferences(input.references);
     const tools = {
       reply: tool({
@@ -1661,10 +1677,16 @@ class GatewayAiProvider implements AiProvider {
         execute: async (value) => value,
       }),
       "generate-sticker": tool({
-        description:
+        description: [
           "Generate a new sticker candidate when no existing sticker should be preserved.",
+          "Set usePlanImage when the user explicitly asks to use the previous plan image or static",
+          "plan reference as the visual source; that image is one of the labeled project images.",
+        ].join(" "),
         inputSchema: z
-          .object({ instruction: z.string().trim().min(1).max(8_000) })
+          .object({
+            instruction: z.string().trim().min(1).max(8_000),
+            usePlanImage: z.boolean().optional(),
+          })
           .strict(),
         execute: async (value) => value,
       }),
@@ -1680,9 +1702,14 @@ class GatewayAiProvider implements AiProvider {
           "or particle layer — 'make the lettering hand-drawn', 'draw that star properly'.",
           "Prefer generate-sticker when the whole sticker should be redrawn from scratch, and",
           "edit-sticker when artwork that already exists should change.",
+          "Set usePlanImage when the user explicitly wants this element styled from the previous",
+          "plan image or static plan reference shown among the labeled project images.",
         ].join(" "),
         inputSchema: z
-          .object({ instruction: z.string().trim().min(1).max(8_000) })
+          .object({
+            instruction: z.string().trim().min(1).max(8_000),
+            usePlanImage: z.boolean().optional(),
+          })
           .strict(),
         execute: async (value) => value,
       }),
@@ -1711,6 +1738,9 @@ class GatewayAiProvider implements AiProvider {
                   "valid, whatever its type. Omit this unless they clearly name one.",
                 ].join(" "),
               ),
+            usePlanImage: z.boolean().optional().describe(
+              "Use the latest plan's static reference as an image input when the user explicitly points to it.",
+            ),
           })
           .strict(),
         execute: async (value) => value,
@@ -1786,6 +1816,11 @@ class GatewayAiProvider implements AiProvider {
         "edit-sticker, and any layer id may be passed as targetLayerId whatever its type.",
         "Use animate-sticker only for animated projects. Prefer the user's exact instruction and omit targetLayerId unless they clearly name one of the supplied layer ids.",
         "When a reference image is attached and the user requests a change, use edit-sticker.",
+        "The labeled project images are visible and usable even when the latest message has no new",
+        "attachment. If one is the previous plan's static reference and the user says to use the",
+        "plan image or static reference, this is a change request: choose generate-sticker,",
+        "generate-image, or edit-sticker as appropriate and set usePlanImage to true. Do not call",
+        "reply to claim the image is unavailable or ask the user to upload it again.",
         "Decide between animate-sticker and plan-sticker by what the requested motion needs.",
         "animate-sticker only re-keyframes the layers listed in the current document, so it can only move,",
         "scale, rotate, or fade artwork that already exists as its own layer.",
@@ -1812,6 +1847,7 @@ class GatewayAiProvider implements AiProvider {
       messages: userTurn([
         `Sticker kind: ${input.stickerKind}`,
         `Planned as layers already: ${input.hasPlan ? "yes" : "no"}`,
+        priorArtNote(priorArt),
         `Attached reference images: ${input.attachmentCount}`,
         attachedImagesNote(
           viewable.length,
@@ -1824,7 +1860,7 @@ class GatewayAiProvider implements AiProvider {
           : "There is no current sticker document.",
         `Recoverable chat history:\n${input.history}`,
         `Latest user message:\n${input.instruction}`,
-      ].filter(Boolean).join("\n\n"), viewable),
+      ].filter(Boolean).join("\n\n"), [...priorArt.map((visual) => visual.image), ...viewable]),
       tools,
       toolChoice: "required",
       maxRetries: 2,
@@ -1839,12 +1875,12 @@ class GatewayAiProvider implements AiProvider {
         return { type: "reply", message: value.message };
       }
       case "generate-sticker": {
-        const value = z.object({ instruction: z.string() }).parse(call.input);
-        return { type: "generate", instruction: value.instruction };
+        const value = z.object({ instruction: z.string(), usePlanImage: z.boolean().optional() }).parse(call.input);
+        return { type: "generate", instruction: value.instruction, usePlanImage: value.usePlanImage };
       }
       case "generate-image": {
-        const value = z.object({ instruction: z.string() }).parse(call.input);
-        return { type: "generate_image", instruction: value.instruction };
+        const value = z.object({ instruction: z.string(), usePlanImage: z.boolean().optional() }).parse(call.input);
+        return { type: "generate_image", instruction: value.instruction, usePlanImage: value.usePlanImage };
       }
       case "edit-sticker": {
         const value = z
@@ -1852,6 +1888,7 @@ class GatewayAiProvider implements AiProvider {
             instruction: z.string(),
             imagePlacement: z.enum(["replace", "add"]),
             targetLayerId: z.string().optional(),
+            usePlanImage: z.boolean().optional(),
           })
           .parse(call.input);
         return resolveChatAction(
@@ -1860,6 +1897,7 @@ class GatewayAiProvider implements AiProvider {
             instruction: value.instruction,
             imagePlacement: value.imagePlacement,
             targetLayerId: value.targetLayerId,
+            usePlanImage: value.usePlanImage,
           },
           input.document,
         );
