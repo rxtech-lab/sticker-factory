@@ -368,7 +368,16 @@ export async function inspectImage(bytes: Uint8Array): Promise<ImageInspection> 
   const maximumPixels = frameCount > 1 ? 1024 * 1024 * 240 : 4096 * 4096;
   if (totalPixels > maximumPixels) throw new ApiError(422, "IMAGE_DECODE_TOO_LARGE", "The decoded image exceeds the safe pixel limit");
   try {
-    stats = await sharp(bytes, { animated: true, limitInputPixels: maximumPixels }).stats();
+    // Metadata above verifies the complete animation's dimensions, frame count, and timing. Pixel
+    // stats only need to prove that the rendition contains transparency and painted pixels. Asking
+    // libvips for animated stats stacks every GIF frame into one enormous image; a valid 150-frame
+    // 1024px export becomes ~157 million decoded pixels and can exhaust a production worker. Decode
+    // one composited frame instead, bounded by the already-verified per-frame dimensions.
+    stats = await sharp(bytes, {
+      page: 0,
+      pages: 1,
+      limitInputPixels: metadata.width * frameHeight,
+    }).stats();
   } catch {
     throw new ApiError(422, "INVALID_IMAGE", "The image pixels could not be decoded safely");
   }

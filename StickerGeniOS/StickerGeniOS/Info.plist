@@ -37,6 +37,8 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Winky Sticker House uses the photos and Live Photos you choose as private references for sticker generation and editing, including lifting a subject out of them.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Winky Sticker House saves plan images you choose to your photo library.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
