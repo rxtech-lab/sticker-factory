@@ -71,12 +71,19 @@ nonisolated struct StickerRevision: Codable, Identifiable, Hashable, Sendable {
         document.kind == .static || containsMotion
     }
 
+    /// The MP4 is not part of this: it is published only when the person asked to share a video,
+    /// because encoding one is the slowest step of a publish and nothing on the platform reads it.
+    /// A sticker published without one is fully published — see `hasPublishedVideo`.
     var hasPublishedExports: Bool {
         guard systemAssetId != nil else { return false }
         return document.kind == .static
             ? pngAssetId != nil
-            : gifAssetId != nil && mp4AssetId != nil
+            : gifAssetId != nil
     }
+
+    /// Whether the server holds a video for this revision, as opposed to one that can still be
+    /// rendered on demand from the document.
+    var hasPublishedVideo: Bool { mp4AssetId != nil }
 }
 
 nonisolated enum RevisionCandidateState: String, Codable, CaseIterable, Hashable, Sendable {

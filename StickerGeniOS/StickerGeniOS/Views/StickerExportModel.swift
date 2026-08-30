@@ -69,9 +69,9 @@ final class StickerExportModel {
 
     /// Drops the files staged for sharing without disowning the publish that produced them.
     ///
-    /// Changing which formats to share does not invalidate a publish — the server still holds every
-    /// rendition — so this deliberately keeps `publishJobID`, which is what the sheet reads to know
-    /// the sticker landed.
+    /// Changing which formats to share does not invalidate a publish — the sticker set is published
+    /// whatever was asked for, and the video can be rendered on demand — so this deliberately keeps
+    /// `publishJobID`, which is what the sheet reads to know the sticker landed.
     func clearShareFiles() {
         publishedURLs = []
     }
@@ -85,14 +85,25 @@ final class StickerExportModel {
     /// Puts the published files on disk so a revision published in an earlier session — one this
     /// run never rendered anything for — can still be shared.
     ///
+    /// - Parameter assets: passed through for the video, which a sticker-only publish never
+    ///   uploaded and which is rendered here instead of downloaded.
     /// - Returns: whether `publishedURLs` now holds files to share.
-    func prepareShareFiles(store: StickerStore, revision: StickerRevision) async -> Bool {
+    func prepareShareFiles(
+        store: StickerStore,
+        revision: StickerRevision,
+        assets: [String: UIImage],
+        verifiedAssetIDs: Set<String>
+    ) async -> Bool {
         guard publishedURLs.isEmpty else { return true }
         isPreparingShare = true
         defer { isPreparingShare = false }
         do {
-            let urls = try await StickerPublisher(api: store.api)
-                .publishedExports(for: revision, selection: selection)
+            let urls = try await StickerPublisher(api: store.api).publishedExports(
+                for: revision,
+                assets: assets,
+                verifiedAssetIDs: verifiedAssetIDs,
+                selection: selection
+            )
             // An edit landed while the download was in flight: these files are the version the user
             // just moved off, and `seed` has already cleared this sheet's state for the new one.
             guard seededRevisionID == revision.id else { return false }

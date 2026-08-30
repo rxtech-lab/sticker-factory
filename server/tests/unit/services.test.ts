@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import stickerDocumentFixture from "@/fixtures/sticker-document-v1.json";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import {
@@ -17,6 +18,7 @@ import { appendGenerationEvent, listGenerationEvents } from "@/lib/services/even
 import { executeIdempotent } from "@/lib/services/idempotency";
 import {
   acceptRevision,
+  bindExports,
   createCandidateRevision,
   createChatTurn,
   createCleanupJob,
@@ -312,6 +314,57 @@ describe("Sticker Factory services", () => {
     const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
     await store.put(row!.r2Key, { bytes: png, contentType: "image/png" });
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "MASK_REQUIRES_ALPHA" });
+  });
+
+  /**
+   * The MP4 is the one rendition a publish may leave out: nothing on the platform reads it, and
+   * encoding one is the slowest thing an export does, so a sticker-only export never renders it.
+   */
+  it("publishes an animated sticker that has no video, but not one that has no GIF", async () => {
+    const sticker = await createSticker(db, "owner-a", {
+      title: "Spark", kind: "animated", prompt: "Sparkles", referenceAssetIds: [],
+    });
+    const turn = await createChatTurn(db, "owner-a", sticker.stickerId, {
+      text: "Sparkles", intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+    await db.update(generationJobs).set({ state: "succeeded", completedAt: new Date() })
+      .where(eq(generationJobs.id, turn.jobId));
+    // The fixture's particle layer, which is keyframed and draws no image assets of its own.
+    const document = StickerDocumentSchema.parse({
+      ...stickerDocumentFixture,
+      durationSeconds: 1,
+      fps: 10,
+      loop: "loop",
+      layers: [stickerDocumentFixture.layers[1]],
+    });
+    const revisionId = await createCandidateRevision(db, {
+      ownerId: "owner-a", stickerId: sticker.stickerId, sourceMessageId: turn.messageId, document,
+    });
+    await acceptRevision(db, "owner-a", sticker.stickerId, revisionId);
+
+    // A 1 s cycle at 10 FPS is 10 frames, held 0.6 s longer on the last of them before repeating.
+    const renditionIds = { gif: crypto.randomUUID(), system: crypto.randomUUID() };
+    await db.insert(assets).values([
+      { id: renditionIds.gif, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "gif", state: "ready", r2Key: objectKey("owner-a", renditionIds.gif, "image/gif"), mimeType: "image/gif", byteSize: 120_000, width: 1024, height: 1024, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      { id: renditionIds.system, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "system", state: "ready", r2Key: objectKey("owner-a", renditionIds.system, "image/png"), mimeType: "image/png", byteSize: 400_000, width: 408, height: 408, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "b".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+    ]);
+
+    const publishRequest = {
+      revisionId,
+      gifAssetId: renditionIds.gif,
+      systemAssetId: renditionIds.system,
+      mp4Background: { type: "solid" as const, color: "#FFFFFF" },
+    };
+    await expect(bindExports(db, "owner-a", sticker.stickerId, { ...publishRequest, gifAssetId: undefined }, crypto.randomUUID()))
+      .rejects.toMatchObject({ code: "ANIMATED_EXPORTS_REQUIRED" });
+
+    const publishedRevisionId = crypto.randomUUID();
+    const published = await bindExports(db, "owner-a", sticker.stickerId, publishRequest, publishedRevisionId);
+    expect(published.status).toBe("published");
+    const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).get();
+    expect(publishedRevision?.mp4AssetId).toBeNull();
+    expect(publishedRevision?.gifAssetId).toBe(renditionIds.gif);
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.status).toBe("published");
   });
 
   /**

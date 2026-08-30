@@ -9,6 +9,10 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     private var packDetails = [PreviewFixtures.packDetail.id: PreviewFixtures.packDetail]
     /// Readable so a test can assert the app enrolled this device for push.
     private(set) var registeredDeviceTokens: [String] = []
+    /// Readable so a test can assert which renditions an export actually produced — a publish that
+    /// was never going to share a video does not encode one.
+    private(set) var uploadedKinds: [AssetKind] = []
+    private(set) var publishedExportRequests: [PublishExportsRequest] = []
     private let failCreationAsUpload: Bool
 
     init(failCreationAsUpload: Bool = false) {
@@ -223,7 +227,8 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     }
 
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse {
-        .init(job: .init(id: UUID().uuidString, state: .queued, workflowRunId: "mock-export", eventsUrl: "/api/v1/jobs/mock-export/events"))
+        publishedExportRequests.append(request)
+        return .init(job: .init(id: UUID().uuidString, state: .queued, workflowRunId: "mock-export", eventsUrl: "/api/v1/jobs/mock-export/events"))
     }
 
     // MARK: - Marketplace
@@ -397,7 +402,10 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
-    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String { UUID().uuidString }
+    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String {
+        uploadedKinds.append(kind)
+        return UUID().uuidString
+    }
     func assetDownload(assetID: String) async throws -> AssetDownload { throw StickerAPIError.http(404) }
 
     nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {

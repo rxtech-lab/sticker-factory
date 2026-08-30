@@ -448,10 +448,16 @@ function intentToJobKind(intent: PostChatMessageRequest["intent"]) {
   return "edit" as const;
 }
 
+/**
+ * The MP4 is deliberately not required here. It is the one rendition nothing on the platform reads:
+ * Messages carries the system sticker, the library and share sheet carry the GIF, and the MP4 exists
+ * only for somewhere else that plays video. It is also the slowest thing the app renders, so a
+ * publish that was never going to share a video does not encode one — see `StickerExportSelection`.
+ */
 function revisionHasPublishedExports(revision: typeof stickerRevisions.$inferSelect): boolean {
   return Boolean(revision.systemAssetId && (revision.kind === "static"
     ? revision.pngAssetId
-    : revision.gifAssetId && revision.mp4AssetId));
+    : revision.gifAssetId));
 }
 
 /** A play-once export has no repeat to separate, so nothing is held. */
@@ -477,12 +483,21 @@ export function validateAnimatedRenditionTiming(
   // every correctly rendered export of a document that is not playing at 1x.
   const playbackSeconds = document.durationSeconds / Math.max(document.speed, 0.0001);
   const cycleSeconds = playbackSeconds * (document.loop === "pingPong" ? 2 : 1);
-  const expectedDuration = cycleSeconds + exportHoldSeconds(document.loop);
+  const holdSeconds = exportHoldSeconds(document.loop);
+  const expectedDuration = cycleSeconds + holdSeconds;
 
-  // The hold is extra display time on a frame that already exists, so the frame grid still spans
-  // exactly the motion cycle. Inspection reports fps as frameCount/durationSeconds, which the hold
-  // drags below the grid the frames were rendered on — recover the grid before comparing to it.
-  const gridFps = rendition.frameCount / cycleSeconds;
+  // How the hold is spelled depends on what the container can say. GIF and APNG carry a delay per
+  // frame, so it rides on the last one and the frame grid still spans exactly the motion cycle. An
+  // H.264 track has no such field: AVAssetWriter re-derives every sample's duration from the
+  // spacing of the next one, so a final sample asked to last a hold longer is written at the
+  // cadence like any other and the file measures exactly the cycle. The only hold an MP4 can state
+  // is a repeated frame — see `holdFrameCount` in `StickerGeniOS/Rendering/StickerExporter.swift` —
+  // so its grid spans the whole export rather than the cycle.
+  const holdFrames = rendition.kind === "mp4" ? Math.round(holdSeconds * document.fps) : 0;
+
+  // Inspection reports fps as frameCount/durationSeconds, which a hold the frames do not cover
+  // drags below the grid they were rendered on — recover the grid before comparing to it.
+  const gridFps = rendition.frameCount / (holdFrames > 0 ? expectedDuration : cycleSeconds);
 
   // gif and mp4 are rendered at the document's own fps. The system rendition walks a quality ladder
   // to fit under 500 KB, so it is a range rather than a value. The bottom of that ladder is 4 fps —
@@ -495,7 +510,8 @@ export function validateAnimatedRenditionTiming(
 
   // Only the ladder renditions get to pick their own grid, so everything else has an exact count to
   // hit. This is what catches a frame dropped or duplicated at the ends of the cycle.
-  if (rendition.kind !== "system" && Math.abs(rendition.frameCount - Math.ceil(cycleSeconds * document.fps)) > 1.01) {
+  const expectedFrames = Math.ceil(cycleSeconds * document.fps) + holdFrames;
+  if (rendition.kind !== "system" && Math.abs(rendition.frameCount - expectedFrames) > 1.01) {
     throw new ApiError(422, "EXPORT_FRAME_COUNT_MISMATCH", "Animated rendition frame count does not match the accepted document cycle");
   }
   const durationTolerance = 1 / gridFps + 0.01;
@@ -1331,8 +1347,11 @@ export async function bindExports(
   if (revision.kind === "static" && (system.mimeType !== "image/png" || (system.frameCount ?? 1) !== 1)) {
     throw new ApiError(422, "STATIC_SYSTEM_RENDITION_REQUIRED", "Static stickers require a single-frame PNG system rendition");
   }
-  if (revision.kind === "animated" && (!request.gifAssetId || !request.mp4AssetId)) {
-    throw new ApiError(422, "ANIMATED_EXPORTS_REQUIRED", "Animated stickers require GIF and MP4 exports");
+  // The MP4 is optional: an export that is only ever going to be a sticker has no video to publish,
+  // and encoding one anyway is the slowest step in a publish. The GIF is not — it is what the
+  // library, the share sheet and every non-Messages surface show for an animated sticker.
+  if (revision.kind === "animated" && !request.gifAssetId) {
+    throw new ApiError(422, "ANIMATED_EXPORTS_REQUIRED", "Animated stickers require a GIF export");
   }
   if (revision.kind === "animated" && request.pngAssetId) {
     throw new ApiError(422, "ANIMATED_EXPORT_MATRIX", "Animated stickers do not accept a static PNG export relation");

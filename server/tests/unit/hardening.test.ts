@@ -201,6 +201,38 @@ describe("media and animation hardening", () => {
     )).toThrow();
   });
 
+  it("expects an MP4 to spell its loop hold out in frames, and a GIF to carry it as a delay", () => {
+    const document = StickerDocumentSchema.parse({
+      version: 2,
+      canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+      kind: "animated",
+      durationSeconds: 2.6,
+      fps: 30,
+      loop: "loop",
+      speed: 1,
+      mp4Background: { type: "solid", color: "#FFFFFF" },
+      layers: [],
+    });
+    if (document.kind !== "animated") throw new Error("timing fixture did not parse as animated");
+
+    // 2.6 s of motion is 78 frames; the 0.6 s hold is 18 more of the last one, for 3.2 s of video.
+    expect(() => validateAnimatedRenditionTiming(
+      document, { kind: "mp4", frameCount: 96, durationSeconds: 3.2, fps: 30 },
+    )).not.toThrow();
+    // The regression: AVAssetWriter times the final sample from the cadence before it, so an export
+    // that asked for a held last frame instead of writing one measures exactly the cycle.
+    expect(() => validateAnimatedRenditionTiming(
+      document, { kind: "mp4", frameCount: 78, durationSeconds: 2.6, fps: 30 },
+    )).toThrow();
+    // Hold frames in a container that has per-frame delays would play the hold twice over.
+    expect(() => validateAnimatedRenditionTiming(
+      document, { kind: "gif", frameCount: 96, durationSeconds: 3.2, fps: 30 },
+    )).toThrow();
+    expect(() => validateAnimatedRenditionTiming(
+      document, { kind: "gif", frameCount: 78, durationSeconds: 3.2, fps: 30 },
+    )).not.toThrow();
+  });
+
   it("reconciles a routed edit with the layers the document actually has", () => {
     const documentWith = (...layers: unknown[]) => StickerDocumentSchema.parse({
       version: 1,
