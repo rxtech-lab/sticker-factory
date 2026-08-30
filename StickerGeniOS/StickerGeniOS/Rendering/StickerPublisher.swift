@@ -65,9 +65,11 @@ final class StickerPublisher {
         ).files(for: selection)
     }
 
-    /// - Parameter selection: what comes back to be shared. Publishing renders and uploads the full
-    ///   set no matter what — the server rejects an animated sticker missing any of its renditions —
-    ///   so this narrows the share sheet rather than the work.
+    /// - Parameter selection: what comes back to be shared, and — for the MP4 alone — whether it is
+    ///   rendered at all. The sticker set always is: the library and the Messages extension are
+    ///   entitled to it however this export was asked for, and the server refuses a publish without
+    ///   it. The video is not; it is the slowest thing this class does, nothing on the platform
+    ///   reads it, and `publishedExports` can render one later for a share that wants it.
     /// - Returns: the job to watch, the files to share, and what the sticker rendition had to give
     ///   up to fit Apple's ceiling. The compromise is reported separately because it describes a
     ///   file that was published whether or not the person asked to share it.
@@ -85,7 +87,7 @@ final class StickerPublisher {
             assets: assets,
             verifiedAssetIDs: verifiedAssetIDs,
             size: size,
-            rendering: .both
+            rendering: selection.includesVideo ? .both : .sticker
         )
         let document = revision.document
 
@@ -132,16 +134,34 @@ final class StickerPublisher {
     /// renders, and re-rendering them would spend an MP4 encode reproducing bytes the server is
     /// already keeping. Files land under the same temporary directory the exporter writes to,
     /// named for the asset, so sharing one revision twice in a session downloads once.
+    ///
+    /// - Parameter assets: the images the document draws, for the one file that may not exist yet.
+    ///   A publish only uploads a video when the export asked for one, so someone who published a
+    ///   sticker and later wants the video is not stuck with what they chose at publish time — the
+    ///   document is unchanged, and the same encode that would have run then runs now.
     func publishedExports(
         for revision: StickerRevision,
+        assets: [String: UIImage] = [:],
+        verifiedAssetIDs: Set<String> = [],
         selection: StickerExportSelection = .default
     ) async throws -> [URL] {
         var wanted: [String?] = []
         if selection.includesSticker { wanted += [revision.pngAssetId, revision.gifAssetId, revision.systemAssetId] }
         if selection.includesVideo { wanted.append(revision.mp4AssetId) }
-        // A static sticker asked for as a video has none; hand back what it does have rather than an
-        // empty share sheet.
-        if wanted.compactMap({ $0 }).isEmpty {
+
+        // Asked for a video the server does not hold. An animated sticker can still produce one; a
+        // static sticker never could, so it hands back what it does have rather than an empty
+        // share sheet.
+        var rendered: [URL] = []
+        if selection.includesVideo, !revision.hasPublishedVideo, revision.document.kind == .animated {
+            let document = try validatedDocument(
+                revision: revision,
+                assets: assets,
+                verifiedAssetIDs: verifiedAssetIDs
+            )
+            rendered.append(try await exporter.exportMP4(document: document, assets: assets).url)
+        }
+        if rendered.isEmpty, wanted.compactMap({ $0 }).isEmpty {
             wanted = [revision.pngAssetId, revision.gifAssetId, revision.mp4AssetId, revision.systemAssetId]
         }
 
@@ -152,13 +172,13 @@ final class StickerPublisher {
             guard let assetID, !assetIDs.contains(assetID) else { continue }
             assetIDs.append(assetID)
         }
-        guard !assetIDs.isEmpty else { throw StickerPublishError.publishedExportsUnavailable }
+        guard !assetIDs.isEmpty || !rendered.isEmpty else { throw StickerPublishError.publishedExportsUnavailable }
 
         var urls: [URL] = []
         for assetID in assetIDs {
             urls.append(try await downloadExport(assetID: assetID))
         }
-        return urls
+        return urls + rendered
     }
 
     private func downloadExport(assetID: String) async throws -> URL {

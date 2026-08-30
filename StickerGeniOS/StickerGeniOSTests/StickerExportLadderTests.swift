@@ -1,4 +1,5 @@
 import AnimatedView
+import AVFoundation
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -163,6 +164,218 @@ struct StickerExportLadderTests {
         #expect(decoded.width == dimension && decoded.height == dimension)
     }
 
+    /// A lifted photograph sitting inside flat sticker art: the shape that posterized in the field.
+    ///
+    /// A face occupies the middle third. Everything around it is the crown and the lettering —
+    /// saturated, high-contrast, and most of the pixels — inside a die-cut rim that fades to
+    /// transparent. The face is a narrow skin ramp broken up by the sensor noise every Live Photo
+    /// frame carries, which scatters it across hundreds of lattice cells that are individually rare
+    /// and collectively the whole subject.
+    private struct LiftedPhotograph {
+        var image: CGImage
+        var rows: Range<Int>
+        var dimension: Int
+
+        func isFace(x: Int, y: Int) -> Bool {
+            rows.contains(y) && abs(Double(x) / Double(dimension) - 0.5) < 0.22
+        }
+
+        /// The shade the ramp asks for at a point, before noise and before quantization.
+        func skin(x: Int, y: Int) -> (red: UInt8, green: UInt8, blue: UInt8) {
+            let shade = 0.45 * (Double(x) / Double(dimension))
+                + 0.55 * (Double(y - rows.lowerBound) / Double(rows.count))
+            return (UInt8(238 - shade * 120), UInt8(206 - shade * 126), UInt8(182 - shade * 120))
+        }
+    }
+
+    private func liftedPhotograph(dimension: Int) throws -> LiftedPhotograph {
+        var seed: UInt64 = 0x2545_F491_4F6C_DD1D
+        func noise(_ spread: Int) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % UInt64(spread * 2 + 1)) - spread
+        }
+        func clamp(_ value: Int) -> UInt8 { UInt8(min(255, max(0, value))) }
+
+        let rows = (dimension * 30 / 100)..<(dimension * 62 / 100)
+        var pixels = [UInt8](repeating: 0, count: dimension * dimension * 4)
+        // A one-pixel placeholder the real canvas replaces, so the geometry helpers are available
+        // while the pixels that use them are still being written.
+        let placeholder = CGContext(
+            data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )?.makeImage()
+        var shape = LiftedPhotograph(
+            image: try #require(placeholder),
+            rows: rows,
+            dimension: dimension
+        )
+        for y in 0..<dimension {
+            for x in 0..<dimension {
+                let offset = (y * dimension + x) * 4
+                let across = Double(x) / Double(dimension) - 0.5
+                let down = Double(y) / Double(dimension) - 0.5
+                let radius = across * across + down * down
+                guard radius <= 0.235 else { continue }
+                pixels[offset + 3] = clamp(Int(min(1, (0.235 - radius) / 0.02) * 255))
+                if shape.isFace(x: x, y: y) {
+                    let skin = shape.skin(x: x, y: y)
+                    pixels[offset] = clamp(Int(skin.red) + noise(5))
+                    pixels[offset + 1] = clamp(Int(skin.green) + noise(5))
+                    pixels[offset + 2] = clamp(Int(skin.blue) + noise(5))
+                } else {
+                    // Flat art, but not literally flat: a sticker's gold and its rim carry shading
+                    // and anti-aliasing, and those are the high-count cells that used to win every
+                    // palette slot.
+                    let band = (y / 9 + x / 31) % 4
+                    let lift = Double(y) / Double(dimension)
+                    pixels[offset] = clamp([252, 214, 255, 176][band] - Int(lift * 55) + noise(3))
+                    pixels[offset + 1] = clamp([206, 36, 255, 22][band] - Int(lift * 44) + noise(3))
+                    pixels[offset + 2] = clamp([26, 44, 255, 118][band] - Int(lift * 30) + noise(3))
+                }
+            }
+        }
+        let provider = try #require(CGDataProvider(data: Data(pixels) as CFData))
+        shape.image = try #require(CGImage(
+            width: dimension, height: dimension, bitsPerComponent: 8, bitsPerPixel: 32,
+            bytesPerRow: dimension * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        ))
+        return shape
+    }
+
+    @Test("A lifted photograph keeps its shading when flat art shares the palette")
+    func photographKeepsItsPalette() throws {
+        // The bug this covers: the palette used to be the *most frequent* colours, so the art around
+        // the face — more pixels, fewer colours, every one of them common — took the whole palette
+        // and the face collapsed onto a handful of plates that no longer read as a person. Median
+        // cut divides the colours by how far apart they are, so the face earns entries in proportion
+        // to the range it covers rather than to how often any one point on it repeats.
+        let dimension = 300
+        let shape = try liftedPhotograph(dimension: dimension)
+        var census = IndexedPNGEncoder.ColorCensus(lattice: .init(colorLevels: 32, alphaLevels: 8))
+        census.add(shape.image)
+        let palette = census.palette(limit: 256)
+
+        var used = Set<UInt8>()
+        var worstError = 0
+        var totalError = 0
+        var samples = 0
+        for y in shape.rows {
+            for x in stride(from: 0, to: dimension, by: 3) where shape.isFace(x: x, y: y) {
+                let wanted = shape.skin(x: x, y: y)
+                let index = palette.index(forKey: palette.lattice.key(
+                    red: wanted.red, green: wanted.green, blue: wanted.blue, alpha: 255
+                ))
+                used.insert(index)
+                let entry = palette.entries[Int(index)]
+                worstError = max(worstError, max(
+                    abs(Int(entry.red) - Int(wanted.red)),
+                    abs(Int(entry.green) - Int(wanted.green)),
+                    abs(Int(entry.blue) - Int(wanted.blue))
+                ))
+                totalError += abs(Int(entry.red) - Int(wanted.red))
+                samples += 1
+            }
+        }
+        // A tenth of the canvas earning a twelfth of the palette is the floor, not the target.
+        #expect(used.count >= 18)
+        // The lattice itself rounds to 8-unit steps, so no palette can resolve the ramp better than
+        // that. Within a step or two of it reads as shading; the plates in the report were 40 apart.
+        #expect(worstError <= 12)
+        #expect(Double(totalError) / Double(samples) <= 5)
+    }
+
+    @Test("Dithering costs bytes, so every dithered palette has a plain one behind it")
+    func ditherIsPairedWithAFallback() throws {
+        let dimension = 300
+        let shape = try liftedPhotograph(dimension: dimension)
+        var census = IndexedPNGEncoder.ColorCensus(lattice: .init(colorLevels: 32, alphaLevels: 8))
+        census.add(shape.image)
+
+        let plain = try #require(IndexedPNGEncoder.encodeStill(
+            shape.image, palette: census.palette(limit: 64), dimension: dimension
+        ))
+        let dithered = try #require(IndexedPNGEncoder.encodeStill(
+            shape.image, palette: census.palette(limit: 64, dithered: true), dimension: dimension
+        ))
+        // Both decode as palette PNGs of the right size, and the dithered one is the larger. That is
+        // the whole reason `paletteLadder` carries the pair rather than the dither alone: on a
+        // sticker with no slack, the extra bytes would cost a rung of frame rate.
+        for data in [plain, dithered] {
+            let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+            let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+            #expect(decoded.width == dimension && decoded.height == dimension)
+        }
+        #expect(dithered.count > plain.count)
+
+        // Ordered, not error-diffused: the offset depends only on the position in the 8×8 tile, so a
+        // frame that did not move maps to the indices it mapped to last time and `changedRect` stays
+        // tight. Error diffusion would carry a single moved pixel across the rest of the canvas and
+        // frame differencing — most of what buys the animation its budget — would stop working.
+        let palette = census.palette(limit: 64, dithered: true)
+        let first = try #require(palette.indices(for: shape.image, width: dimension, height: dimension))
+        let second = try #require(palette.indices(for: shape.image, width: dimension, height: dimension))
+        #expect(first == second)
+        #expect(IndexedPNGEncoder.changedRect(from: first, to: second, dimension: dimension)
+            == .init(x: 0, y: 0, width: 1, height: 1))
+
+        // A dither that survived quantization: neighbouring positions in the tile land on different
+        // entries where a flat mapping would give them the same one.
+        let flat = try #require(census.palette(limit: 64)
+            .indices(for: shape.image, width: dimension, height: dimension))
+        #expect(zip(first, flat).contains { $0 != $1 })
+    }
+
+    @Test("Colour depth is spent last, and only on art that does not need it")
+    func fidelityDecidesWhatTheLadderSpends() throws {
+        // The census reports what quantizing costs *this* sticker, which is how the ladder knows
+        // whether it is allowed to spend colour. Flat art absorbs a sixteen-entry palette without a
+        // mark on it; the same palette is what turned a lifted face into plates.
+        let dimension = 300
+        let photograph = try liftedPhotograph(dimension: dimension)
+        var photographic = IndexedPNGEncoder.ColorCensus(lattice: .init(colorLevels: 32, alphaLevels: 8))
+        photographic.add(photograph.image)
+
+        // The same canvas with the face replaced by more of the flat art around it.
+        let context = try #require(CGContext(
+            data: nil, width: dimension, height: dimension, bitsPerComponent: 8,
+            bytesPerRow: dimension * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        for y in 0..<dimension {
+            for x in 0..<dimension {
+                let band = (y / 9 + x / 31) % 4
+                context.setFillColor(
+                    red: [252, 214, 255, 176][band] / 255,
+                    green: [206, 36, 255, 22][band] / 255,
+                    blue: [26, 44, 255, 118][band] / 255,
+                    alpha: 1
+                )
+                context.fill(CGRect(x: x, y: y, width: 1, height: 1))
+            }
+        }
+        var flat = IndexedPNGEncoder.ColorCensus(lattice: .init(colorLevels: 32, alphaLevels: 8))
+        flat.add(try #require(context.makeImage()))
+
+        // The threshold the exporter uses: the census lattice's own step, below which a richer
+        // palette has nothing left to resolve.
+        let step = Double(255 / 31)
+        #expect(flat.error(of: flat.palette(limit: 16)) <= step)
+        #expect(photographic.error(of: photographic.palette(limit: 16)) > step)
+        #expect(photographic.error(of: photographic.palette(limit: 256)) <= step)
+        // Monotonic in both directions: a richer palette never reports a worse error, or the ladder
+        // could talk itself into spending colour it did not need.
+        for census in [flat, photographic] {
+            let rich = census.error(of: census.palette(limit: 256))
+            let middle = census.error(of: census.palette(limit: 64))
+            let poor = census.error(of: census.palette(limit: 16))
+            #expect(rich <= middle)
+            #expect(middle <= poor)
+        }
+    }
+
     @Test("A frame that changes nothing still costs a frame, not a canvas")
     func changedRectangles() {
         let dimension = 8
@@ -242,6 +455,71 @@ struct StickerExportLadderTests {
         defer { sticker.forEach { try? FileManager.default.removeItem(at: $0.url) } }
         // The sharing GIF and the Messages rendition, and no video encode at all.
         #expect(sticker.map(\.metadata.format) == [.gif, .apng])
+    }
+
+    @MainActor
+    @Test("Publishing as a sticker uploads no video, and a later share renders one")
+    func stickerOnlyPublishSkipsTheVideoEncode() async throws {
+        var revision = PreviewFixtures.candidate
+        revision.candidateState = .accepted
+        revision.document.fps = 8
+        let api = MockStickerAPIClient()
+        let publisher = StickerPublisher(api: api)
+
+        let result = try await publisher.publish(
+            stickerID: "sticker-demo", revision: revision, assets: [:], verifiedAssetIDs: [],
+            size: .small, selection: .sticker
+        )
+        defer { result.localExports.forEach { try? FileManager.default.removeItem(at: $0.url) } }
+        // The sticker set is published however the export was asked for; the video is not, because
+        // nothing on the platform reads it and encoding one is the slowest step of a publish.
+        #expect(await api.uploadedKinds == [.gif, .system])
+        #expect(await api.publishedExportRequests.last?.mp4AssetId == nil)
+
+        // Wanting the video later is not a dead end: the document is unchanged, so the encode that
+        // was skipped at publish time runs now instead of a re-publish.
+        var published = revision
+        published.gifAssetId = "gif-asset"
+        published.systemAssetId = "system-asset"
+        #expect(published.hasPublishedExports)
+        #expect(!published.hasPublishedVideo)
+        let shared = try await publisher.publishedExports(
+            for: published, assets: [:], verifiedAssetIDs: [], selection: .video
+        )
+        defer { shared.forEach { try? FileManager.default.removeItem(at: $0) } }
+        // Rendered here rather than downloaded — the mock refuses every asset download.
+        #expect(shared.map(\.pathExtension) == ["mp4"])
+    }
+
+    @MainActor
+    @Test("An MP4 spells its loop hold out in frames, so the file measures the whole export")
+    func mp4CarriesTheLoopHold() async throws {
+        var document = PreviewFixtures.animatedBaseDocument
+        document.layers = [
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+        ]
+        document.durationSeconds = 1
+        document.fps = 8
+        document.loop = .loop
+
+        let rendition = try await StickerExporter().exportMP4(document: document, assets: [:])
+        defer { try? FileManager.default.removeItem(at: rendition.url) }
+
+        // 1 s of motion at 8 FPS is 8 frames, and the 0.6 s hold is 5 more of the last one.
+        let motionFrames = StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps)
+        let holdFrames = StickerExportMetadataPolicy.holdFrameCount(document: document, fps: document.fps)
+        #expect(motionFrames == 8)
+        #expect(holdFrames == 5)
+
+        // The regression this guards: AVAssetWriter re-derives every sample's duration from the
+        // spacing of the next, so an export that asked its final sample to last a hold longer was
+        // written at the cadence like any other and the file measured exactly the cycle — which the
+        // server rejects, leaving a sticker the user pressed Publish on sitting in draft.
+        let asset = AVURLAsset(url: rendition.url)
+        let duration = try await asset.load(.duration).seconds
+        #expect(abs(duration - Double(motionFrames + holdFrames) / Double(document.fps)) < 0.02)
+        #expect(duration > document.renderedCycleDuration + 0.4)
+        #expect(rendition.metadata.durationSeconds == duration)
     }
 
     @MainActor

@@ -396,8 +396,18 @@ struct StickerRenderingPolicyTests {
         #expect(SystemStickerPreset.adaptive.allSatisfy { $0.fps >= 4 })
         // Colour is spent inside a rung instead of being a rung, so every attempt in a rung reuses
         // the frames the rung already rendered.
-        #expect(SystemStickerPreset.paletteLadder == [256, 64, 16])
-        #expect(SystemStickerPreset.paletteLadder.allSatisfy { $0 <= 256 })
+        #expect(SystemStickerPreset.paletteLadder.map(\.count) == [256, 256, 64, 64, 16, 16])
+        #expect(SystemStickerPreset.paletteLadder.allSatisfy { $0.count <= 256 })
+        // Richest first, so the first candidate still standing at the end of a rung is the best one
+        // that fit.
+        #expect(zip(SystemStickerPreset.paletteLadder, SystemStickerPreset.paletteLadder.dropFirst())
+            .allSatisfy { $1.count <= $0.count })
+        // Every dithered palette is backed by the same palette undithered, so breaking up banding
+        // can never cost a sticker the rung it would otherwise have held.
+        #expect(SystemStickerPreset.paletteLadder.allSatisfy { attempt in
+            !attempt.dithered || SystemStickerPreset.paletteLadder
+                .contains { $0.count == attempt.count && !$0.dithered }
+        })
     }
 
     @Test("Millisecond APNG delays land on the exact cycle a 24 FPS grid describes")
@@ -1157,16 +1167,24 @@ struct StoreAndPublisherTests {
         #expect(exports.first?.metadata.hasAlpha == true)
     }
 
-    @Test("Published export state requires the complete rendition set")
-    func publishedExportStateRequiresAllRenditions() {
+    @Test("Published export state requires the sticker renditions, but not the video")
+    func publishedExportStateRequiresTheStickerRenditions() {
         var revision = PreviewFixtures.candidate
         revision.candidateState = .accepted
         revision.gifAssetId = "gif"
         revision.mp4AssetId = "mp4"
         revision.systemAssetId = "system"
         #expect(revision.hasPublishedExports)
+        #expect(revision.hasPublishedVideo)
 
+        // A sticker-only publish never encoded a video. The sticker is published all the same —
+        // nothing on the platform reads the MP4, and one can be rendered later for a share.
         revision.mp4AssetId = nil
+        #expect(revision.hasPublishedExports)
+        #expect(!revision.hasPublishedVideo)
+
+        // The GIF is not optional: it is what every surface outside Messages shows.
+        revision.gifAssetId = nil
         #expect(!revision.hasPublishedExports)
     }
 

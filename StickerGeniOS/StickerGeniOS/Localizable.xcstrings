@@ -1,38 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "%@ stickers" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 张贴纸"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 張貼圖"
-          }
-        }
-      }
-    },
-    "1 sticker" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1 张贴纸"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1 張貼圖"
-          }
-        }
-      }
-    },
     "@%@" : {
       "localizations" : {
         "zh-CN" : {
@@ -99,6 +67,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 正在回覆"
+          }
+        }
+      }
+    },
+    "%@ stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 张贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 張貼圖"
           }
         }
       }
@@ -227,246 +211,6 @@
         }
       }
     },
-    "Choose stickers" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择贴纸"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選擇貼圖"
-          }
-        }
-      }
-    },
-    "Contact support" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "联系支持"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "聯絡支援"
-          }
-        }
-      }
-    },
-    "Creating pack…" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在创建贴纸包…"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在建立貼圖包…"
-          }
-        }
-      }
-    },
-    "In this pack" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此贴纸包内"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此貼圖包內"
-          }
-        }
-      }
-    },
-    "Loading more packs…" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在载入更多贴纸包…"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在載入更多貼圖包…"
-          }
-        }
-      }
-    },
-    "Loading stickers…" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在载入贴纸…"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在載入貼圖…"
-          }
-        }
-      }
-    },
-    "No matches" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有匹配项"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "沒有相符項目"
-          }
-        }
-      }
-    },
-    "No matching packs" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有匹配的贴纸包"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "沒有匹配的貼圖包"
-          }
-        }
-      }
-    },
-    "No published sticker matches “%@”." : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有与“%@”匹配的已发布贴纸。"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "沒有與“%@”匹配的已發佈貼圖。"
-          }
-        }
-      }
-    },
-    "No published stickers" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有已发布的贴纸"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "沒有已發佈的貼圖"
-          }
-        }
-      }
-    },
-    "Nothing chosen yet — add the stickers this pack should contain." : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未选择内容 — 添加此贴纸包应包含的贴纸。"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未選擇內容 — 加入此貼圖包應包含的貼圖。"
-          }
-        }
-      }
-    },
-    "Published %@" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "发布于 %@"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "發佈於 %@"
-          }
-        }
-      }
-    },
-    "Publishing pack…" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在发布贴纸包…"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在發佈貼圖包…"
-          }
-        }
-      }
-    },
-    "Updated %@" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新于 %@"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新於 %@"
-          }
-        }
-      }
-    },
-    "Updating your packs…" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在更新你的贴纸包…"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在更新你的貼圖包…"
-          }
-        }
-      }
-    },
     "•" : {
       "localizations" : {
         "zh-CN" : {
@@ -527,6 +271,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 個圖層"
+          }
+        }
+      }
+    },
+    "1 sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 张贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 張貼圖"
           }
         }
       }
@@ -1340,6 +1100,22 @@
         }
       }
     },
+    "Choose stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇貼圖"
+          }
+        }
+      }
+    },
     "Choose the export settings and publish an accepted version as Apple-compatible sticker files." : {
       "localizations" : {
         "zh-CN" : {
@@ -1500,6 +1276,22 @@
         }
       }
     },
+    "Contact support" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "联系支持"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聯絡支援"
+          }
+        }
+      }
+    },
     "Continue" : {
       "localizations" : {
         "zh-CN" : {
@@ -1643,6 +1435,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在建立動畫"
+          }
+        }
+      }
+    },
+    "Creating pack…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在创建贴纸包…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在建立貼圖包…"
           }
         }
       }
@@ -2431,6 +2239,22 @@
         }
       }
     },
+    "In this pack" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此贴纸包内"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此貼圖包內"
+          }
+        }
+      }
+    },
     "Keep it" : {
       "localizations" : {
         "zh-CN" : {
@@ -2638,6 +2462,22 @@
         }
       }
     },
+    "Loading more packs…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入更多贴纸包…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入更多貼圖包…"
+          }
+        }
+      }
+    },
     "Loading more stickers…" : {
       "localizations" : {
         "zh-CN" : {
@@ -2698,6 +2538,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在載入參考圖…"
+          }
+        }
+      }
+    },
+    "Loading stickers…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入贴纸…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入貼圖…"
           }
         }
       }
@@ -3028,6 +2884,38 @@
         }
       }
     },
+    "No matches" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配项"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有相符項目"
+          }
+        }
+      }
+    },
+    "No matching packs" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有匹配的貼圖包"
+          }
+        }
+      }
+    },
     "No matching stickers" : {
       "localizations" : {
         "zh-CN" : {
@@ -3076,6 +2964,38 @@
         }
       }
     },
+    "No published sticker matches “%@”." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有与“%@”匹配的已发布贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有與“%@”匹配的已發佈貼圖。"
+          }
+        }
+      }
+    },
+    "No published stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有已发布的贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有已發佈的貼圖"
+          }
+        }
+      }
+    },
     "No stickers yet" : {
       "localizations" : {
         "zh-CN" : {
@@ -3110,6 +3030,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "暫不"
+          }
+        }
+      }
+    },
+    "Nothing chosen yet — add the stickers this pack should contain." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未选择内容 — 添加此贴纸包应包含的贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未選擇內容 — 加入此貼圖包應包含的貼圖。"
           }
         }
       }
@@ -3606,6 +3542,9 @@
         }
       }
     },
+    "Publish failed" : {
+
+    },
     "Publish for Messages" : {
       "localizations" : {
         "zh-CN" : {
@@ -3634,6 +3573,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已發佈"
+          }
+        }
+      }
+    },
+    "Published %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布于 %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈於 %@"
+          }
+        }
+      }
+    },
+    "Publishing failed. This sticker is still a draft — try publishing it again." : {
+
+    },
+    "Publishing pack…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在发布贴纸包…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在發佈貼圖包…"
           }
         }
       }
@@ -3897,22 +3871,6 @@
         }
       }
     },
-    "Renaming…" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在重命名…"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在重新命名…"
-          }
-        }
-      }
-    },
     "Rename sticker" : {
       "localizations" : {
         "zh-CN" : {
@@ -3925,6 +3883,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重命名貼圖"
+          }
+        }
+      }
+    },
+    "Renaming…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重命名…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新命名…"
           }
         }
       }
@@ -5030,6 +5004,7 @@
       }
     },
     "The final frame could not be described" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -5046,6 +5021,7 @@
       }
     },
     "The final frame could not be timed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -5359,6 +5335,9 @@
         }
       }
     },
+    "This sticker is still a draft" : {
+
+    },
     "This sticker was made with a newer version of the app (document version %lld)." : {
       "localizations" : {
         "zh-CN" : {
@@ -5591,6 +5570,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不支援的寫入器設定"
+          }
+        }
+      }
+    },
+    "Updated %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新于 %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新於 %@"
+          }
+        }
+      }
+    },
+    "Updating your packs…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新你的贴纸包…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新你的貼圖包…"
           }
         }
       }

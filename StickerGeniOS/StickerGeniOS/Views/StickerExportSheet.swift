@@ -26,6 +26,14 @@ struct StickerExportSheet: View {
     }
     private var publishIsPending: Bool { publishJob.map { !$0.isTerminal } ?? false }
     private var publishSucceeded: Bool { publishJob.map { $0.isTerminal && !$0.isFailed } ?? false }
+    private var publishFailed: Bool { publishJob?.isFailed ?? false }
+    /// The server refused the publish. `model.errorMessage` cannot carry this: `publish` returned
+    /// successfully — it hands off to a job — so the sheet would otherwise drop straight back to
+    /// "Ready to publish" with the sticker still a draft and nothing on screen saying why.
+    private var publishFailureMessage: String {
+        publishJob?.failureMessage
+            ?? String(localized: "Publishing failed. This sticker is still a draft — try publishing it again.")
+    }
     private var isPublished: Bool { revision.hasPublishedExports || publishSucceeded }
     private var localExportReady: Bool { !revision.canPublishExports && !model.publishedURLs.isEmpty }
     private var actionIsComplete: Bool { isPublished || localExportReady }
@@ -65,6 +73,7 @@ struct StickerExportSheet: View {
                     }
 
                     if let note = model.qualityNote { NoticeBanner(message: note) }
+                    if publishFailed { ErrorBanner(message: publishFailureMessage) }
                     if let error = model.errorMessage { ErrorBanner(message: error) }
                 }
                 .padding()
@@ -187,22 +196,24 @@ struct StickerExportSheet: View {
 
     private var statusHeader: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "checkmark")
+            Image(systemName: publishFailed ? "exclamationmark" : "checkmark")
                 .font(.subheadline.bold())
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
-                .background(.green, in: Circle())
+                .background(publishFailed ? AnyShapeStyle(.red) : AnyShapeStyle(.green), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(
-                    isPublished ? "Published"
+                    publishFailed ? "Publish failed"
+                        : isPublished ? "Published"
                         : localExportReady ? "Export ready"
                         : revision.canPublishExports ? "Ready to publish"
                         : "Image ready"
                 )
                     .font(.title3.bold())
                 Text(
-                    isPublished ? "Saved to your Library"
+                    publishFailed ? "This sticker is still a draft"
+                        : isPublished ? "Saved to your Library"
                         : localExportReady ? "Your files are ready to share"
                         : revision.canPublishExports ? "Your accepted revision is ready"
                         : "Export it now or add motion first"
@@ -212,6 +223,7 @@ struct StickerExportSheet: View {
             }
             Spacer(minLength: 0)
         }
+        .accessibilityIdentifier(publishFailed ? "publish-failed-header" : "export-status-header")
     }
 
     private var exportSettings: some View {
@@ -342,7 +354,12 @@ struct StickerExportSheet: View {
             Button {
                 Haptics.tap()
                 Task {
-                    if await model.prepareShareFiles(store: store, revision: revision) {
+                    if await model.prepareShareFiles(
+                        store: store,
+                        revision: revision,
+                        assets: assets,
+                        verifiedAssetIDs: verifiedAssetIDs
+                    ) {
                         isPresentingShareSheet = true
                     } else {
                         Haptics.failure()

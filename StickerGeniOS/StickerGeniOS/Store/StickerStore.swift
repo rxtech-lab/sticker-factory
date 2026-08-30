@@ -10,6 +10,13 @@ nonisolated struct StickerJobState: Sendable, Equatable {
     var lastEventID: Int64?
     var isTerminal = false
     var isFailed = false
+    /// Why the job failed, in the server's words, when the failure arrived as an event.
+    ///
+    /// Separate from `message` — which any event may overwrite, and which starts out saying
+    /// "Starting…" — because it is the only thing a screen can show for a job that failed after its
+    /// request had already been accepted. A publish is exactly that: the call returns a job id, so
+    /// nothing throws and the failure has no other way back to the person who pressed the button.
+    var failureMessage: String?
     /// Set when the event stream itself died, as opposed to the generation failing.
     /// Surfaced in chat so a dead stream cannot look like silence.
     var streamErrorMessage: String?
@@ -679,6 +686,7 @@ final class StickerStore {
         // A re-attach to a job id that previously failed is a fresh attempt, not the old failure
         // still standing — otherwise the failure banner sits over a turn that is already streaming.
         state.isFailed = false
+        state.failureMessage = nil
         jobs[stickerID] = state
         computingStickerIDs.insert(stickerID)
         // Ask for permission — and enrol with APNs — as the first turn starts, so the prompt
@@ -728,6 +736,7 @@ final class StickerStore {
         state.lastEventID = event.id
         state.isTerminal = event.type == .completed || event.type == .failed || event.type == .candidate
         state.isFailed = event.type == .failed
+        if event.type == .failed { state.failureMessage = event.data.message }
         state.streamErrorMessage = nil
         jobs[stickerID] = state
 

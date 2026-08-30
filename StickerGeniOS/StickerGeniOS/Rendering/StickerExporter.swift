@@ -49,12 +49,31 @@ nonisolated struct SystemStickerPreset: Equatable, Sendable {
         .init(dimension: 300, fps: 4),
     ]
 
+    /// A palette size, and whether it is dithered.
+    struct PaletteAttempt: Sendable {
+        var count: Int
+        var dithered: Bool
+    }
+
     /// Palettes attempted within one rung, richest first.
     ///
-    /// All three are encoded in the rung's single rendering pass and the first that fits wins, so
+    /// All of them are encoded in the rung's single rendering pass and the first that fits wins, so
     /// the cost of offering a fallback palette is a few milliseconds of deflate rather than another
     /// pass over the animation.
-    static let paletteLadder = [256, 64, 16]
+    ///
+    /// Every dithered palette is followed by the same palette undithered. Dithering trades bytes for
+    /// the banding it breaks up — a broken-up ramp is less compressible than a flat plate — and on a
+    /// sticker tight enough that the extra bytes cost it a rung of frame rate, the flat version is
+    /// the better sticker. Pairing them this way means the dither can only ever be spent out of
+    /// slack that already existed.
+    static let paletteLadder: [PaletteAttempt] = [
+        .init(count: 256, dithered: true),
+        .init(count: 256, dithered: false),
+        .init(count: 64, dithered: true),
+        .init(count: 64, dithered: false),
+        .init(count: 16, dithered: true),
+        .init(count: 16, dithered: false),
+    ]
 }
 
 nonisolated enum StickerExportMetadataPolicy {
@@ -83,6 +102,22 @@ nonisolated enum StickerExportMetadataPolicy {
     /// Nothing is held on a play-once export: there is no repeat to separate it from.
     static func holdSeconds(for loop: AnimatedLoop) -> Double {
         loop == .once ? 0 : loopHoldSeconds
+    }
+
+    /// The hold, for a container that can only say it in frames.
+    ///
+    /// GIF and APNG give every frame its own delay, so the hold is one longer delay on the last one
+    /// and the frame grid still spans exactly the motion cycle. An H.264 track has no such field:
+    /// AVAssetWriter re-derives each sample's duration from the spacing of the next, so a final
+    /// sample handed a longer duration is written at the cadence like every other one and the file
+    /// measures exactly the cycle — which the server rejects for missing the hold. Repeating the
+    /// last frame is the only hold an MP4 can state, and it costs close to nothing: identical
+    /// frames encode as near-empty P-frames.
+    ///
+    /// `validateAnimatedRenditionTiming` in `server/lib/services/stickers.ts` computes the same
+    /// count the same way, and admits it only for the MP4 rendition.
+    static func holdFrameCount(document: AnimatedDocument, fps: Int) -> Int {
+        Int((holdSeconds(for: document.loop) * Double(fps)).rounded())
     }
 
     /// Frame delays on an integer tick grid, distributed so the cycle they sum to is exact.
@@ -239,17 +274,26 @@ final class StickerExporter {
         }
         writer.startSession(atSourceTime: .zero)
 
-        let renderedDuration = StickerExportMetadataPolicy.renderedDuration(document)
         let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps)
-        let holdSeconds = StickerExportMetadataPolicy.holdSeconds(for: document.loop)
-        for index in 0..<frameCount {
+        let holdFrames = StickerExportMetadataPolicy.holdFrameCount(document: document, fps: document.fps)
+        // One uniform cadence for the whole file, motion and hold alike. The hold frames are the
+        // last rendered frame again — see `holdFrameCount` for why an MP4 cannot say it any other
+        // way — so they are drawn from the image already in hand rather than rendered afresh.
+        var lastSticker: CGImage?
+        for index in 0..<(frameCount + holdFrames) {
             while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(4)) }
-            guard let sticker = renderFrame(
-                document: document,
-                time: Double(index) / Double(document.fps),
-                dimension: dimension,
-                assets: assets
-            ), let pool = adaptor.pixelBufferPool else { throw StickerExportError.renderFailed }
+            let rendered = index < frameCount
+                ? renderFrame(
+                    document: document,
+                    time: Double(index) / Double(document.fps),
+                    dimension: dimension,
+                    assets: assets
+                )
+                : lastSticker
+            guard let sticker = rendered, let pool = adaptor.pixelBufferPool else {
+                throw StickerExportError.renderFailed
+            }
+            lastSticker = sticker
             var optionalBuffer: CVPixelBuffer?
             guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &optionalBuffer) == kCVReturnSuccess,
                   let buffer = optionalBuffer
@@ -264,25 +308,16 @@ final class StickerExporter {
                 dimension: dimension
             )
             let timestamp = CMTime(value: CMTimeValue(index), timescale: CMTimeScale(document.fps))
-            let appended: Bool
-            if index == frameCount - 1 {
-                // The hold has to ride on the final sample's own duration — see `heldSampleBuffer`.
-                let held = try heldSampleBuffer(
-                    buffer,
-                    at: timestamp,
-                    lasting: CMTime(seconds: 1 / Double(document.fps) + holdSeconds, preferredTimescale: 600)
-                )
-                appended = input.append(held)
-            } else {
-                appended = adaptor.append(buffer, withPresentationTime: timestamp)
-            }
-            guard appended else {
+            guard adaptor.append(buffer, withPresentationTime: timestamp) else {
                 throw StickerExportError.videoWriterFailed(
                     writer.error?.localizedDescription ?? String(localized: "Could not append a frame")
                 )
             }
         }
         input.markAsFinished()
+        // The end of the sample grid, not `renderedDuration`: a cycle that is not a whole number of
+        // frames ends a fraction past it, and ending the session early would trim the hold back off.
+        let renderedDuration = Double(frameCount + holdFrames) / Double(document.fps)
         writer.endSession(atSourceTime: CMTime(seconds: renderedDuration, preferredTimescale: 600))
         await writer.finishWriting()
         guard writer.status == .completed else {
@@ -367,7 +402,7 @@ final class StickerExporter {
         )
     }
 
-    /// One rendering pass per rung, three palettes encoded inside it.
+    /// One rendering pass per rung, every palette in the ladder encoded inside it.
     ///
     /// The pass stops the moment every candidate has outgrown the ceiling, so an animation that is
     /// hopeless at 618 px pays for a handful of frames there rather than for all of them. The old
@@ -379,22 +414,60 @@ final class StickerExporter {
         maximumDimension: Int
     ) -> (data: Data, dimension: Int, fps: Int)? {
         var attempted = Set<[Int]>()
+        // Colours that reproduce this sticker faithfully. Flat art keeps all of them and behaves as
+        // it always did; a lifted photograph keeps only the rich ones.
+        let faithful = faithfulPaletteCounts(survey: survey)
+        var fallback: (data: Data, dimension: Int, fps: Int)?
         for preset in SystemStickerPreset.adaptive where preset.dimension <= maximumDimension {
             // A 6 FPS document clamps every rung below it onto the same grid; rendering that grid
             // once is enough to know it does not fit.
             let fps = min(document.fps, preset.fps)
             guard fps > 0, attempted.insert([preset.dimension, fps]).inserted else { continue }
-            if let data = indexedAnimation(
+            guard let attempt = indexedAnimation(
                 document: document,
                 assets: assets,
                 survey: survey,
                 dimension: preset.dimension,
                 fps: fps
-            ) {
-                return (data, preset.dimension, fps)
+            ) else { continue }
+            // Taking the first rung that fits at *any* palette is what posterized lifted photographs
+            // in the field: a dense Live Photo fit 618 px at 24 FPS only by dropping to sixteen
+            // colours, and shipped full size and perfectly smooth with a face made of plates. Pixels
+            // and frame rate are worth less than the subject being recognisable, so a rung that can
+            // only be met by wrecking the colour is passed over for a smaller, slower one that
+            // keeps it.
+            if faithful.contains(attempt.paletteCount) {
+                return (attempt.data, preset.dimension, fps)
+            }
+            // Unless nothing on the ladder can keep it, in which case the old behaviour — the
+            // biggest rung that fit at all — is still better than no animation.
+            if fallback == nil { fallback = (attempt.data, preset.dimension, fps) }
+        }
+        return fallback
+    }
+
+    /// Palette sizes whose quantization this sticker's own colours can absorb.
+    ///
+    /// The threshold is the census lattice's own step: at or below it the palette resolves the art
+    /// as finely as the survey ever recorded it, so a richer one has nothing left to add. The
+    /// richest palette is always included — when even 256 colours cannot hold a sticker, the ladder
+    /// still has to choose something, and that is the something.
+    private func faithfulPaletteCounts(survey: ColorSurvey) -> Set<Int> {
+        let step = Double(255 / max(1, survey.census.lattice.colorLevels - 1))
+        var counts = Set<Int>()
+        // The ladder pairs each palette with a dithered twin, and both share their entries — so the
+        // error is the same for both and the nearest-colour search behind it runs once per size.
+        var measured = Set<Int>()
+        var richest = 0
+        for attempt in SystemStickerPreset.paletteLadder {
+            richest = max(richest, attempt.count)
+            guard measured.insert(attempt.count).inserted else { continue }
+            if survey.census.error(of: survey.census.palette(limit: attempt.count)) <= step {
+                counts.insert(attempt.count)
             }
         }
-        return nil
+        counts.insert(richest)
+        return counts
     }
 
     private func indexedAnimation(
@@ -403,7 +476,7 @@ final class StickerExporter {
         survey: ColorSurvey,
         dimension: Int,
         fps: Int
-    ) -> Data? {
+    ) -> (data: Data, paletteCount: Int)? {
         let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: fps)
         let delays = StickerExportMetadataPolicy.apngFrameDelays(
             frameCount: frameCount,
@@ -411,9 +484,9 @@ final class StickerExporter {
             holdSeconds: StickerExportMetadataPolicy.holdSeconds(for: document.loop)
         )
         guard delays.count == frameCount else { return nil }
-        let streams = SystemStickerPreset.paletteLadder.map { paletteCount in
+        let streams = SystemStickerPreset.paletteLadder.map { attempt in
             IndexedPNGEncoder.AnimationStream(
-                palette: survey.census.palette(limit: paletteCount),
+                palette: survey.census.palette(limit: attempt.count, dithered: attempt.dithered),
                 dimension: dimension,
                 frameCount: frameCount,
                 loopCount: document.loop == .once ? 1 : 0,
@@ -433,7 +506,10 @@ final class StickerExporter {
             guard streams.contains(where: { !$0.isAbandoned }) else { return nil }
         }
         // Ordered richest palette first, so the first one still standing is the best that fits.
-        return streams.lazy.compactMap { $0.finish() }.first
+        return zip(streams, SystemStickerPreset.paletteLadder)
+            .lazy
+            .compactMap { stream, attempt in stream.finish().map { ($0, attempt.count) } }
+            .first
     }
 
     /// A single-frame rendition, and the one part of the ladder that cannot run out of room.
@@ -447,6 +523,10 @@ final class StickerExporter {
         maximumDimension: Int
     ) throws -> (url: URL, dimension: Int, byteCount: Int) {
         let ceiling = StickerExportMetadataPolicy.systemStickerByteCeiling
+        // The same preference the animated ladder makes: a smaller sticker that still looks like its
+        // subject beats a full-size one quantized past recognition.
+        let faithful = faithfulPaletteCounts(survey: survey)
+        var fallback: (data: Data, dimension: Int)?
         for dimension in StickerExportMetadataPolicy.staticSystemDimensions where dimension <= maximumDimension {
             guard let rendered = renderFrame(
                 document: document,
@@ -459,14 +539,21 @@ final class StickerExporter {
             if let data = UIImage(cgImage: rendered).pngData(), data.count < ceiling {
                 return (try write(data, extension: "png"), dimension, data.count)
             }
-            for paletteCount in [256, 64, 16, 4, 2] {
+            for attempt in Self.stillPaletteLadder {
                 guard let data = IndexedPNGEncoder.encodeStill(
                     rendered,
-                    palette: survey.census.palette(limit: paletteCount),
+                    palette: survey.census.palette(limit: attempt.count, dithered: attempt.dithered),
                     dimension: dimension
                 ), data.count < ceiling else { continue }
-                return (try write(data, extension: "png"), dimension, data.count)
+                if faithful.contains(attempt.count) {
+                    return (try write(data, extension: "png"), dimension, data.count)
+                }
+                if fallback == nil { fallback = (data, dimension) }
+                break
             }
+        }
+        if let fallback {
+            return (try write(fallback.data, extension: "png"), fallback.dimension, fallback.data.count)
         }
         throw StickerExportError.renderFailed
     }
@@ -512,6 +599,15 @@ final class StickerExporter {
         }
         return .init(census: census, posterTime: posterTime)
     }
+
+    /// The animated ladder, plus the two emergency palettes only a still ever reaches.
+    ///
+    /// Four and two entries are past the point where dithering helps: at that size the pattern reads
+    /// as the image rather than as texture on it.
+    private static let stillPaletteLadder = SystemStickerPreset.paletteLadder + [
+        .init(count: 4, dithered: false),
+        .init(count: 2, dithered: false),
+    ]
 
     /// Enough of the cycle to find its colours; more samples stop changing the palette.
     private static let surveySampleCount = 12
@@ -577,35 +673,6 @@ final class StickerExporter {
         }
         guard CGImageDestinationFinalize(destination) else { throw StickerExportError.destinationFailed }
         return data as Data
-    }
-
-    /// Wraps a frame so it carries its own display duration instead of inheriting the frame cadence.
-    ///
-    /// `endSession(atSourceTime:)` does not stretch the final sample: AVAssetWriter times it from
-    /// the cadence that preceded it, so a file ended a hold past the cycle still measures exactly
-    /// the cycle in `mdhd`. The server recomputes the duration from the container and rejects an
-    /// export missing the hold, so the hold has to be spelled out on the sample itself. No extra
-    /// frame is written for it — the last frame simply lingers, which is what the hold means.
-    private func heldSampleBuffer(_ pixelBuffer: CVPixelBuffer, at presentationTime: CMTime, lasting duration: CMTime) throws -> CMSampleBuffer {
-        var format: CMVideoFormatDescription?
-        guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pixelBuffer, formatDescriptionOut: &format) == noErr,
-              let format
-        else {
-            throw StickerExportError.videoWriterFailed(String(localized: "The final frame could not be described"))
-        }
-        var timing = CMSampleTimingInfo(duration: duration, presentationTimeStamp: presentationTime, decodeTimeStamp: .invalid)
-        var sample: CMSampleBuffer?
-        guard CMSampleBufferCreateReadyWithImageBuffer(
-            allocator: nil,
-            imageBuffer: pixelBuffer,
-            formatDescription: format,
-            sampleTiming: &timing,
-            sampleBufferOut: &sample
-        ) == noErr, let sample
-        else {
-            throw StickerExportError.videoWriterFailed(String(localized: "The final frame could not be timed"))
-        }
-        return sample
     }
 
     private func drawOpaqueVideoFrame(

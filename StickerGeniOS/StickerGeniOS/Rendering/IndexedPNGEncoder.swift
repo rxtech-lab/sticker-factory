@@ -114,30 +114,259 @@ nonisolated enum IndexedPNGEncoder {
 
         var isEmpty: Bool { counts.allSatisfy { $0 == 0 } }
 
-        /// The `limit` most-used colours, ordered so `tRNS` stays short.
+        /// `limit` colours chosen by median cut, ordered so `tRNS` stays short.
+        ///
+        /// Taking the *most frequent* colours instead — which this used to do — is what posterized
+        /// lifted photographs. Flat sticker art occupies a handful of lattice cells with enormous
+        /// counts; a face is a smooth ramp spread thinly over hundreds of cells, none of them
+        /// individually common. Ranking by frequency handed the whole palette to the crown and the
+        /// lettering, culled nearly every skin tone, and left `index(forKey:)` to snap the whole
+        /// face onto the few survivors. Median cut divides the colours that are *present* by how far
+        /// apart they are, so a ramp earns entries in proportion to the ground it covers rather than
+        /// to how often any one point on it repeats.
         ///
         /// PNG only lets `tRNS` run from the front of the palette, so every entry that carries alpha
         /// is sorted ahead of every opaque one: the chunk then covers the translucent entries and
         /// stops, instead of spelling out 255 for the whole palette.
-        func palette(limit: Int) -> Palette {
+        func palette(limit: Int, dithered: Bool = false) -> Palette {
             let cap = min(256, max(2, limit))
-            var keys = (0..<counts.count).filter { counts[$0] > 0 }
-            keys.sort { left, right in
-                counts[left] == counts[right] ? left < right : counts[left] > counts[right]
+            var cells: [Cell] = []
+            var hasTransparent = false
+            for key in 0..<counts.count where counts[key] > 0 {
+                // Key 0 is the collapsed fully-transparent bucket. It is reserved rather than
+                // quantized: averaged into a box it would come back faintly opaque, and the
+                // sticker's cut-out background would turn into a haze.
+                if key == 0 { hasTransparent = true; continue }
+                let color = lattice.color(forKey: key)
+                cells.append(Cell(
+                    red: Int32(color.red),
+                    green: Int32(color.green),
+                    blue: Int32(color.blue),
+                    alpha: Int32(color.alpha),
+                    count: Int64(counts[key])
+                ))
             }
-            var chosen = Array(keys.prefix(cap))
+            var colors = [(red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)]()
+            if hasTransparent { colors.append((0, 0, 0, 0)) }
+            colors.append(contentsOf: IndexedPNGEncoder.medianCut(cells, limit: cap - colors.count))
             // A palette needs at least two entries for a one-bit image to be legal, and a sticker
             // that is entirely one colour still has to be writable.
-            if chosen.isEmpty { chosen = [0] }
-            if chosen.count == 1 { chosen.append(chosen[0] == 0 ? lattice.keyCount - 1 : 0) }
-            let colors = chosen.map { lattice.color(forKey: $0) }
+            if colors.isEmpty { colors = [(0, 0, 0, 0)] }
+            if colors.count == 1 {
+                colors.append(colors[0].alpha == 0 ? (255, 255, 255, 255) : (0, 0, 0, 0))
+            }
             let order = colors.indices.sorted { left, right in
                 colors[left].alpha == colors[right].alpha
                     ? left < right
                     : colors[left].alpha < colors[right].alpha
             }
-            return Palette(lattice: lattice, entries: order.map { colors[$0] })
+            return Palette(lattice: lattice, entries: order.map { colors[$0] }, dithered: dithered)
         }
+
+        /// What quantizing to `palette` costs the pixels it treats worst, in colour steps.
+        ///
+        /// This is how the export ladder tells a photograph from flat art without being told which
+        /// it has. Sixteen entries reproduce a crown and a word mark exactly, so the ladder is free
+        /// to spend its budget on size and frame rate instead; the same sixteen turn a face into
+        /// plates, and this says so before the rung is chosen.
+        ///
+        /// A percentile rather than a mean, because the damage that matters is local. A lifted face
+        /// is a tenth of a sticker and the flat art around it quantizes perfectly, so an average
+        /// stays near zero while the one thing anybody looks at falls apart — which is exactly the
+        /// failure this reports on.
+        func error(of palette: Palette, percentile: Double = 0.9) -> Double {
+            var samples: [(error: Double, share: Double)] = []
+            var weight = 0.0
+            for key in 0..<counts.count where counts[key] > 0 {
+                let wanted = lattice.color(forKey: key)
+                guard wanted.alpha > 0 else { continue }
+                let entry = palette.entries[Int(palette.index(forKey: key))]
+                let error = max(
+                    abs(Int(entry.red) - Int(wanted.red)),
+                    abs(Int(entry.green) - Int(wanted.green)),
+                    abs(Int(entry.blue) - Int(wanted.blue))
+                )
+                // Weighted by how much of the sticker is this colour and by how opaque it is: an
+                // error under a nearly transparent pixel is not one anybody sees.
+                let share = Double(counts[key]) * Double(wanted.alpha) / 255
+                samples.append((Double(error), share))
+                weight += share
+            }
+            guard weight > 0 else { return 0 }
+            samples.sort { $0.error < $1.error }
+            var running = 0.0
+            for sample in samples {
+                running += sample.share
+                if running >= weight * percentile { return sample.error }
+            }
+            return samples.last?.error ?? 0
+        }
+    }
+
+    // MARK: - Median cut
+
+    /// One populated lattice cell: a colour, and how many pixels landed on it.
+    fileprivate struct Cell {
+        var red: Int32
+        var green: Int32
+        var blue: Int32
+        var alpha: Int32
+        var count: Int64
+
+        func channel(_ index: Int) -> Int32 {
+            switch index {
+            case 0: return red
+            case 1: return green
+            case 2: return blue
+            default: return alpha
+            }
+        }
+    }
+
+    /// A contiguous run of `cells`, kept sorted along whichever channel it was last split on.
+    private struct Box {
+        var start: Int
+        var end: Int
+        var count: Int64
+        /// The channel this box is widest along, and how wide.
+        var channel: Int
+        var extent: Int32
+
+        var isSplittable: Bool { end - start > 1 && extent > 0 }
+
+        /// Which box to divide next.
+        ///
+        /// Spread alone would spend splits on a dozen stray anti-aliasing pixels that happen to run
+        /// from black to white; mass alone is the frequency bias median cut exists to avoid. The
+        /// cube root keeps mass as a tiebreaker between boxes of similar spread without ever letting
+        /// it dominate — doubling a box's spread outranks multiplying its pixel count by eight.
+        var priority: Double { Double(extent) * pow(Double(count), 1.0 / 3.0) }
+    }
+
+    /// Alpha's weight when measuring how wide a box is.
+    ///
+    /// It matches the 4× on the *squared* alpha term in `Palette.index(forKey:)`, so the axis a box
+    /// is split along is the same one the nearest-colour search cares most about. A soft edge
+    /// rendered opaque is a visible halo; a slightly wrong hue inside the shape is not.
+    private static let alphaExtentWeight: Int32 = 2
+
+    /// Divides the populated colours into `limit` boxes and returns each box's centre of mass.
+    fileprivate static func medianCut(
+        _ cells: [Cell],
+        limit: Int
+    ) -> [(red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)] {
+        guard limit > 0, !cells.isEmpty else { return [] }
+        var cells = cells
+        var boxes = [measure(&cells, start: 0, end: cells.count)]
+        while boxes.count < limit {
+            // At most 256 boxes and 256 splits, so a linear scan for the best candidate is cheaper
+            // than the heap that would replace it.
+            var target = -1
+            var best = 0.0
+            for (index, box) in boxes.enumerated() where box.isSplittable && box.priority > best {
+                best = box.priority
+                target = index
+            }
+            guard target >= 0 else { break }
+            let box = boxes[target]
+            // Sorting only this range, only on the split channel, is what keeps the whole pass
+            // linearithmic in the cells a sticker actually uses rather than in the lattice.
+            let channel = box.channel
+            cells[box.start..<box.end].sort { $0.channel(channel) < $1.channel(channel) }
+            var running: Int64 = 0
+            var split = box.start
+            let half = box.count / 2
+            // Stop one short of the end so both halves keep at least one cell.
+            while split < box.end - 1, running + cells[split].count <= half {
+                running += cells[split].count
+                split += 1
+            }
+            // One cell heavier than the whole rest of the box leaves nothing behind it. A sticker's
+            // flat background is exactly that cell, and letting the split collapse would spend the
+            // slot on an empty box — which is a palette entry the image can never use.
+            split = max(split, box.start + 1)
+            boxes[target] = measure(&cells, start: box.start, end: split)
+            boxes.append(measure(&cells, start: split, end: box.end))
+        }
+        return boxes.map { box in
+            var red: Int64 = 0
+            var green: Int64 = 0
+            var blue: Int64 = 0
+            var alpha: Int64 = 0
+            var total: Int64 = 0
+            for cell in cells[box.start..<box.end] {
+                red += Int64(cell.red) * cell.count
+                green += Int64(cell.green) * cell.count
+                blue += Int64(cell.blue) * cell.count
+                alpha += Int64(cell.alpha) * cell.count
+                total += cell.count
+            }
+            guard total > 0 else { return (0, 0, 0, 0) }
+            func average(_ sum: Int64) -> UInt8 { UInt8(min(255, max(0, (sum + total / 2) / total))) }
+            // A box that only ever held opaque pixels has to stay exactly opaque: rounding it to 254
+            // would drag the entry into `tRNS` and cost a byte per palette entry ahead of it.
+            return (average(red), average(green), average(blue), average(alpha))
+        }
+    }
+
+    private static func measure(_ cells: inout [Cell], start: Int, end: Int) -> Box {
+        var lower: [Int32] = [255, 255, 255, 255]
+        var upper: [Int32] = [0, 0, 0, 0]
+        var count: Int64 = 0
+        for cell in cells[start..<end] {
+            count += cell.count
+            for channel in 0..<4 {
+                let value = cell.channel(channel)
+                if value < lower[channel] { lower[channel] = value }
+                if value > upper[channel] { upper[channel] = value }
+            }
+        }
+        var channel = 0
+        var extent: Int32 = -1
+        for candidate in 0..<4 {
+            let weight: Int32 = candidate == 3 ? alphaExtentWeight : 1
+            let width = (upper[candidate] - lower[candidate]) * weight
+            if width > extent {
+                extent = width
+                channel = candidate
+            }
+        }
+        return Box(start: start, end: end, count: count, channel: channel, extent: max(0, extent))
+    }
+
+    // MARK: - Dithering
+
+    /// The 8×8 ordered dither threshold matrix, in its usual recursive order.
+    private static let bayer: [Int32] = [
+        0, 32, 8, 40, 2, 34, 10, 42,
+        48, 16, 56, 24, 50, 18, 58, 26,
+        12, 44, 4, 36, 14, 46, 6, 38,
+        60, 28, 52, 20, 62, 30, 54, 22,
+        3, 35, 11, 43, 1, 33, 9, 41,
+        51, 19, 59, 27, 49, 17, 57, 25,
+        15, 47, 7, 39, 13, 45, 5, 37,
+        63, 31, 55, 23, 61, 29, 53, 21,
+    ]
+
+    /// The offset each position in the 8×8 tile nudges a pixel's colour by before it is matched.
+    ///
+    /// Ordered rather than error-diffused, and that is not a quality compromise but a requirement of
+    /// this encoder. Floyd–Steinberg carries its error forward across the whole image, so a single
+    /// pixel moving between frames changes every index after it and `changedRect` widens to the full
+    /// canvas — frame differencing, which is most of what buys the animation its byte budget, stops
+    /// working. A Bayer offset depends only on `(x, y)`, so a pixel that did not move maps to the
+    /// same index it did last frame and the changed rectangle stays honest. The periodic pattern
+    /// also deflates far better than diffusion's noise, which matters when the budget is the point.
+    ///
+    /// The amplitude spans one gap between neighbouring palette entries: enough for two of them to
+    /// straddle a ramp and average out to the shade in between, and no more.
+    private static func ditherOffsets(spacing: Int32, lattice: Lattice) -> [Int32] {
+        // Below the lattice's own step the palette already resolves the image more finely than the
+        // census recorded it, so there is no banding left to break up — only noise to add.
+        let latticeStep = Int32(255 / max(1, lattice.colorLevels - 1))
+        guard spacing > latticeStep else { return [] }
+        let amplitude = Double(min(spacing, 96))
+        return bayer.map { Int32(((Double($0) + 0.5) / 64 - 0.5) * amplitude) }
     }
 
     /// The chosen colours, plus the lazily filled table that maps every lattice key onto one.
@@ -151,12 +380,51 @@ nonisolated enum IndexedPNGEncoder {
         /// Bits a pixel: the smallest depth PNG offers that still indexes every entry.
         let bitDepth: Int
         private var table: [Int16]
+        /// Per-position colour offsets applied before the lookup, or empty when not dithering.
+        private let ditherOffsets: [Int32]
 
-        init(lattice: Lattice, entries: [(red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)]) {
+        init(
+            lattice: Lattice,
+            entries: [(red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)],
+            dithered: Bool = false
+        ) {
             self.lattice = lattice
             self.entries = entries
             bitDepth = entries.count <= 2 ? 1 : entries.count <= 4 ? 2 : entries.count <= 16 ? 4 : 8
             table = [Int16](repeating: -1, count: lattice.keyCount)
+            ditherOffsets = dithered
+                ? IndexedPNGEncoder.ditherOffsets(spacing: Palette.spacing(of: entries), lattice: lattice)
+                : []
+        }
+
+        /// The typical distance between a palette entry and its nearest neighbour.
+        ///
+        /// This is the size of the step a smooth ramp has to jump when it crosses from one entry to
+        /// the next — the banding, measured. The median rather than the mean, because a sticker's
+        /// flat art contributes a handful of isolated colours sitting far from everything else, and
+        /// their distances would drag an average up until the dither turned into noise.
+        private static func spacing(of entries: [(red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)]) -> Int32 {
+            guard entries.count > 1 else { return 0 }
+            var distances: [Int32] = []
+            distances.reserveCapacity(entries.count)
+            for (index, entry) in entries.enumerated() {
+                // Transparent entries have no colour to band; including them would measure the
+                // distance to noise.
+                guard entry.alpha > 0 else { continue }
+                var nearest = Int32.max
+                for (other, candidate) in entries.enumerated() where other != index && candidate.alpha > 0 {
+                    let red = Int32(entry.red) - Int32(candidate.red)
+                    let green = Int32(entry.green) - Int32(candidate.green)
+                    let blue = Int32(entry.blue) - Int32(candidate.blue)
+                    let alpha = Int32(entry.alpha) - Int32(candidate.alpha)
+                    let distance = red * red + green * green + blue * blue + 4 * alpha * alpha
+                    if distance < nearest { nearest = distance }
+                }
+                if nearest < Int32.max { distances.append(Int32(Double(nearest).squareRoot())) }
+            }
+            guard !distances.isEmpty else { return 0 }
+            distances.sort()
+            return distances[distances.count / 2]
         }
 
         /// How many leading entries `tRNS` has to describe. Zero means the sticker is fully opaque.
@@ -192,16 +460,29 @@ nonisolated enum IndexedPNGEncoder {
                   rgba.width == width, rgba.height == height
             else { return nil }
             var output = [UInt8](repeating: 0, count: width * height)
+            let offsets = ditherOffsets
             rgba.pixels.withUnsafeBufferPointer { pixels in
                 for pixel in 0..<(width * height) {
                     let offset = pixel * 4
-                    let key = lattice.key(
-                        red: pixels[offset],
-                        green: pixels[offset + 1],
-                        blue: pixels[offset + 2],
-                        alpha: pixels[offset + 3]
-                    )
-                    output[pixel] = index(forKey: key)
+                    var red = pixels[offset]
+                    var green = pixels[offset + 1]
+                    var blue = pixels[offset + 2]
+                    let alpha = pixels[offset + 3]
+                    // One offset for all three channels, so the dither rides the brightness axis and
+                    // never invents colour the frame did not have. Alpha is left alone: a dithered
+                    // edge speckles rather than softens.
+                    if !offsets.isEmpty, alpha > 0 {
+                        let nudge = offsets[(pixel / width) % 8 * 8 + (pixel % width) % 8]
+                        red = UInt8(min(255, max(0, Int32(red) + nudge)))
+                        green = UInt8(min(255, max(0, Int32(green) + nudge)))
+                        blue = UInt8(min(255, max(0, Int32(blue) + nudge)))
+                    }
+                    output[pixel] = index(forKey: lattice.key(
+                        red: red,
+                        green: green,
+                        blue: blue,
+                        alpha: alpha
+                    ))
                 }
             }
             return output

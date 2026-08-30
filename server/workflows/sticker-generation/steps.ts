@@ -76,6 +76,7 @@ import {
 import { referencedAssetIds, renderSticker } from "@/lib/render/sticker-render";
 import type { RenderAssets } from "@/lib/render/document-svg";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
+import { ApiError } from "@/lib/http/errors";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 
 /**
@@ -2333,7 +2334,37 @@ export async function publishExportsStep(jobId: string, request: PublishExportsR
   const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
   if (!job || job.kind !== "export") throw new Error("Export job not found");
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "verifying_exports", progress: 0.5 });
-  return bindExports(db, job.ownerId, job.stickerId, request, job.id);
+  try {
+    return await bindExports(db, job.ownerId, job.stickerId, request, job.id);
+  } catch (error) {
+    // A rejected rendition is a verdict on bytes that are already uploaded: the same file fails the
+    // same way on every attempt, so retrying spends twenty seconds arriving back here. Fail once,
+    // and hand the reason to the client — the sticker stays a draft either way, and "Generation
+    // failed. You can retry this request." leaves someone pressing Publish forever.
+    if (!(error instanceof ApiError) || error.status >= 500) throw error;
+    await failJob(db, jobId, error.message, exportRejectionReason(error));
+    throw new FatalError(error.message);
+  }
+}
+
+/**
+ * What the export sheet says when the server refuses a rendition.
+ *
+ * Only the timing codes get their own sentence, because only they describe a file the app produced
+ * wrongly rather than something the person did: nothing about the sticker is broken, the build that
+ * rendered it is. Everything else falls back to the server's own words, which is already more than
+ * the client had.
+ */
+function exportRejectionReason(error: ApiError): string {
+  switch (error.code) {
+    case "EXPORT_TIMING_UNVERIFIED":
+    case "EXPORT_FPS_MISMATCH":
+    case "EXPORT_FRAME_COUNT_MISMATCH":
+    case "EXPORT_DURATION_MISMATCH":
+      return "The exported animation's timing doesn't match this version of the sticker. Update the app, then publish again.";
+    default:
+      return error.message;
+  }
 }
 
 /**
@@ -2458,7 +2489,21 @@ export async function completeJobStep(jobId: string, result: Record<string, unkn
 
 export async function failJobStep(jobId: string, message: string): Promise<void> {
   "use step";
-  const db = getDatabase();
+  return failJob(getDatabase(), jobId, message);
+}
+
+/**
+ * Ends a job as failed.
+ *
+ * Separate from `failJobStep` so a step that already knows *why* it is about to fail can say so
+ * before it throws — a step cannot call another step, and by the time the workflow's catch runs the
+ * original error has been wrapped in the runtime's own "failed after N retries" message.
+ *
+ * @param publicReason what the client shows. Left out, the client is told only that generation
+ *   failed and that retrying is worth a try, which is the right answer for a provider that timed
+ *   out and the wrong one for a request that will be refused the same way every time.
+ */
+async function failJob(db: Database, jobId: string, message: string, publicReason?: string): Promise<void> {
   const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
   traceEvent("failJobStep", { jobId, state: job?.state, message: message.slice(0, 200) });
   if (!job) return;
@@ -2490,7 +2535,10 @@ export async function failJobStep(jobId: string, message: string): Promise<void>
       jobId,
       ownerId: job.ownerId,
       type: "failed",
-      dataJson: { code: "GENERATION_FAILED", message: "Generation failed. You can retry this request." },
+      dataJson: {
+        code: "GENERATION_FAILED",
+        message: publicReason ?? "Generation failed. You can retry this request.",
+      },
       createdAt: now,
     });
     return true;

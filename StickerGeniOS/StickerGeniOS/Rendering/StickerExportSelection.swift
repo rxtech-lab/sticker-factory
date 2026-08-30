@@ -7,9 +7,11 @@ import Foundation
 /// a full-size opaque video for anywhere that plays video and nothing that peels. Someone posting to
 /// a feed wants the second and nothing else; someone building a sticker pack wants the first.
 ///
-/// This only decides what is *shared*. An animated sticker that gets published still renders and
-/// uploads its whole rendition set, because the library and the Messages extension are entitled to
-/// every format regardless of which one the person in front of the share sheet asked for.
+/// The sticker set is rendered and uploaded either way — the library and the Messages extension are
+/// entitled to it regardless of what the person in front of the share sheet asked for. The video is
+/// the exception: it is the slowest thing an export does and nothing on the platform reads it, so
+/// choosing Sticker skips the encode outright. Wanting it later costs that encode then, not a
+/// re-publish; see `StickerPublisher.publishedExports`.
 nonisolated enum StickerExportSelection: String, CaseIterable, Identifiable, Codable, Sendable {
     case sticker
     case video
