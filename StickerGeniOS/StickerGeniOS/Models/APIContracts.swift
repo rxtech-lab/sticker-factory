@@ -52,11 +52,19 @@ nonisolated struct StickerRevision: Codable, Identifiable, Hashable, Sendable {
     var masterAssetId: String?
     var previewAssetId: String?
     var pngAssetId: String?
+    /// The sharing rendition of a revision published before APNG replaced GIF. Never written by
+    /// this app any more, and still the only thing that finds those revisions' artwork.
     var gifAssetId: String?
+    /// The sharing rendition every publish produces now.
+    var apngAssetId: String?
     var mp4AssetId: String?
     var systemAssetId: String?
     var createdAt: Date
     var decidedAt: Date?
+
+    /// The sharing rendition, whichever container this revision was published with. Exactly one of
+    /// the two is ever set, so this is a fallback in name only.
+    var sharingAssetId: String? { apngAssetId ?? gifAssetId }
 
     var state: RevisionCandidateState {
         get { candidateState }
@@ -78,7 +86,7 @@ nonisolated struct StickerRevision: Codable, Identifiable, Hashable, Sendable {
         guard systemAssetId != nil else { return false }
         return document.kind == .static
             ? pngAssetId != nil
-            : gifAssetId != nil
+            : sharingAssetId != nil
     }
 
     /// Whether the server holds a video for this revision, as opposed to one that can still be
@@ -117,7 +125,10 @@ nonisolated struct AssetRecord: Codable, Identifiable, Hashable, Sendable {
 }
 
 nonisolated enum AssetKind: String, Codable, CaseIterable, Hashable, Sendable {
-    case reference, mask, master, preview, gif, mp4, system
+    case reference, mask, master, preview, apng, mp4, system
+    /// The sharing rendition before APNG replaced it. Nothing uploads one; the case stays so an
+    /// asset published under the old kind still decodes.
+    case gif
     case chatAttachment = "chat_attachment"
     /// A frame atlas: one transparent PNG holding a grid of frames lifted from a Live Photo.
     case sequence
@@ -617,7 +628,9 @@ nonisolated struct CompleteUploadRequest: Codable, Sendable { var sha256: String
 nonisolated struct PublishExportsRequest: Codable, Sendable {
     var revisionId: String
     var pngAssetId: String?
-    var gifAssetId: String?
+    /// No `gifAssetId` twin: the server accepts only `apng` for a new publish, and this app has no
+    /// way left to produce the other one.
+    var apngAssetId: String?
     var mp4AssetId: String?
     var systemAssetId: String
     var mp4Background: StickerMP4BackgroundV1?

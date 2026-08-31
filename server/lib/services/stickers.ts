@@ -432,6 +432,9 @@ export async function getSticker(db: Database, ownerId: string, stickerId: strin
       masterAssetId: revision.masterAssetId,
       previewAssetId: revision.previewAssetId,
       pngAssetId: revision.pngAssetId,
+      apngAssetId: revision.apngAssetId,
+      // Still served: a revision published before the switch carries its sharing rendition here and
+      // nowhere else, and the clients resolve whichever of the two is set.
       gifAssetId: revision.gifAssetId,
       mp4AssetId: revision.mp4AssetId,
       systemAssetId: revision.systemAssetId,
@@ -450,14 +453,17 @@ function intentToJobKind(intent: PostChatMessageRequest["intent"]) {
 
 /**
  * The MP4 is deliberately not required here. It is the one rendition nothing on the platform reads:
- * Messages carries the system sticker, the library and share sheet carry the GIF, and the MP4 exists
- * only for somewhere else that plays video. It is also the slowest thing the app renders, so a
- * publish that was never going to share a video does not encode one — see `StickerExportSelection`.
+ * Messages carries the system sticker, the library and share sheet carry the sharing APNG, and the
+ * MP4 exists only for somewhere else that plays video. It is also the slowest thing the app renders,
+ * so a publish that was never going to share a video does not encode one — see
+ * `StickerExportSelection`.
  */
 function revisionHasPublishedExports(revision: typeof stickerRevisions.$inferSelect): boolean {
   return Boolean(revision.systemAssetId && (revision.kind === "static"
     ? revision.pngAssetId
-    : revision.gifAssetId));
+    // Either container counts. A sticker published before the switch is no less published for
+    // holding a GIF, and demoting it to a draft is what reading only the new column would do.
+    : revision.apngAssetId ?? revision.gifAssetId));
 }
 
 /** A play-once export has no repeat to separate, so nothing is held. */
@@ -499,7 +505,7 @@ export function validateAnimatedRenditionTiming(
   // drags below the grid they were rendered on — recover the grid before comparing to it.
   const gridFps = rendition.frameCount / (holdFrames > 0 ? expectedDuration : cycleSeconds);
 
-  // gif and mp4 are rendered at the document's own fps. The system rendition walks a quality ladder
+  // The sharing apng and the mp4 are rendered at the document's own fps. The system rendition walks a quality ladder
   // to fit under 500 KB, so it is a range rather than a value. The bottom of that ladder is 4 fps —
   // `SystemStickerPreset.adaptive` in `StickerGeniOS/Rendering/StickerExporter.swift` — because a
   // long cycle of dense art that cannot fit at 8 is better shipped choppy than shipped as a still.
@@ -1089,6 +1095,9 @@ export async function revertRevision(db: Database, ownerId: string, stickerId: s
       masterAssetId: target.masterAssetId,
       previewAssetId: target.previewAssetId,
       pngAssetId: target.pngAssetId,
+      apngAssetId: target.apngAssetId,
+      // Reverting to a revision published before the switch has to carry its GIF across, or the
+      // restored revision comes back with no sharing rendition at all.
       gifAssetId: target.gifAssetId,
       mp4AssetId: target.mp4AssetId,
       systemAssetId: target.systemAssetId,
@@ -1327,7 +1336,7 @@ export async function bindExports(
     eq(stickerRevisions.candidateState, "accepted"),
   )).get();
   if (!revision) throw new ApiError(409, "REVISION_NOT_ACCEPTED", "The revision must be accepted before publishing");
-  const ids = [request.pngAssetId, request.gifAssetId, request.mp4AssetId, request.systemAssetId].filter((value): value is string => Boolean(value));
+  const ids = [request.pngAssetId, request.apngAssetId, request.mp4AssetId, request.systemAssetId].filter((value): value is string => Boolean(value));
   const rows = await getReadyOwnedAssets(db, ownerId, ids);
   const byId = new Map(rows.map((asset) => [asset.id, asset]));
   for (const asset of rows) {
@@ -1337,21 +1346,27 @@ export async function bindExports(
   if (system.kind !== "system" || (system.byteSize ?? Infinity) >= 500_000) {
     throw new ApiError(422, "INVALID_SYSTEM_STICKER", "A verified system rendition below 500 KB is required");
   }
-  if (request.gifAssetId && byId.get(request.gifAssetId)?.kind !== "gif") throw new ApiError(422, "INVALID_GIF_EXPORT", "GIF export asset is invalid");
+  // Only `apng` is accepted for a *new* publish. Revisions that already point at a `gif` asset keep
+  // resolving through the same column — see `0009_apng_sharing_rendition.sql` — but nothing writes
+  // one any more, so admitting the old kind here would only let a stale client publish a container
+  // the rest of this file no longer describes.
+  if (request.apngAssetId && byId.get(request.apngAssetId)?.kind !== "apng") {
+    throw new ApiError(422, "INVALID_APNG_EXPORT", "Sharing APNG export asset is invalid");
+  }
   if (request.mp4AssetId && byId.get(request.mp4AssetId)?.kind !== "mp4") throw new ApiError(422, "INVALID_MP4_EXPORT", "MP4 export asset is invalid");
   if (request.pngAssetId && byId.get(request.pngAssetId)?.kind !== "master") throw new ApiError(422, "INVALID_PNG_EXPORT", "PNG export asset is invalid");
   if (revision.kind === "static" && !request.pngAssetId) throw new ApiError(422, "PNG_EXPORT_REQUIRED", "Static stickers require a rendered PNG export");
-  if (revision.kind === "static" && (request.gifAssetId || request.mp4AssetId)) {
+  if (revision.kind === "static" && (request.apngAssetId || request.mp4AssetId)) {
     throw new ApiError(422, "STATIC_EXPORT_MATRIX", "Static stickers only accept PNG and single-frame PNG system renditions");
   }
   if (revision.kind === "static" && (system.mimeType !== "image/png" || (system.frameCount ?? 1) !== 1)) {
     throw new ApiError(422, "STATIC_SYSTEM_RENDITION_REQUIRED", "Static stickers require a single-frame PNG system rendition");
   }
   // The MP4 is optional: an export that is only ever going to be a sticker has no video to publish,
-  // and encoding one anyway is the slowest step in a publish. The GIF is not — it is what the
-  // library, the share sheet and every non-Messages surface show for an animated sticker.
-  if (revision.kind === "animated" && !request.gifAssetId) {
-    throw new ApiError(422, "ANIMATED_EXPORTS_REQUIRED", "Animated stickers require a GIF export");
+  // and encoding one anyway is the slowest step in a publish. The sharing APNG is not — it is what
+  // the library, the share sheet and every non-Messages surface show for an animated sticker.
+  if (revision.kind === "animated" && !request.apngAssetId) {
+    throw new ApiError(422, "ANIMATED_EXPORTS_REQUIRED", "Animated stickers require a sharing APNG export");
   }
   if (revision.kind === "animated" && request.pngAssetId) {
     throw new ApiError(422, "ANIMATED_EXPORT_MATRIX", "Animated stickers do not accept a static PNG export relation");
@@ -1359,8 +1374,8 @@ export async function bindExports(
   // An animated sticker normally carries an animated system rendition, and a single-frame one is a
   // client that uploaded the wrong file — unless the client says otherwise. Some animations cannot
   // be squeezed under Apple's 500 KB ceiling at any size or frame rate the ladder can reach, and the
-  // app ships their poster frame rather than refusing to export at all. The GIF and MP4 renditions
-  // still carry the full motion, so nothing about the sticker is lost outside Messages.
+  // app ships their poster frame rather than refusing to export at all. The sharing APNG and MP4
+  // renditions still carry the full motion, so nothing about the sticker is lost outside Messages.
   const systemIsStill = request.systemRenditionKind === "still";
   if (revision.kind === "animated" && !systemIsStill && (system.frameCount ?? 0) < 2) {
     throw new ApiError(422, "ANIMATED_SYSTEM_RENDITION_REQUIRED", "Animated stickers require an animated system rendition");
@@ -1385,7 +1400,7 @@ export async function bindExports(
     if (keyframeCount === 0) {
       throw new ApiError(422, "ANIMATION_KEYFRAMES_REQUIRED", "Animated exports require at least one accepted animation keyframe");
     }
-    for (const assetId of [request.gifAssetId, request.mp4AssetId, request.systemAssetId]) {
+    for (const assetId of [request.apngAssetId, request.mp4AssetId, request.systemAssetId]) {
       if (!assetId) continue;
       // The still fallback has no cycle to match; it is one frame standing in for all of them.
       if (systemIsStill && assetId === request.systemAssetId) continue;
@@ -1412,7 +1427,7 @@ export async function bindExports(
       masterAssetId: revision.masterAssetId,
       previewAssetId: revision.previewAssetId,
       pngAssetId: request.pngAssetId,
-      gifAssetId: request.gifAssetId,
+      apngAssetId: request.apngAssetId,
       mp4AssetId: request.mp4AssetId,
       systemAssetId: request.systemAssetId,
       createdAt: new Date(),

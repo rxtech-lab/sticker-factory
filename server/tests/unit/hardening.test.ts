@@ -6,6 +6,7 @@ import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { validateAnimatedRenditionTiming } from "@/lib/services/stickers";
 import { downscaleForModelInput, inspectImage } from "@/lib/storage/r2";
 import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation/steps";
+import { spliceApngControlChunks } from "@/tests/helpers/apng";
 
 describe("media and animation hardening", () => {
   it("uses per-frame canvas height and verified timing for animated images", async () => {
@@ -201,15 +202,15 @@ describe("media and animation hardening", () => {
     const hold = 0.6;
     // 1x: a 2s cycle, 60 frames at 30fps.
     expect(() => validateAnimatedRenditionTiming(
-      atSpeed(1), { kind: "gif", frameCount: 60, durationSeconds: 2 + hold, fps: 30 },
+      atSpeed(1), { kind: "apng", frameCount: 60, durationSeconds: 2 + hold, fps: 30 },
     )).not.toThrow();
     // 2x: the same document is a 1s cycle, 30 frames.
     expect(() => validateAnimatedRenditionTiming(
-      atSpeed(2), { kind: "gif", frameCount: 30, durationSeconds: 1 + hold, fps: 30 },
+      atSpeed(2), { kind: "apng", frameCount: 30, durationSeconds: 1 + hold, fps: 30 },
     )).not.toThrow();
     // The regression: a 2x document rendered as if it were still 2s long.
     expect(() => validateAnimatedRenditionTiming(
-      atSpeed(2), { kind: "gif", frameCount: 60, durationSeconds: 2 + hold, fps: 30 },
+      atSpeed(2), { kind: "apng", frameCount: 60, durationSeconds: 2 + hold, fps: 30 },
     )).toThrow();
   });
 
@@ -238,10 +239,10 @@ describe("media and animation hardening", () => {
     )).toThrow();
     // Hold frames in a container that has per-frame delays would play the hold twice over.
     expect(() => validateAnimatedRenditionTiming(
-      document, { kind: "gif", frameCount: 96, durationSeconds: 3.2, fps: 30 },
+      document, { kind: "apng", frameCount: 96, durationSeconds: 3.2, fps: 30 },
     )).toThrow();
     expect(() => validateAnimatedRenditionTiming(
-      document, { kind: "gif", frameCount: 78, durationSeconds: 3.2, fps: 30 },
+      document, { kind: "apng", frameCount: 78, durationSeconds: 3.2, fps: 30 },
     )).not.toThrow();
   });
 
@@ -284,48 +285,3 @@ describe("media and animation hardening", () => {
       .toEqual({ ...animate, targetLayerId: undefined });
   });
 });
-
-/**
- * Turns a still PNG into an APNG by splicing the animation control chunks in front of its `IDAT`.
- *
- * The frames are a fiction — every control chunk points at the same default image — but the chunk
- * layout is the real one, which is all the inspector reads. Building it here rather than checking in
- * a binary keeps the fixture legible and keeps libpng happy: `acTL` and `fcTL` are ancillary, so a
- * decoder that does not know them skips them and still sees a valid PNG.
- */
-function spliceApngControlChunks(png: Buffer, delaysMilliseconds: number[], declaredFrames = delaysMilliseconds.length): Buffer {
-  const crcTable = Array.from({ length: 256 }, (_, index) => {
-    let value = index;
-    for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    return value >>> 0;
-  });
-  const chunk = (type: string, payload: Buffer) => {
-    const typed = Buffer.concat([Buffer.from(type, "ascii"), payload]);
-    let crc = 0xffffffff;
-    for (const byte of typed) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-    const length = Buffer.alloc(4);
-    length.writeUInt32BE(payload.byteLength);
-    const checksum = Buffer.alloc(4);
-    checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
-    return Buffer.concat([length, typed, checksum]);
-  };
-
-  const control = Buffer.alloc(8);
-  control.writeUInt32BE(declaredFrames, 0);
-  control.writeUInt32BE(0, 4);
-  const chunks = [chunk("acTL", control)];
-  delaysMilliseconds.forEach((delay, index) => {
-    const payload = Buffer.alloc(26);
-    payload.writeUInt32BE(index, 0);
-    payload.writeUInt32BE(300, 4);
-    payload.writeUInt32BE(300, 8);
-    payload.writeUInt32BE(0, 12);
-    payload.writeUInt32BE(0, 16);
-    payload.writeUInt16BE(delay, 20);
-    payload.writeUInt16BE(1000, 22);
-    chunks.push(chunk("fcTL", payload));
-  });
-
-  const idat = png.indexOf(Buffer.from("IDAT", "ascii")) - 4;
-  return Buffer.concat([png.subarray(0, idat), ...chunks, png.subarray(idat)]);
-}

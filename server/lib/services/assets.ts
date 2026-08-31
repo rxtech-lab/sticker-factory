@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
 import type { CreateUploadRequest } from "@/lib/contracts/api";
-import { MAX_RENDITION_SECONDS, type StickerDocument } from "@/lib/contracts/sticker";
+import { MAX_RENDITION_SECONDS, SHARING_APNG_DIMENSIONS, type StickerDocument } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import { previewAssetIdSql } from "@/lib/db/columns";
 import { assets, stickerPackItems, stickerPacks, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -251,13 +251,27 @@ function validateImageForKind(
       throw new ApiError(422, "INVALID_SYSTEM_ANIMATION", `Animated system stickers must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
-  if (asset.kind === "gif") {
-    if (inspection.mimeType !== "image/gif" || inspection.width !== 1024 || inspection.height !== 1024 || inspection.frameCount < 2
-      || !inspection.hasAlpha || !inspection.hasTransparentPixels) {
-      throw new ApiError(422, "INVALID_GIF_EXPORT", "Animated sharing GIFs must be animated 1024x1024 GIF files");
+  if (asset.kind === "apng") {
+    // `frameCount > 1` is what makes this an APNG rather than a still PNG: the mime type cannot
+    // say, because an APNG *is* a PNG to everything that transports it. `inspectImage` reads the
+    // count back off the `acTL`/`fcTL` chunks — libvips has no APNG decoder, so sharp alone would
+    // report an animated sticker as a single page and this check would reject every valid export.
+    //
+    // The dimension is a range rather than a value for the same reason the system rendition's is:
+    // the export walks `SHARING_APNG_DIMENSIONS` down until the file fits the upload ceiling. Its
+    // frame grid is still exact — `validateAnimatedRenditionTiming` checks that — so pixels are all
+    // this admits.
+    if (inspection.mimeType !== "image/png" || inspection.width !== inspection.height
+      || !SHARING_APNG_DIMENSIONS.includes(inspection.width as typeof SHARING_APNG_DIMENSIONS[number])
+      || inspection.frameCount < 2 || !inspection.hasAlpha || !inspection.hasTransparentPixels) {
+      throw new ApiError(
+        422,
+        "INVALID_APNG_EXPORT",
+        `Animated sharing renditions must be animated square APNGs at ${SHARING_APNG_DIMENSIONS.join(", ")} pixels`,
+      );
     }
     if (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01) {
-      throw new ApiError(422, "INVALID_GIF_TIMING", `Animated sharing GIFs must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
+      throw new ApiError(422, "INVALID_APNG_TIMING", `Animated sharing renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
 }
@@ -363,7 +377,12 @@ export type AssetAudience = "owner" | "pack-member";
  * matter what pack the sticker ends up in. The published renditions here are drawn *from* it and
  * are what a stranger is allowed to see.
  */
-const PACK_SHARED_ASSET_KINDS = ["system", "preview", "gif", "master"] as const;
+/**
+ * `gif` sits beside `apng` because it is the sharing rendition of every animated sticker published
+ * before the switch. Dropping it here would blank the artwork on those packs' browse and detail
+ * pages rather than merely serving an older container.
+ */
+const PACK_SHARED_ASSET_KINDS = ["system", "preview", "apng", "gif", "master"] as const;
 
 /**
  * Whether `asset` is artwork the marketplace has already made public.

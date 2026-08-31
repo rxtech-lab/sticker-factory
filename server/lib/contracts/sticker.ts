@@ -350,6 +350,27 @@ export const EXPORT_LOOP_HOLD_SECONDS = 0.6;
  */
 export const MAX_RENDITION_SECONDS = 8 + EXPORT_LOOP_HOLD_SECONDS;
 
+/**
+ * The square sizes a sharing APNG may be written at, largest first.
+ *
+ * The sharing rendition is the one whose bytes nothing else bounds — unlike the Messages rendition
+ * it has no 500 KB ceiling, only the upload limit — and `validateAnimatedRenditionTiming` holds its
+ * grid to the document's own frame rate and count, so pixels are the one thing an export is free to
+ * spend when it does not fit.
+ *
+ * In practice it almost never has to spend them. The client writes this rendition with the same
+ * indexed, frame-differenced APNG encoder as the Messages sticker, so a ping-ponged 4s document at
+ * 30 FPS pays for the rectangle that moved rather than for 240 complete 1024² images — which is
+ * what the GIF this replaced did, routinely landing in the tens of megabytes and, on dense lifted
+ * photography, past the upload ceiling entirely.
+ *
+ * The floor is under the upload ceiling by construction rather than by luck: an indexed frame is at
+ * most one byte a pixel before deflate, so 240 frames of 256² cannot reach 16 MB however
+ * incompressible the artwork is. `sharingApngDimensions` in
+ * `StickerGeniOS/Rendering/StickerExporter.swift` walks this same ladder.
+ */
+export const SHARING_APNG_DIMENSIONS = [1024, 768, 512, 384, 256] as const;
+
 function keyframeCount(layer: z.infer<typeof StickerLayerV1Schema>): number {
   return countKeyframes(layer.animation);
 }

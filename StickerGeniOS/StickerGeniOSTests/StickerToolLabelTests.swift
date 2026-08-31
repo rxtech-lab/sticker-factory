@@ -22,7 +22,8 @@ struct StickerToolLabelTests {
     @Test("The model's own tool calls stay in the transcript", arguments: [
         "create_plan", "update_plan", "show_plan", "finalize_plan",
         "create_animation", "update_animation", "edit_layer_animation", "finalize_animation",
-        "edit_layers", "edit_image_layer", "add_image_layer", "finalize_edit", "view_sticker",
+        "edit_layers", "edit_image_layer", "add_image_layer", "finalize_edit",
+        "view_plan_image", "view_sticker",
     ])
     func toolCallsAreNotPhases(_ toolName: String) {
         #expect(!StickerToolLabel.isPhase(toolName))
@@ -40,6 +41,7 @@ struct StickerToolLabelTests {
         #expect(StickerToolLabel.text(for: "build-plan") == "Building plan")
         #expect(StickerToolLabel.text(for: "animate-sticker") == "Animating sticker")
         #expect(StickerToolLabel.text(for: "create_animation") == "Creating animation")
+        #expect(StickerToolLabel.text(for: "view_plan_image") == "Reviewing the plan image")
         #expect(StickerToolLabel.text(for: "view_sticker") == "Reviewing the sticker")
     }
 

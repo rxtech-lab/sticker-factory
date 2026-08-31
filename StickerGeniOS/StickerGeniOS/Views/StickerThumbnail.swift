@@ -53,7 +53,7 @@ struct StickerThumbnail: View {
     @ViewBuilder
     private var artwork: some View {
         // The system rendition first, not the preview: both show the same artwork, but the
-        // preview for an animated sticker is the 1024² sharing GIF — tens of megabytes to fill a
+        // preview for an animated sticker is the 1024² sharing APNG — megabytes to fill a
         // thumbnail the system sticker covers in under 500 KB.
         if let assetID = sticker.systemSticker?.assetId ?? sticker.previewAsset?.id {
             VerifiedAssetImage(

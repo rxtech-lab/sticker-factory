@@ -107,7 +107,7 @@ export const assets = sqliteTable("assets", {
    * client at upload time rather than read out of the file — the file itself is a single still.
    */
   kind: text("kind", {
-    enum: ["reference", "mask", "master", "preview", "gif", "mp4", "system", "chat_attachment", "sequence"],
+    enum: ["reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment", "sequence"],
   }).notNull(),
   state: text("state", { enum: ["pending", "ready", "failed", "deleted"] }).notNull().default("pending"),
   r2Key: text("r2_key").notNull().unique(),
@@ -146,7 +146,18 @@ export const stickerRevisions = sqliteTable("sticker_revisions", {
   masterAssetId: text("master_asset_id").references(() => assets.id, { onDelete: "set null" }),
   previewAssetId: text("preview_asset_id").references(() => assets.id, { onDelete: "set null" }),
   pngAssetId: text("png_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  /**
+   * The sharing rendition as it was written before APNG replaced it.
+   *
+   * Read-only now: nothing publishes a GIF any more, but 121 revisions were published pointing at
+   * one, and this column is the only thing that finds their artwork. It sits beside `apngAssetId`
+   * rather than being renamed into it because SQLite cannot drop a column another foreign key still
+   * names — Turso rejects the rewrite outright — and because a rename that guessed wrong would take
+   * every one of those revisions' sharing rendition with it.
+   */
   gifAssetId: text("gif_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  /** The sharing rendition every export written since the switch produces. */
+  apngAssetId: text("apng_asset_id").references(() => assets.id, { onDelete: "set null" }),
   mp4AssetId: text("mp4_asset_id").references(() => assets.id, { onDelete: "set null" }),
   systemAssetId: text("system_asset_id").references(() => assets.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),

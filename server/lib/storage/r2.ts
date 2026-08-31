@@ -283,7 +283,7 @@ export function inspectMp4(bytes: Uint8Array): Mp4Inspection {
   if (!width || !height) throw new ApiError(422, "INVALID_MP4_DIMENSIONS", "MP4 video dimensions could not be verified");
   const timing = readTrackTiming(bytes, videoTrack);
   // The ceiling is the longest cycle plus its loop hold, which an MP4 carries as repeated frames —
-  // the same bound the GIF and system renditions are held to. A flat 8 here rejected the longest
+  // the same bound the sharing and system renditions are held to. A flat 8 here rejected the longest
   // stickers for being exactly as long as they are supposed to be.
   if (timing.durationSeconds < 0.5 || timing.durationSeconds > MAX_RENDITION_SECONDS || timing.fps > 30.01) {
     throw new ApiError(422, "INVALID_MP4_TIMING", `MP4 exports must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);

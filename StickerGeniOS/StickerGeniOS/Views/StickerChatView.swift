@@ -568,7 +568,7 @@ struct StickerChatView: View {
                 .scrollDismissesKeyboard(.never)
             }
 
-            HStack(alignment: .bottom, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 Menu {
                     if privacyAccepted {
                         PhotosPicker(
@@ -751,14 +751,21 @@ struct StickerChatView: View {
             return
         }
         do {
-            try await PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.creationRequestForAsset(from: image)
-            }
+            try await Self.addToPhotoLibrary(image)
             localError = nil
             Haptics.success()
         } catch {
             localError = error.localizedDescription
             Haptics.failure()
+        }
+    }
+
+    /// Photos runs the change block on a thread of its own choosing. This file is main-actor by
+    /// default, so a block written inline above would be inferred `@MainActor` and trap the moment
+    /// Photos called it off the main thread; `nonisolated` leaves it with no actor to check.
+    private nonisolated static func addToPhotoLibrary(_ image: UIImage) async throws {
+        try await PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest.creationRequestForAsset(from: image)
         }
     }
 

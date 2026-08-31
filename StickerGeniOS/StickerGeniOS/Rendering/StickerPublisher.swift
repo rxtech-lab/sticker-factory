@@ -11,12 +11,15 @@ final class StickerPublisher {
 
     private struct RenderedExportSet {
         var png: RenderedStickerExport?
+        var apng: RenderedStickerExport?
+        /// Rendered only when the share sheet asked for one, and never uploaded — see
+        /// `StickerSharingFormat`.
         var gif: RenderedStickerExport?
         var mp4: RenderedStickerExport?
         var system: RenderedStickerExport?
 
         var all: [RenderedStickerExport] {
-            [png, gif, mp4, system].compactMap { $0 }
+            [png, apng, gif, mp4, system].compactMap { $0 }
         }
 
         /// The files the person who pressed Export actually asked for.
@@ -25,9 +28,16 @@ final class StickerPublisher {
         /// to the whole set — so this filters what reaches the share sheet, not what is rendered.
         /// The static PNG stands in for a video that does not exist rather than handing back
         /// nothing.
-        func files(for selection: StickerExportSelection) -> [RenderedStickerExport] {
+        ///
+        /// The animated sticker goes out in one container, not both: the APNG is always published
+        /// but only shared when it is the one asked for, so choosing GIF hands over a GIF rather
+        /// than two files that differ in a way nothing in the share sheet explains.
+        func files(for selection: StickerExportSelection, sharing: StickerSharingFormat) -> [RenderedStickerExport] {
             var files: [RenderedStickerExport] = []
-            if selection.includesSticker { files.append(contentsOf: [png, gif, system].compactMap { $0 }) }
+            if selection.includesSticker {
+                let animated = sharing == .gif ? gif ?? apng : apng
+                files.append(contentsOf: [png, animated, system].compactMap { $0 })
+            }
             if selection.includesVideo, let mp4 { files.append(mp4) }
             return files.isEmpty ? all : files
         }
@@ -41,19 +51,24 @@ final class StickerPublisher {
     /// - Parameter selection: nothing that is not asked for is rendered here. A local export answers
     ///   to no server contract, so choosing Video skips the sticker ladder outright and choosing
     ///   Sticker skips the MP4 encode, which is the slowest thing this class does.
+    /// - Parameter progress: the timeline this run reports into, when one is on screen.
     func export(
         revision: StickerRevision,
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
         size: SystemStickerSize = .default,
-        selection: StickerExportSelection = .default
+        selection: StickerExportSelection = .default,
+        sharing: StickerSharingFormat = .default,
+        progress: StickerExportProgress? = nil
     ) async throws -> [RenderedStickerExport] {
         if !revision.canPublishExports {
+            progress?.begin(.prepare)
             let document = try validatedDocument(
                 revision: revision,
                 assets: assets,
                 verifiedAssetIDs: verifiedAssetIDs
             )
+            progress?.begin(.renderImage)
             return [try exporter.exportStaticPNG(document: document, assets: assets)]
         }
         return try await renderExports(
@@ -61,8 +76,10 @@ final class StickerPublisher {
             assets: assets,
             verifiedAssetIDs: verifiedAssetIDs,
             size: size,
-            rendering: selection
-        ).files(for: selection)
+            rendering: selection,
+            sharing: sharing,
+            progress: progress
+        ).files(for: selection, sharing: sharing)
     }
 
     /// - Parameter selection: what comes back to be shared, and — for the MP4 alone — whether it is
@@ -79,7 +96,9 @@ final class StickerPublisher {
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
         size: SystemStickerSize = .default,
-        selection: StickerExportSelection = .default
+        selection: StickerExportSelection = .default,
+        sharing: StickerSharingFormat = .default,
+        progress: StickerExportProgress? = nil
     ) async throws -> (jobID: String, localExports: [RenderedStickerExport], compromise: SystemStickerCompromise?) {
         guard revision.canPublishExports else { throw StickerPublishError.animationRequired }
         let rendered = try await renderExports(
@@ -87,31 +106,44 @@ final class StickerPublisher {
             assets: assets,
             verifiedAssetIDs: verifiedAssetIDs,
             size: size,
-            rendering: selection.includesVideo ? .both : .sticker
+            rendering: selection.includesVideo ? .both : .sticker,
+            sharing: sharing,
+            progress: progress
         )
         let document = revision.document
 
+        progress?.begin(.upload)
+        // The last point a Cancel press can still leave the server untouched: past the register
+        // call below the export exists whether or not this app is still watching it.
+        try Task.checkCancellation()
         var pngAssetID: String?
-        var gifAssetID: String?
+        var apngAssetID: String?
         var mp4AssetID: String?
         if let png = rendered.png {
+            progress?.report(String(localized: "Sending the image"), for: .upload)
             pngAssetID = try await upload(png, stickerID: stickerID, kind: .master)
         }
-        if let gif = rendered.gif {
-            gifAssetID = try await upload(gif, stickerID: stickerID, kind: .gif)
+        if let apng = rendered.apng {
+            progress?.report(String(localized: "Sending the animation"), for: .upload)
+            apngAssetID = try await upload(apng, stickerID: stickerID, kind: .apng)
         }
         if let mp4 = rendered.mp4 {
+            progress?.report(String(localized: "Sending the video"), for: .upload)
             mp4AssetID = try await upload(mp4, stickerID: stickerID, kind: .mp4)
         }
         guard let system = rendered.system else { throw StickerPublishError.systemRenditionUnavailable }
+        progress?.report(String(localized: "Sending the sticker"), for: .upload)
         let systemAssetID = try await upload(system, stickerID: stickerID, kind: .system)
 
+        // The rest of the publish happens on the server; `StickerExportProgress` keeps this step
+        // running until the job it returns reaches a terminal state.
+        progress?.begin(.publish)
         let response = try await api.registerExport(
             stickerID: stickerID,
             request: .init(
                 revisionId: revision.id,
                 pngAssetId: pngAssetID,
-                gifAssetId: gifAssetID,
+                apngAssetId: apngAssetID,
                 mp4AssetId: mp4AssetID,
                 systemAssetId: systemAssetID,
                 // The publish request only speaks the two fills the server accepts. A document
@@ -125,7 +157,7 @@ final class StickerPublisher {
             ),
             idempotencyKey: UUID().uuidString
         )
-        return (response.job.id, rendered.files(for: selection), system.compromise)
+        return (response.job.id, rendered.files(for: selection, sharing: sharing), system.compromise)
     }
 
     /// The files a published revision already has on the server, back on disk to be shared.
@@ -146,7 +178,7 @@ final class StickerPublisher {
         selection: StickerExportSelection = .default
     ) async throws -> [URL] {
         var wanted: [String?] = []
-        if selection.includesSticker { wanted += [revision.pngAssetId, revision.gifAssetId, revision.systemAssetId] }
+        if selection.includesSticker { wanted += [revision.pngAssetId, revision.sharingAssetId, revision.systemAssetId] }
         if selection.includesVideo { wanted.append(revision.mp4AssetId) }
 
         // Asked for a video the server does not hold. An animated sticker can still produce one; a
@@ -162,7 +194,7 @@ final class StickerPublisher {
             rendered.append(try await exporter.exportMP4(document: document, assets: assets).url)
         }
         if rendered.isEmpty, wanted.compactMap({ $0 }).isEmpty {
-            wanted = [revision.pngAssetId, revision.gifAssetId, revision.mp4AssetId, revision.systemAssetId]
+            wanted = [revision.pngAssetId, revision.sharingAssetId, revision.mp4AssetId, revision.systemAssetId]
         }
 
         var assetIDs: [String] = []
@@ -214,8 +246,11 @@ final class StickerPublisher {
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
         size: SystemStickerSize,
-        rendering: StickerExportSelection
+        rendering: StickerExportSelection,
+        sharing: StickerSharingFormat,
+        progress: StickerExportProgress? = nil
     ) async throws -> RenderedExportSet {
+        progress?.begin(.prepare)
         let document = try validatedDocument(
             revision: revision,
             assets: assets,
@@ -223,22 +258,42 @@ final class StickerPublisher {
         )
 
         var png: RenderedStickerExport?
+        var apng: RenderedStickerExport?
         var gif: RenderedStickerExport?
         var mp4: RenderedStickerExport?
         var system: RenderedStickerExport?
 
         if document.kind == .static {
+            progress?.begin(.renderImage)
             png = try exporter.exportStaticPNG(document: document, assets: assets)
         } else if rendering.includesVideo {
-            mp4 = try await exporter.exportMP4(document: document, assets: assets)
+            progress?.begin(.renderVideo)
+            mp4 = try await exporter.exportMP4(document: document, assets: assets) {
+                progress?.report($0, for: .renderVideo)
+            }
         }
         if document.kind == .animated, rendering.includesSticker {
-            gif = try exporter.exportGIF(document: document, assets: assets)
+            progress?.begin(.renderAPNG)
+            apng = try await exporter.exportAPNG(document: document, assets: assets) {
+                progress?.report($0, for: .renderAPNG)
+            }
+            // The APNG above is what gets published either way; this is the share sheet's copy, and
+            // it is rendered only when someone asked for it because it is a second full encode of
+            // the same cycle.
+            if sharing == .gif {
+                progress?.begin(.renderGIF)
+                gif = try await exporter.exportGIF(document: document, assets: assets) {
+                    progress?.report($0, for: .renderGIF)
+                }
+            }
         }
         if rendering.includesSticker || document.kind == .static {
-            system = try exporter.exportSystemSticker(document: document, assets: assets, size: size)
+            progress?.begin(.renderSticker)
+            system = try await exporter.exportSystemSticker(document: document, assets: assets, size: size) {
+                progress?.report($0, for: .renderSticker)
+            }
         }
-        return .init(png: png, gif: gif, mp4: mp4, system: system)
+        return .init(png: png, apng: apng, gif: gif, mp4: mp4, system: system)
     }
 
     private func validatedDocument(

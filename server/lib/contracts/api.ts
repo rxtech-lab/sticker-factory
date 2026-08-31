@@ -7,6 +7,18 @@ export const AssetKindSchema = z.enum([
   "mask",
   "master",
   "preview",
+  /**
+   * The sharing rendition: an animated, transparent APNG at one of `SHARING_APNG_DIMENSIONS`.
+   *
+   * This is what the library, the share sheet, and every non-Messages surface show for an animated
+   * sticker.
+   */
+  "apng",
+  /**
+   * The sharing rendition as it was written before `apng` replaced it. No client produces one any
+   * more, but every animated sticker published before the switch still points at one, so the kind
+   * has to stay readable — and marketplace-visible — for those revisions to keep rendering.
+   */
   "gif",
   "mp4",
   "system",
@@ -103,6 +115,12 @@ export const CreateUploadRequestSchema = z.object({
   if (value.kind === "mp4" && value.mimeType !== "video/mp4") {
     context.addIssue({ code: "custom", message: "MP4 exports must use video/mp4" });
   }
+  // `image/png` rather than `image/apng`: an APNG *is* a PNG, every store and CDN in the path
+  // serves it as one, and `image/apng` is not in the mime enum this schema admits. What makes the
+  // rendition animated is the `acTL` chunk, which `validateImageForKind` reads back off the bytes.
+  if (value.kind === "apng" && value.mimeType !== "image/png") {
+    context.addIssue({ code: "custom", message: "Sharing APNG exports must use image/png" });
+  }
   if (value.kind === "gif" && value.mimeType !== "image/gif") {
     context.addIssue({ code: "custom", message: "GIF exports must use image/gif" });
   }
@@ -118,7 +136,7 @@ export const CompleteUploadRequestSchema = z.object({
 export const PublishExportsRequestSchema = z.object({
   revisionId: z.string().uuid(),
   pngAssetId: z.string().uuid().optional(),
-  gifAssetId: z.string().uuid().optional(),
+  apngAssetId: z.string().uuid().optional(),
   mp4AssetId: z.string().uuid().optional(),
   systemAssetId: z.string().uuid(),
   mp4Background: Mp4BackgroundV1Schema.optional(),

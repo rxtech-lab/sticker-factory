@@ -83,6 +83,7 @@ nonisolated enum StickerToolLabel {
         "edit_image_layer": String(localized: "Redrawing a layer"),
         "add_image_layer": String(localized: "Adding a layer"),
         "finalize_edit": String(localized: "Finishing the edit"),
+        "view_plan_image": String(localized: "Reviewing the plan image"),
         "view_sticker": String(localized: "Reviewing the sticker"),
     ]
 

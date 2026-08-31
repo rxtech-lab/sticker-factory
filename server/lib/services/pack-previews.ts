@@ -8,8 +8,8 @@ type StickerLike = { id: string; kind: string; systemSticker: { assetId: string 
  * The asset a web card should render for a sticker.
  *
  * The system rendition first for animated stickers: both show the same artwork, but an animated
- * sticker's preview is the 1024² sharing GIF — tens of megabytes to fill a thumbnail the system
- * rendition covers in under 500 KB. This mirrors what the iOS library card does.
+ * sticker's preview is the sharing APNG — megabytes at the top of `SHARING_APNG_DIMENSIONS`, to
+ * fill a thumbnail the system rendition covers in under 500 KB. This mirrors the iOS library card.
  */
 export function thumbnailAssetId(sticker: StickerLike): string | undefined {
   return sticker.kind === "animated"

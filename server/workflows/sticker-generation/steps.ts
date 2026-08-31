@@ -43,6 +43,7 @@ import {
   type LayoutDraftingSession,
   type PlanDraftingSession,
   type AiPlanVisual,
+  type AiImageReferenceCandidate,
   type AiSequenceAsset,
 } from "@/lib/ai/gateway";
 import { applyLayoutAdjustment, layoutDiagnostics } from "@/lib/layout/composition";
@@ -75,7 +76,7 @@ import {
 } from "@/lib/services/stickers";
 import { referencedAssetIds, renderSticker } from "@/lib/render/sticker-render";
 import type { RenderAssets } from "@/lib/render/document-svg";
-import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
+import { downscaleForModelInput, getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import { ApiError } from "@/lib/http/errors";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 
@@ -193,6 +194,7 @@ type StickerToolName =
   | "finalize_edit"
   | "adjust_layout"
   | "finalize_layout"
+  | "view_plan_image"
   | "view_sticker"
   | "show-sticker";
 
@@ -543,6 +545,34 @@ async function generateAndStoreAsset(
   traceEvent("generateImage:stored", trace);
 }
 
+/**
+ * Lets the orchestration model inspect lightweight previews and choose the full-resolution
+ * references for one image-model call. Required source pixels (an edit target or approved plan)
+ * are unioned back in defensively, so a malformed provider answer cannot turn an edit into a
+ * redesign.
+ */
+async function selectImageReferences(
+  instruction: string,
+  history: string,
+  candidates: AiImageReferenceCandidate[],
+): Promise<Array<{ bytes: Uint8Array; mimeType: string }>> {
+  const bounded = candidates.slice(0, 8);
+  if (bounded.length === 0) return [];
+  const selected = await getAiProvider().selectImageReferences({
+    instruction,
+    history,
+    candidates: bounded,
+    maxReferences: 8,
+  });
+  const required = bounded
+    .map((candidate, index) => (candidate.required ? index : -1))
+    .filter((index) => index >= 0);
+  return [...new Set([...required, ...selected])]
+    .map((index) => bounded[index]?.image)
+    .filter((image): image is { bytes: Uint8Array; mimeType: string } => Boolean(image))
+    .slice(0, 8);
+}
+
 /** Wraps layers in the canonical canvas and per-kind default timing. */
 function documentWithLayers(kind: "static" | "animated", layers: unknown[]): StickerDocument {
   const base = {
@@ -788,6 +818,7 @@ async function renderPlanConcept(
   revision: number,
   plan: PlanV1,
   references: Array<{ bytes: Uint8Array; mimeType: string }>,
+  history: string,
 ): Promise<void> {
   const db = getDatabase();
   const prompt = planReferencePrompt(plan);
@@ -798,10 +829,18 @@ async function renderPlanConcept(
   if (row?.conceptAssetId === assetId) return;
 
   const generate = async () => {
+    const selectedReferences = await selectImageReferences(
+      prompt,
+      history,
+      references.map((image, index) => ({
+        label: `original or carried reference ${index + 1}`,
+        image,
+      })),
+    );
     await generateAndStoreAsset(job, stickerId, {
       assetId,
       prompt,
-      references,
+      references: selectedReferences,
       mode: "generate",
       concept: true,
     });
@@ -900,7 +939,7 @@ async function executePlanTurn(
       const call = await beginToolCall(job, "show_plan");
       try {
         if (!latest) throw new Error("There is no plan to show yet");
-        await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references);
+        await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references, history);
         await upsertPlanCard(job, planId, latest.revision, latest.plan.summary);
         await finishToolCall(job, call);
         return { planId, revision: latest.revision };
@@ -913,7 +952,7 @@ async function executePlanTurn(
       const call = await beginToolCall(job, "finalize_plan");
       try {
         if (!latest) throw new Error("There is no plan to finalize yet");
-        await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references);
+        await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references, history);
         const finalized = await finalizePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId });
         latest = { planId: finalized.planId, revision: finalized.revision, plan: finalized.plan };
         await finishToolCall(job, call);
@@ -941,7 +980,7 @@ async function executePlanTurn(
   // The loop can also stop on its step cap. A draft the user can look at and reject beats a dead
   // turn, so finalize whatever the model got to rather than failing.
   if (!result?.finalized) {
-    await renderPlanConcept(job, sticker.id, latest.planId, latest.revision, latest.plan, references);
+    await renderPlanConcept(job, sticker.id, latest.planId, latest.revision, latest.plan, references, history);
     const finalized = await finalizePlan(db, {
       ownerId: job.ownerId,
       stickerId: sticker.id,
@@ -1187,6 +1226,8 @@ async function executeEditTurn(
     imagePlacement: "add" | "replace";
     /** Everything every redraw is shown: the user's attachments, padded with existing artwork. */
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
+    /** Leading references that are approved plan pixels and therefore mandatory. */
+    requiredReferenceCount?: number;
     /** The subset the model itself is shown — only what the user attached this turn. */
     attachedImages: Array<{ bytes: Uint8Array; mimeType: string }>;
   },
@@ -1249,10 +1290,26 @@ async function executeEditTurn(
     // the images it already paid for instead of buying them a second time.
     const assetId = derivedAssetId(job.id, `edit-${generations}`);
     const artwork = source ? await loadArtwork(source).catch(abort) : undefined;
+    const selectedReferences = await selectImageReferences(
+      prompt,
+      history,
+      [
+        ...(artwork
+          ? [{ label: `current artwork for layer ${source?.name ?? "unknown"}`, image: artwork, required: true }]
+          : []),
+        ...options.references.map((image, index) => ({
+          label: index < (options.requiredReferenceCount ?? 0)
+            ? "approved plan image"
+            : `original or carried reference ${index - (options.requiredReferenceCount ?? 0) + 1}`,
+          image,
+          required: index < (options.requiredReferenceCount ?? 0),
+        })),
+      ],
+    ).catch(abort);
     await generateAndStoreAsset(job, sticker.id, {
       assetId,
       prompt,
-      references: [...(artwork ? [artwork] : []), ...options.references],
+      references: selectedReferences,
       conversationContext: history,
       mode: artwork ? "conversation_edit" : "generate",
     }).catch(abort);
@@ -1427,6 +1484,7 @@ async function refineBuiltLayout(
   let reviewed: StickerDocument | undefined;
   let revision = 0;
   let viewedRevision = -1;
+  let viewedPlanImage = reference === undefined;
   const nextLabel = toolCallLabeller();
   const abort = (error: unknown): never => { throw new TurnAbort(error); };
   const openCall = async (toolName: StickerToolName): Promise<string> => {
@@ -1438,6 +1496,23 @@ async function refineBuiltLayout(
   };
 
   const session: LayoutDraftingSession = {
+    ...(reference
+      ? {
+        viewPlanImage: async () => {
+          const call = await openCall("view_plan_image");
+          try {
+            await assertJobStillRunning(job.id).catch(abort);
+            const viewable = await downscaleForModelInput(reference.bytes);
+            viewedPlanImage = true;
+            await finishToolCall(job, call);
+            return viewable;
+          } catch (error) {
+            await finishToolCall(job, call, "failed");
+            return abort(error);
+          }
+        },
+      }
+      : {}),
     renderSticker: async () => {
       const call = await openCall("view_sticker");
       try {
@@ -1457,6 +1532,9 @@ async function refineBuiltLayout(
         if (viewedRevision < 0) {
           throw new Error("Call view_sticker before making the first layout adjustment");
         }
+        if (!viewedPlanImage) {
+          throw new Error("Call view_plan_image before comparing and adjusting the generated sticker");
+        }
         await assertJobStillRunning(job.id).catch(abort);
         const landed = applyLayoutAdjustment(working, adjustment);
         await assertDocumentAssetsOwned(landed, job.ownerId, job.stickerId).catch(abort);
@@ -1475,6 +1553,9 @@ async function refineBuiltLayout(
         if (viewedRevision !== revision) {
           throw new Error("Call view_sticker on the current layout before finalizing it");
         }
+        if (!viewedPlanImage) {
+          throw new Error("Call view_plan_image before finalizing the generated sticker");
+        }
         const diagnostics = layoutDiagnostics(working);
         if (diagnostics.offCanvasLayerIds.length > 0) {
           throw new Error(
@@ -1491,7 +1572,7 @@ async function refineBuiltLayout(
   };
 
   const result = await getAiProvider().refineStickerLayout(
-    { document, instruction, history, reference },
+    { document, instruction, history },
     session,
   );
   await assertJobStillRunning(job.id);
@@ -1556,10 +1637,30 @@ async function executePlanBuildTurn(
   references: Array<{ bytes: Uint8Array; mimeType: string }>,
 ): Promise<AiTurnResult> {
   const db = getDatabase();
-  const planRow = await db.select().from(plans).where(and(
+  let planRow = await db.select().from(plans).where(and(
     eq(plans.jobId, job.id),
     eq(plans.ownerId, job.ownerId),
+    eq(plans.stickerId, sticker.id),
   )).get();
+  // Retrying a failed chat turn creates a new job but deliberately reuses the source message. The
+  // confirmed plan remains linked to the original confirmation job, so resolve that job family
+  // before declaring the plan missing. This also repairs retries created before this fallback
+  // existed; they do not need their persisted plan row rewritten to become runnable.
+  if (!planRow && job.sourceMessageId) {
+    const composeJobs = await db.select({ id: generationJobs.id }).from(generationJobs).where(and(
+      eq(generationJobs.ownerId, job.ownerId),
+      eq(generationJobs.stickerId, sticker.id),
+      eq(generationJobs.sourceMessageId, job.sourceMessageId),
+      eq(generationJobs.kind, "compose"),
+    ));
+    if (composeJobs.length > 0) {
+      planRow = await db.select().from(plans).where(and(
+        eq(plans.ownerId, job.ownerId),
+        eq(plans.stickerId, sticker.id),
+        inArray(plans.jobId, composeJobs.map((candidate) => candidate.id)),
+      )).orderBy(desc(plans.decidedAt)).get();
+    }
+  }
   if (!planRow) throw new Error("Plan not found for this job");
   const plan = PlanV1Schema.parse(planRow.planJson);
   const generated = generatedLayers(plan, job.id);
@@ -1580,27 +1681,37 @@ async function executePlanBuildTurn(
     const label = `compose-part:${index} ${item.layer.name}`;
     const partToolCallId = await beginToolCall(job, "build-plan", undefined, label);
     try {
+      const prompt = visualReference
+        ? [
+            `Separate only the "${item.layer.name}" part from the approved static sticker reference.`,
+            "Copy it from the approved reference instead of redesigning or simplifying it.",
+            "Preserve its exact silhouette, design, colours, outlines, bevels, highlights,",
+            "shadows, texture, and proportions.",
+            "Return that one part isolated on a transparent background; omit every other part.",
+            `Part description: ${item.prompt}`,
+          ].join(" ")
+        : item.prompt;
+      const candidates: AiImageReferenceCandidate[] = [
+        ...(visualReference
+          ? [{ label: "approved plan image", image: visualReference, required: true }]
+          : []),
+        ...references.map((image, referenceIndex) => ({
+          label: `original or carried reference ${referenceIndex + 1}`,
+          image,
+        })),
+      ].slice(0, 8);
+      const selectedReferences = await selectImageReferences(prompt, history, candidates);
       await generateAndStoreAsset(job, sticker.id, {
         assetId: item.assetId,
-        prompt: visualReference
-          ? [
-              `Separate only the "${item.layer.name}" part from the approved static sticker reference.`,
-              "Copy it from the approved reference instead of redesigning or simplifying it.",
-              "Preserve its exact silhouette, design, colours, outlines, bevels, highlights,",
-              "shadows, texture, and proportions.",
-              "Return that one part isolated on a transparent background; omit every other part.",
-              `Part description: ${item.prompt}`,
-            ].join(" ")
-          : item.prompt,
-        // The approved concept when there is one — it is the style contract the user signed off, and
-        // adding raw photographs beside it only pulls the part back toward photographic realism.
-        // With no concept, the photos are all the likeness this layer will ever get.
-        references: visualReference ? [visualReference] : references,
+        prompt,
+        // The approved concept is mandatory because it is the exact design being separated. The
+        // orchestrator sees every remaining candidate and decides which originals materially help
+        // this particular layer; only its selected full-resolution images reach the image model.
+        references: selectedReferences,
         conversationContext: history,
-        // This is an edit of the approved pixels, not a fresh generation inspired by them. The
-        // Responses image-edit path is instructed to remove every other part while preserving this
-        // one; the generation path is free to reinterpret the reference and is why confirmed PNGs
-        // could drift visibly from the plan card.
+        // This is an edit of the approved pixels, not a fresh generation inspired by them. The GPT
+        // Image edit path is instructed to remove every other part while preserving this one; the
+        // prompt still names the mode so tests and provider adapters can enforce that distinction.
         mode: visualReference ? "conversation_edit" : "generate",
       });
     } catch (error) {
@@ -2266,7 +2377,13 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       activeRevision,
       instruction,
       history,
-      { targetLayerId, imagePlacement, references: referenceImages, attachedImages: await loadAttachedImages() },
+      {
+        targetLayerId,
+        imagePlacement,
+        references: referenceImages,
+        requiredReferenceCount: usePlanImage ? 1 : 0,
+        attachedImages: await loadAttachedImages(),
+      },
       primaryToolCallId,
     );
   }
@@ -2284,13 +2401,26 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     : undefined;
 
   const replacesExistingImage = effectiveKind === "edit" && imagePlacement !== "add";
-  const references = [
-    ...(replacesExistingImage && targetAsset
-      ? [await objectStore.get(targetAsset.r2Key)
-        .then((object) => ({ bytes: object.bytes, mimeType: targetAsset.mimeType }))]
-      : []),
-    ...referenceImages,
-  ];
+  const targetReference = replacesExistingImage && targetAsset
+    ? await objectStore.get(targetAsset.r2Key)
+      .then((object) => ({ bytes: object.bytes, mimeType: targetAsset.mimeType }))
+    : undefined;
+  const references = await selectImageReferences(
+    instruction,
+    history,
+    [
+      ...(targetReference
+        ? [{ label: "current artwork being edited", image: targetReference, required: true }]
+        : []),
+      ...referenceImages.map((image, index) => ({
+        label: usePlanImage && index === 0
+          ? "approved plan image"
+          : `original or carried reference ${index - (usePlanImage ? 1 : 0) + 1}`,
+        image,
+        required: usePlanImage && index === 0,
+      })),
+    ],
+  );
   const mask = maskRow
     ? await objectStore.get(maskRow.asset.r2Key).then((object) => ({ bytes: object.bytes, mimeType: maskRow.asset.mimeType }))
     : undefined;

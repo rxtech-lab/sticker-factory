@@ -1,4 +1,5 @@
 import AnimatedView
+import OSLog
 import SwiftUI
 import TipKit
 import UIKit
@@ -15,6 +16,7 @@ struct StickerExportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isPresentingFullScreen = false
     @State private var isPresentingShareSheet = false
+    @State private var isPresentingProgress = false
     private let publishTip = PublishStickerTip()
     private let useTip = UseStickerTip()
 
@@ -41,42 +43,51 @@ struct StickerExportSheet: View {
     /// preview opens view-only while an export or publish is in flight.
     private var canEdit: Bool { !model.isPublishing && !publishIsPending }
 
+    /// One flat column on the sheet itself: preview, state, settings, actions.
+    ///
+    /// The cards this replaces stacked three glass surfaces on top of the sheet's own background,
+    /// which put two borders and two paddings between the reader and every control for no
+    /// grouping that the section headings and rules do not already state.
     var body: some View {
         StickerBackground {
             ScrollView {
-                VStack(spacing: 18) {
-                    previewCard
+                VStack(alignment: .leading, spacing: 20) {
+                    preview
 
-                    GlassCard(padding: 20) {
-                        VStack(alignment: .leading, spacing: 18) {
-                            statusHeader
-                            if isPublished {
-                                TipView(useTip)
-                                    .tipViewStyle(.miniTip)
-                            }
-                            if revision.canPublishExports { exportSettings }
-                            actionRow
-                            shareRow
-                        }
+                    statusHeader
+
+                    if isPublished {
+                        TipView(useTip)
+                            .tipViewStyle(.miniTip)
                     }
 
                     if !revision.canPublishExports {
-                        GlassCard {
-                            Label(
-                                "Animated stickers need motion before they can be published. Describe how it should move in chat first.",
-                                systemImage: "waveform.path"
-                            )
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                        Label(
+                            "Animated stickers need motion before they can be published. Describe how it should move in chat first.",
+                            systemImage: "waveform.path"
+                        )
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if revision.canPublishExports {
+                        Divider()
+                        exportSettings
+                    }
+
+                    Divider()
+
+                    VStack(spacing: 12) {
+                        actionRow
+                        shareRow
                     }
 
                     if let note = model.qualityNote { NoticeBanner(message: note) }
                     if publishFailed { ErrorBanner(message: publishFailureMessage) }
                     if let error = model.errorMessage { ErrorBanner(message: error) }
                 }
-                .padding()
+                .padding(20)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
             }
@@ -91,6 +102,21 @@ struct StickerExportSheet: View {
         .task(id: revision.id) { model.seed(from: revision) }
         .sheet(isPresented: $isPresentingShareSheet) {
             ShareSheet(items: model.publishedURLs)
+        }
+        // The export itself, step by step. Presented over this sheet rather than replacing the
+        // inline row so the settings that produced the run stay behind it, and so a publish that is
+        // still on the server can be left running from here.
+        .sheet(isPresented: $isPresentingProgress) {
+            if let progress = model.progress {
+                StickerExportProgressSheet(
+                    progress: progress,
+                    onCancel: {
+                        Haptics.tap()
+                        model.cancelExport()
+                    },
+                    onDismiss: { isPresentingProgress = false }
+                )
+            }
         }
         .fullScreenCover(isPresented: $isPresentingFullScreen) {
             FullScreenStickerPlayer(
@@ -112,6 +138,22 @@ struct StickerExportSheet: View {
         .onChange(of: publishJob?.isFailed) { _, failed in
             if failed == true { Haptics.failure() }
         }
+        // The publish call returns as soon as the job is accepted, so the server's half of the run
+        // only reaches the timeline through the job state the store keeps.
+        .onChange(of: publishJob) { _, job in
+            StickerExportModel.log.debug(
+                """
+                job change job=\(job?.jobID ?? "-", privacy: .public) \
+                watching=\(model.publishJobID ?? "-", privacy: .public) \
+                terminal=\(job?.isTerminal ?? false) failed=\(job?.isFailed ?? false) \
+                message=\(job?.message ?? "-", privacy: .public)
+                """
+            )
+            // Losing sight of the job is not the same as the job not finishing: the store follows
+            // one job per sticker, and a turn started from chat replaces this one there. The
+            // revision is the other half of the same answer, and it is the half that outlives this.
+            if let job { model.progress?.apply(publishJob: job) } else { model.settlePublish(with: revision) }
+        }
         .onChange(of: model.background) { oldValue, newValue in
             guard oldValue != newValue, !isPublished, !publishIsPending, !model.isPublishing else { return }
             model.invalidateExports()
@@ -126,71 +168,69 @@ struct StickerExportSheet: View {
             guard oldValue != newValue, !publishIsPending, !model.isPublishing else { return }
             model.clearShareFiles()
         }
+        // Same reasoning as the selection above: the published files are unchanged, so only the
+        // share list is dropped — but a GIF share has to be encoded, so the next share re-renders.
+        .onChange(of: model.sharingFormat) { oldValue, newValue in
+            guard oldValue != newValue, !publishIsPending, !model.isPublishing else { return }
+            model.clearShareFiles()
+        }
     }
 
-    /// The sticker being acted on, above the card that acts on it. Publishing is
+    /// The sticker being acted on, above the controls that act on it. Publishing is
     /// irreversible enough that the reader should be able to confirm *which* version they
     /// are shipping — and fix it — without backing out of the sheet.
     ///
-    /// The backdrop stays neutral on purpose: the MP4 background below is one export's
-    /// setting, and painting it here would read as the look of every export.
-    private var previewCard: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("CURRENT VERSION")
-                        .font(.caption2.weight(.semibold))
-                        .tracking(0.7)
-                    Spacer(minLength: 8)
+    /// The one surface left on the sheet, and not a card: a sticker is transparent by definition, so
+    /// a white one drawn straight onto the background would be a blank rectangle. The backdrop stays
+    /// neutral on purpose — the MP4 background below is one export's setting, and painting it here
+    /// would read as the look of every export.
+    private var preview: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { isPresentingFullScreen = true } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(.background.opacity(0.7))
+                    StickerPlayer(document: revision.document, assets: assets, repeats: true)
+                        .padding(16)
+                }
+                .frame(height: 190)
+                .frame(maxWidth: .infinity)
+                .overlay(alignment: .topTrailing) {
                     Label(
                         revision.document.kind == .animated ? "Animated" : "Static",
                         systemImage: revision.document.kind == .animated ? "waveform.path" : "photo"
                     )
                     .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(10)
                 }
-                .foregroundStyle(.secondary)
-
-                Button { isPresentingFullScreen = true } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(.background)
-                        StickerPlayer(document: revision.document, assets: assets, repeats: true)
-                            .padding(16)
-                    }
-                    .frame(height: 180)
-                    .frame(maxWidth: .infinity)
-                    .overlay(alignment: .bottomTrailing) {
-                        Image(systemName: canEdit ? "slider.horizontal.3" : "arrow.up.left.and.arrow.down.right")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                            .padding(7)
-                            .background(.thinMaterial, in: Circle())
-                            .padding(8)
-                    }
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08))
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: canEdit ? "slider.horizontal.3" : "arrow.up.left.and.arrow.down.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                        .padding(7)
+                        .background(.thinMaterial, in: Circle())
+                        .padding(8)
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("export-preview")
-                .accessibilityLabel(
-                    revision.document.kind == .animated
-                        ? "Current animated sticker"
-                        : "Current sticker"
-                )
-                .accessibilityHint(canEdit ? "Opens full screen, where it can be edited" : "Opens full screen")
-
-                HStack {
-                    Text(revision.createdAt, format: .relative(presentation: .named))
-                    Spacer(minLength: 8)
-                    Text(canEdit ? "Tap to view or edit" : "Tap to view")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("export-preview")
+            .accessibilityLabel(
+                revision.document.kind == .animated
+                    ? "Current animated sticker"
+                    : "Current sticker"
+            )
+            .accessibilityHint(canEdit ? "Opens full screen, where it can be edited" : "Opens full screen")
+
+            HStack {
+                Text(revision.createdAt, format: .relative(presentation: .named))
+                Spacer(minLength: 8)
+                Text(canEdit ? "Tap to view or edit" : "Tap to view")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -235,6 +275,8 @@ struct StickerExportSheet: View {
 
             if revision.document.kind == .animated { selectionPicker }
 
+            if revision.document.kind == .animated, model.selection.includesSticker { sharingFormatPicker }
+
             sizePicker
 
             if revision.document.kind == .animated { backgroundPicker }
@@ -258,7 +300,39 @@ struct StickerExportSheet: View {
             .accessibilityIdentifier("export-selection-picker")
             .disabled(publishIsPending || model.isPublishing)
 
-            Text(model.selection.detail(isAnimated: revision.document.kind == .animated))
+            Text(model.selection.detail(
+                isAnimated: revision.document.kind == .animated,
+                sharing: model.sharingFormat
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Which container the animated sticker is shared in.
+    ///
+    /// A share-sheet choice only. The APNG is published either way — it is what the library and the
+    /// Messages extension read — so this never changes the sticker, only the file handed to whatever
+    /// app it is being sent to. It is here because neither answer is right everywhere: APNG is
+    /// smaller and keeps soft transparent edges, and the apps most people send to outside Messages
+    /// will not animate one.
+    private var sharingFormatPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Animation format")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("Animation format", selection: $model.sharingFormat) {
+                ForEach(StickerSharingFormat.allCases) { format in
+                    Text(format.label).tag(format)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("export-sharing-format-picker")
+            .disabled(publishIsPending || model.isPublishing)
+
+            Text(model.sharingFormat.detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -282,7 +356,10 @@ struct StickerExportSheet: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("sticker-size-picker")
-            .disabled(isPublished || publishIsPending || model.isPublishing)
+            // Left enabled on a published sticker: publishing again is what changing this is for.
+            // The server accepts it — a publish supersedes the active revision rather than sealing
+            // it — and the files already shipped stay valid until the re-export lands.
+            .disabled(publishIsPending || model.isPublishing)
 
             Text("""
             \(model.stickerSize.detail). Detailed artwork can still be exported one size down, or \
@@ -325,9 +402,9 @@ struct StickerExportSheet: View {
                 .background(.primary.opacity(0.045), in: .rect(cornerRadius: 14))
             }
             .accessibilityIdentifier("mp4-background-picker")
-            .disabled(isPublished || publishIsPending || model.isPublishing)
+            .disabled(publishIsPending || model.isPublishing)
 
-            Text("MP4 uses this background. GIF and system sticker exports remain transparent.")
+            Text("MP4 uses this background. The animated PNG and system sticker exports remain transparent.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -402,39 +479,62 @@ struct StickerExportSheet: View {
             .frame(maxWidth: .infinity)
             .background(AppColors.accentSoft.opacity(0.38), in: .rect(cornerRadius: 16))
             .accessibilityIdentifier("export-progress")
-        } else if !actionIsComplete {
-            Button {
-                publishTip.invalidate(reason: .actionPerformed)
-                Haptics.tap(.medium)
-                Task {
-                    await model.exportOrPublish(
-                        store: store,
-                        stickerID: stickerID,
-                        revision: revision,
-                        assets: assets,
-                        verifiedAssetIDs: verifiedAssetIDs
-                    )
-                    if model.errorMessage != nil {
-                        Haptics.failure()
-                    } else if !revision.canPublishExports {
-                        // A local export is finished the moment this returns. A publish is not —
-                        // it hands off to a job, and `publishSucceeded` is what says it landed.
-                        Haptics.success()
-                    }
-                }
-            } label: {
-                Label(
-                    revision.canPublishExports ? "Export & Publish" : "Export",
-                    systemImage: revision.canPublishExports ? "shippingbox.fill" : "square.and.arrow.down.fill"
-                )
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity)
+        } else if actionIsComplete {
+            // Kept on screen with nothing pending and nothing edited. The settings above describe
+            // the *next* render, and the ladder can walk a rendition down to fit Apple's 500 KB
+            // ceiling without being asked — so "the size I picked" and "the size I got" are not the
+            // same claim, and running it again has to be reachable without editing the sticker
+            // first. Secondary styling, because Share is the point of this state.
+            Button(action: runExport) { actionLabel }
+                .buttonStyle(.glass)
+                .controlSize(.large)
+                .accessibilityIdentifier("re-export-files")
+        } else {
+            Button(action: runExport) { actionLabel }
+                .buttonStyle(.glassProminent)
+                .tint(AppColors.accent)
+                .controlSize(.large)
+                .popoverTip(revision.canPublishExports ? publishTip : nil, arrowEdge: .bottom)
+                .accessibilityIdentifier(revision.canPublishExports ? "publish-exports" : "export-files")
+        }
+    }
+
+    /// Renamed once files exist, so the same button reads as "run it again" rather than as an
+    /// action already taken.
+    private var actionLabel: some View {
+        Label(
+            actionIsComplete
+                ? (revision.canPublishExports ? "Re-export & Publish" : "Re-export")
+                : (revision.canPublishExports ? "Export & Publish" : "Export"),
+            systemImage: actionIsComplete
+                ? "arrow.clockwise"
+                : (revision.canPublishExports ? "shippingbox.fill" : "square.and.arrow.down.fill")
+        )
+        .fontWeight(.semibold)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func runExport() {
+        publishTip.invalidate(reason: .actionPerformed)
+        Haptics.tap(.medium)
+        // The timeline opens in the same frame as the tap, before any work starts: the first step
+        // validates a document whose assets may still be arriving, and that is exactly the wait
+        // this replaces.
+        isPresentingProgress = true
+        model.startExportOrPublish(
+            store: store,
+            stickerID: stickerID,
+            revision: revision,
+            assets: assets,
+            verifiedAssetIDs: verifiedAssetIDs
+        ) {
+            if model.errorMessage != nil {
+                Haptics.failure()
+            } else if !revision.canPublishExports, model.progress?.outcome == .succeeded {
+                // A local export is finished the moment this returns. A publish is not —
+                // it hands off to a job, and `publishSucceeded` is what says it landed.
+                Haptics.success()
             }
-            .buttonStyle(.glassProminent)
-            .tint(AppColors.accent)
-            .controlSize(.large)
-            .popoverTip(revision.canPublishExports ? publishTip : nil, arrowEdge: .bottom)
-            .accessibilityIdentifier(revision.canPublishExports ? "publish-exports" : "export-files")
         }
     }
 }

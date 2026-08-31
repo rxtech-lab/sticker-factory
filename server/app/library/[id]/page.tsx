@@ -63,7 +63,7 @@ export default async function StickerDetailPage({
   const activeRevision = sticker.revisions.find((revision) => revision.id === sticker.activeRevisionId);
   const downloads = activeRevision ? [
     activeRevision.pngAssetId ? { label: "PNG export", assetId: activeRevision.pngAssetId } : activeRevision.masterAssetId ? { label: "Source master", assetId: activeRevision.masterAssetId } : null,
-    activeRevision.gifAssetId ? { label: "Animated GIF", assetId: activeRevision.gifAssetId } : null,
+    activeRevision.apngAssetId ? { label: "Animated PNG", assetId: activeRevision.apngAssetId } : null,
     activeRevision.mp4AssetId ? { label: "MP4 video", assetId: activeRevision.mp4AssetId } : null,
     activeRevision.systemAssetId ? { label: "System sticker", assetId: activeRevision.systemAssetId } : null,
   ].filter((item): item is { label: string; assetId: string } => Boolean(item)) : [];

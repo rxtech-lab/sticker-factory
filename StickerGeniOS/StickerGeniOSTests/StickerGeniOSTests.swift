@@ -282,7 +282,7 @@ struct StickerContractTests {
         let value = PublishExportsRequest(
             revisionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             pngAssetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-            gifAssetId: nil,
+            apngAssetId: nil,
             mp4AssetId: nil,
             systemAssetId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
             mp4Background: nil
@@ -298,7 +298,7 @@ struct StickerContractTests {
         let value = PublishExportsRequest(
             revisionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             pngAssetId: nil,
-            gifAssetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            apngAssetId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
             mp4AssetId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
             systemAssetId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
             mp4Background: .linearGradient(colors: ["#112233", "#AABBCC"], angleDegrees: 42)
@@ -422,8 +422,6 @@ struct StickerRenderingPolicyTests {
 
         let plain = StickerExportMetadataPolicy.apngFrameDelays(frameCount: 60, fps: 30)
         #expect(abs(plain.reduce(0, +) - 2) < 0.000_001)
-        #expect(StickerExportMetadataPolicy.gifFrameDelays(frameCount: 60, fps: 30)
-            == StickerExportMetadataPolicy.frameDelays(frameCount: 60, fps: 30, ticksPerSecond: 100))
     }
 
     @Test("Export selections name the files they hand over")
@@ -438,9 +436,11 @@ struct StickerRenderingPolicyTests {
             == StickerExportSelection.sticker.detail(isAnimated: false))
     }
 
-    @Test("GIF centisecond delays preserve a 30 FPS cycle duration")
-    func gifCentisecondTiming() {
-        let delays = StickerExportMetadataPolicy.gifFrameDelays(frameCount: 60, fps: 30)
+    @Test("Centisecond delays preserve a 30 FPS cycle duration")
+    func centisecondTiming() {
+        // A coarser grid than the APNG encoder's own millisecond one, kept under test because it is
+        // where cumulative rounding is easiest to get wrong: 30 FPS does not divide 100 evenly.
+        let delays = StickerExportMetadataPolicy.frameDelays(frameCount: 60, fps: 30, ticksPerSecond: 100)
         #expect(delays.count == 60)
         #expect(delays.filter { abs($0 - 0.03) < 0.000_001 }.count == 40)
         #expect(delays.filter { abs($0 - 0.04) < 0.000_001 }.count == 20)
@@ -449,8 +449,8 @@ struct StickerRenderingPolicyTests {
 
     @Test("The loop hold lingers on the last frame without adding one")
     func loopHoldTiming() {
-        let held = StickerExportMetadataPolicy.gifFrameDelays(frameCount: 60, fps: 30, holdSeconds: 0.6)
-        let plain = StickerExportMetadataPolicy.gifFrameDelays(frameCount: 60, fps: 30)
+        let held = StickerExportMetadataPolicy.frameDelays(frameCount: 60, fps: 30, holdSeconds: 0.6, ticksPerSecond: 100)
+        let plain = StickerExportMetadataPolicy.frameDelays(frameCount: 60, fps: 30, ticksPerSecond: 100)
         // Same grid: a hold is display time on a frame that already exists, never an extra frame.
         #expect(held.count == plain.count)
         #expect(Array(held.dropLast()) == Array(plain.dropLast()))
@@ -1171,7 +1171,7 @@ struct StoreAndPublisherTests {
     func publishedExportStateRequiresTheStickerRenditions() {
         var revision = PreviewFixtures.candidate
         revision.candidateState = .accepted
-        revision.gifAssetId = "gif"
+        revision.apngAssetId = "apng"
         revision.mp4AssetId = "mp4"
         revision.systemAssetId = "system"
         #expect(revision.hasPublishedExports)
@@ -1183,9 +1183,14 @@ struct StoreAndPublisherTests {
         #expect(revision.hasPublishedExports)
         #expect(!revision.hasPublishedVideo)
 
-        // The GIF is not optional: it is what every surface outside Messages shows.
-        revision.gifAssetId = nil
+        // The sharing rendition is not optional: it is what every surface outside Messages shows.
+        revision.apngAssetId = nil
         #expect(!revision.hasPublishedExports)
+
+        // A revision published before APNG replaced GIF resolves through the legacy column, and is
+        // no less published for it.
+        revision.gifAssetId = "gif"
+        #expect(revision.hasPublishedExports)
     }
 
     @Test("Accepting a candidate updates the active revision")

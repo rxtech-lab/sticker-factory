@@ -279,6 +279,7 @@ final class StickerSectionHeaderView: UICollectionReusableView {
     static let reuseIdentifier = "sticker-section-header"
 
     private let titleLabel = UILabel()
+    private let titleBadge = UIView()
     private let subtitleLabel = UILabel()
 
     override init(frame: CGRect) {
@@ -287,18 +288,30 @@ final class StickerSectionHeaderView: UICollectionReusableView {
         titleLabel.font = .preferredFont(forTextStyle: .subheadline).withWeight(.semibold)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textColor = .label
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // Pill badge gives the title its own opaque backdrop so it reads on any
+        // drawer background (glass, light, dark) without relying on transparency.
+        titleBadge.backgroundColor = .secondarySystemBackground
+        titleBadge.layer.cornerRadius = 10
+        titleBadge.clipsToBounds = true
+        titleBadge.addSubview(titleLabel)
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: titleBadge.leadingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(equalTo: titleBadge.trailingAnchor, constant: -8),
+            titleLabel.topAnchor.constraint(equalTo: titleBadge.topAnchor, constant: 4),
+            titleLabel.bottomAnchor.constraint(equalTo: titleBadge.bottomAnchor, constant: -4),
+        ])
 
         subtitleLabel.font = .preferredFont(forTextStyle: .caption2)
         subtitleLabel.adjustsFontForContentSizeCategory = true
         subtitleLabel.textColor = .secondaryLabel
 
-        let stack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
+        let stack = UIStackView(arrangedSubviews: [titleBadge, subtitleLabel])
         stack.axis = .vertical
-        stack.spacing = 1
+        stack.alignment = .leading
+        stack.spacing = 4
         stack.translatesAutoresizingMaskIntoConstraints = false
-        // No fill and no blur: the header scrolls with its section rather than pinning, so it
-        // never has content sliding under it and needs nothing to stay legible against. Matches
-        // the app's Library headers.
         backgroundColor = .clear
         addSubview(stack)
 

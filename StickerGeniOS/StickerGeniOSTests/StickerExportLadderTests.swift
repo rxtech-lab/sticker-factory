@@ -399,7 +399,7 @@ struct StickerExportLadderTests {
 
     @MainActor
     @Test("An animated sticker always exports under the ceiling, at a size Messages accepts")
-    func animatedSystemStickerAlwaysFits() throws {
+    func animatedSystemStickerAlwaysFits() async throws {
         var document = PreviewFixtures.animatedBaseDocument
         document.layers = [
             .shape(.init(base: .init(id: "backdrop", name: "Backdrop"), shape: .burst, fill: .solid("#FFE7A3"))),
@@ -407,7 +407,7 @@ struct StickerExportLadderTests {
         ]
         document.durationSeconds = 1
         document.fps = 12
-        let rendition = try StickerExporter().exportSystemSticker(document: document, assets: [:], size: .small)
+        let rendition = try await StickerExporter().exportSystemSticker(document: document, assets: [:], size: .small)
         defer { try? FileManager.default.removeItem(at: rendition.url) }
         let written = try Data(contentsOf: rendition.url)
 
@@ -434,6 +434,47 @@ struct StickerExportLadderTests {
     }
 
     @MainActor
+    @Test("A sharing APNG too big to upload is written smaller rather than not at all")
+    func sharingApngFitsTheUploadCeiling() async throws {
+        var document = PreviewFixtures.animatedBaseDocument
+        document.layers = [
+            .shape(.init(base: .init(id: "backdrop", name: "Backdrop"), shape: .burst, fill: .solid("#FFE7A3"))),
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+        ]
+        document.durationSeconds = 1
+        document.fps = 8
+        let exporter = StickerExporter()
+
+        let full = try await exporter.exportAPNG(document: document, assets: [:])
+        defer { try? FileManager.default.removeItem(at: full.url) }
+        #expect(full.metadata.width == StickerExportMetadataPolicy.sharingApngDimensions[0])
+
+        // The regression this guards: the sharing rendition used to be written at a flat 1024 px, so a long dense
+        // animation declared a byteSize the API refuses to presign and the publish died on a 400
+        // with the sticker left in draft. A ceiling this file cannot meet at full size stands in for
+        // that animation without spending 240 frames to reproduce it.
+        let squeezed = try await exporter.exportAPNG(
+            document: document, assets: [:], byteCeiling: full.metadata.byteCount / 2
+        )
+        defer { try? FileManager.default.removeItem(at: squeezed.url) }
+        #expect(squeezed.metadata.byteCount <= full.metadata.byteCount / 2)
+        #expect(squeezed.metadata.width < full.metadata.width)
+        // Every rung the ladder can land on is one `validateImageForKind` in
+        // `server/lib/services/assets.ts` accepts, and it is always square.
+        #expect(StickerExportMetadataPolicy.sharingApngDimensions.contains(squeezed.metadata.width))
+        #expect(squeezed.metadata.width == squeezed.metadata.height)
+
+        // Pixels are the only thing this ladder may spend. The server checks the sharing rendition's frame grid
+        // against the document's own frame rate and count, so a rung that thinned either would be
+        // rejected for timing rather than for size.
+        let source = try #require(CGImageSourceCreateWithData(try Data(contentsOf: squeezed.url) as CFData, nil))
+        #expect(CGImageSourceGetCount(source)
+            == StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps))
+        #expect(squeezed.metadata.fps == document.fps)
+        #expect(squeezed.metadata.durationSeconds == StickerExportMetadataPolicy.renderedDuration(document))
+    }
+
+    @MainActor
     @Test("Exporting as video renders the video and nothing else")
     func videoOnlyExportSkipsTheStickerLadder() async throws {
         var revision = PreviewFixtures.candidate
@@ -453,8 +494,57 @@ struct StickerExportLadderTests {
             revision: revision, assets: [:], verifiedAssetIDs: [], size: .small, selection: .sticker
         )
         defer { sticker.forEach { try? FileManager.default.removeItem(at: $0.url) } }
-        // The sharing GIF and the Messages rendition, and no video encode at all.
-        #expect(sticker.map(\.metadata.format) == [.gif, .apng])
+        // The sharing rendition and the Messages rendition, both APNG, and no video encode at all.
+        #expect(sticker.map(\.metadata.format) == [.apng, .apng])
+    }
+
+    @MainActor
+    @Test("Choosing GIF shares a GIF and still publishes the APNG")
+    func gifSharingFormatSharesAGifAndPublishesTheApng() async throws {
+        var revision = PreviewFixtures.candidate
+        revision.candidateState = .accepted
+        revision.document.fps = 8
+        let api = MockStickerAPIClient()
+        let publisher = StickerPublisher(api: api)
+
+        let result = try await publisher.publish(
+            stickerID: "sticker-demo", revision: revision, assets: [:], verifiedAssetIDs: [],
+            size: .small, selection: .sticker, sharing: .gif
+        )
+        defer { result.localExports.forEach { try? FileManager.default.removeItem(at: $0.url) } }
+
+        // The whole point of the option: the file handed to the share sheet is the GIF that will
+        // animate in WhatsApp or Discord, and the file that reaches the server is still the APNG.
+        // Sharing both would put two files in the sheet that differ in a way nothing explains.
+        #expect(result.localExports.map(\.metadata.format) == [.gif, .apng])
+        #expect(await api.uploadedKinds == [.apng, .system])
+
+        // Nothing about the published sticker changed, so the sharing choice must not have leaked
+        // into the publish request — the server accepts no GIF for a new animated sticker.
+        #expect(await api.publishedExportRequests.last?.apngAssetId != nil)
+
+        let gif = try #require(result.localExports.first { $0.metadata.format == .gif })
+        #expect(gif.url.pathExtension == "gif")
+        #expect(StickerExportMetadataPolicy.sharingGifDimensions.contains(gif.metadata.width))
+        // A GIF cannot spend frame rate either: its grid is the document's own, and the loop hold
+        // rides on the last frame's delay rather than on a frame of its own.
+        #expect(gif.metadata.fps == revision.document.fps)
+        #expect(gif.metadata.durationSeconds == StickerExportMetadataPolicy.renderedDuration(revision.document))
+        let source = try #require(CGImageSourceCreateWithData(try Data(contentsOf: gif.url) as CFData, nil))
+        #expect(CGImageSourceGetCount(source)
+            == StickerExportMetadataPolicy.frameCount(document: revision.document, fps: revision.document.fps))
+    }
+
+    @MainActor
+    @Test("The GIF encode only earns a timeline row when a GIF was asked for")
+    func gifStageAppearsOnlyForAGifShare() throws {
+        var revision = PreviewFixtures.candidate
+        revision.candidateState = .accepted
+
+        #expect(StickerExportProgress.stages(for: revision, selection: .sticker, sharing: .apng)
+            == [.prepare, .renderAPNG, .renderSticker, .upload, .publish])
+        #expect(StickerExportProgress.stages(for: revision, selection: .sticker, sharing: .gif)
+            == [.prepare, .renderAPNG, .renderGIF, .renderSticker, .upload, .publish])
     }
 
     @MainActor
@@ -473,13 +563,13 @@ struct StickerExportLadderTests {
         defer { result.localExports.forEach { try? FileManager.default.removeItem(at: $0.url) } }
         // The sticker set is published however the export was asked for; the video is not, because
         // nothing on the platform reads it and encoding one is the slowest step of a publish.
-        #expect(await api.uploadedKinds == [.gif, .system])
+        #expect(await api.uploadedKinds == [.apng, .system])
         #expect(await api.publishedExportRequests.last?.mp4AssetId == nil)
 
         // Wanting the video later is not a dead end: the document is unchanged, so the encode that
         // was skipped at publish time runs now instead of a re-publish.
         var published = revision
-        published.gifAssetId = "gif-asset"
+        published.apngAssetId = "apng-asset"
         published.systemAssetId = "system-asset"
         #expect(published.hasPublishedExports)
         #expect(!published.hasPublishedVideo)
@@ -524,12 +614,12 @@ struct StickerExportLadderTests {
 
     @MainActor
     @Test("A static sticker exports its own rendition without quantizing what already fits")
-    func staticSystemSticker() throws {
+    func staticSystemSticker() async throws {
         var document = PreviewFixtures.staticDocument
         document.layers = [
             .shape(.init(base: .init(id: "base", name: "Base"), shape: .roundedRectangle, fill: .solid("#A88BFF"))),
         ]
-        let rendition = try StickerExporter().exportSystemSticker(document: document, assets: [:], size: .large)
+        let rendition = try await StickerExporter().exportSystemSticker(document: document, assets: [:], size: .large)
         defer { try? FileManager.default.removeItem(at: rendition.url) }
 
         #expect(rendition.metadata.format == .png)
