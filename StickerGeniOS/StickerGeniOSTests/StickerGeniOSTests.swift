@@ -1293,6 +1293,7 @@ private extension StickerAPIClientProtocol {
     func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
     func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse { throw TestFixtureError.stub }
+    func importSticker(_ request: ImportStickerRequest, idempotencyKey: String) async throws -> ImportStickerResponse { throw TestFixtureError.stub }
     func sticker(id: String) async throws -> StickerDetail { throw TestFixtureError.stub }
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail { throw TestFixtureError.stub }
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse { throw TestFixtureError.stub }

@@ -12,6 +12,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     /// published sticker at all, and a client-side filter turns that into an empty picker.
     func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker>
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse
+    func importSticker(_ request: ImportStickerRequest, idempotencyKey: String) async throws -> ImportStickerResponse
     func sticker(id: String) async throws -> StickerDetail
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse
@@ -99,6 +100,10 @@ actor StickerAPIClient: StickerAPIClientProtocol {
 
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse {
         try await send(path: "api/v1/stickers", method: "POST", body: request, idempotencyKey: idempotencyKey)
+    }
+
+    func importSticker(_ request: ImportStickerRequest, idempotencyKey: String) async throws -> ImportStickerResponse {
+        try await send(path: "api/v1/stickers/import", method: "POST", body: request, idempotencyKey: idempotencyKey)
     }
 
     func sticker(id: String) async throws -> StickerDetail {

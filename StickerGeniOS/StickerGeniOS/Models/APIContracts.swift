@@ -512,6 +512,22 @@ nonisolated struct CreateStickerRequest: Codable, Sendable {
     var referenceAssetIds: [String]
 }
 
+/// Turns an image the app already holds into a static sticker project, with nothing generated.
+///
+/// The artwork exists — a concept render on screen, or a picture the user chose — so the ordinary
+/// create path would spend a generation redrawing it. What comes back is an ordinary sticker with
+/// an accepted, active root revision, ready to have its exports published.
+nonisolated struct ImportStickerRequest: Codable, Sendable {
+    var title: String
+    var assetId: String
+}
+
+nonisolated struct ImportStickerResponse: Codable, Sendable {
+    var stickerId: String
+    var threadId: String
+    var revisionId: String
+}
+
 nonisolated struct UpdateStickerRequest: Codable, Sendable {
     var title: String
 }

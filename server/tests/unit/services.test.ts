@@ -23,6 +23,8 @@ import {
   createChatTurn,
   createCleanupJob,
   createSticker,
+  getSticker,
+  importSticker,
   listChatMessages,
   retryFailedChatTurn,
   revertRevision,
@@ -88,6 +90,45 @@ describe("Sticker Factory services", () => {
     await createCleanupJob(db, "owner-a", sticker.stickerId);
     await expect(updateSticker(db, "owner-a", sticker.stickerId, { title: "Too late" }))
       .rejects.toMatchObject({ code: "STICKER_NOT_FOUND" });
+  });
+
+  it("imports a picture as a publishable static sticker, and only once", async () => {
+    const assetId = crypto.randomUUID();
+    await db.insert(assets).values({
+      id: assetId,
+      ownerId: "owner-a",
+      kind: "reference",
+      state: "ready",
+      r2Key: objectKey("owner-a", assetId, "image/png"),
+      mimeType: "image/png",
+      byteSize: 4_096,
+      width: 1024,
+      height: 1024,
+      sha256: "c".repeat(64),
+      hasAlpha: true,
+      createdAt: new Date(),
+      readyAt: new Date(),
+    });
+
+    const imported = await importSticker(db, "owner-a", { title: "Concept", assetId });
+    const detail = await getSticker(db, "owner-a", imported.stickerId);
+    expect(detail.kind).toBe("static");
+    // Active and accepted on arrival is the whole point: `bindExports` refuses anything else, and
+    // publishing is what actually puts the sticker in the Messages pack.
+    expect(detail.activeRevisionId).toBe(imported.revisionId);
+    expect(detail.revisions.find((revision) => revision.id === imported.revisionId)?.candidateState).toBe("accepted");
+    // No job — nothing was generated. One transcript entry, so opening the new project shows the
+    // sticker rather than an empty room, and it is a `device_edit` marker rather than a user turn
+    // the agent would answer.
+    expect(await db.select().from(generationJobs).where(eq(generationJobs.stickerId, imported.stickerId))).toHaveLength(0);
+    const transcript = await listChatMessages(db, "owner-a", imported.stickerId, { afterSequence: 0, limit: 10 });
+    expect(transcript.data).toHaveLength(1);
+    expect(transcript.data[0]).toMatchObject({ kind: "device_edit", revisionId: imported.revisionId });
+
+    // The asset is now this sticker's, so a second import of the same upload would leave two
+    // documents pointing at one piece of artwork.
+    await expect(importSticker(db, "owner-a", { title: "Concept again", assetId }))
+      .rejects.toMatchObject({ code: "REFERENCE_ALREADY_ATTACHED" });
   });
 
   it("orders persistent chat, enforces one active turn, and bounds retries", async () => {

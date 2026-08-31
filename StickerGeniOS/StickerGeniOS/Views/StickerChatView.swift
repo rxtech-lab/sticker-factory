@@ -24,6 +24,13 @@ struct StickerChatView: View {
     @State private var pendingLift: PendingLift?
     private let liftTip = LiftSubjectTip()
     @State private var localError: String?
+    /// What the sticker-pack publish has to say, floated over the transcript.
+    ///
+    /// The publish has no card of its own to report into — it makes a *different* sticker, so
+    /// nothing in this conversation is about it. It gets a pill over the message list rather than a
+    /// line under the composer: the composer's caption slot belongs to the draft being written, and
+    /// a status parked there reads as something wrong with the message about to be sent.
+    @State private var packNotice: StickerPackNotice?
     @State private var assetStore = StickerAssetStore()
     @State private var exportModel = StickerExportModel()
     @State private var showingVersions = false
@@ -56,6 +63,9 @@ struct StickerChatView: View {
     @State private var rejectedRevisionIDs: Set<String> = []
 
     private var detail: StickerDetail? { store.details[stickerID] }
+    /// Derived from the notice rather than tracked beside it, so the pill and the disabled menu item
+    /// can never disagree about whether a publish is still running.
+    private var isAddingToStickerPack: Bool { packNotice?.isWorking == true }
     private var stickerTitle: String {
         detail?.title
             ?? store.stickers.first(where: { $0.id == stickerID })?.title
@@ -151,6 +161,8 @@ struct StickerChatView: View {
                     }
                 }
                 .animation(.easeInOut(duration: 0.2), value: isLoadingTranscript)
+                .overlay(alignment: .top) { stickerPackNotice }
+                .animation(.easeInOut(duration: 0.25), value: packNotice)
                 bottomBar
             }
         }
@@ -450,7 +462,10 @@ struct StickerChatView: View {
                 isBusy: isConfirmingPlan || isComputing,
                 onConfirm: { Task { await confirmPlan(record) } },
                 onReject: { reason in Task { await rejectPlan(record, reason: reason) } },
-                onAddImageToSticker: addPlanImageToSticker,
+                isAddingImageToStickerPack: isAddingToStickerPack,
+                onAddImageToStickerPack: { image in
+                    Task { await addPlanImageToStickerPack(image) }
+                },
                 onSaveImageToPhotoLibrary: { image in
                     Task { await savePlanImageToPhotoLibrary(image) }
                 }
@@ -650,6 +665,43 @@ struct StickerChatView: View {
         }
     }
 
+    /// The sticker-pack publish, reported over the top of the transcript.
+    ///
+    /// It floats rather than taking layout: the transcript is what the user is reading, and pushing
+    /// it down to make room would move the message they are looking at. The pill is the same glass
+    /// the composer wears, so it reads as chrome over the conversation rather than as part of it.
+    @ViewBuilder
+    private var stickerPackNotice: some View {
+        if let notice = packNotice {
+            HStack(spacing: 10) {
+                if notice.isWorking {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(AppColors.accent)
+                }
+                Text(notice.message)
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .glassEffect(.regular, in: .capsule)
+            .padding(.top, 8)
+            .padding(.horizontal, 16)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityIdentifier("sticker-pack-notice")
+            // A finished notice is news for a moment and clutter after it, over a transcript it is
+            // covering. The working one stays: it is the only sign the work is still going.
+            .task(id: notice) {
+                guard !notice.isWorking else { return }
+                try? await Task.sleep(for: .seconds(4))
+                guard !Task.isCancelled else { return }
+                packNotice = nil
+            }
+        }
+    }
+
     /// A device edit is authored as `role: .user` so the agent reads it as the user's doing, but it
     /// still owns the revision it saved — so it gets the same attachment an assistant turn would.
     private func revisionDocument(for message: ChatMessage) -> AnimatedDocument? {
@@ -716,26 +768,29 @@ struct StickerChatView: View {
         if !loaded.isEmpty { Haptics.selection() }
     }
 
-    /// Places a plan's visual in the composer as an ordinary reference, ready for the user's next
-    /// instruction. Keeping it in the composer instead of starting a turn immediately lets the user
-    /// say how the image should be used and makes the action reversible until they tap Send.
-    private func addPlanImageToSticker(_ image: UIImage) {
-        guard references.count < 8 else {
-            localError = String(localized: "A message can include up to 8 reference images.")
-            Haptics.failure()
-            return
-        }
+    /// Publishes a plan's visual into the sticker pack, so it can be sent from Messages.
+    ///
+    /// This is the whole point of the action and not a shortcut to it: Messages reads the published
+    /// library, so the image becomes its own static sticker project and is exported the same way any
+    /// finished sticker is. Nothing is generated, so it costs the user no model time — but it does
+    /// cost a render and two uploads, which is why the menu item reports that it is working rather
+    /// than looking like it did nothing.
+    private func addPlanImageToStickerPack(_ image: UIImage) async {
+        guard !isAddingToStickerPack else { return }
+        localError = nil
+        packNotice = .init(message: String(localized: "Adding to your stickers…"), isWorking: true)
         do {
-            guard let data = image.pngData() else { throw MediaNormalizationError.unreadableImage }
-            let attachment = try MediaNormalizer.reference(
-                data: data,
-                basename: "plan-reference-\(references.count + 1)"
+            try await store.addImageToStickerPack(image, title: stickerTitle)
+            packNotice = .init(
+                message: String(localized: "Added to your stickers. It's ready in Messages."),
+                isWorking: false
             )
-            references.append(attachment)
-            localError = nil
-            composerFocused = true
-            Haptics.selection()
+            Haptics.success()
         } catch {
+            // The pill only ever says the work is going or went well; a failure belongs in the error
+            // line, which is where every other thing that can go wrong on this screen reports.
+            packNotice = nil
+            guard !StickerStore.isCancellation(error) else { return }
             localError = error.localizedDescription
             Haptics.failure()
         }
@@ -767,6 +822,16 @@ struct StickerChatView: View {
         try await PHPhotoLibrary.shared().performChanges {
             PHAssetChangeRequest.creationRequestForAsset(from: image)
         }
+    }
+
+    /// One line about the sticker-pack publish, and whether it is still going.
+    ///
+    /// `isWorking` is carried rather than inferred from the wording: it decides the spinner, whether
+    /// the notice dismisses itself, and whether the menu item is still disabled — three things that
+    /// must not be re-derived from a localized string.
+    private struct StickerPackNotice: Equatable {
+        var message: String
+        var isWorking: Bool
     }
 
     /// What the composer held, taken out of it.
@@ -815,6 +880,9 @@ struct StickerChatView: View {
         let baseRevisionID = detail?.revisions.first(where: { $0.state == .candidate })?.id ?? detail?.activeRevisionId
 
         localError = nil
+        // A settled pack notice is older news than the turn about to start; one still working keeps
+        // its pill, because the work is still going whatever this screen does next.
+        if packNotice?.isWorking == false { packNotice = nil }
 
         do {
             try await store.sendMessage(

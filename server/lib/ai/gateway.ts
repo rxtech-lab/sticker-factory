@@ -2026,6 +2026,12 @@ class GatewayAiProvider implements AiProvider {
         "and show no animation frames, contact sheet, labels, arrows, watermark, or UI. The user",
         "approves this image before the generated artwork is separated into independent parts, so",
         "it is the visual source of truth for style, colour, proportions, and composition.",
+        // The excluded list above is annotation — the scaffolding of a storyboard, not the sticker.
+        // Read as "no text at all" it would strip the very lettering the plan then asks a generate
+        // layer to lift out of this image, which leaves that layer with no source.
+        "Lettering the sticker itself carries is not on that list: if the design has words, the",
+        "conceptPrompt spells them out and describes how they are drawn, so the approved image is",
+        "the source the word layer is separated from.",
         "",
         "Likeness. The photos the user uploaded to this project are handed to the image model along",
         "with your conceptPrompt and your layer prompts, on every turn, including turns where the",
@@ -2070,9 +2076,26 @@ class GatewayAiProvider implements AiProvider {
         "approved static image is later separated into these generated layers, which is how the final",
         "sticker keeps its exact silhouettes, outlines, bevels, shadows, highlights, and texture.",
         "Never use text, shape, or particle in an animated plan: those are generic app-rendered",
-        "primitives and will not match the approved image. That rule is lifted entirely for a plan",
-        "led by a sequence layer: there is no generated image for anything to match, so text, shape,",
-        "and particle layers are welcome around a capture and are usually what makes it a sticker.",
+        "primitives and will not match the approved image.",
+        // Words are the case the planner reaches for a primitive on hardest, because a `text` layer
+        // looks like the obvious tool for them. It is the wrong one here: an animated sticker's
+        // lettering is part of the artwork, and a system font dropped on top of drawn artwork reads
+        // as a caption bolted onto someone else's picture.
+        "Words are artwork. Lettering in an animated sticker is drawn by the image model, never set",
+        "in a system font: give it a generate layer whose prompt spells the exact words and says how",
+        "they look — the typeface's character, weight, colour, outline, shadow, and any bevel, gloss",
+        "or glow — on a transparent background. The words must also appear, spelled identically, in",
+        "the conceptPrompt, or the approved image will have nothing for that layer to be separated",
+        "from. A `text` layer is a last resort in an animated plan and needs a reason the drawn",
+        "version could not work.",
+        "The exception to app-rendered primitives is a plan led by a sequence layer: there is no",
+        "generated image for anything to match, so shape and particle layers are welcome around a",
+        "capture and are usually what makes it a sticker. Lettering still prefers generate even",
+        "there, because a drawn word carries the outline, gloss and shadow that make it read as a",
+        "sticker and a system font cannot. Know what that costs: adding any generated layer puts a",
+        "capture-led plan back on the concept path, so the user is asked to approve a rendered still",
+        "of their own footage before the build. Worth it for lettering the design is built around;",
+        "not worth it for an incidental word, which may stay a text layer.",
         "Keep a word or phrase together in one",
         "generated layer unless parts of it genuinely need independent motion. Existing image layers",
         "may still be reused when revising artwork that must remain pixel-identical.",
@@ -2100,9 +2123,9 @@ class GatewayAiProvider implements AiProvider {
         "changing behind their back. Use generate only for artwork that is genuinely new, or that",
         "the user asked to have redrawn.",
         "",
-        "Text layers. Give them equal scaleX and scaleY: a glyph is fitted inside its box without",
-        "stretching, so unequal values only shrink it. Size a text layer by the box you want the",
-        "words to occupy, not by their letter count.",
+        "Text layers, on the static plans that may still use them. Give them equal scaleX and scaleY:",
+        "a glyph is fitted inside its box without stretching, so unequal values only shrink it. Size a",
+        "text layer by the box you want the words to occupy, not by their letter count.",
         "",
         // Generated artwork is a square PNG drawn to fill its frame, so a wide box used to stretch
         // it. The build now fits the artwork inside the box instead, which makes an unequal pair
@@ -2113,7 +2136,8 @@ class GatewayAiProvider implements AiProvider {
         "and scaleY too. An unequal pair is built as the smaller of the two, which makes a wide,",
         "short box a small square. To get a wide caption, ask the prompt for wide lettering inside a",
         "square frame and give the layer one square box big enough to hold it.",
-        "For a staged text reveal, split the phrase into at most 6 chunks and prefer whole words:",
+        "For a staged text reveal, split the phrase into at most 6 chunks and prefer whole words —",
+        "generated chunks in an animated plan, text chunks in a static one:",
         '"Hello World" is two layers, not eleven. A plan may use at most 8 layers, so one layer',
         "per letter only works for very short words, and cramming a phrase into it produces uneven",
         "spacing and unreadably small type. Lay the chunks out left to right with each chunk's width",

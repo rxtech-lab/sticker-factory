@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or, sql } from "drizzle-orm";
 import type {
   CreateStickerRequest,
+  ImportStickerRequest,
   PostChatMessageRequest,
   PublishExportsRequest,
   SaveEditedDocumentRequest,
@@ -256,6 +257,116 @@ export async function createSticker(db: Database, ownerId: string, request: Crea
     }
   });
   return { stickerId, threadId };
+}
+
+/**
+ * Turns an image the user already has into a static sticker project, with no generation.
+ *
+ * The whole point is that nothing is drawn: the asset carries the pixels, so this writes the
+ * sticker, its thread, and a root revision that is accepted and active from the moment it exists.
+ * Accepted-on-arrival mirrors `saveEditedRevision` and for the same reason — the user has already
+ * seen this picture and chosen it, so a review gate would only ask them to confirm their own
+ * choice. Being active is also what lets the client publish exports for it straight away, which is
+ * what actually puts the sticker in the Messages pack.
+ *
+ * There is no generation job — nothing was asked of the model — but there is one transcript entry,
+ * so the project opens on the sticker rather than on an empty room. See the insert below for why it
+ * is a `device_edit` marker and not a user turn.
+ */
+export async function importSticker(db: Database, ownerId: string, request: ImportStickerRequest) {
+  const [asset] = await getReadyOwnedAssets(db, ownerId, [request.assetId]);
+  // Narrower than `AI_INPUT_ASSET_KINDS`, which admits `sequence`: a frame atlas is a PNG contact
+  // sheet, so it would pass every check here and then be refused at publish time as an image layer
+  // — after the project already existed. This is the same set `validateDocumentAssetReferences`
+  // accepts for an image layer, minus the rendition kinds an import can never be holding.
+  if (asset.kind !== "reference" && asset.kind !== "chat_attachment") {
+    throw new ApiError(422, "INVALID_REFERENCE", "An imported sticker must be built from a reference image asset");
+  }
+  if (!AI_REFERENCE_MIME_TYPES.has(asset.mimeType)) {
+    throw new ApiError(422, "INVALID_REFERENCE", "An imported sticker must be a PNG, JPEG, or WebP image");
+  }
+  if (asset.stickerId !== null) {
+    throw new ApiError(422, "REFERENCE_ALREADY_ATTACHED", "That image is already attached to another sticker");
+  }
+
+  const stickerId = crypto.randomUUID();
+  const threadId = crypto.randomUUID();
+  const revisionId = crypto.randomUUID();
+  const messageId = crypto.randomUUID();
+  const now = new Date();
+  const document = StickerDocumentSchema.parse({
+    version: CURRENT_DOCUMENT_VERSION,
+    kind: "static",
+    canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+    mp4Background: { type: "solid", color: "#FFFFFF" },
+    durationSeconds: 0,
+    fps: 0,
+    loop: "once",
+    layers: [{
+      id: "hero",
+      name: "Hero",
+      hidden: false,
+      type: "image",
+      assetId: request.assetId,
+      contentMode: "fit",
+      animation: { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] },
+    }],
+  });
+
+  await db.transaction(async (tx) => {
+    await tx.insert(stickers).values({
+      id: stickerId,
+      ownerId,
+      title: request.title,
+      kind: "static",
+      status: "draft",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await tx.insert(chatThreads).values({ id: threadId, stickerId, ownerId, createdAt: now, updatedAt: now });
+    // Claiming the asset is conditional on it still being unattached, so two imports racing on the
+    // same upload cannot both end up with a document pointing at artwork the other one owns.
+    const claimed = await tx.update(assets).set({ stickerId }).where(and(
+      eq(assets.ownerId, ownerId),
+      isNull(assets.stickerId),
+      eq(assets.id, request.assetId),
+    )).returning({ id: assets.id });
+    if (claimed.length !== 1) {
+      throw new ApiError(409, "REFERENCE_ALREADY_ATTACHED", "That image was concurrently attached to another sticker");
+    }
+    // The project opens on something rather than on nothing. An imported sticker has no turn behind
+    // it, so without this its transcript is blank — the user taps into the sticker they just made
+    // and is shown an empty room. Posted as `device_edit` for the same reason `saveEditedRevision`
+    // does: the user never said this, and a bubble quoting words they did not type is a message the
+    // agent would answer on the next turn. The app draws the kind as a divider with the artwork
+    // under it, which is exactly what happened here.
+    await tx.insert(chatMessages).values({
+      id: messageId,
+      threadId,
+      ownerId,
+      role: "user",
+      kind: "device_edit",
+      content: "Added to your stickers",
+      sequence: 1,
+      revisionId,
+      status: "complete",
+      createdAt: now,
+    });
+    await tx.insert(stickerRevisions).values({
+      id: revisionId,
+      stickerId,
+      parentRevisionId: null,
+      sourceMessageId: messageId,
+      kind: "static",
+      candidateState: "accepted",
+      documentJson: document,
+      createdAt: now,
+      decidedAt: now,
+    });
+    await tx.update(stickers).set({ activeRevisionId: revisionId, updatedAt: now }).where(eq(stickers.id, stickerId));
+  });
+
+  return { stickerId, threadId, revisionId };
 }
 
 export async function updateSticker(

@@ -387,9 +387,6 @@
         }
       }
     },
-    "A message can include up to 8 reference images." : {
-
-    },
     "A sticker frame could not be rendered." : {
       "localizations" : {
         "zh-CN" : {
@@ -618,8 +615,21 @@
         }
       }
     },
-    "Add to Sticker" : {
-
+    "Add to Stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加到贴纸库"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入到貼圖庫"
+          }
+        }
+      }
     },
     "Added" : {
       "localizations" : {
@@ -637,6 +647,22 @@
         }
       }
     },
+    "Added to your stickers. It's ready in Messages." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已添加到你的贴纸库，可在“信息”中使用。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已加入你的貼圖庫，可在「訊息」中使用。"
+          }
+        }
+      }
+    },
     "Adding a layer" : {
       "localizations" : {
         "zh-CN" : {
@@ -649,6 +675,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加入圖層"
+          }
+        }
+      }
+    },
+    "Adding to Stickers…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在添加到贴纸库…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加入到貼圖庫…"
+          }
+        }
+      }
+    },
+    "Adding to your stickers…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在添加到你的贴纸库…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加入你的貼圖庫…"
           }
         }
       }
@@ -1435,6 +1493,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法獲取已發佈的檔案。請檢查網絡連線後重試。"
+          }
+        }
+      }
+    },
+    "Couldn't prepare the new sticker. Try again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法准备新贴纸。请重试。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法準備新貼圖。請重試。"
           }
         }
       }
@@ -5808,6 +5882,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "共享會話暫時不可用。"
+          }
+        }
+      }
+    },
+    "The sticker didn't finish publishing. Open it from your library and export it again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸未能完成发布。请从贴纸库中打开它并重新导出。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖未能完成發佈。請從貼圖庫開啟它並重新匯出。"
           }
         }
       }

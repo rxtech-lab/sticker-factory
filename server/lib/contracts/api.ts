@@ -49,6 +49,20 @@ export const CreateStickerRequestSchema = z.object({
   referenceAssetIds: z.array(z.string().uuid()).max(8).default([]),
 }).strict();
 
+/**
+ * A picture the user already has, turned into a sticker project without generating anything.
+ *
+ * This is the path behind "Add to Sticker": the artwork exists — it is a concept render they are
+ * looking at, or a photo they picked — so there is nothing for the model to draw, and routing it
+ * through `POST /stickers` would spend a generation reproducing an image the app is holding. The
+ * project it makes is an ordinary static sticker with one image layer, so every later turn, edit,
+ * and export behaves exactly as it would for a generated one.
+ */
+export const ImportStickerRequestSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+  assetId: z.string().uuid(),
+}).strict();
+
 export const UpdateStickerRequestSchema = z.object({
   title: z.string().trim().min(1).max(100),
 }).strict();
@@ -392,6 +406,7 @@ export const UnpublishPackRequestSchema = z.object({
 }).strict();
 
 export type CreateStickerRequest = z.infer<typeof CreateStickerRequestSchema>;
+export type ImportStickerRequest = z.infer<typeof ImportStickerRequestSchema>;
 export type UpdateStickerRequest = z.infer<typeof UpdateStickerRequestSchema>;
 export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceRequestSchema>;
 export type CreatePackRequest = z.infer<typeof CreatePackRequestSchema>;
