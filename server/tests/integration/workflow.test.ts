@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import sharp from "sharp";
-import { setAiProviderForTests, type AiProvider, type AiTitleContext } from "@/lib/ai/gateway";
+import { getAiProvider, setAiProviderForTests, type AiProvider, type AiTitleContext } from "@/lib/ai/gateway";
 import { PlanV1Schema } from "@/lib/contracts/plan";
 import { StickerDocumentSchema, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { setDatabaseForTests } from "@/lib/db/client";
@@ -19,6 +19,9 @@ import { beginJobStep, executeAiJobStep, failJobStep, finalizeStickerPurgeStep, 
  * path makes and an unexpected one is a failure rather than a silent default.
  */
 const unusedAiProvider: AiProvider = {
+  // Reference selection is a background orchestration step on every image path. Focused tests can
+  // override it to inspect or narrow candidates; other stubs preserve the legacy all-reference path.
+  selectImageReferences: async (input) => input.candidates.map((_, index) => index),
   generateStickerImage: () => { throw new Error("Unexpected generateStickerImage"); },
   planSticker: () => { throw new Error("Unexpected planSticker"); },
   generateConceptImage: () => { throw new Error("Unexpected generateConceptImage"); },
@@ -130,20 +133,20 @@ describe("durable sticker workflow", () => {
       previewAssetId: animationRevision!.previewAssetId ?? undefined,
     });
     await acceptRevision(db, "owner-a", sticker.stickerId, pingPongRevisionId);
-    const renditionIds = { gif: crypto.randomUUID(), mp4: crypto.randomUUID(), system: crypto.randomUUID() };
+    const renditionIds = { apng: crypto.randomUUID(), mp4: crypto.randomUUID(), system: crypto.randomUUID() };
     await db.insert(assets).values([
       // A ping-ponged 2 s document is a 4 s motion cycle; every rendition then holds its last frame
       // for 0.6 s before repeating, so the encoded file runs 4.6 s. GIF and the system rendition
       // hold by giving that frame a longer delay, over the same 4 s grid; the MP4 has no per-frame
       // delay to lengthen, so it holds by repeating the frame 18 more times.
-      { id: renditionIds.gif, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "gif", state: "ready", r2Key: objectKey("owner-a", renditionIds.gif, "image/gif"), mimeType: "image/gif", byteSize: 200_000, width: 1024, height: 1024, frameCount: 120, durationSeconds: 4.6, fps: 120 / 4.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      { id: renditionIds.apng, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "apng", state: "ready", r2Key: objectKey("owner-a", renditionIds.apng, "image/png"), mimeType: "image/png", byteSize: 200_000, width: 1024, height: 1024, frameCount: 120, durationSeconds: 4.6, fps: 120 / 4.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
       { id: renditionIds.mp4, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "mp4", state: "ready", r2Key: objectKey("owner-a", renditionIds.mp4, "video/mp4"), mimeType: "video/mp4", byteSize: 300_000, width: 1024, height: 1024, frameCount: 138, durationSeconds: 4.6, fps: 138 / 4.6, sha256: "b".repeat(64), hasAlpha: false, createdAt: new Date(), readyAt: new Date() },
       { id: renditionIds.system, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "system", state: "ready", r2Key: objectKey("owner-a", renditionIds.system, "image/gif"), mimeType: "image/gif", byteSize: 400_000, width: 408, height: 408, frameCount: 60, durationSeconds: 4.6, fps: 60 / 4.6, sha256: "c".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
     ]);
     const publishedRevisionId = crypto.randomUUID();
     const publishRequest = {
       revisionId: pingPongRevisionId,
-      gifAssetId: renditionIds.gif,
+      apngAssetId: renditionIds.apng,
       mp4AssetId: renditionIds.mp4,
       systemAssetId: renditionIds.system,
       mp4Background: { type: "linearGradient" as const, colors: ["#112233", "#445566"] as [string, string], angleDegrees: 30 },
@@ -874,16 +877,47 @@ describe("durable sticker workflow", () => {
   });
   it("generates an approvable static reference, then separates matching parts after confirmation", async () => {
     const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
     setDatabaseForTests(db);
-    setObjectStoreForTests(new MemoryObjectStore());
+    setObjectStoreForTests(store);
     process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
     await db.insert(users).values({ id: "owner-c", createdAt: new Date(), updatedAt: new Date() });
+    const photo = await attachablePhoto(db, store, "owner-c");
+    const mockProvider = getAiProvider();
+    let conceptBytes: number[] | undefined;
+    const generatedReferences: number[][][] = [];
+    const referenceSelections: Array<Array<{ label: string; required?: boolean }>> = [];
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: mockProvider.routeChatTurn.bind(mockProvider),
+      planSticker: mockProvider.planSticker.bind(mockProvider),
+      generateConceptImage: async (input) => {
+        const output = await mockProvider.generateConceptImage(input);
+        conceptBytes = [...output.bytes];
+        return output;
+      },
+      selectImageReferences: async (input) => {
+        if (input.candidates.some(({ label }) => label === "approved plan image")) {
+          referenceSelections.push(input.candidates.map(({ label, required }) => ({ label, required })));
+        }
+        return mockProvider.selectImageReferences(input);
+      },
+      generateStickerImage: async (input) => {
+        generatedReferences.push(input.references.map((reference) => [...reference.bytes]));
+        return mockProvider.generateStickerImage(input);
+      },
+      refineStickerLayout: mockProvider.refineStickerLayout.bind(mockProvider),
+      showSticker: mockProvider.showSticker.bind(mockProvider),
+      summarizeStickerTitle: mockProvider.summarizeStickerTitle.bind(mockProvider),
+    });
 
-    const sticker = await createSticker(db, "owner-c", { title: "HI", kind: "animated", prompt: "HI", referenceAssetIds: [] });
+    const sticker = await createSticker(db, "owner-c", {
+      title: "HI", kind: "animated", prompt: "HI", referenceAssetIds: [photo.id],
+    });
     const planTurn = await createChatTurn(db, "owner-c", sticker.stickerId, {
       text: "Make HI appear letter by letter like a typewriter",
       intent: "chat",
-      attachments: [],
+      attachments: [{ assetId: photo.id, kind: "reference" }],
       imagePlacement: "replace",
     });
     expect((await stickerGenerationWorkflow(planTurn.jobId)).workflowStatus).toBe("succeeded");
@@ -925,15 +959,33 @@ describe("durable sticker workflow", () => {
     const confirmed = await confirmPlan(db, "owner-c", sticker.stickerId, proposed[0].id);
     await expect(confirmPlan(db, "owner-c", sticker.stickerId, proposed[0].id))
       .rejects.toMatchObject({ code: "PLAN_ALREADY_CONFIRMED" });
-    expect((await stickerGenerationWorkflow(confirmed.jobId)).workflowStatus).toBe("succeeded");
+    // A user retry has a fresh job id while the immutable confirmed plan still names the original
+    // confirmation job. The compose step must recover that plan through their shared source turn.
+    await db.update(generationJobs).set({ state: "failed", completedAt: new Date() })
+      .where(eq(generationJobs.id, confirmed.jobId));
+    await db.update(chatMessages).set({ status: "failed" }).where(eq(chatMessages.id, confirmed.messageId));
+    const retry = await retryFailedChatTurn(db, "owner-c", sticker.stickerId, confirmed.messageId);
+    expect((await stickerGenerationWorkflow(retry.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(generatedReferences).toHaveLength(partCount);
+    expect(referenceSelections).toHaveLength(partCount);
+    for (const candidates of referenceSelections) {
+      expect(candidates).toEqual([
+        { label: "approved plan image", required: true },
+        { label: "original or carried reference 1", required: undefined },
+      ]);
+    }
+    for (const references of generatedReferences) {
+      expect(references).toEqual([conceptBytes, photo.bytes]);
+    }
 
     const composedAssets = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
-    expect(composedAssets).toHaveLength(partCount + 1);
+    expect(composedAssets).toHaveLength(partCount + 2);
     expect(composedAssets.filter((asset) => asset.kind === "master").map((asset) => asset.id).sort())
-      .toEqual(Array.from({ length: partCount }, (_, index) => derivedAssetId(confirmed.jobId, index)).sort());
+      .toEqual(Array.from({ length: partCount }, (_, index) => derivedAssetId(retry.jobId, index)).sort());
     expect(composedAssets.find((asset) => asset.kind === "preview")?.id).toBe(referenceAsset.id);
 
-    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).get();
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, retry.jobId)).get();
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     expect(document.layers).toHaveLength(partCount);
     for (const layer of document.layers) {
@@ -958,19 +1010,20 @@ describe("durable sticker workflow", () => {
         .toEqual([round(spec.delay), round(spec.delay + spec.duration)]);
     }
 
-    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, confirmed.jobId)))
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, retry.jobId)))
       .filter((message) => message.role === "system").map((message) => message.content);
     expect(toolRows).toContain("build-plan");
     expect(toolRows.filter((name) => name.startsWith("compose-part:"))).toHaveLength(partCount);
+    expect(toolRows).toContain("view_plan_image");
     expect(toolRows).toContain("view_sticker");
     expect(toolRows).toContain("finalize_layout");
 
     // A step retry must not mint a second set of assets or a second revision: that is what the
     // (jobId, index) derived asset ids and the deterministic revision id are for.
-    await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, confirmed.jobId));
-    const replay = await executeAiJobStep(confirmed.jobId);
-    expect(replay.revisionId).toBe(confirmed.jobId);
-    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(partCount + 1);
+    await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, retry.jobId));
+    const replay = await executeAiJobStep(retry.jobId);
+    expect(replay.revisionId).toBe(retry.jobId);
+    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(partCount + 2);
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.stickerId, sticker.stickerId))).toHaveLength(1);
 
     await close();

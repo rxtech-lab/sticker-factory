@@ -1,6 +1,7 @@
 import AnimatedView
 import Foundation
 import Observation
+import OSLog
 
 nonisolated struct StickerJobState: Sendable, Equatable {
     var jobID: String
@@ -59,6 +60,10 @@ final class StickerStore {
     var errorMessage: String?
 
     let api: StickerAPIClientProtocol
+
+    /// The job lifecycle as this store sees it. Shares a category with the export sheet's own trace
+    /// so one filter shows the whole chain: registered → streamed → applied → settled.
+    static let log = Logger(subsystem: "app.rxlab.sticker-factory", category: "publish")
 
     /// The live event-stream task per sticker. Observation identity is the *task*, not the job
     /// id: a finished stream must be re-attachable, otherwise a turn that dies once can never
@@ -703,7 +708,19 @@ final class StickerStore {
             var sawTurnEnd = false
             do {
                 for try await event in api.generationEvents(jobID: jobID, after: jobs[stickerID]?.lastEventID) {
-                    guard jobs[stickerID]?.jobID == jobID, observationGenerations[stickerID] == generation else { break }
+                    guard jobs[stickerID]?.jobID == jobID, observationGenerations[stickerID] == generation else {
+                        // The stream outlived what it was watching. Worth a line of its own: the
+                        // event being dropped here may be the terminal one, and every screen reading
+                        // this job is left waiting for something that has already been thrown away.
+                        Self.log.debug(
+                            """
+                            observation superseded job=\(jobID, privacy: .public) \
+                            now=\(self.jobs[stickerID]?.jobID ?? "-", privacy: .public) \
+                            dropped=\(event.type.rawValue, privacy: .public)
+                            """
+                        )
+                        break
+                    }
                     // A stream that is delivering is a working one, so it clears the re-attach
                     // budget. That budget exists to stop a *failing* endpoint being hammered; left
                     // to accumulate across a whole turn it becomes a lifetime cap of three
@@ -739,6 +756,12 @@ final class StickerStore {
         if event.type == .failed { state.failureMessage = event.data.message }
         state.streamErrorMessage = nil
         jobs[stickerID] = state
+        Self.log.debug(
+            """
+            event job=\(jobID, privacy: .public) id=\(event.id) type=\(event.type.rawValue, privacy: .public) \
+            terminal=\(state.isTerminal) failed=\(state.isFailed)
+            """
+        )
 
         mergeToolCall(from: event, stickerID: stickerID)
         if let assistant = event.data.assistantMessage { upsert(message: assistant, stickerID: stickerID) }
@@ -774,6 +797,14 @@ final class StickerStore {
         error: Error?,
         sawTurnEnd: Bool
     ) async {
+        Self.log.debug(
+            """
+            stream ended job=\(jobID, privacy: .public) sawTurnEnd=\(sawTurnEnd) \
+            generation=\(generation)/\(self.observationGenerations[stickerID] ?? -1) \
+            watching=\(self.jobs[stickerID]?.jobID ?? "-", privacy: .public) \
+            error=\(error?.localizedDescription ?? "-", privacy: .public)
+            """
+        )
         // A superseded stream finishing says nothing about the one that replaced it — even when
         // both are on the same job id, as a re-attach mid-turn is.
         guard observationGenerations[stickerID] == generation else { return }
@@ -796,12 +827,19 @@ final class StickerStore {
         // running, the composer drops back to idle, and nothing on screen can move again — the
         // poller only runs for a computing sticker, so it stops too.
         if !sawTurnEnd, !reconciled || isTurnLive(stickerID: stickerID, jobID: jobID) {
+            Self.log.debug(
+                """
+                turn left open job=\(jobID, privacy: .public) reconciled=\(reconciled) \
+                live=\(self.isTurnLive(stickerID: stickerID, jobID: jobID))
+                """
+            )
             // Silent for a stream the system merely cancelled — backgrounding does that on every
             // long turn, and the poller has it back within seconds.
             if let error { jobs[stickerID]?.streamErrorMessage = error.localizedDescription }
             return
         }
 
+        Self.log.debug("turn settled job=\(jobID, privacy: .public)")
         computingStickerIDs.remove(stickerID)
         jobs[stickerID]?.isTerminal = true
 

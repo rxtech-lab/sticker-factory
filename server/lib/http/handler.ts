@@ -1,33 +1,60 @@
 import { requireApiPrincipal, type ApiPrincipal } from "@/lib/auth/bearer";
 import { getDatabase, type Database } from "@/lib/db/client";
 import { errorResponse } from "@/lib/http/errors";
+import {
+  apiFailureDetails,
+  apiRequestMetadata,
+  createApiRequestLogContext,
+  type ApiRequestLogContext,
+} from "@/lib/http/logging";
 import { elapsedMs, formatTimings, runTimed, serverTimingHeader, timeStage } from "@/lib/http/timing";
 import { ensureUser } from "@/lib/services/users";
 
 export async function withApiAuth(
   request: Request,
-  action: (principal: ApiPrincipal, db: Database) => Promise<Response>,
+  action: (principal: ApiPrincipal, db: Database, context: ApiRequestLogContext) => Promise<Response>,
 ): Promise<Response> {
   const requestId = request.headers.get("x-request-id")?.slice(0, 80) || crypto.randomUUID();
+  const context = createApiRequestLogContext(request, requestId);
   return runTimed(async () => {
     let status = 0;
+    let stage = "auth";
+    let principal: ApiPrincipal | undefined;
+    let failure: unknown;
+    let failureStage: string | undefined;
     try {
-      const principal = await timeStage("auth", () => requireApiPrincipal(request));
+      const authenticatedPrincipal = await timeStage("auth", () => requireApiPrincipal(request));
+      principal = authenticatedPrincipal;
+      stage = "ensure-user";
       const db = getDatabase();
-      await timeStage("ensure-user", () => ensureUser(db, principal));
-      const response = await timeStage("handler", () => action(principal, db));
+      await timeStage("ensure-user", () => ensureUser(db, authenticatedPrincipal));
+      stage = "handler";
+      const response = await timeStage("handler", () => action(authenticatedPrincipal, db, context));
       status = response.status;
       response.headers.set("x-request-id", requestId);
       return withTimings(response);
     } catch (error) {
+      failure = error;
+      failureStage = stage;
       const response = errorResponse(error, requestId);
       status = response.status;
       response.headers.set("x-request-id", requestId);
       return withTimings(response);
     } finally {
-      const method = request.method;
-      const path = new URL(request.url).pathname;
-      console.log(`[api] ${method} ${path} ${status} ${Math.round(elapsedMs())}ms ${formatTimings()} requestId=${requestId}`);
+      const entry = {
+        requestId,
+        method: context.method,
+        path: context.path,
+        status,
+        durationMs: Math.round(elapsedMs() * 10) / 10,
+        timings: formatTimings(),
+        request: apiRequestMetadata(request, principal),
+        ...(failureStage ? { failureStage, error: apiFailureDetails(failure) } : {}),
+      };
+      const line = `[api] ${JSON.stringify(entry)}`;
+      if (status >= 500) console.error(line);
+      else if (status >= 400) console.warn(line);
+      else console.log(line);
     }
   });
 }

@@ -1,5 +1,4 @@
 import { gateway } from "@ai-sdk/gateway";
-import { getVercelOidcToken } from "@vercel/oidc";
 import {
   generateImage,
   generateText,
@@ -11,6 +10,7 @@ import {
 import sharp from "sharp";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
+import { viewPlanImageTool } from "@/lib/ai/view-plan-image-tool";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { countKeyframes } from "@/lib/animation/compile";
 import { PlanV1Schema, reusableAssetIds, type PlanV1 } from "@/lib/contracts/plan";
@@ -51,6 +51,21 @@ export interface AiImageInput {
   mask?: { bytes: Uint8Array; mimeType: string };
   conversationContext?: string;
   mode: "generate" | "conversation_edit";
+}
+
+export interface AiImageReferenceCandidate {
+  /** Human-readable role shown to the orchestrator alongside the image. */
+  label: string;
+  image: AiReferenceImage;
+  /** Required inputs are always passed; the orchestrator chooses the remaining slots. */
+  required?: boolean;
+}
+
+export interface AiReferenceSelectionContext {
+  instruction: string;
+  history: string;
+  candidates: AiImageReferenceCandidate[];
+  maxReferences: number;
 }
 
 export interface AiImageOutput {
@@ -270,16 +285,6 @@ export interface AiLayoutContext {
   /** The approved plan's human-readable intent. */
   instruction: string;
   history: string;
-  /**
-   * The static reference the user approved, when the plan had one.
-   *
-   * The parts of this build were each separated out of this exact image, so it is the only statement
-   * of what the finished composition was supposed to look like. Without it the reviewer can tell
-   * that a layout is unbalanced but not that it is *wrong* — that a title meant to arc over a head
-   * is sitting in a band above it — because the assembled render is the only picture it has ever
-   * seen. Optional because a capture-led plan renders no concept.
-   */
-  reference?: AiReferenceImage;
 }
 
 export type LayoutDraftState = {
@@ -288,6 +293,8 @@ export type LayoutDraftState = {
 };
 
 export interface LayoutDraftingSession extends RenderableSession {
+  /** Returns the approved static plan image on demand. Absent for plans that did not produce one. */
+  viewPlanImage?: () => Promise<AiReferenceImage>;
   /** Moves, scales, rotates, or reorders existing layers; it cannot change their artwork or motion. */
   applyLayout(adjustment: LayoutAdjustment): Promise<LayoutDraftState>;
   finalizeLayout(): Promise<LayoutDraftState>;
@@ -515,6 +522,8 @@ export interface AiTitleContext {
 }
 
 export interface AiProvider {
+  /** Chooses which candidate images the image model needs for one concrete draw. */
+  selectImageReferences(input: AiReferenceSelectionContext): Promise<number[]>;
   generateStickerImage(input: AiImageInput): Promise<AiImageOutput>;
   /**
    * Drafts a sticker plan, revising it as many times as it needs before finalizing.
@@ -618,24 +627,6 @@ export function resolveChatAction(
     !document.layers.some((layer) => layer.id === action.targetLayerId)
     ? { ...action, targetLayerId: undefined }
     : action;
-}
-
-/**
- * Resolves the credential the Gateway is called with, without requiring one to be configured.
- *
- * An explicit `AI_GATEWAY_API_KEY` is optional: on Vercel the platform mints an OIDC token, which
- * `getVercelOidcToken` reads from the request context or refreshes from a linked project locally.
- * Returning undefined is a valid outcome too — the AI SDK runs its own credential resolution, and an
- * unauthenticated call fails with the Gateway's own 401 instead of a preflight guess about env vars.
- */
-async function resolveGatewayToken(): Promise<string | undefined> {
-  if (process.env.AI_GATEWAY_API_KEY) return process.env.AI_GATEWAY_API_KEY;
-  if (process.env.VERCEL_OIDC_TOKEN) return process.env.VERCEL_OIDC_TOKEN;
-  try {
-    return await getVercelOidcToken();
-  } catch {
-    return undefined;
-  }
 }
 
 function assertImageInputBounds(input: AiImageInput): void {
@@ -845,87 +836,29 @@ const IMAGE_TIMEOUT_MS = (() => {
   return Number.isFinite(configured) && configured > 0 ? configured : 420_000;
 })();
 
-function dataUrl(file: { bytes: Uint8Array; mimeType: string }): string {
-  return `data:${file.mimeType};base64,${Buffer.from(file.bytes).toString("base64")}`;
-}
-
-async function generateThroughResponses(
-  input: AiImageInput,
-): Promise<Uint8Array> {
-  const key = await resolveGatewayToken();
-  const content: Array<Record<string, unknown>> = [
-    {
-      type: "input_text",
-      text: [
-        "Edit the sticker according to the latest instruction.",
-        "Return exactly one 1024x1024 PNG with a genuinely transparent background.",
-        "Produce exactly one sticker subject. Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side.",
-        "Preserve the main subject and any requested likeness from the supplied references.",
-        input.conversationContext
-          ? `Recoverable project context:\n${input.conversationContext}`
-          : "",
-        `Latest instruction: ${input.prompt}`,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-    },
-  ];
-  for (const reference of input.references)
-    content.push({ type: "input_image", image_url: dataUrl(reference) });
-
-  const response = await fetch(
-    `${process.env.AI_GATEWAY_BASE_URL ?? "https://ai-gateway.vercel.sh/v1"}/responses`,
-    {
-      method: "POST",
-      headers: {
-        ...(key ? { authorization: `Bearer ${key}` } : {}),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6",
-        input: [{ role: "user", content }],
-        tools: [
-          {
-            type: "image_generation",
-            background: "transparent",
-            output_format: "png",
-            quality: "high",
-            size: "1024x1024",
-          },
-        ],
-        tool_choice: { type: "image_generation" },
-      }),
-      signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `AI Gateway Responses edit failed with HTTP ${response.status}`,
-    );
-  }
-  const body = (await response.json()) as {
-    output?: Array<{ type?: string; result?: string; output?: string }>;
-  };
-  const image = body.output?.find(
-    (item) => item.type === "image_generation_call",
-  );
-  const base64 = image?.result ?? image?.output;
-  if (!base64)
-    throw new Error("AI Gateway Responses edit returned no image candidate");
-  return Uint8Array.from(Buffer.from(base64, "base64"));
-}
-
 async function generateThroughImageModel(
   input: AiImageInput,
 ): Promise<Uint8Array> {
+  const instruction = [
+    input.mode === "conversation_edit"
+      ? "Edit the supplied sticker references according to the latest instruction."
+      : "Generate the sticker described by the latest instruction.",
+    input.conversationContext
+      ? `Recoverable project context:\n${input.conversationContext}`
+      : "",
+    `Latest instruction: ${input.prompt}`,
+    "Create a centered sticker with a genuinely transparent background.",
+    "Produce exactly one sticker subject. Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side.",
+    "Return PNG.",
+  ].filter(Boolean).join("\n\n");
   const prompt =
     input.references.length || input.mask
       ? {
-          text: `${input.prompt}\nCreate a centered sticker with a genuinely transparent background. Produce exactly one sticker subject. Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side. Return PNG.`,
+          text: instruction,
           images: input.references.map((item) => item.bytes),
           ...(input.mask ? { mask: input.mask.bytes } : {}),
         }
-      : `${input.prompt}\nCreate a centered 1024x1024 sticker with a genuinely transparent background. Produce exactly one sticker subject. Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side. Return PNG.`;
+      : instruction;
   const result = await generateImage({
     model: gateway.imageModel(
       process.env.AI_IMAGE_MODEL ?? "openai/gpt-image-2",
@@ -941,6 +874,74 @@ async function generateThroughImageModel(
 }
 
 class GatewayAiProvider implements AiProvider {
+  async selectImageReferences(
+    input: AiReferenceSelectionContext,
+  ): Promise<number[]> {
+    if (input.candidates.length === 0 || input.maxReferences <= 0) return [];
+
+    const visible = (
+      await Promise.all(
+        input.candidates.slice(0, 8).map(async (candidate, index) => {
+          try {
+            return [{ index, candidate, image: await downscaleForModelInput(candidate.image.bytes) }];
+          } catch (error) {
+            traceEvent("ai.reference.undecodable", {
+              index,
+              label: candidate.label,
+              mimeType: candidate.image.mimeType,
+              byteSize: candidate.image.bytes.byteLength,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return [];
+          }
+        }),
+      )
+    ).flat();
+    const required = input.candidates
+      .map((candidate, index) => (candidate.required ? index : -1))
+      .filter((index) => index >= 0);
+    if (visible.length === 0) return required.slice(0, input.maxReferences);
+
+    const result = await generateText({
+      model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+      system: [
+        "You select reference images for a separate image-generation model.",
+        "Inspect every candidate and call select_references exactly once.",
+        "Choose only images that materially help this exact draw: likeness, exact approved design, style, pose, or source pixels to edit.",
+        "Do not select an image merely because it is available. Required candidates are already guaranteed and do not consume your decision.",
+        "Return candidate indices only. Never invent an index.",
+      ].join(" "),
+      messages: userTurn([
+        `Candidate images:\n${visible.map(({ index, candidate }) => (
+          `- ${index}: ${candidate.label}${candidate.required ? " (required; always passed)" : ""}`
+        )).join("\n")}`,
+        `Maximum references, including required images: ${input.maxReferences}`,
+        `Recoverable project context:\n${input.history}`,
+        `Exact image-generation instruction:\n${input.instruction}`,
+      ].join("\n\n"), visible.map(({ image }) => image)),
+      tools: {
+        select_references: tool({
+          description: "Select the candidate reference images that the image model should receive.",
+          inputSchema: z.object({
+            indices: z.array(z.number().int().min(0).max(input.candidates.length - 1))
+              .max(input.maxReferences),
+          }).strict(),
+        }),
+      },
+      toolChoice: { type: "tool", toolName: "select_references" },
+      maxRetries: 2,
+      abortSignal: AbortSignal.timeout(90_000),
+    });
+    if (result.toolCalls.length !== 1 || result.toolCalls[0].toolName !== "select_references") {
+      throw new Error("Reference selector must call select_references exactly once");
+    }
+    const selected = z.object({ indices: z.array(z.number().int()) })
+      .parse(result.toolCalls[0].input).indices;
+    return [...new Set([...required, ...selected])]
+      .filter((index) => index >= 0 && index < input.candidates.length)
+      .slice(0, input.maxReferences);
+  }
+
   async generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {
     assertImageInputBounds(input);
     if (input.mask) {
@@ -974,14 +975,10 @@ class GatewayAiProvider implements AiProvider {
       }
     }
 
-    const throughResponses = input.mode === "conversation_edit" && !input.mask;
     const first = await traceSpan(
       "gateway.image",
-      { path: throughResponses ? "responses" : "imageModel" },
-      () =>
-        throughResponses
-          ? generateThroughResponses(input)
-          : generateThroughImageModel(input),
+      { path: "imageModel", mode: input.mode },
+      () => generateThroughImageModel(input),
     );
     // Between the model returning and the workflow storing the asset sits a decode, an alpha
     // trim, and a re-encode of a 1024x1024 PNG — CPU work, off the network, that the Gateway
@@ -1030,10 +1027,7 @@ class GatewayAiProvider implements AiProvider {
   ): Promise<LayoutTurnResult | undefined> {
     let state: LayoutTurnResult | undefined;
     let fatal: unknown;
-    // Undecodable artwork drops out here rather than failing the review: a layout pass with no
-    // reference is the behaviour this whole path had until now, and it is worth more than a build
-    // that dies after every part has already been paid for.
-    const [reference] = await viewableReferences(input.reference ? [input.reference] : []);
+    const hasPlanImage = Boolean(session.viewPlanImage);
 
     const guard = async (run: () => Promise<LayoutDraftState>) => {
       try {
@@ -1054,6 +1048,9 @@ class GatewayAiProvider implements AiProvider {
     };
 
     const tools = {
+      ...(session.viewPlanImage
+        ? { view_plan_image: viewPlanImageTool(() => session.viewPlanImage!()) }
+        : {}),
       view_sticker: viewStickerTool(session, { animated: input.document.kind === "animated" }),
       adjust_layout: tool({
         description: [
@@ -1089,7 +1086,10 @@ class GatewayAiProvider implements AiProvider {
         "You are the final composition reviewer for a multi-layer sticker. The individual assets",
         "are already approved-quality: never redraw, replace, remove, rename, or restyle them, and",
         "never change their animation timing. Your only job is layout.",
-        "First call view_sticker. Judge the actual visible pixels: visual hierarchy, balance,",
+        hasPlanImage
+          ? "First call view_plan_image, then call view_sticker and compare their compositions."
+          : "First call view_sticker.",
+        "Judge the actual generated pixels: visual hierarchy, balance,",
         "spacing, scale consistency, whether important elements cover each other, whether anything",
         "is clipped, and whether the sticker reads clearly at thumbnail size.",
         "Use adjust_layout only when it improves the composition. Intentional overlap is allowed —",
@@ -1102,8 +1102,8 @@ class GatewayAiProvider implements AiProvider {
         "",
         // The reviewer used to see only its own render, so it had no way to know the build had
         // drifted from the picture the user actually said yes to.
-        reference
-          ? "You are given the static reference image the user approved. Every layer in this sticker"
+        hasPlanImage
+          ? "The view_plan_image tool returns the static reference image the user approved. Every layer in this sticker"
             + " was separated out of that exact image, so it is the target composition, not merely an"
             + " inspiration: match its placement, relative sizes, spacing, and overlap. Where the"
             + " assembled render disagrees with it, the render is wrong and the reference is right."
@@ -1115,17 +1115,17 @@ class GatewayAiProvider implements AiProvider {
       ].filter(Boolean).join(" "),
       messages: userTurn([
         `Approved design intent:\n${input.instruction}`,
-        reference
-          ? "The approved static reference is attached at the end of this message. It is the"
-            + " composition this build is meant to reproduce."
+        hasPlanImage
+          ? "The approved static reference is available through view_plan_image. Inspect it there;"
+            + " it is the composition this build is meant to reproduce."
           : "",
         `Current layer summary:\n${JSON.stringify(summarizeDocument(input.document))}`,
         `Conservative geometry diagnostics:\n${JSON.stringify(layoutDiagnostics(input.document))}`,
         `Recoverable project context:\n${input.history}`,
-      ].filter(Boolean).join("\n\n"), reference ? [reference] : []),
+      ].filter(Boolean).join("\n\n"), []),
       tools,
       toolChoice: "required",
-      stopWhen: [hasToolCall("finalize_layout"), stepCountIs(8), () => fatal !== undefined],
+      stopWhen: [hasToolCall("finalize_layout"), stepCountIs(hasPlanImage ? 9 : 8), () => fatal !== undefined],
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(120_000),
     });
@@ -2428,6 +2428,16 @@ export function validatePlannedAnimationOperation(
 }
 
 class MockAiProvider implements AiProvider {
+  async selectImageReferences(input: AiReferenceSelectionContext): Promise<number[]> {
+    const required = input.candidates
+      .map((candidate, index) => (candidate.required ? index : -1))
+      .filter((index) => index >= 0);
+    const optional = input.candidates
+      .map((_, index) => index)
+      .filter((index) => !required.includes(index));
+    return [...required, ...optional].slice(0, input.maxReferences);
+  }
+
   async generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {
     const label = input.prompt.replace(/[<&>]/g, "").slice(0, 24) || "Sticker";
     const bytes = await sharp(
@@ -2447,6 +2457,7 @@ class MockAiProvider implements AiProvider {
   ): Promise<LayoutTurnResult | undefined> {
     // Exercise the same mandatory look-before-finalize contract without making tests invent visual
     // judgements. Focused tests cover corrections through the layout session itself.
+    if (session.viewPlanImage) await session.viewPlanImage();
     await session.renderSticker();
     const finalized = await session.finalizeLayout();
     return { revision: finalized.revision, finalized: true };

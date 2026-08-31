@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import stickerDocumentFixture from "@/fixtures/sticker-document-v1.json";
-import { StickerDocumentSchema } from "@/lib/contracts/sticker";
+import { SHARING_APNG_DIMENSIONS, StickerDocumentSchema } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import {
   assets,
@@ -32,6 +32,33 @@ import {
 import { MemoryObjectStore, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
 import { cancelGenerationWorkflow } from "@/lib/services/workflows";
 import { createTestDatabase } from "@/tests/helpers/database";
+import { spliceApngControlChunks } from "@/tests/helpers/apng";
+
+/** A transparent square with a painted block in one corner, which the rendition rules require. */
+function transparentPng(dimension: number): Promise<Buffer> {
+  const pixels = Buffer.alloc(dimension * dimension * 4, 0);
+  for (let y = 8; y < 88; y += 1) {
+    for (let x = 8; x < 48; x += 1) {
+      const index = (y * dimension + x) * 4;
+      pixels[index] = 200;
+      pixels[index + 1] = 40;
+      pixels[index + 2] = 90;
+      pixels[index + 3] = 255;
+    }
+  }
+  return sharp(pixels, { raw: { width: dimension, height: dimension, channels: 4 } }).png().toBuffer();
+}
+
+/**
+ * Four frames at 150 ms — 0.6 s, which clears the half-second floor the rendition rules impose.
+ *
+ * sharp cannot write this format, so the animation lives entirely in spliced control chunks; see
+ * `tests/helpers/apng.ts`. That is faithful to what completion inspects, which reads `acTL`/`fcTL`
+ * rather than decoding frames.
+ */
+async function animatedApng(dimension: number): Promise<Buffer> {
+  return spliceApngControlChunks(await transparentPng(dimension), [150, 150, 150, 150], 4, dimension);
+}
 
 describe("Sticker Factory services", () => {
   let db: Database;
@@ -306,6 +333,65 @@ describe("Sticker Factory services", () => {
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_SYSTEM_STICKER_SIZE" });
   });
 
+  /**
+   * A sharing rendition whose only fixed size was 1024 could not be published at all: the GIF this
+   * replaced wrote every frame at full size, so a long animation declared a `byteSize` past the
+   * upload ceiling and died on a 400 before a single byte was presigned. Stepping the export down
+   * its size ladder is the fix, and it only works if completion admits the rungs it lands on.
+   */
+  it("accepts a sharing APNG stepped down to fit the upload ceiling", async () => {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    const apng = await animatedApng(512);
+    const created = await createUpload(db, "owner-a", {
+      kind: "apng",
+      mimeType: "image/png",
+      byteSize: apng.byteLength,
+      filename: "sharing-512.png",
+    });
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    await store.put(row!.r2Key, { bytes: apng, contentType: "image/png" });
+    expect(await completeUpload(db, "owner-a", row!.id))
+      .toMatchObject({ state: "ready", width: 512, height: 512, frameCount: 4 });
+  });
+
+  it("rejects a sharing APNG at a size the export ladder never produces", async () => {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    expect(SHARING_APNG_DIMENSIONS).not.toContain(640);
+    const apng = await animatedApng(640);
+    const created = await createUpload(db, "owner-a", {
+      kind: "apng",
+      mimeType: "image/png",
+      byteSize: apng.byteLength,
+      filename: "sharing-640.png",
+    });
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    await store.put(row!.r2Key, { bytes: apng, contentType: "image/png" });
+    await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_APNG_EXPORT" });
+  });
+
+  /**
+   * A still PNG under the sharing kind is the shape of a client that lost its animation somewhere
+   * between rendering and upload. Nothing about the mime type can catch it — an APNG *is* a PNG —
+   * so the frame count read back off the chunks is the only thing standing between a frozen sticker
+   * and a published library.
+   */
+  it("rejects a still PNG published as the sharing rendition", async () => {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    const still = await transparentPng(512);
+    const created = await createUpload(db, "owner-a", {
+      kind: "apng",
+      mimeType: "image/png",
+      byteSize: still.byteLength,
+      filename: "sharing-still.png",
+    });
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    await store.put(row!.r2Key, { bytes: still, contentType: "image/png" });
+    await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_APNG_EXPORT" });
+  });
+
   it("rejects a fully transparent empty mask", async () => {
     const store = new MemoryObjectStore();
     setObjectStoreForTests(store);
@@ -343,19 +429,19 @@ describe("Sticker Factory services", () => {
     await acceptRevision(db, "owner-a", sticker.stickerId, revisionId);
 
     // A 1 s cycle at 10 FPS is 10 frames, held 0.6 s longer on the last of them before repeating.
-    const renditionIds = { gif: crypto.randomUUID(), system: crypto.randomUUID() };
+    const renditionIds = { apng: crypto.randomUUID(), system: crypto.randomUUID() };
     await db.insert(assets).values([
-      { id: renditionIds.gif, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "gif", state: "ready", r2Key: objectKey("owner-a", renditionIds.gif, "image/gif"), mimeType: "image/gif", byteSize: 120_000, width: 1024, height: 1024, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      { id: renditionIds.apng, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "apng", state: "ready", r2Key: objectKey("owner-a", renditionIds.apng, "image/png"), mimeType: "image/png", byteSize: 120_000, width: 1024, height: 1024, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
       { id: renditionIds.system, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "system", state: "ready", r2Key: objectKey("owner-a", renditionIds.system, "image/png"), mimeType: "image/png", byteSize: 400_000, width: 408, height: 408, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "b".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
     ]);
 
     const publishRequest = {
       revisionId,
-      gifAssetId: renditionIds.gif,
+      apngAssetId: renditionIds.apng,
       systemAssetId: renditionIds.system,
       mp4Background: { type: "solid" as const, color: "#FFFFFF" },
     };
-    await expect(bindExports(db, "owner-a", sticker.stickerId, { ...publishRequest, gifAssetId: undefined }, crypto.randomUUID()))
+    await expect(bindExports(db, "owner-a", sticker.stickerId, { ...publishRequest, apngAssetId: undefined }, crypto.randomUUID()))
       .rejects.toMatchObject({ code: "ANIMATED_EXPORTS_REQUIRED" });
 
     const publishedRevisionId = crypto.randomUUID();
@@ -363,7 +449,7 @@ describe("Sticker Factory services", () => {
     expect(published.status).toBe("published");
     const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).get();
     expect(publishedRevision?.mp4AssetId).toBeNull();
-    expect(publishedRevision?.gifAssetId).toBe(renditionIds.gif);
+    expect(publishedRevision?.apngAssetId).toBe(renditionIds.apng);
     expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.status).toBe("published");
   });
 

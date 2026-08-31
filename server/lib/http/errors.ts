@@ -30,7 +30,6 @@ export function errorResponse(error: unknown, requestId = crypto.randomUUID()): 
     }, { status: 400, headers: { "cache-control": "no-store" } });
   }
 
-  console.error("Unhandled API error", { requestId, error });
   return Response.json({
     error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred", requestId },
   }, { status: 500, headers: { "cache-control": "no-store" } });

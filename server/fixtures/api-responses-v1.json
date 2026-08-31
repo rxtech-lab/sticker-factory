@@ -46,7 +46,7 @@
   },
   "publishExports": {
     "revisionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-    "gifAssetId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "apngAssetId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
     "mp4AssetId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
     "systemAssetId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     "mp4Background": {
