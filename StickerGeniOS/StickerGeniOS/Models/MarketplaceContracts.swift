@@ -174,9 +174,25 @@ nonisolated struct CreatePackRequest: Codable, Sendable {
     }
 }
 
+/// A partial update of a pack's details: an omitted field is left as it was.
+///
+/// `summary` is always written, `null` included. The synthesized encoding drops a nil, and the
+/// server reads an absent field as "unchanged" — so clearing a description would otherwise be the
+/// one edit that silently did nothing.
 nonisolated struct UpdatePackRequest: Codable, Sendable {
     var title: String?
     var summary: String?
+
+    init(title: String? = nil, summary: String? = nil) {
+        self.title = title
+        self.summary = summary
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encode(summary, forKey: .summary)
+    }
 }
 
 nonisolated struct ReorderPackItemsRequest: Codable, Sendable {

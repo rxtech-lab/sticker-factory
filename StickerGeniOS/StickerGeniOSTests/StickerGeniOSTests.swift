@@ -919,6 +919,48 @@ struct StoreAndPublisherTests {
         #expect(await api.requestedPages() == requests)
     }
 
+    @Test("A published pack can still be renamed, reordered, and taken back to draft")
+    func editPublishedPack() async throws {
+        let api = EditablePackAPI()
+        let store = MarketplaceStore(api: api)
+        await store.refresh()
+        #expect(store.myPacks.map(\.title) == ["Cozy Cats"])
+
+        await store.loadDetail(packID: EditablePackAPI.packID)
+        let originalSlug = store.details[EditablePackAPI.packID]?.slug
+
+        try await store.updateDetails(packID: EditablePackAPI.packID, title: "Cozier Cats", summary: nil)
+        #expect(store.details[EditablePackAPI.packID]?.title == "Cozier Cats")
+        // The list behind the detail screen holds the same pack, and a rename it did not hear about
+        // would leave the old title on the tile the reader came from.
+        #expect(store.myPacks.map(\.title) == ["Cozier Cats"])
+        // The slug is the shared link, so it survives a rename — a URL somebody already sent must
+        // not break because the pack was renamed after they got it.
+        #expect(store.details[EditablePackAPI.packID]?.slug == originalSlug)
+
+        let reversed = (store.details[EditablePackAPI.packID]?.stickers ?? []).map(\.id).reversed()
+        try await store.setItems(packID: EditablePackAPI.packID, stickerIDs: Array(reversed))
+        #expect(store.details[EditablePackAPI.packID]?.stickers.map(\.id) == Array(reversed))
+
+        try await store.unpublish(packID: EditablePackAPI.packID)
+        #expect(store.details[EditablePackAPI.packID]?.state == .draft)
+        #expect(store.myPacks.first?.state == .draft)
+    }
+
+    @Test("Clearing a pack description sends an explicit null rather than nothing at all")
+    func updatePackRequestEncodesAClearedSummary() throws {
+        // The server reads an absent field as "leave it alone", so a dropped nil would make erasing
+        // a description the one edit that silently did nothing.
+        let encoded = try JSONEncoder.api.encode(UpdatePackRequest(title: "Cozier Cats", summary: nil))
+        let json = try #require(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        #expect(json["title"] as? String == "Cozier Cats")
+        #expect(json["summary"] is NSNull)
+
+        let rewritten = try JSONEncoder.api.encode(UpdatePackRequest(title: "Cozier Cats", summary: "Now with dogs."))
+        let rewrittenJSON = try #require(try JSONSerialization.jsonObject(with: rewritten) as? [String: Any])
+        #expect(rewrittenJSON["summary"] as? String == "Now with dogs.")
+    }
+
     @Test("A pack tile is the same height whatever its cover holds")
     func packCardHeightIsIndependentOfItsCover() {
         // A cover that took its height from the artwork gave the same pack two different tiles:
@@ -1379,6 +1421,60 @@ private actor PagedPacksAPI: StickerAPIClientProtocol {
         pack.id = "\(prefix)-\(index)"
         let next = index < 2 ? String(index + 1) : (repeatsCursor ? cursor : nil)
         return .init(data: [pack], nextCursor: next)
+    }
+}
+
+/// One published pack the creator owns, which every authoring call mutates in place — so a store
+/// test sees what a second read of the same pack would really return.
+private actor EditablePackAPI: StickerAPIClientProtocol {
+    static let packID = "pack-mine"
+
+    private var detail: StickerPackDetail = {
+        var detail = PreviewFixtures.packDetail
+        detail.id = EditablePackAPI.packID
+        detail.title = "Cozy Cats"
+        detail.state = .published
+        detail.isMine = true
+        detail.stickers = [PreviewFixtures.sticker, PreviewFixtures.borrowedSticker]
+        detail.itemCount = 2
+        return detail
+    }()
+
+    func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        .init(data: detail.state == .published ? [detail.pack] : [], nextCursor: nil)
+    }
+
+    func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack> {
+        .init(data: [detail.pack], nextCursor: nil)
+    }
+
+    func pack(id: String) async throws -> StickerPackDetail { detail }
+
+    func updatePack(id: String, request: UpdatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail {
+        // The slug is deliberately left alone, exactly as the server leaves it: it is the public
+        // link, and a rename must never break a URL somebody already shared.
+        if let title = request.title { detail.title = title }
+        detail.summary = request.summary
+        detail.updatedAt = Date()
+        return detail
+    }
+
+    func setPackItems(id: String, stickerIDs: [String], idempotencyKey: String) async throws -> StickerPackDetail {
+        detail.stickers = stickerIDs.compactMap { wanted in detail.stickers.first { $0.id == wanted } }
+        detail.itemCount = detail.stickers.count
+        detail.coverStickers = Array(detail.stickers.prefix(4))
+        return detail
+    }
+
+    func publishPack(id: String, idempotencyKey: String) async throws -> StickerPackDetail {
+        detail.state = .published
+        detail.publishedAt = detail.publishedAt ?? Date()
+        return detail
+    }
+
+    func unpublishPack(id: String, state: PackState, idempotencyKey: String) async throws -> StickerPackDetail {
+        detail.state = state == .unlisted ? .unlisted : .draft
+        return detail
     }
 }
 
