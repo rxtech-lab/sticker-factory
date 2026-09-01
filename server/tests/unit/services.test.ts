@@ -23,6 +23,8 @@ import {
   createChatTurn,
   createCleanupJob,
   createSticker,
+  getSticker,
+  importSticker,
   listChatMessages,
   retryFailedChatTurn,
   revertRevision,
@@ -88,6 +90,45 @@ describe("Sticker Factory services", () => {
     await createCleanupJob(db, "owner-a", sticker.stickerId);
     await expect(updateSticker(db, "owner-a", sticker.stickerId, { title: "Too late" }))
       .rejects.toMatchObject({ code: "STICKER_NOT_FOUND" });
+  });
+
+  it("imports a picture as a publishable static sticker, and only once", async () => {
+    const assetId = crypto.randomUUID();
+    await db.insert(assets).values({
+      id: assetId,
+      ownerId: "owner-a",
+      kind: "reference",
+      state: "ready",
+      r2Key: objectKey("owner-a", assetId, "image/png"),
+      mimeType: "image/png",
+      byteSize: 4_096,
+      width: 1024,
+      height: 1024,
+      sha256: "c".repeat(64),
+      hasAlpha: true,
+      createdAt: new Date(),
+      readyAt: new Date(),
+    });
+
+    const imported = await importSticker(db, "owner-a", { title: "Concept", assetId });
+    const detail = await getSticker(db, "owner-a", imported.stickerId);
+    expect(detail.kind).toBe("static");
+    // Active and accepted on arrival is the whole point: `bindExports` refuses anything else, and
+    // publishing is what actually puts the sticker in the Messages pack.
+    expect(detail.activeRevisionId).toBe(imported.revisionId);
+    expect(detail.revisions.find((revision) => revision.id === imported.revisionId)?.candidateState).toBe("accepted");
+    // No job — nothing was generated. One transcript entry, so opening the new project shows the
+    // sticker rather than an empty room, and it is a `device_edit` marker rather than a user turn
+    // the agent would answer.
+    expect(await db.select().from(generationJobs).where(eq(generationJobs.stickerId, imported.stickerId))).toHaveLength(0);
+    const transcript = await listChatMessages(db, "owner-a", imported.stickerId, { afterSequence: 0, limit: 10 });
+    expect(transcript.data).toHaveLength(1);
+    expect(transcript.data[0]).toMatchObject({ kind: "device_edit", revisionId: imported.revisionId });
+
+    // The asset is now this sticker's, so a second import of the same upload would leave two
+    // documents pointing at one piece of artwork.
+    await expect(importSticker(db, "owner-a", { title: "Concept again", assetId }))
+      .rejects.toMatchObject({ code: "REFERENCE_ALREADY_ATTACHED" });
   });
 
   it("orders persistent chat, enforces one active turn, and bounds retries", async () => {
@@ -392,6 +433,52 @@ describe("Sticker Factory services", () => {
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_APNG_EXPORT" });
   });
 
+  /**
+   * The two smaller sends. Unlike the sharing rendition these admit a still — a static sticker has
+   * a Medium and a Small too — and unlike the system sticker they are under no byte ceiling, which
+   * is the whole reason they exist: they carry the document's own frame rate rather than whatever
+   * the 500 KB ladder could afford.
+   */
+  it("accepts animated and still attachment renditions at their two sizes", async () => {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    for (const [dimension, bytes] of [
+      [408, await animatedApng(408)],
+      [300, await transparentPng(300)],
+    ] as const) {
+      const created = await createUpload(db, "owner-a", {
+        kind: "attachment",
+        mimeType: "image/png",
+        byteSize: bytes.byteLength,
+        filename: `attachment-${dimension}.png`,
+      });
+      const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+      await store.put(row!.r2Key, { bytes, contentType: "image/png" });
+      expect(await completeUpload(db, "owner-a", row!.id))
+        .toMatchObject({ state: "ready", width: dimension, height: dimension });
+    }
+  });
+
+  /**
+   * 618 is Large, and Large is the sharing rendition — it has a column of its own and arrives under
+   * `apng` or `master`. One under this kind is a client that filled the wrong slot, which would
+   * hand someone the same file whichever size they picked.
+   */
+  it("rejects an attachment rendition at the size Large already occupies", async () => {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    const apng = await animatedApng(618);
+    const created = await createUpload(db, "owner-a", {
+      kind: "attachment",
+      mimeType: "image/png",
+      byteSize: apng.byteLength,
+      filename: "attachment-618.png",
+    });
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    await store.put(row!.r2Key, { bytes: apng, contentType: "image/png" });
+    await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_ATTACHMENT_EXPORT" });
+  });
+
   it("rejects a fully transparent empty mask", async () => {
     const store = new MemoryObjectStore();
     setObjectStoreForTests(store);
@@ -429,20 +516,43 @@ describe("Sticker Factory services", () => {
     await acceptRevision(db, "owner-a", sticker.stickerId, revisionId);
 
     // A 1 s cycle at 10 FPS is 10 frames, held 0.6 s longer on the last of them before repeating.
-    const renditionIds = { apng: crypto.randomUUID(), system: crypto.randomUUID() };
+    const renditionIds = {
+      apng: crypto.randomUUID(),
+      system: crypto.randomUUID(),
+      medium: crypto.randomUUID(),
+      small: crypto.randomUUID(),
+    };
     await db.insert(assets).values([
-      { id: renditionIds.apng, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "apng", state: "ready", r2Key: objectKey("owner-a", renditionIds.apng, "image/png"), mimeType: "image/png", byteSize: 120_000, width: 1024, height: 1024, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      { id: renditionIds.apng, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "apng", state: "ready", r2Key: objectKey("owner-a", renditionIds.apng, "image/png"), mimeType: "image/png", byteSize: 120_000, width: 618, height: 618, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
       { id: renditionIds.system, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "system", state: "ready", r2Key: objectKey("owner-a", renditionIds.system, "image/png"), mimeType: "image/png", byteSize: 400_000, width: 408, height: 408, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "b".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      { id: renditionIds.medium, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "attachment", state: "ready", r2Key: objectKey("owner-a", renditionIds.medium, "image/png"), mimeType: "image/png", byteSize: 90_000, width: 408, height: 408, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "c".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      { id: renditionIds.small, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "attachment", state: "ready", r2Key: objectKey("owner-a", renditionIds.small, "image/png"), mimeType: "image/png", byteSize: 50_000, width: 300, height: 300, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "d".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
     ]);
 
     const publishRequest = {
       revisionId,
       apngAssetId: renditionIds.apng,
       systemAssetId: renditionIds.system,
+      attachmentMediumAssetId: renditionIds.medium,
+      attachmentSmallAssetId: renditionIds.small,
       mp4Background: { type: "solid" as const, color: "#FFFFFF" },
     };
     await expect(bindExports(db, "owner-a", sticker.stickerId, { ...publishRequest, apngAssetId: undefined }, crypto.randomUUID()))
       .rejects.toMatchObject({ code: "ANIMATED_EXPORTS_REQUIRED" });
+    // Swapped: Medium pointed at the 300 px file. Nothing about the assets themselves is wrong, so
+    // the pairing is the only thing that can catch it — and left uncaught it hands someone Small
+    // whichever of the two sizes they ask for.
+    await expect(bindExports(db, "owner-a", sticker.stickerId, {
+      ...publishRequest,
+      attachmentMediumAssetId: renditionIds.small,
+      attachmentSmallAssetId: renditionIds.medium,
+    }, crypto.randomUUID())).rejects.toMatchObject({ code: "INVALID_ATTACHMENT_SIZE" });
+    // The sharing rendition is Large and lives in its own column; naming it here is a client that
+    // would publish the same file under two sizes.
+    await expect(bindExports(db, "owner-a", sticker.stickerId, {
+      ...publishRequest,
+      attachmentMediumAssetId: renditionIds.apng,
+    }, crypto.randomUUID())).rejects.toMatchObject({ code: "INVALID_ATTACHMENT_EXPORT" });
 
     const publishedRevisionId = crypto.randomUUID();
     const published = await bindExports(db, "owner-a", sticker.stickerId, publishRequest, publishedRevisionId);
@@ -450,7 +560,50 @@ describe("Sticker Factory services", () => {
     const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).get();
     expect(publishedRevision?.mp4AssetId).toBeNull();
     expect(publishedRevision?.apngAssetId).toBe(renditionIds.apng);
+    expect(publishedRevision?.attachmentMediumAssetId).toBe(renditionIds.medium);
+    expect(publishedRevision?.attachmentSmallAssetId).toBe(renditionIds.small);
     expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.status).toBe("published");
+  });
+
+  /**
+   * The client that predates attachment renditions. Its stickers simply offer one size in
+   * WinkySticker; a publish that refused them would break every build already in the field.
+   */
+  it("publishes an animated sticker with no attachment renditions at all", async () => {
+    const sticker = await createSticker(db, "owner-a", { title: "Sparkles", kind: "animated", prompt: "Sparkles", referenceAssetIds: [] });
+    const turn = await createChatTurn(db, "owner-a", sticker.stickerId, {
+      text: "Sparkles", intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+    await db.update(generationJobs).set({ state: "succeeded", completedAt: new Date() })
+      .where(eq(generationJobs.id, turn.jobId));
+    const document = StickerDocumentSchema.parse({
+      ...stickerDocumentFixture,
+      durationSeconds: 1,
+      fps: 10,
+      loop: "loop",
+      layers: [stickerDocumentFixture.layers[1]],
+    });
+    const revisionId = await createCandidateRevision(db, {
+      ownerId: "owner-a", stickerId: sticker.stickerId, sourceMessageId: turn.messageId, document,
+    });
+    await acceptRevision(db, "owner-a", sticker.stickerId, revisionId);
+
+    const ids = { apng: crypto.randomUUID(), system: crypto.randomUUID() };
+    await db.insert(assets).values([
+      { id: ids.apng, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "apng", state: "ready", r2Key: objectKey("owner-a", ids.apng, "image/png"), mimeType: "image/png", byteSize: 120_000, width: 1024, height: 1024, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      { id: ids.system, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "system", state: "ready", r2Key: objectKey("owner-a", ids.system, "image/png"), mimeType: "image/png", byteSize: 400_000, width: 408, height: 408, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "b".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+    ]);
+
+    const publishedRevisionId = crypto.randomUUID();
+    await bindExports(db, "owner-a", sticker.stickerId, {
+      revisionId,
+      apngAssetId: ids.apng,
+      systemAssetId: ids.system,
+      mp4Background: { type: "solid" as const, color: "#FFFFFF" },
+    }, publishedRevisionId);
+    const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).get();
+    expect(publishedRevision?.attachmentMediumAssetId).toBeNull();
+    expect(publishedRevision?.attachmentSmallAssetId).toBeNull();
   });
 
   /**

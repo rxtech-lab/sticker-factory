@@ -13,7 +13,10 @@ struct PlanCard: View {
     let isBusy: Bool
     let onConfirm: () -> Void
     let onReject: (String?) -> Void
-    let onAddImageToSticker: (UIImage) -> Void
+    /// A pack publish started from this card is still running. The menu item is the only affordance
+    /// for it, so it is also the only place that can say so.
+    var isAddingImageToStickerPack = false
+    let onAddImageToStickerPack: (UIImage) -> Void
     let onSaveImageToPhotoLibrary: (UIImage) -> Void
 
     @State private var confirming = false
@@ -53,7 +56,8 @@ struct PlanCard: View {
                     PlanReferencePreview(
                         image: referenceImage,
                         isCapture: isCaptureLed,
-                        onAddToSticker: onAddImageToSticker,
+                        isAddingToStickerPack: isAddingImageToStickerPack,
+                        onAddToStickerPack: onAddImageToStickerPack,
                         onSaveToPhotoLibrary: onSaveImageToPhotoLibrary
                     )
                 }
@@ -289,7 +293,8 @@ struct PlanCard: View {
 private struct PlanReferencePreview: View {
     let image: UIImage?
     let isCapture: Bool
-    let onAddToSticker: (UIImage) -> Void
+    let isAddingToStickerPack: Bool
+    let onAddToStickerPack: (UIImage) -> Void
     let onSaveToPhotoLibrary: (UIImage) -> Void
 
     var body: some View {
@@ -305,9 +310,17 @@ private struct PlanReferencePreview: View {
                         .resizable()
                         .scaledToFit()
                         .contextMenu {
-                            Button("Add to Sticker", systemImage: "plus") {
-                                onAddToSticker(image)
+                            // "Sticker" here is the Messages pack, not this project: the action
+                            // publishes the picture as a sticker of its own, ready to send.
+                            Button(
+                                isAddingToStickerPack
+                                    ? String(localized: "Adding to Stickers…")
+                                    : String(localized: "Add to Stickers"),
+                                systemImage: "plus"
+                            ) {
+                                onAddToStickerPack(image)
                             }
+                            .disabled(isAddingToStickerPack)
                             .accessibilityIdentifier("add-plan-image-to-sticker")
 
                             Button("Save to Photo Library", systemImage: "square.and.arrow.down") {

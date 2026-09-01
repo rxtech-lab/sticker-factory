@@ -41,6 +41,7 @@ Configure Turso, a private R2 bucket, Vercel AI Gateway (API key or Vercel OIDC)
 All state-changing endpoints require `Idempotency-Key`. JSON bodies are content-type checked and limited to 1 MB. AI inputs, uploads, layers/keyframes, and event replay have independent bounds.
 
 - `POST/GET /api/v1/stickers` — the authenticated list accepts `?q=&cursor=` for title search
+- `POST /api/v1/stickers/import` — turns an image the client already has into a static sticker with an accepted, active root revision, generating nothing
 - `GET/PATCH/DELETE /api/v1/stickers/{id}` — `PATCH` renames an owned live sticker
 - `GET/POST /api/v1/stickers/{id}/chat/messages`
 - `POST /api/v1/stickers/{id}/chat/messages/{messageId}/retry`

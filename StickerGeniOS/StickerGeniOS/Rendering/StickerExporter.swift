@@ -104,6 +104,12 @@ nonisolated enum StickerExportMetadataPolicy {
     /// is at most one byte a pixel before deflate, so 240 frames of 256² cannot reach 16 MB however
     /// incompressible the artwork is. `SHARING_APNG_DIMENSIONS` in
     /// `server/lib/contracts/sticker.ts` admits this same set.
+    ///
+    /// The top rung is the full size deliberately, and it is the only rendition WinkySticker sends.
+    /// A publish briefly wrote three of these — 618, 408 and 300 — for the size picker, and it was
+    /// both wasteful and wrong: `insertAttachment` draws an image at a fixed bubble width whatever
+    /// its pixel dimensions are, so all three arrived identical. The picker now scales this one file
+    /// on the device at send time; see `AttachmentCanvasRenderer` in the Messages extension.
     static let sharingApngDimensions = [1024, 768, 512, 384, 256]
 
     /// Square sizes a sharing GIF may be written at, largest first.
@@ -250,16 +256,25 @@ final class StickerExporter {
 
     init(fileManager: FileManager = .default) { self.fileManager = fileManager }
 
-    func exportStaticPNG(document: AnimatedDocument, assets: [String: UIImage]) throws -> RenderedStickerExport {
+    /// Full colour: a single frame has no byte ceiling to fight, so this never quantizes the way
+    /// the Messages ladder has to.
+    func exportStaticPNG(
+        document: AnimatedDocument,
+        assets: [String: UIImage],
+        dimension: Int = 1024
+    ) throws -> RenderedStickerExport {
         _ = try document.validated()
-        guard let image = renderFrame(document: document, time: 0, dimension: 1024, assets: assets),
+        guard let image = renderFrame(document: document, time: 0, dimension: dimension, assets: assets),
               let data = UIImage(cgImage: image).pngData()
         else { throw StickerExportError.renderFailed }
         let url = try outputURL(extension: "png")
         try data.write(to: url, options: .atomic)
         return .init(
             url: url,
-            metadata: .init(format: .png, width: 1024, height: 1024, byteCount: data.count, durationSeconds: nil, fps: nil, hasAlpha: true)
+            metadata: .init(
+                format: .png, width: dimension, height: dimension, byteCount: data.count,
+                durationSeconds: nil, fps: nil, hasAlpha: true
+            )
         )
     }
 
@@ -971,7 +986,12 @@ final class StickerExporter {
     private static let surveySampleCount = 12
     private static let surveyDimension = 300
 
-    func renderFrame(document: AnimatedDocument, time: Double, dimension: Int, assets: [String: UIImage]) -> CGImage? {
+    func renderFrame(
+        document: AnimatedDocument,
+        time: Double,
+        dimension: Int,
+        assets: [String: UIImage]
+    ) -> CGImage? {
         let content = AnimatedIconFrame(
             document: document,
             documentTime: time,

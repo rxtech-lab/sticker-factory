@@ -1,22 +1,59 @@
 #!/usr/bin/env swift
 
-// Generates the "iMessage App Icon" stickers icon set from icon.icon.
+// Generates an "iMessage App Icon" stickers icon set from an Icon Composer document.
 //
 // Icon Composer only renders square icons, but Messages needs 4:3 art (and an
 // opaque 1024x768 marketing image). This renders the square icon with ictool and
 // letterboxes it onto a flat white canvas at every size Messages asks for.
 //
-// Usage: scripts/generate-imessage-icon.swift
+// Usage: scripts/generate-imessage-icon.swift [--icon <name>.icon] [--target <folder>]
+//
+//   --icon    Icon Composer document under the project root  (default: icon.icon)
+//   --target  extension folder under the project root        (default: StickerMessages)
+//
+// There is one icon set per Messages extension, and the two ship side by side in the iMessage
+// drawer — so they need visibly different art, not the same document rendered twice.
 
 import AppKit
 import Foundation
 
+func fail(_ message: String) -> Never {
+    FileHandle.standardError.write(Data("error: \(message)\n".utf8))
+    exit(1)
+}
+
+var iconName = "icon.icon"
+var targetFolder = "StickerMessages"
+
+var remaining = Array(CommandLine.arguments.dropFirst())
+while let flag = remaining.first {
+    remaining.removeFirst()
+    guard let value = remaining.first else { fail("\(flag) needs a value") }
+    remaining.removeFirst()
+    switch flag {
+    case "--icon": iconName = value
+    case "--target": targetFolder = value
+    default: fail("unknown option \(flag)")
+    }
+}
+
 let projectRoot = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
     .deletingLastPathComponent()
-let iconDocument = projectRoot.appendingPathComponent("icon.icon")
+let iconDocument = projectRoot.appendingPathComponent(iconName)
 let iconSet = projectRoot
-    .appendingPathComponent("StickerMessages/Assets.xcassets/iMessage App Icon.stickersiconset")
+    .appendingPathComponent("\(targetFolder)/Assets.xcassets/iMessage App Icon.stickersiconset")
+
+guard FileManager.default.fileExists(atPath: iconDocument.path) else {
+    fail("no icon document at \(iconDocument.path)")
+}
+// Without this the loop below writes into a directory that does not exist and fails one variant
+// at a time, which reads as a rendering problem rather than a mistyped --target.
+var isDirectory: ObjCBool = false
+guard FileManager.default.fileExists(atPath: iconSet.path, isDirectory: &isDirectory),
+      isDirectory.boolValue else {
+    fail("no icon set at \(iconSet.path) — create the .stickersiconset folder first")
+}
 
 let ictool = URL(fileURLWithPath:
     "/Applications/Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool")
@@ -43,11 +80,6 @@ let variants = [
     Variant(width: 32, height: 24, scale: 3, idiom: "universal", filename: "icon-32x24@3x.png"),
     Variant(width: 1024, height: 768, scale: 1, idiom: "ios-marketing", filename: "icon-1024x768.png"),
 ]
-
-func fail(_ message: String) -> Never {
-    FileHandle.standardError.write(Data("error: \(message)\n".utf8))
-    exit(1)
-}
 
 // MARK: - Render the square icon with Icon Composer's own renderer
 

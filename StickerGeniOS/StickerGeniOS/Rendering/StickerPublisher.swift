@@ -56,7 +56,6 @@ final class StickerPublisher {
         revision: StickerRevision,
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
-        size: SystemStickerSize = .default,
         selection: StickerExportSelection = .default,
         sharing: StickerSharingFormat = .default,
         progress: StickerExportProgress? = nil
@@ -75,7 +74,6 @@ final class StickerPublisher {
             revision: revision,
             assets: assets,
             verifiedAssetIDs: verifiedAssetIDs,
-            size: size,
             rendering: selection,
             sharing: sharing,
             progress: progress
@@ -95,7 +93,6 @@ final class StickerPublisher {
         revision: StickerRevision,
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
-        size: SystemStickerSize = .default,
         selection: StickerExportSelection = .default,
         sharing: StickerSharingFormat = .default,
         progress: StickerExportProgress? = nil
@@ -105,7 +102,6 @@ final class StickerPublisher {
             revision: revision,
             assets: assets,
             verifiedAssetIDs: verifiedAssetIDs,
-            size: size,
             rendering: selection.includesVideo ? .both : .sticker,
             sharing: sharing,
             progress: progress
@@ -245,7 +241,6 @@ final class StickerPublisher {
         revision: StickerRevision,
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
-        size: SystemStickerSize,
         rendering: StickerExportSelection,
         sharing: StickerSharingFormat,
         progress: StickerExportProgress? = nil
@@ -289,7 +284,7 @@ final class StickerPublisher {
         }
         if rendering.includesSticker || document.kind == .static {
             progress?.begin(.renderSticker)
-            system = try await exporter.exportSystemSticker(document: document, assets: assets, size: size) {
+            system = try await exporter.exportSystemSticker(document: document, assets: assets) {
                 progress?.report($0, for: .renderSticker)
             }
         }
@@ -335,8 +330,17 @@ nonisolated enum StickerPublishError: Error, LocalizedError {
     case publishedExportsUnavailable
     case exportDownloadFailed
     case systemRenditionUnavailable
+    /// An imported sticker came back without the revision the import said it made — so there is
+    /// nothing to publish, and nothing the user can do about it but try again.
+    case importedRevisionUnavailable
+    /// A sticker added to the pack never finished publishing. Carries the server's reason when it
+    /// gave one; nil covers the export that simply never landed, which reads the same to the user.
+    case packPublishFailed(String?)
     var errorDescription: String? {
         switch self {
+        case .importedRevisionUnavailable: String(localized: "Couldn't prepare the new sticker. Try again.")
+        case .packPublishFailed(let message):
+            message ?? String(localized: "The sticker didn't finish publishing. Open it from your library and export it again.")
         case .systemRenditionUnavailable: String(localized: "The sticker rendition could not be rendered.")
         case .revisionNotAccepted: String(localized: "Accept this revision before publishing exports.")
         case .animationRequired: String(localized: "Add motion before publishing this animated sticker. You can still export the current image locally.")

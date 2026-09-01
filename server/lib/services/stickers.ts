@@ -1,11 +1,13 @@
 import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or, sql } from "drizzle-orm";
 import type {
   CreateStickerRequest,
+  ImportStickerRequest,
   PostChatMessageRequest,
   PublishExportsRequest,
   SaveEditedDocumentRequest,
   UpdateStickerRequest,
 } from "@/lib/contracts/api";
+import { ATTACHMENT_RENDITION_DIMENSIONS } from "@/lib/contracts/api";
 import { countKeyframes } from "@/lib/animation/compile";
 import {
   CURRENT_DOCUMENT_VERSION,
@@ -16,7 +18,13 @@ import {
   type StickerDocument,
 } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
-import { previewAssetIdSql, previewAssets, systemAssets } from "@/lib/db/columns";
+import {
+  attachmentMediumAssets,
+  attachmentSmallAssets,
+  previewAssetIdSql,
+  previewAssets,
+  systemAssets,
+} from "@/lib/db/columns";
 import {
   assets,
   chatAttachments,
@@ -109,6 +117,14 @@ export const systemAssetSummaryColumns = {
   sha256: systemAssets.sha256,
 };
 
+/**
+ * The `AssetV1` column set, once per aliased join.
+ *
+ * Spelled out three times rather than built by a helper, and deliberately: drizzle reads a
+ * selection's nullability from the object literal itself, and routing these through a generic
+ * function makes a left-joined group infer as fourteen independently nullable fields instead of one
+ * nullable group — which typechecks at the call site and lies about the shape.
+ */
 export const previewAssetSummaryColumns = {
   id: previewAssets.id,
   stickerId: previewAssets.stickerId,
@@ -126,6 +142,40 @@ export const previewAssetSummaryColumns = {
   createdAt: previewAssets.createdAt,
 };
 
+export const attachmentMediumSummaryColumns = {
+  id: attachmentMediumAssets.id,
+  stickerId: attachmentMediumAssets.stickerId,
+  kind: attachmentMediumAssets.kind,
+  state: attachmentMediumAssets.state,
+  mimeType: attachmentMediumAssets.mimeType,
+  byteSize: attachmentMediumAssets.byteSize,
+  width: attachmentMediumAssets.width,
+  height: attachmentMediumAssets.height,
+  frameCount: attachmentMediumAssets.frameCount,
+  durationSeconds: attachmentMediumAssets.durationSeconds,
+  fps: attachmentMediumAssets.fps,
+  sha256: attachmentMediumAssets.sha256,
+  hasAlpha: attachmentMediumAssets.hasAlpha,
+  createdAt: attachmentMediumAssets.createdAt,
+};
+
+export const attachmentSmallSummaryColumns = {
+  id: attachmentSmallAssets.id,
+  stickerId: attachmentSmallAssets.stickerId,
+  kind: attachmentSmallAssets.kind,
+  state: attachmentSmallAssets.state,
+  mimeType: attachmentSmallAssets.mimeType,
+  byteSize: attachmentSmallAssets.byteSize,
+  width: attachmentSmallAssets.width,
+  height: attachmentSmallAssets.height,
+  frameCount: attachmentSmallAssets.frameCount,
+  durationSeconds: attachmentSmallAssets.durationSeconds,
+  fps: attachmentSmallAssets.fps,
+  sha256: attachmentSmallAssets.sha256,
+  hasAlpha: attachmentSmallAssets.hasAlpha,
+  createdAt: attachmentSmallAssets.createdAt,
+};
+
 /**
  * A sticker plus its active revision's system and preview assets, resolved in one statement.
  *
@@ -138,25 +188,49 @@ export function selectStickerSummaries(db: Database) {
     sticker: stickerSummaryColumns,
     systemAsset: systemAssetSummaryColumns,
     previewAsset: previewAssetSummaryColumns,
+    attachmentMedium: attachmentMediumSummaryColumns,
+    attachmentSmall: attachmentSmallSummaryColumns,
   }).from(stickers)
     .leftJoin(stickerRevisions, and(
       eq(stickerRevisions.id, stickers.activeRevisionId),
       eq(stickerRevisions.stickerId, stickers.id),
     ))
     .leftJoin(systemAssets, eq(systemAssets.id, stickerRevisions.systemAssetId))
-    .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql));
+    .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql))
+    .leftJoin(attachmentMediumAssets, eq(attachmentMediumAssets.id, stickerRevisions.attachmentMediumAssetId))
+    .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId));
 }
+
+export type AssetSummary = Pick<typeof assets.$inferSelect,
+  "id" | "stickerId" | "kind" | "state" | "mimeType" | "byteSize" | "width" | "height"
+  | "frameCount" | "durationSeconds" | "fps" | "sha256" | "hasAlpha" | "createdAt">;
 
 export type StickerSummaryRow = {
   sticker: Pick<typeof stickers.$inferSelect,
     "id" | "title" | "kind" | "status" | "activeRevisionId" | "createdAt" | "updatedAt">;
   systemAsset: Pick<typeof assets.$inferSelect, "id" | "mimeType" | "byteSize" | "sha256"> | null;
-  previewAsset: Pick<typeof assets.$inferSelect,
-    "id" | "stickerId" | "kind" | "state" | "mimeType" | "byteSize" | "width" | "height"
-    | "frameCount" | "durationSeconds" | "fps" | "sha256" | "hasAlpha" | "createdAt"> | null;
+  previewAsset: AssetSummary | null;
+  /** Null on anything published before attachment renditions existed. */
+  attachmentMedium: AssetSummary | null;
+  attachmentSmall: AssetSummary | null;
 };
 
-export function serializeStickerSummary({ sticker, systemAsset, previewAsset }: StickerSummaryRow) {
+/**
+ * An attachment rendition is only offered once it is actually downloadable. A `pending` row is a
+ * publish that raced its own upload, and handing the extension its id would spend a tap on a 404.
+ */
+function serializeAttachment(asset: AssetSummary | null) {
+  if (!asset || asset.state !== "ready") return null;
+  return { ...asset, createdAt: asset.createdAt.toISOString() };
+}
+
+export function serializeStickerSummary({
+  sticker,
+  systemAsset,
+  previewAsset,
+  attachmentMedium,
+  attachmentSmall,
+}: StickerSummaryRow) {
   return {
     id: sticker.id,
     title: sticker.title,
@@ -175,12 +249,20 @@ export function serializeStickerSummary({ sticker, systemAsset, previewAsset }: 
       byteSize: systemAsset.byteSize,
       sha256: systemAsset.sha256,
     } : null,
+    attachmentMedium: serializeAttachment(attachmentMedium),
+    attachmentSmall: serializeAttachment(attachmentSmall),
   };
 }
 
 async function serializeSticker(db: Database, sticker: typeof stickers.$inferSelect) {
   const row = await selectStickerSummaries(db).where(eq(stickers.id, sticker.id)).get();
-  return serializeStickerSummary(row ?? { sticker, systemAsset: null, previewAsset: null });
+  return serializeStickerSummary(row ?? {
+    sticker,
+    systemAsset: null,
+    previewAsset: null,
+    attachmentMedium: null,
+    attachmentSmall: null,
+  });
 }
 
 export async function listStickers(
@@ -256,6 +338,116 @@ export async function createSticker(db: Database, ownerId: string, request: Crea
     }
   });
   return { stickerId, threadId };
+}
+
+/**
+ * Turns an image the user already has into a static sticker project, with no generation.
+ *
+ * The whole point is that nothing is drawn: the asset carries the pixels, so this writes the
+ * sticker, its thread, and a root revision that is accepted and active from the moment it exists.
+ * Accepted-on-arrival mirrors `saveEditedRevision` and for the same reason — the user has already
+ * seen this picture and chosen it, so a review gate would only ask them to confirm their own
+ * choice. Being active is also what lets the client publish exports for it straight away, which is
+ * what actually puts the sticker in the Messages pack.
+ *
+ * There is no generation job — nothing was asked of the model — but there is one transcript entry,
+ * so the project opens on the sticker rather than on an empty room. See the insert below for why it
+ * is a `device_edit` marker and not a user turn.
+ */
+export async function importSticker(db: Database, ownerId: string, request: ImportStickerRequest) {
+  const [asset] = await getReadyOwnedAssets(db, ownerId, [request.assetId]);
+  // Narrower than `AI_INPUT_ASSET_KINDS`, which admits `sequence`: a frame atlas is a PNG contact
+  // sheet, so it would pass every check here and then be refused at publish time as an image layer
+  // — after the project already existed. This is the same set `validateDocumentAssetReferences`
+  // accepts for an image layer, minus the rendition kinds an import can never be holding.
+  if (asset.kind !== "reference" && asset.kind !== "chat_attachment") {
+    throw new ApiError(422, "INVALID_REFERENCE", "An imported sticker must be built from a reference image asset");
+  }
+  if (!AI_REFERENCE_MIME_TYPES.has(asset.mimeType)) {
+    throw new ApiError(422, "INVALID_REFERENCE", "An imported sticker must be a PNG, JPEG, or WebP image");
+  }
+  if (asset.stickerId !== null) {
+    throw new ApiError(422, "REFERENCE_ALREADY_ATTACHED", "That image is already attached to another sticker");
+  }
+
+  const stickerId = crypto.randomUUID();
+  const threadId = crypto.randomUUID();
+  const revisionId = crypto.randomUUID();
+  const messageId = crypto.randomUUID();
+  const now = new Date();
+  const document = StickerDocumentSchema.parse({
+    version: CURRENT_DOCUMENT_VERSION,
+    kind: "static",
+    canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+    mp4Background: { type: "solid", color: "#FFFFFF" },
+    durationSeconds: 0,
+    fps: 0,
+    loop: "once",
+    layers: [{
+      id: "hero",
+      name: "Hero",
+      hidden: false,
+      type: "image",
+      assetId: request.assetId,
+      contentMode: "fit",
+      animation: { position: [], scale: [], rotation: [], opacity: [], effects: [], trim: [] },
+    }],
+  });
+
+  await db.transaction(async (tx) => {
+    await tx.insert(stickers).values({
+      id: stickerId,
+      ownerId,
+      title: request.title,
+      kind: "static",
+      status: "draft",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await tx.insert(chatThreads).values({ id: threadId, stickerId, ownerId, createdAt: now, updatedAt: now });
+    // Claiming the asset is conditional on it still being unattached, so two imports racing on the
+    // same upload cannot both end up with a document pointing at artwork the other one owns.
+    const claimed = await tx.update(assets).set({ stickerId }).where(and(
+      eq(assets.ownerId, ownerId),
+      isNull(assets.stickerId),
+      eq(assets.id, request.assetId),
+    )).returning({ id: assets.id });
+    if (claimed.length !== 1) {
+      throw new ApiError(409, "REFERENCE_ALREADY_ATTACHED", "That image was concurrently attached to another sticker");
+    }
+    // The project opens on something rather than on nothing. An imported sticker has no turn behind
+    // it, so without this its transcript is blank — the user taps into the sticker they just made
+    // and is shown an empty room. Posted as `device_edit` for the same reason `saveEditedRevision`
+    // does: the user never said this, and a bubble quoting words they did not type is a message the
+    // agent would answer on the next turn. The app draws the kind as a divider with the artwork
+    // under it, which is exactly what happened here.
+    await tx.insert(chatMessages).values({
+      id: messageId,
+      threadId,
+      ownerId,
+      role: "user",
+      kind: "device_edit",
+      content: "Added to your stickers",
+      sequence: 1,
+      revisionId,
+      status: "complete",
+      createdAt: now,
+    });
+    await tx.insert(stickerRevisions).values({
+      id: revisionId,
+      stickerId,
+      parentRevisionId: null,
+      sourceMessageId: messageId,
+      kind: "static",
+      candidateState: "accepted",
+      documentJson: document,
+      createdAt: now,
+      decidedAt: now,
+    });
+    await tx.update(stickers).set({ activeRevisionId: revisionId, updatedAt: now }).where(eq(stickers.id, stickerId));
+  });
+
+  return { stickerId, threadId, revisionId };
 }
 
 export async function updateSticker(
@@ -438,6 +630,8 @@ export async function getSticker(db: Database, ownerId: string, stickerId: strin
       gifAssetId: revision.gifAssetId,
       mp4AssetId: revision.mp4AssetId,
       systemAssetId: revision.systemAssetId,
+      attachmentMediumAssetId: revision.attachmentMediumAssetId,
+      attachmentSmallAssetId: revision.attachmentSmallAssetId,
       createdAt: revision.createdAt.toISOString(),
       decidedAt: revision.decidedAt?.toISOString() ?? null,
     })),
@@ -1336,7 +1530,14 @@ export async function bindExports(
     eq(stickerRevisions.candidateState, "accepted"),
   )).get();
   if (!revision) throw new ApiError(409, "REVISION_NOT_ACCEPTED", "The revision must be accepted before publishing");
-  const ids = [request.pngAssetId, request.apngAssetId, request.mp4AssetId, request.systemAssetId].filter((value): value is string => Boolean(value));
+  const ids = [
+    request.pngAssetId,
+    request.apngAssetId,
+    request.mp4AssetId,
+    request.systemAssetId,
+    request.attachmentMediumAssetId,
+    request.attachmentSmallAssetId,
+  ].filter((value): value is string => Boolean(value));
   const rows = await getReadyOwnedAssets(db, ownerId, ids);
   const byId = new Map(rows.map((asset) => [asset.id, asset]));
   for (const asset of rows) {
@@ -1355,6 +1556,36 @@ export async function bindExports(
   }
   if (request.mp4AssetId && byId.get(request.mp4AssetId)?.kind !== "mp4") throw new ApiError(422, "INVALID_MP4_EXPORT", "MP4 export asset is invalid");
   if (request.pngAssetId && byId.get(request.pngAssetId)?.kind !== "master") throw new ApiError(422, "INVALID_PNG_EXPORT", "PNG export asset is invalid");
+  // The two smaller sends. `validateImageForKind` already proved each one is a transparent square
+  // PNG at 408 or 300; what it could not know is *which* column it was headed for, so the pairing
+  // is checked here. Getting them the wrong way round would silently hand someone Small when they
+  // asked for Medium.
+  for (const [field, assetId] of [
+    ["attachmentMediumAssetId", request.attachmentMediumAssetId],
+    ["attachmentSmallAssetId", request.attachmentSmallAssetId],
+  ] as const) {
+    if (!assetId) continue;
+    const asset = byId.get(assetId)!;
+    if (asset.kind !== "attachment") {
+      throw new ApiError(422, "INVALID_ATTACHMENT_EXPORT", `${field} must reference an attachment rendition`);
+    }
+    const expected = field === "attachmentMediumAssetId"
+      ? ATTACHMENT_RENDITION_DIMENSIONS.medium
+      : ATTACHMENT_RENDITION_DIMENSIONS.small;
+    if (asset.width !== expected) {
+      throw new ApiError(422, "INVALID_ATTACHMENT_SIZE", `${field} must be ${expected} pixels wide`);
+    }
+    // An attachment rendition is a copy of the sharing rendition, so it moves exactly when the
+    // sticker does. A still one under an animated sticker is the wrong file, and an animated one
+    // under a static sticker could not have been rendered from that document at all.
+    if ((revision.kind === "animated") !== ((asset.frameCount ?? 1) > 1)) {
+      throw new ApiError(
+        422,
+        "ATTACHMENT_RENDITION_MISMATCH",
+        `${field} must be ${revision.kind === "animated" ? "animated" : "a single frame"} to match the sticker`,
+      );
+    }
+  }
   if (revision.kind === "static" && !request.pngAssetId) throw new ApiError(422, "PNG_EXPORT_REQUIRED", "Static stickers require a rendered PNG export");
   if (revision.kind === "static" && (request.apngAssetId || request.mp4AssetId)) {
     throw new ApiError(422, "STATIC_EXPORT_MATRIX", "Static stickers only accept PNG and single-frame PNG system renditions");
@@ -1400,7 +1631,16 @@ export async function bindExports(
     if (keyframeCount === 0) {
       throw new ApiError(422, "ANIMATION_KEYFRAMES_REQUIRED", "Animated exports require at least one accepted animation keyframe");
     }
-    for (const assetId of [request.apngAssetId, request.mp4AssetId, request.systemAssetId]) {
+    for (const assetId of [
+      request.apngAssetId,
+      request.mp4AssetId,
+      request.systemAssetId,
+      // Held to the document's own grid exactly like the sharing rendition they are copies of.
+      // Nothing here is under the 500 KB ceiling, so unlike the system sticker they never traded
+      // frame rate away and a mismatch really is a bad export.
+      request.attachmentMediumAssetId,
+      request.attachmentSmallAssetId,
+    ]) {
       if (!assetId) continue;
       // The still fallback has no cycle to match; it is one frame standing in for all of them.
       if (systemIsStill && assetId === request.systemAssetId) continue;
@@ -1430,6 +1670,8 @@ export async function bindExports(
       apngAssetId: request.apngAssetId,
       mp4AssetId: request.mp4AssetId,
       systemAssetId: request.systemAssetId,
+      attachmentMediumAssetId: request.attachmentMediumAssetId,
+      attachmentSmallAssetId: request.attachmentSmallAssetId,
       createdAt: new Date(),
       decidedAt: new Date(),
     });

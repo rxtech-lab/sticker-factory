@@ -120,7 +120,8 @@ struct StickerEditorSheet: View {
                 // Canvas resize is off because it cannot keep its promise here: positions are
                 // normalized, so a same-aspect resize moves nothing, and every sticker export
                 // renders a square frame that letterboxes anything else. Size that does reach the
-                // sticker lives in the export sheet, as `SystemStickerSize`.
+                // sticker is chosen at send time in WinkySticker, from the three renditions a
+                // publish uploads — see `StickerExportMetadataPolicy.attachmentDimensions`.
                 configuration: .init(allowsCanvasResize: false),
                 onPickImageAsset: { await pickImageAsset() }
             )

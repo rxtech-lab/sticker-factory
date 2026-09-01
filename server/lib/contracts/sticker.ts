@@ -368,8 +368,13 @@ export const MAX_RENDITION_SECONDS = 8 + EXPORT_LOOP_HOLD_SECONDS;
  * most one byte a pixel before deflate, so 240 frames of 256² cannot reach 16 MB however
  * incompressible the artwork is. `sharingApngDimensions` in
  * `StickerGeniOS/Rendering/StickerExporter.swift` walks this same ladder.
+ *
+ * 618 is where the client now starts, and 408 and 300 are the rungs it can fall to — the three
+ * sizes WinkySticker offers, which are Apple's own sticker size classes reused as attachment sizes.
+ * The larger values stay because every animated sticker published before that change points at a
+ * rendition written at one of them, and this list is what re-validates them.
  */
-export const SHARING_APNG_DIMENSIONS = [1024, 768, 512, 384, 256] as const;
+export const SHARING_APNG_DIMENSIONS = [1024, 768, 618, 512, 408, 384, 300, 256] as const;
 
 function keyframeCount(layer: z.infer<typeof StickerLayerV1Schema>): number {
   return countKeyframes(layer.animation);

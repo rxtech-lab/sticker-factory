@@ -10,11 +10,13 @@ struct StickerLibraryCard: View {
     let api: StickerAPIClientProtocol
     /// Pack members are not editable by the viewer, so their card omits the draft/status line.
     var showsStatus = true
+    /// Passed through to the thumbnail; a card is a grid tile everywhere it is used.
+    var detail: StickerAnimationDetail = .thumbnail
 
     var body: some View {
         GlassCard(padding: 10) {
             VStack(alignment: .leading, spacing: 10) {
-                StickerThumbnail(sticker: sticker, api: api)
+                StickerThumbnail(sticker: sticker, api: api, detail: detail)
                     .aspectRatio(1, contentMode: .fit)
 
                 Text(sticker.title)
@@ -37,9 +39,15 @@ struct StickerLibraryCard: View {
 /// Stickers are transparent PNGs and APNG/GIFs. Filling a plate behind one puts a light rectangle
 /// where the transparency should be, so artwork sits directly on whatever the surrounding view
 /// provides. The plate is only drawn for the glyph placeholder, which needs contrast to read.
+///
+/// An animated sticker plays here rather than sitting on its poster frame — a library of stickers
+/// that all advertise themselves as animated and none of which move reads as broken artwork.
 struct StickerThumbnail: View {
     let sticker: Sticker
     let api: StickerAPIClientProtocol
+    /// How large the frames are decoded. The default suits a grid tile; a sheet showing one sticker
+    /// large passes `.preview`.
+    var detail: StickerAnimationDetail = .thumbnail
 
     var body: some View {
         // `Color.clear` takes exactly the size it is offered and the artwork is laid over it, so a
@@ -59,7 +67,9 @@ struct StickerThumbnail: View {
             VerifiedAssetImage(
                 assetID: assetID,
                 expectedSHA256: sticker.systemSticker?.sha256 ?? sticker.previewAsset?.sha256,
-                api: api
+                api: api,
+                animates: sticker.kind == .animated,
+                detail: detail
             )
         } else {
             ZStack {
@@ -82,17 +92,46 @@ struct VerifiedAssetImage: View {
     let assetID: String
     let expectedSHA256: String?
     let api: StickerAPIClientProtocol
+    /// Play the artwork rather than draw one frame of it.
+    ///
+    /// Off by default, and the caller decides: a browse-list cover mosaic is four stickers deep in a
+    /// scrolling list of cards, and playing all of them buys nothing a poster frame does not already
+    /// say. Asking for it is not a promise — an asset that turns out to hold a single frame falls
+    /// back to the still, which is what an animated sticker whose Messages rendition lost its motion
+    /// to the 500 KB ceiling has.
+    var animates = false
+    var detail: StickerAnimationDetail = .thumbnail
+
     @State private var image: UIImage?
+    @State private var animation: StickerAnimation?
 
     var body: some View {
         Group {
-            if let image {
+            if let animation {
+                AnimatedStickerImage(animation: animation)
+            } else if let image {
                 Image(uiImage: image).resizable().scaledToFit()
             } else {
                 ProgressView()
             }
         }
         .task(id: assetID) {
+            // One download, not two: the animated path decodes its own still out of the same bytes,
+            // so a moving sticker never pays for the poster it would have shown instead.
+            if animates, animation == nil, image == nil {
+                if let artwork = await StickerArtworkLoader.shared.artwork(
+                    assetID: assetID,
+                    expectedSHA256: expectedSHA256,
+                    detail: detail,
+                    api: api
+                ) {
+                    animation = artwork.animation
+                    if artwork.animation == nil { image = artwork.still }
+                    return
+                }
+                // Fell through on a failed download or undecodable bytes — the still path gets its
+                // own attempt rather than leaving the tile spinning.
+            }
             guard image == nil else { return }
             image = try? await StickerImageCache.load(
                 assetID: assetID,

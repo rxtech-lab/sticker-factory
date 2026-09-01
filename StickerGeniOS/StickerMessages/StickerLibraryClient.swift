@@ -163,10 +163,25 @@ struct StickerLibraryClient: Sendable {
         return page
     }
 
+    /// The Messages rendition, held to Apple's sticker ceiling.
     func download(_ descriptor: SystemStickerDescriptor, accessToken: String) async throws -> DownloadedRendition {
+        try await download(
+            assetID: descriptor.assetID,
+            accessToken: accessToken,
+            maximumByteCount: SharedStickerCache.maximumByteCount
+        )
+    }
+
+    /// - Parameter maximumByteCount: the caller's ceiling, checked before and after the signed
+    ///   redirect. The full-size surface passes its own, much larger, budget.
+    func download(
+        assetID: String,
+        accessToken: String,
+        maximumByteCount: Int
+    ) async throws -> DownloadedRendition {
         let endpoint = baseURL
             .appending(path: "api/v1/assets")
-            .appending(path: descriptor.assetID)
+            .appending(path: assetID)
             .appending(path: "download")
         var request = URLRequest(url: endpoint)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -175,7 +190,7 @@ struct StickerLibraryClient: Sendable {
 
         let result = try await transport.data(for: request)
         try Self.validate(result.response)
-        if result.data.count >= SharedStickerCache.maximumByteCount {
+        if result.data.count >= maximumByteCount {
             throw StickerLibraryError.renditionTooLarge
         }
 
@@ -192,7 +207,7 @@ struct StickerLibraryClient: Sendable {
             signedRequest.cachePolicy = .reloadIgnoringLocalCacheData
             let rendition = try await transport.data(for: signedRequest)
             try Self.validate(rendition.response)
-            guard rendition.data.count < SharedStickerCache.maximumByteCount else {
+            guard rendition.data.count < maximumByteCount else {
                 throw StickerLibraryError.renditionTooLarge
             }
             return DownloadedRendition(
@@ -354,6 +369,9 @@ private struct StickerDTO: Decodable {
     let updatedAt: Date
     let systemSticker: AssetDTO?
     let systemStickerAssetID: String?
+    /// The server's largest rendition: the 1024² `master` PNG for a static sticker, the 618 APNG
+    /// for an animated one. Absent on servers older than this field.
+    let previewAsset: AssetDTO?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -362,6 +380,7 @@ private struct StickerDTO: Decodable {
         case updatedAt
         case systemSticker
         case systemStickerAssetID = "systemStickerAssetId"
+        case previewAsset
     }
 
     init(from decoder: Decoder) throws {
@@ -373,6 +392,7 @@ private struct StickerDTO: Decodable {
         updatedAt = (try? container.decode(FlexibleDate.self, forKey: .updatedAt).value) ?? .distantPast
         systemSticker = try container.decodeIfPresent(AssetDTO.self, forKey: .systemSticker)
         systemStickerAssetID = try container.decodeIfPresent(String.self, forKey: .systemStickerAssetID)
+        previewAsset = try container.decodeIfPresent(AssetDTO.self, forKey: .previewAsset)
     }
 
     var systemDescriptor: SystemStickerDescriptor? {
@@ -385,7 +405,67 @@ private struct StickerDTO: Decodable {
             mimeType: systemSticker?.mimeType ?? "image/png",
             byteSize: systemSticker?.byteSize,
             sha256: systemSticker?.sha256,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            fullSize: fullSize(systemAssetID: assetID)
+        )
+    }
+
+    /// The full-resolution rendition a sticker has, if it is worth downloading.
+    ///
+    /// `previewAsset` — the sharing rendition, which every published sticker carries. `nil` when the
+    /// asset fails one of `fullSizeRendition`'s gating rules, which the caller resolves by
+    /// attaching the cached ≤500 KB file instead.
+    private func fullSize(systemAssetID: String) -> FullSizeRendition? {
+        Self.fullSizeRendition(previewAsset, systemAssetID: systemAssetID)
+    }
+
+    /// Every rule here fails closed: an offer that cannot be honoured is worse than no offer,
+    /// because it becomes a tap that spins and then errors.
+    private static func fullSizeRendition(
+        _ preview: AssetDTO?,
+        systemAssetID: String
+    ) -> FullSizeRendition? {
+        guard let preview, !preview.assetID.isEmpty else { return nil }
+
+        // `pending`/`failed`/`deleted` would 404 or serve bytes that fail their checksum. An
+        // absent state is an older server that only ever listed ready assets.
+        if let state = preview.state, state != "ready" { return nil }
+
+        // The animated chain coalesces down to the system asset. Identity is the only signal
+        // that happened, and it means "already cached, nothing to download".
+        guard preview.assetID != systemAssetID else {
+            return FullSizeRendition(
+                assetID: preview.assetID,
+                mimeType: preview.mimeType,
+                byteSize: preview.byteSize,
+                sha256: preview.sha256,
+                width: preview.width,
+                height: preview.height,
+                isSystemAssetFallback: true
+            )
+        }
+
+        // Filtered here rather than by loosening `validatedFileExtension`, which stays the single
+        // magic-byte gate both caches share.
+        let normalized = preview.mimeType.lowercased().split(separator: ";").first.map(String.init) ?? ""
+        guard ["image/png", "image/apng", "image/gif"].contains(normalized) else { return nil }
+
+        if let byteSize = preview.byteSize, byteSize >= StickerCachePolicy.fullSize.maximumByteCount {
+            return nil
+        }
+        if let width = preview.width, let height = preview.height,
+           max(width, height) > StickerCachePolicy.fullSize.maximumPixelDimension {
+            return nil
+        }
+
+        return FullSizeRendition(
+            assetID: preview.assetID,
+            mimeType: preview.mimeType,
+            byteSize: preview.byteSize,
+            sha256: preview.sha256,
+            width: preview.width,
+            height: preview.height,
+            isSystemAssetFallback: false
         )
     }
 }
@@ -395,6 +475,11 @@ private struct AssetDTO: Decodable {
     let mimeType: String
     let byteSize: Int?
     let sha256: String?
+    /// Only `previewAsset` carries these; `systemSticker` is a narrower projection without them.
+    let kind: String?
+    let state: String?
+    let width: Int?
+    let height: Int?
 
     private enum CodingKeys: String, CodingKey {
         case assetID = "assetId"
@@ -404,6 +489,10 @@ private struct AssetDTO: Decodable {
         case size
         case sha256
         case checksum
+        case kind
+        case state
+        case width
+        case height
     }
 
     init(from decoder: Decoder) throws {
@@ -415,6 +504,10 @@ private struct AssetDTO: Decodable {
             ?? container.decodeIfPresent(Int.self, forKey: .size)
         sha256 = try container.decodeIfPresent(String.self, forKey: .sha256)
             ?? container.decodeIfPresent(String.self, forKey: .checksum)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        state = try container.decodeIfPresent(String.self, forKey: .state)
+        width = try container.decodeIfPresent(Int.self, forKey: .width)
+        height = try container.decodeIfPresent(Int.self, forKey: .height)
     }
 }
 

@@ -59,6 +59,26 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
+    func importSticker(_ request: ImportStickerRequest, idempotencyKey: String) async throws -> ImportStickerResponse {
+        let value = Sticker(
+            id: UUID().uuidString,
+            title: request.title,
+            kind: .static,
+            status: .draft,
+            activeRevisionId: UUID().uuidString,
+            createdAt: Date(),
+            updatedAt: Date(),
+            previewAsset: nil,
+            systemSticker: nil
+        )
+        stickers.insert(value, at: 0)
+        return .init(
+            stickerId: value.id,
+            threadId: "thread-\(value.id)",
+            revisionId: value.activeRevisionId ?? UUID().uuidString
+        )
+    }
+
     func sticker(id: String) async throws -> StickerDetail {
         guard id == detail.sticker.id else {
             let sticker = stickers.first(where: { $0.id == id }) ?? PreviewFixtures.sticker

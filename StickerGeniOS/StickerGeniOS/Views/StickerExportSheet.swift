@@ -158,11 +158,7 @@ struct StickerExportSheet: View {
             guard oldValue != newValue, !isPublished, !publishIsPending, !model.isPublishing else { return }
             model.invalidateExports()
         }
-        .onChange(of: model.stickerSize) { oldValue, newValue in
-            guard oldValue != newValue, !isPublished, !publishIsPending, !model.isPublishing else { return }
-            model.invalidateExports()
-        }
-        // Unlike size and background, this changes nothing about the files — only which of them get
+        // Unlike the background, this changes nothing about the files — only which of them get
         // shared — so it stays available on a published sticker and drops just the share list.
         .onChange(of: model.selection) { oldValue, newValue in
             guard oldValue != newValue, !publishIsPending, !model.isPublishing else { return }
@@ -277,8 +273,6 @@ struct StickerExportSheet: View {
 
             if revision.document.kind == .animated, model.selection.includesSticker { sharingFormatPicker }
 
-            sizePicker
-
             if revision.document.kind == .animated { backgroundPicker }
         }
     }
@@ -339,37 +333,10 @@ struct StickerExportSheet: View {
         }
     }
 
-    /// The one control that changes how big the sticker arrives: Messages draws a sticker at its
-    /// pixel size over three, and nothing in the document can move that number.
-    private var sizePicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // The segmented style drops the picker's own label, and "Large/Medium/Small" on its own
-            // reads as a quality setting.
-            Text("Sticker size")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Picker("Sticker size", selection: $model.stickerSize) {
-                ForEach(SystemStickerSize.allCases) { size in
-                    Text(size.label).tag(size)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("sticker-size-picker")
-            // Left enabled on a published sticker: publishing again is what changing this is for.
-            // The server accepts it — a publish supersedes the active revision rather than sealing
-            // it — and the files already shipped stay valid until the re-export lands.
-            .disabled(publishIsPending || model.isPublishing)
-
-            Text("""
-            \(model.stickerSize.detail). Detailed artwork can still be exported one size down, or \
-            as a still frame, to stay under Apple's 500 KB limit — the export always goes through.
-            """)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
+    // There is no size picker here any more. It used to bake one dimension into the published
+    // sticker, which meant changing your mind cost a re-publish — and it asked the question at the
+    // wrong moment, since how big a sticker should arrive depends on the conversation it is going
+    // into. A publish now renders every size, and WinkySticker chooses between them on the way out.
 
     private var backgroundPicker: some View {
         VStack(alignment: .leading, spacing: 8) {

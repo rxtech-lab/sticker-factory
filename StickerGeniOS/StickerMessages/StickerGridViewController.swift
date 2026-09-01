@@ -20,11 +20,35 @@ final class StickerGridViewController: UIViewController {
     /// Injection seam: the grid never touches `MSConversation`, so tests can drive selection.
     var onSelect: ((MSSticker) -> Void)?
 
+    /// The same tap, reported as an item id instead of an `MSSticker`.
+    ///
+    /// The full-size surface inserts a file the grid has never seen — the cached `MSSticker` is
+    /// only the thumbnail there — so it needs the identity to look a descriptor up, not the sticker.
+    var onSelectItem: ((StickerItemID) -> Void)?
+
+    /// Suppresses Apple's peel/drag on every cell.
+    ///
+    /// Set while the surface is sending images, because a drag inserts the `MSSticker` behind the
+    /// caller's back — which is the wrong file when someone asked for the full-size image, and
+    /// exactly the right one when they asked for a sticker. Setting it re-applies to every visible
+    /// cell as well as to future dequeues, so it can follow the send mode.
+    var suppressesPeelDrag = false {
+        didSet {
+            guard oldValue != suppressesPeelDrag, isViewLoaded else { return }
+            for case let cell as StickerCell in collectionView.visibleCells {
+                cell.setPeelDragEnabled(!suppressesPeelDrag)
+            }
+        }
+    }
+
     private(set) var sections: [StickerSection] = []
     private var stickersByID: [StickerItemID: MSSticker] = [:]
     /// Flat display order, so a global index still maps to an item.
     private var orderedIDs: [StickerItemID] = []
     private var sectionHeaders: [String: (title: String, subtitle: String?)] = [:]
+    /// Items with work in flight. Held here rather than on the cell so the state survives reuse
+    /// and scrolling — a cell recycled mid-download would otherwise come back tappable.
+    private var busyItemIDs: Set<StickerItemID> = []
 
     private(set) lazy var collectionView = UICollectionView(
         frame: .zero,
@@ -81,6 +105,11 @@ final class StickerGridViewController: UIViewController {
             stickerCell.configure(with: sticker) { [weak self] in
                 self?.select(itemID)
             }
+            stickerCell.setBusy(busyItemIDs.contains(itemID))
+            // Set both ways, not just off: one controller now serves both presentation contexts,
+            // and a cell recycled from the full-size surface must come back draggable rather than
+            // silently inert.
+            stickerCell.setPeelDragEnabled(!suppressesPeelDrag)
             return stickerCell
         }
 
@@ -153,6 +182,10 @@ final class StickerGridViewController: UIViewController {
             snapshot.appendItems(itemIDs, toSection: section.id)
         }
 
+        // Keep the busy marks whose items survived the reload — their downloads are still running
+        // — and drop the rest, which nothing will ever clear.
+        busyItemIDs.formIntersection(orderedIDs)
+
         loadViewIfNeeded()
         // Without animation: the drawer is small, and a cross-fade on a full library reload reads
         // as flicker rather than as motion.
@@ -166,8 +199,34 @@ final class StickerGridViewController: UIViewController {
     /// The single funnel every tap goes through.
     func select(_ itemID: StickerItemID) {
         guard let sticker = stickersByID[itemID] else { return }
+        // A busy item is already working; a second tap must not queue a second send.
+        guard !busyItemIDs.contains(itemID) else { return }
         onSelect?(sticker)
+        onSelectItem?(itemID)
     }
+
+    /// The `MSSticker` behind one grid item.
+    ///
+    /// The full-size surface needs it as well as the item id: a sticker send inserts this object
+    /// directly, exactly as the Stickers drawer does, while an image send resolves a file the grid
+    /// has never seen.
+    func sticker(for itemID: StickerItemID) -> MSSticker? { stickersByID[itemID] }
+
+    /// Marks one item as working, so it shows a spinner and stops accepting taps.
+    func setBusy(_ busy: Bool, for itemID: StickerItemID) {
+        if busy {
+            busyItemIDs.insert(itemID)
+        } else {
+            busyItemIDs.remove(itemID)
+        }
+        guard let indexPath = dataSource.indexPath(for: itemID),
+              let cell = collectionView.cellForItem(at: indexPath) as? StickerCell else {
+            return
+        }
+        cell.setBusy(busy)
+    }
+
+    func isBusy(_ itemID: StickerItemID) -> Bool { busyItemIDs.contains(itemID) }
 
     func selectSticker(at indexPath: IndexPath) {
         let snapshot = dataSource.snapshot()
@@ -355,7 +414,9 @@ final class StickerCell: UICollectionViewCell {
 
     private let stickerView = MSStickerView(frame: .zero, sticker: nil)
     private let tapRecognizer = UITapGestureRecognizer()
+    private let spinner = UIActivityIndicatorView(style: .medium)
     private var onTap: (() -> Void)?
+    private(set) var isBusy = false
 
     /// Tracks our intent rather than `MSStickerView.isAnimating()`: a static PNG has an
     /// `animationDuration` of zero and reports `false` even after `startAnimating()`.
@@ -380,6 +441,14 @@ final class StickerCell: UICollectionViewCell {
         tapRecognizer.delegate = self
         stickerView.addGestureRecognizer(tapRecognizer)
 
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        spinner.hidesWhenStopped = true
+        contentView.addSubview(spinner)
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+        ])
+
         isAccessibilityElement = true
         accessibilityTraits = [.button, .image]
         accessibilityIdentifier = "sticker-cell"
@@ -395,6 +464,35 @@ final class StickerCell: UICollectionViewCell {
         stopStickerAnimation()
         stickerView.sticker = sticker
         accessibilityLabel = sticker.localizedDescription
+    }
+
+    /// Work is in flight for this sticker: dim it, spin, and refuse further touches.
+    func setBusy(_ busy: Bool) {
+        isBusy = busy
+        if busy {
+            spinner.startAnimating()
+        } else {
+            spinner.stopAnimating()
+        }
+        stickerView.alpha = busy ? 0.35 : 1
+        stickerView.isUserInteractionEnabled = !busy
+        if busy {
+            accessibilityTraits.insert(.notEnabled)
+        } else {
+            accessibilityTraits.remove(.notEnabled)
+        }
+    }
+
+    /// Toggles Apple's peel/drag while leaving our own tap recognizer alone.
+    ///
+    /// `MSStickerView` installs those recognizers itself and exposes no switch for them, so this
+    /// reaches for `gestureRecognizers` directly and may quietly stop working on a future OS.
+    /// The full-size surface's hint copy — never "press and hold" — is the real defense; this is
+    /// belt-and-braces so a drag cannot substitute the ≤500 KB rendition for the one asked for.
+    func setPeelDragEnabled(_ enabled: Bool) {
+        for recognizer in stickerView.gestureRecognizers ?? [] where recognizer !== tapRecognizer {
+            recognizer.isEnabled = enabled
+        }
     }
 
     func startStickerAnimation() {
@@ -414,6 +512,7 @@ final class StickerCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         stopStickerAnimation()
+        setBusy(false)
         stickerView.sticker = nil
         onTap = nil
         accessibilityLabel = nil

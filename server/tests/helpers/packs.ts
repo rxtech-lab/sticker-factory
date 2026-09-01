@@ -14,11 +14,13 @@ import { getObjectStore, objectKey } from "@/lib/storage/r2";
 export async function seedPublishedSticker(
   db: Database,
   ownerId: string,
-  options: { title?: string; kind?: "static" | "animated" } = {},
+  options: { title?: string; kind?: "static" | "animated"; attachments?: boolean } = {},
 ) {
   const stickerId = crypto.randomUUID();
   const systemAssetId = crypto.randomUUID();
   const pngAssetId = crypto.randomUUID();
+  const attachmentMediumAssetId = crypto.randomUUID();
+  const attachmentSmallAssetId = crypto.randomUUID();
   const revisionId = crypto.randomUUID();
   const now = new Date();
 
@@ -33,7 +35,14 @@ export async function seedPublishedSticker(
   });
 
   const store = getObjectStore();
-  for (const [id, kind] of [[systemAssetId, "system"], [pngAssetId, "master"]] as const) {
+  const seeded: [string, "system" | "master" | "attachment", number][] = [
+    [systemAssetId, "system", 408],
+    [pngAssetId, "master", 1024],
+  ];
+  if (options.attachments) {
+    seeded.push([attachmentMediumAssetId, "attachment", 408], [attachmentSmallAssetId, "attachment", 300]);
+  }
+  for (const [id, kind, dimension] of seeded) {
     const r2Key = objectKey(ownerId, id, "image/png");
     // Signing a download re-checks that the object exists, so the bytes have to be there too.
     await store.put(r2Key, { bytes: Buffer.from(`${kind}:${id}`), contentType: "image/png" });
@@ -46,8 +55,8 @@ export async function seedPublishedSticker(
       r2Key,
       mimeType: "image/png",
       byteSize: 4096,
-      width: kind === "system" ? 408 : 1024,
-      height: kind === "system" ? 408 : 1024,
+      width: dimension,
+      height: dimension,
       frameCount: 1,
       sha256: id.replace(/-/g, "").padEnd(64, "0"),
       hasAlpha: true,
@@ -75,12 +84,14 @@ export async function seedPublishedSticker(
     masterAssetId: pngAssetId,
     pngAssetId,
     systemAssetId,
+    attachmentMediumAssetId: options.attachments ? attachmentMediumAssetId : null,
+    attachmentSmallAssetId: options.attachments ? attachmentSmallAssetId : null,
     createdAt: now,
     decidedAt: now,
   });
   await db.update(stickers).set({ activeRevisionId: revisionId }).where(eq(stickers.id, stickerId));
 
-  return { stickerId, revisionId, systemAssetId, pngAssetId };
+  return { stickerId, revisionId, systemAssetId, pngAssetId, attachmentMediumAssetId, attachmentSmallAssetId };
 }
 
 export async function seedUser(db: Database, id: string, displayName?: string) {

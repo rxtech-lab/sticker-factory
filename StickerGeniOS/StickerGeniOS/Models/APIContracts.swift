@@ -132,6 +132,12 @@ nonisolated enum AssetKind: String, Codable, CaseIterable, Hashable, Sendable {
     case chatAttachment = "chat_attachment"
     /// A frame atlas: one transparent PNG holding a grid of frames lifted from a Live Photo.
     case sequence
+    /// A smaller copy of the sharing rendition, at 408 or 300 px, for WinkySticker's size control.
+    ///
+    /// Its own kind rather than `apng` because a static sticker has these too and they are ordinary
+    /// still PNGs, and not `system` because nothing here is under Apple's 500 KB ceiling — that is
+    /// the point of them.
+    case attachment
 }
 
 /// How a frame atlas is packed, sent with the upload intent.
@@ -512,6 +518,22 @@ nonisolated struct CreateStickerRequest: Codable, Sendable {
     var referenceAssetIds: [String]
 }
 
+/// Turns an image the app already holds into a static sticker project, with nothing generated.
+///
+/// The artwork exists — a concept render on screen, or a picture the user chose — so the ordinary
+/// create path would spend a generation redrawing it. What comes back is an ordinary sticker with
+/// an accepted, active root revision, ready to have its exports published.
+nonisolated struct ImportStickerRequest: Codable, Sendable {
+    var title: String
+    var assetId: String
+}
+
+nonisolated struct ImportStickerResponse: Codable, Sendable {
+    var stickerId: String
+    var threadId: String
+    var revisionId: String
+}
+
 nonisolated struct UpdateStickerRequest: Codable, Sendable {
     var title: String
 }
@@ -633,6 +655,10 @@ nonisolated struct PublishExportsRequest: Codable, Sendable {
     var apngAssetId: String?
     var mp4AssetId: String?
     var systemAssetId: String
+    /// The 408 px and 300 px copies of the sharing rendition, sent as a pair or not at all. The
+    /// server refuses one without the other rather than half-populating a sticker's size set.
+    var attachmentMediumAssetId: String?
+    var attachmentSmallAssetId: String?
     var mp4Background: StickerMP4BackgroundV1?
     /// Sent only as `.still`, and only for an animated sticker whose motion could not be squeezed
     /// under Apple's 500 KB ceiling at any rung of the export ladder. Omitting it means the ordinary

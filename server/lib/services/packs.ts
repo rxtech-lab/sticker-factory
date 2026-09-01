@@ -1,6 +1,12 @@
 import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
-import { previewAssetIdSql, previewAssets, systemAssets } from "@/lib/db/columns";
+import {
+  attachmentMediumAssets,
+  attachmentSmallAssets,
+  previewAssetIdSql,
+  previewAssets,
+  systemAssets,
+} from "@/lib/db/columns";
 import {
   creatorProfiles,
   packInstalls,
@@ -14,6 +20,8 @@ import {
 } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import {
+  attachmentMediumSummaryColumns,
+  attachmentSmallSummaryColumns,
   listStickers,
   previewAssetSummaryColumns,
   serializeStickerSummary,
@@ -243,6 +251,8 @@ async function loadPackMembers(
     sticker: stickerSummaryColumns,
     systemAsset: systemAssetSummaryColumns,
     previewAsset: previewAssetSummaryColumns,
+    attachmentMedium: attachmentMediumSummaryColumns,
+    attachmentSmall: attachmentSmallSummaryColumns,
   })
     .from(stickerPackItems)
     .innerJoin(stickers, eq(stickers.id, stickerPackItems.stickerId))
@@ -252,6 +262,8 @@ async function loadPackMembers(
       eq(systemAssets.state, "ready"),
     ))
     .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql))
+    .leftJoin(attachmentMediumAssets, eq(attachmentMediumAssets.id, stickerRevisions.attachmentMediumAssetId))
+    .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId))
     .where(and(...conditions))
     .orderBy(asc(stickerPackItems.packId), asc(stickerPackItems.position), asc(stickerPackItems.stickerId));
 
@@ -259,7 +271,13 @@ async function loadPackMembers(
   for (const row of rows) {
     const bucket = byPack.get(row.packId) ?? [];
     if (bucket.length >= perPack) continue;
-    bucket.push({ sticker: row.sticker, systemAsset: row.systemAsset, previewAsset: row.previewAsset });
+    bucket.push({
+      sticker: row.sticker,
+      systemAsset: row.systemAsset,
+      previewAsset: row.previewAsset,
+      attachmentMedium: row.attachmentMedium,
+      attachmentSmall: row.attachmentSmall,
+    });
     byPack.set(row.packId, bucket);
   }
   for (const packId of packIds) if (!byPack.has(packId)) byPack.set(packId, []);

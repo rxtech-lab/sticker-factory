@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /.swc
+
+# Row dumps written by scripts/rebuild-revisions-table.ts before it drops anything. Real user data.
+sticker_revisions-backup*.json

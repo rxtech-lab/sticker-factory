@@ -2,6 +2,7 @@ import AnimatedView
 import Foundation
 import Observation
 import OSLog
+import UIKit
 
 nonisolated struct StickerJobState: Sendable, Equatable {
     var jobID: String
@@ -294,6 +295,82 @@ final class StickerStore {
         reattachAttempts[detail.id] = 0
         observe(jobID: response.job.id, stickerID: detail.id, sourceMessageID: response.initialMessageId)
         return detail.sticker
+    }
+
+    /// Puts a picture the app is already holding into the sticker pack, published and ready to send.
+    ///
+    /// "Add to Sticker" has to end somewhere Messages can see, and Messages reads the *published*
+    /// library — the extension mirrors the server and prunes anything the server does not list, so
+    /// writing the file into the shared cache directly would survive exactly until the next
+    /// refresh. The work is therefore the whole publish: import the image as a static project,
+    /// render its PNG and system renditions, and register them.
+    ///
+    /// Nothing is generated. `importSticker` costs no model time, which is what makes this a
+    /// reasonable thing to hang off a long-press.
+    ///
+    /// - Returns: the new sticker, already in `stickers` so the library shows it without a reload.
+    @discardableResult
+    func addImageToStickerPack(_ image: UIImage, title: String) async throws -> Sticker {
+        guard let data = image.pngData() else { throw MediaNormalizationError.unreadableImage }
+        let attachment = try MediaNormalizer.reference(data: data, basename: "sticker-import")
+        let assetIDs = try await upload([attachment], stickerID: nil, kind: .reference)
+        guard let assetID = assetIDs.first else { throw MediaNormalizationError.unreadableImage }
+
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let response = try await api.importSticker(
+            .init(title: String((trimmed.isEmpty ? String(localized: "Sticker") : trimmed).prefix(64)), assetId: assetID),
+            idempotencyKey: UUID().uuidString
+        )
+
+        let detail = try await api.sticker(id: response.stickerId)
+        guard let revision = detail.revisions.first(where: { $0.id == response.revisionId }) else {
+            throw StickerPublishError.importedRevisionUnavailable
+        }
+        // The image the renderer draws is the one the caller handed over, not a re-download of the
+        // asset that was just uploaded from it — the bytes are the same and the round trip is not.
+        // Sticker-only: a still has no video to encode, and nothing here is going to a share sheet.
+        let registered = try await StickerPublisher(api: api).publish(
+            stickerID: response.stickerId,
+            revision: revision,
+            assets: [assetID: image],
+            verifiedAssetIDs: [assetID],
+            selection: .sticker
+        )
+
+        let published = try await awaitPackPublish(stickerID: response.stickerId, jobID: registered.jobID)
+        stickers.removeAll { $0.id == published.id }
+        stickers.insert(published.sticker, at: 0)
+        details[published.id] = published
+        return published.sticker
+    }
+
+    /// Waits for a registered export to actually land, and hands back the sticker once it has.
+    ///
+    /// Registering an export only queues it — the renditions are bound server-side — so returning
+    /// here would report a sticker in the pack before there was anything in the pack. Watched
+    /// directly rather than through `observe`, which would put this brand-new sticker into the
+    /// computing state the chat screen draws, on a screen that is not about it.
+    private func awaitPackPublish(stickerID: String, jobID: String) async throws -> StickerDetail {
+        var failureMessage: String?
+        do {
+            for try await event in api.generationEvents(jobID: jobID, after: nil) {
+                if event.type == .failed { failureMessage = event.data.message }
+                if event.type == .failed || event.type == .completed { break }
+            }
+        } catch {
+            // The stream is a latency optimisation, never the source of truth. A dropped connection
+            // says nothing about the export, so it falls through to the poll below; a cancelled one
+            // is the caller going away and has to stay cancelled.
+            if Self.isCancellation(error) { throw error }
+        }
+        if let failureMessage { throw StickerPublishError.packPublishFailed(failureMessage) }
+
+        for attempt in 0..<6 {
+            if attempt > 0 { try await Task.sleep(for: .seconds(1)) }
+            let detail = try await api.sticker(id: stickerID)
+            if detail.activeRevision?.hasPublishedExports == true { return detail }
+        }
+        throw StickerPublishError.packPublishFailed(nil)
     }
 
     /// Records a freshly fetched detail, and keeps the library's own summary of the same sticker in

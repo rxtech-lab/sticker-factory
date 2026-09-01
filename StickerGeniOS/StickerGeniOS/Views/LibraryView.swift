@@ -410,7 +410,9 @@ struct PackStickerPreview: View {
     var body: some View {
         StickerBackground {
             VStack(spacing: 16) {
-                StickerThumbnail(sticker: sticker, api: api)
+                // `.preview`: one sticker filling a sheet can afford frames at twice the size a
+                // grid tile decodes them at.
+                StickerThumbnail(sticker: sticker, api: api, detail: .preview)
                     .aspectRatio(1, contentMode: .fit)
                     .padding()
                 Label(sticker.kind.label, systemImage: sticker.kind.symbol)
