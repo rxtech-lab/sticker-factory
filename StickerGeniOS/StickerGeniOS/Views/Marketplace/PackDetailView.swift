@@ -12,6 +12,12 @@ struct PackDetailView: View {
     let packID: String
     @State private var isWorking = false
     @State private var previewedSticker: Sticker?
+    @State private var isEditing = false
+    /// Set by the editor when the pack is gone, so this screen pops instead of waiting on a detail
+    /// the store will never hand back.
+    @State private var wasDeleted = false
+
+    @Environment(\.dismiss) private var dismiss
 
     private var detail: StickerPackDetail? { store.details[packID] }
 
@@ -41,6 +47,18 @@ struct PackDetailView: View {
         }
         .sheet(item: $previewedSticker) { sticker in
             stickerPreview(sticker)
+        }
+        // Popping happens on the sheet's way out rather than the moment the delete lands: dismissing
+        // a sheet and its presenter in the same turn drops the animation halfway.
+        .sheet(isPresented: $isEditing, onDismiss: { if wasDeleted { dismiss() } }) {
+            if let detail {
+                NavigationStack {
+                    PackEditorView(store: store, detail: detail) {
+                        wasDeleted = true
+                        isEditing = false
+                    }
+                }
+            }
         }
         .task(id: packID) { await store.loadDetail(packID: packID) }
     }
@@ -184,14 +202,23 @@ struct PackDetailView: View {
             }
 
             if detail.isMine {
-                // Self-install is refused server-side: the creator's stickers are already in their
-                // own section, so adding the pack would duplicate every one of them.
-                Label("You created this pack", systemImage: "checkmark.seal.fill")
-                    .font(.subheadline.weight(.medium))
+                // There is nothing to install — self-install is refused server-side, since the
+                // creator's own stickers already sit in their library — so the bar carries the one
+                // thing the creator *can* do here. A published pack is editable exactly like a
+                // draft: the change reaches everyone who added it.
+                Button { openEditor() } label: {
+                    Label("Edit pack", systemImage: "slider.horizontal.3")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(AppColors.accent)
+                .accessibilityIdentifier("pack-edit-button")
+
+                Text("Your own stickers are already in your library.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .glassEffect(.regular, in: .capsule)
             } else if detail.installed {
                 // Already added: the way out stays available but does not compete with the grid,
                 // so it drops to plain glass while adding keeps the tinted, prominent treatment.
@@ -226,6 +253,11 @@ struct PackDetailView: View {
         .font(.headline)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
+    }
+
+    private func openEditor() {
+        Haptics.tap(.light)
+        isEditing = true
     }
 
     private func toggleInstall(_ detail: StickerPackDetail) {

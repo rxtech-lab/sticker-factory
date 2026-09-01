@@ -252,6 +252,19 @@ final class MarketplaceStore {
         return detail
     }
 
+    /// Renames a pack, or rewrites its description. Applies to a published pack as much as a draft:
+    /// the slug is the shared link and the server keeps it, so a rename never breaks a URL.
+    ///
+    /// `summary: nil` clears the description rather than leaving it alone — the request encodes it
+    /// explicitly for exactly that reason.
+    func updateDetails(packID: String, title: String, summary: String?) async throws {
+        apply(try await api.updatePack(
+            id: packID,
+            request: .init(title: title, summary: summary),
+            idempotencyKey: UUID().uuidString
+        ))
+    }
+
     func setItems(packID: String, stickerIDs: [String]) async throws {
         apply(try await api.setPackItems(id: packID, stickerIDs: stickerIDs, idempotencyKey: UUID().uuidString))
     }

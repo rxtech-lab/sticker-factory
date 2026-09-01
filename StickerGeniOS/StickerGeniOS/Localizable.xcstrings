@@ -180,6 +180,9 @@
         }
       }
     },
+    "%lld stickers in this pack are hidden from people who added it." : {
+
+    },
     "%lld." : {
       "localizations" : {
         "zh-CN" : {
@@ -291,6 +294,9 @@
           }
         }
       }
+    },
+    "1 sticker in this pack is hidden from people who added it." : {
+
     },
     "1. Generate" : {
       "localizations" : {
@@ -844,6 +850,9 @@
       }
     },
     "Animation format" : {
+
+    },
+    "Anyone can find this pack. Edits reach everyone who added it." : {
 
     },
     "assistant: %@" : {
@@ -1707,6 +1716,9 @@
         }
       }
     },
+    "Delete pack" : {
+
+    },
     "Delete project" : {
       "localizations" : {
         "zh-CN" : {
@@ -1723,6 +1735,9 @@
         }
       }
     },
+    "Delete this pack?" : {
+
+    },
     "Delete this sticker project?" : {
       "localizations" : {
         "zh-CN" : {
@@ -1738,6 +1753,9 @@
           }
         }
       }
+    },
+    "Deleting pack…" : {
+
     },
     "Deleting…" : {
       "localizations" : {
@@ -1947,6 +1965,9 @@
         }
       }
     },
+    "Edit pack" : {
+
+    },
     "Edit Sticker" : {
       "localizations" : {
         "zh-CN" : {
@@ -1962,6 +1983,9 @@
           }
         }
       }
+    },
+    "Editing a sticker on device returns it to draft, and a draft cannot appear in a pack. Publish it again to bring it back — but saving the sticker list here drops it from the pack for good." : {
+
     },
     "Editing layers" : {
       "localizations" : {
@@ -2597,6 +2621,9 @@
         }
       }
     },
+    "It disappears from the marketplace and from everyone who added it. Your stickers themselves are untouched." : {
+
+    },
     "Keep it" : {
       "localizations" : {
         "zh-CN" : {
@@ -2628,6 +2655,9 @@
           }
         }
       }
+    },
+    "Keep pack" : {
+
     },
     "Kept" : {
       "localizations" : {
@@ -3069,6 +3099,9 @@
         }
       }
     },
+    "Move to draft" : {
+
+    },
     "MP4 background" : {
       "localizations" : {
         "zh-CN" : {
@@ -3431,6 +3464,9 @@
         }
       }
     },
+    "Nothing in this pack yet — add the stickers it should contain." : {
+
+    },
     "Nothing of yours matches this filter." : {
       "localizations" : {
         "zh-CN" : {
@@ -3550,6 +3586,9 @@
       }
     },
     "Only the subject you lift is uploaded. The rest of the photo stays on your device." : {
+
+    },
+    "Only you can see this pack until you publish it." : {
 
     },
     "Open %@ from the Messages app drawer to send published stickers, or share the exported files anywhere." : {
@@ -3973,6 +4012,9 @@
           }
         }
       }
+    },
+    "Publish pack" : {
+
     },
     "Published" : {
       "localizations" : {
@@ -4473,6 +4515,9 @@
         }
       }
     },
+    "Returning to draft…" : {
+
+    },
     "Revert" : {
       "localizations" : {
         "zh-CN" : {
@@ -4684,6 +4729,9 @@
         }
       }
     },
+    "Saving details…" : {
+
+    },
     "Saving replaces it with an unpublished draft. Export again to put it back in Messages." : {
       "localizations" : {
         "zh-CN" : {
@@ -4699,6 +4747,9 @@
           }
         }
       }
+    },
+    "Saving stickers…" : {
+
     },
     "Say what is wrong and the assistant will draft a new plan right away. Leave it blank to just dismiss this one." : {
       "localizations" : {
@@ -5193,6 +5244,9 @@
         }
       }
     },
+    "Status" : {
+
+    },
     "Sticker" : {
       "localizations" : {
         "zh-CN" : {
@@ -5341,6 +5395,9 @@
           }
         }
       }
+    },
+    "Stickers (%lld)" : {
+
     },
     "Still being drafted." : {
       "localizations" : {
@@ -5703,6 +5760,12 @@
       }
     },
     "The first frame of your capture. It animates in place, with the other layers built around it." : {
+
+    },
+    "The first sticker is the pack's cover. Drag to reorder." : {
+
+    },
+    "The link stays /marketplace/%@ even if you rename this pack." : {
 
     },
     "The media upload could not be completed (HTTP %lld)." : {
@@ -6508,6 +6571,9 @@
         }
       }
     },
+    "Visibility" : {
+
+    },
     "Wait for the current AI edit to finish before sending another." : {
       "localizations" : {
         "zh-CN" : {
@@ -6672,6 +6738,7 @@
       }
     },
     "You created this pack" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -6737,6 +6804,9 @@
           }
         }
       }
+    },
+    "Your own stickers are already in your library." : {
+
     },
     "Your session expired. Please sign in again." : {
       "localizations" : {

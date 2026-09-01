@@ -263,6 +263,62 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["5. Use it"].exists)
     }
 
+    /// A pack you created stays editable once it exists — the whole point of the editor is that
+    /// publishing is not a one-way door, so the screen has to be reachable from the pack itself.
+    @MainActor
+    func testOwnedPackIsEditableFromItsDetailScreen() {
+        app.tabBars.buttons["Marketplace"].tap()
+        XCTAssertTrue(app.navigationBars["Marketplace"].waitForExistence(timeout: 5))
+
+        element("create-pack-button").tap()
+        let title = element("pack-title-field")
+        XCTAssertTrue(title.waitForExistence(timeout: 3))
+        title.tap()
+        title.typeText("Editable pack")
+
+        element("pack-choose-stickers-button").tap()
+        let pick = element("pack-pick-sticker-demo")
+        XCTAssertTrue(pick.waitForExistence(timeout: 5))
+        pick.tap()
+        element("sticker-picker-done-button").tap()
+        element("pack-create-draft-button").tap()
+
+        // The composer closes onto the marketplace, and a pack of your own only lists under "My
+        // packs" — a draft is invisible in browse by design.
+        XCTAssertTrue(app.navigationBars["Marketplace"].waitForExistence(timeout: 8))
+        app.segmentedControls.buttons["My packs"].tap()
+        let card = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "marketplace-pack-"))
+            .firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        card.tap()
+
+        let edit = element("pack-edit-button")
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        edit.tap()
+
+        let editorTitle = element("pack-editor-title-field")
+        XCTAssertTrue(editorTitle.waitForExistence(timeout: 5))
+        XCTAssertEqual(editorTitle.value as? String, "Editable pack")
+        XCTAssertTrue(element("pack-editor-publish-button").exists)
+        // Scoped to buttons: an unscoped descendants query resolves the toolbar item's container
+        // first, and a container reports itself enabled whatever the button inside it says.
+        let save = app.buttons["pack-editor-save-button"]
+        // Nothing has been touched yet, so there is nothing to send.
+        XCTAssertTrue(save.waitForExistence(timeout: 3))
+        XCTAssertFalse(save.isEnabled)
+
+        let summary = element("pack-editor-summary-field")
+        summary.tap()
+        summary.typeText("Edited after it was created")
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+
+        // Saving closes the editor, and the detail screen behind it shows the edit rather than the
+        // copy it was opened with.
+        XCTAssertTrue(app.staticTexts["Edited after it was created"].waitForExistence(timeout: 8))
+    }
+
     private func openCreateSheet() {
         let create = element("create-sticker-button")
         XCTAssertTrue(create.waitForExistence(timeout: 3))
