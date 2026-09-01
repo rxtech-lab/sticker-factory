@@ -474,6 +474,57 @@ struct StickerExportLadderTests {
         #expect(squeezed.metadata.durationSeconds == StickerExportMetadataPolicy.renderedDuration(document))
     }
 
+    /// A publish renders one sharing rendition, at the top of the ladder, and that single file is
+    /// what WinkySticker sends at every size.
+    ///
+    /// It briefly rendered three — 618, 408 and 300 — and they were indistinguishable once sent,
+    /// because `insertAttachment` scales an image attachment to a fixed bubble width whatever its
+    /// pixels are. The physical size is chosen on the device now; `AttachmentCanvasRendererTests`
+    /// in the extension's suite is where that ratio is asserted.
+    @MainActor
+    @Test("A publish renders one sharing rendition, at the top of the ladder")
+    func sharingRenditionIsExportedAtFullSize() async throws {
+        var document = PreviewFixtures.animatedBaseDocument
+        document.layers = [
+            .shape(.init(base: .init(id: "backdrop", name: "Backdrop"), shape: .burst, fill: .solid("#FFE7A3"))),
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+        ]
+        document.durationSeconds = 1
+        document.fps = 12
+        let exporter = StickerExporter()
+        let expectedFrames = StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps)
+
+        let rendition = try await exporter.exportAPNG(document: document, assets: [:])
+        defer { try? FileManager.default.removeItem(at: rendition.url) }
+        // The top rung, not a rung it fell to: this fixture is two flat shapes and cannot overshoot
+        // the upload ceiling.
+        #expect(rendition.metadata.width == StickerExportMetadataPolicy.sharingApngDimensions[0])
+        #expect(rendition.metadata.height == rendition.metadata.width)
+        // Unlike the Messages rendition, this ladder never spends frame rate.
+        #expect(rendition.metadata.fps == document.fps)
+        let source = try #require(
+            CGImageSourceCreateWithData(try Data(contentsOf: rendition.url) as CFData, nil)
+        )
+        #expect(CGImageSourceGetCount(source) == expectedFrames)
+    }
+
+    /// A static sticker's sharing rendition is its master: one frame has no byte ceiling to fight,
+    /// so it is a plain full-colour PNG at full size.
+    @MainActor
+    @Test("A static sticker exports its master at full colour and full size")
+    func staticMasterRendersAtFullColour() throws {
+        let document = PreviewFixtures.staticDocument
+        let exporter = StickerExporter()
+
+        let master = try exporter.exportStaticPNG(document: document, assets: [:])
+        defer { try? FileManager.default.removeItem(at: master.url) }
+        #expect(master.metadata.width == 1024)
+        #expect(master.metadata.height == 1024)
+        #expect(master.metadata.hasAlpha)
+        #expect(master.metadata.fps == nil)
+    }
+
+
     @MainActor
     @Test("Exporting as video renders the video and nothing else")
     func videoOnlyExportSkipsTheStickerLadder() async throws {
@@ -485,13 +536,13 @@ struct StickerExportLadderTests {
         let publisher = StickerPublisher(api: MockStickerAPIClient())
 
         let video = try await publisher.export(
-            revision: revision, assets: [:], verifiedAssetIDs: [], size: .small, selection: .video
+            revision: revision, assets: [:], verifiedAssetIDs: [], selection: .video
         )
         defer { video.forEach { try? FileManager.default.removeItem(at: $0.url) } }
         #expect(video.map(\.metadata.format) == [.mp4])
 
         let sticker = try await publisher.export(
-            revision: revision, assets: [:], verifiedAssetIDs: [], size: .small, selection: .sticker
+            revision: revision, assets: [:], verifiedAssetIDs: [], selection: .sticker
         )
         defer { sticker.forEach { try? FileManager.default.removeItem(at: $0.url) } }
         // The sharing rendition and the Messages rendition, both APNG, and no video encode at all.
@@ -509,7 +560,7 @@ struct StickerExportLadderTests {
 
         let result = try await publisher.publish(
             stickerID: "sticker-demo", revision: revision, assets: [:], verifiedAssetIDs: [],
-            size: .small, selection: .sticker, sharing: .gif
+            selection: .sticker, sharing: .gif
         )
         defer { result.localExports.forEach { try? FileManager.default.removeItem(at: $0.url) } }
 
@@ -517,6 +568,8 @@ struct StickerExportLadderTests {
         // animate in WhatsApp or Discord, and the file that reaches the server is still the APNG.
         // Sharing both would put two files in the sheet that differ in a way nothing explains.
         #expect(result.localExports.map(\.metadata.format) == [.gif, .apng])
+        // The sharing rendition, then the ≤500 KB Messages one. Nothing else: WinkySticker's three
+        // sizes are derived from the APNG on the device rather than uploaded.
         #expect(await api.uploadedKinds == [.apng, .system])
 
         // Nothing about the published sticker changed, so the sharing choice must not have leaked
@@ -558,7 +611,7 @@ struct StickerExportLadderTests {
 
         let result = try await publisher.publish(
             stickerID: "sticker-demo", revision: revision, assets: [:], verifiedAssetIDs: [],
-            size: .small, selection: .sticker
+            selection: .sticker
         )
         defer { result.localExports.forEach { try? FileManager.default.removeItem(at: $0.url) } }
         // The sticker set is published however the export was asked for; the video is not, because

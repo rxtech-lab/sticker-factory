@@ -47,19 +47,35 @@ enum StickerInsertPolicy {
         return .failed
     }
 
+    /// Which app is asking, because the recovery advice is not the same.
+    ///
+    /// Telling someone to peel and drag is right in the sticker app and actively wrong in the
+    /// full-size one: peel/drag is `MSStickerView`'s own gesture and inserts the ≤500 KB
+    /// `MSSticker`, so following that hint silently sends the small image they opened the
+    /// full-size app to avoid.
+    enum StickerInsertSurface: Sendable {
+        case sticker
+        case fullSize
+    }
+
     static func hint(
         for outcome: StickerInsertOutcome,
-        context: MSMessagesAppPresentationContext
+        context: MSMessagesAppPresentationContext,
+        surface: StickerInsertSurface = .sticker
     ) -> String? {
-        switch outcome {
-        case .inserted:
+        switch (surface, outcome) {
+        case (_, .inserted):
             return nil
-        case .unavailableInContext, .noConversation:
+        case (.sticker, .unavailableInContext), (.sticker, .noConversation):
             return String(localized: "Press and hold a sticker to drag it in.")
-        case .failed:
+        case (.sticker, .failed):
             return context == .media
                 ? String(localized: "Press and hold a sticker to drag it in.")
                 : String(localized: "That sticker couldn't be added. Try again.")
+        case (.fullSize, .unavailableInContext), (.fullSize, .noConversation):
+            return String(localized: "Open a conversation to send a full-size image.")
+        case (.fullSize, .failed):
+            return String(localized: "That image couldn't be sent. Try again.")
         }
     }
 }

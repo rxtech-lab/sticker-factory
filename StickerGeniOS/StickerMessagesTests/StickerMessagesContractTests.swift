@@ -42,10 +42,20 @@ struct StickerMessagesContractTests {
         let second = URL(fileURLWithPath: "/tmp/second.png")
         var gate = StickerInsertGate()
 
-        #expect(gate.shouldInsert(stickerURL: first, uptime: 10))
-        #expect(!gate.shouldInsert(stickerURL: first, uptime: 10.2))
-        #expect(gate.shouldInsert(stickerURL: second, uptime: 10.3))
-        #expect(gate.shouldInsert(stickerURL: first, uptime: 10.7))
+        // Each result is bound before it reaches `#expect`: the macro expands its argument into a
+        // closure, and calling a `mutating` member on a captured `var` there does not compile.
+        let acceptsFirst = gate.shouldInsert(stickerURL: first, uptime: 10)
+        let rejectsRepeat = gate.shouldInsert(stickerURL: first, uptime: 10.2)
+        let acceptsOther = gate.shouldInsert(stickerURL: second, uptime: 10.3)
+        let acceptsAfterWindow = gate.shouldInsert(stickerURL: first, uptime: 10.7)
+
+        #expect(acceptsFirst)
+        #expect(!rejectsRepeat)
+        #expect(acceptsOther)
+        #expect(acceptsAfterWindow)
+
+        // The full-size surface adds a second, longer-lived gate on top of this one: a download
+        // outlives the 0.6 s window, so this alone cannot dedupe taps there.
     }
 
     @Test("Only PNG, APNG, and GIF cache formats are accepted")
@@ -379,6 +389,225 @@ struct StickerMessagesContractTests {
         #expect(StickerInsertPolicy.hint(for: .unavailableInContext, context: .messages)?
             .contains("Press and hold") == true)
     }
+
+    // MARK: - Full-size rendition
+
+    @Test("Adding a full-size policy leaves the Messages cache contract untouched")
+    func systemCachePolicyIsUnchanged() {
+        #expect(StickerCachePolicy.systemSticker.maximumByteCount == 500_000)
+        #expect(StickerCachePolicy.systemSticker.allowedPixelDimensions == [300, 408, 618])
+        #expect(StickerCachePolicy.systemSticker.maximumPixelDimension == 618)
+        #expect(StickerCachePolicy.systemSticker.requiresSquare)
+        // No directory budget: the system cache is bounded by the library itself, and evicting
+        // from it would silently blank stickers the grid is about to draw.
+        #expect(StickerCachePolicy.systemSticker.maximumTotalByteCount == nil)
+        #expect(StickerCachePolicy.systemSticker.directoryName == "StickerFactoryMessages")
+
+        // The statics the client and this suite read must keep tracking the policy.
+        #expect(SharedStickerCache.maximumByteCount == StickerCachePolicy.systemSticker.maximumByteCount)
+        #expect(SharedStickerCache.maximumPixelDimension == StickerCachePolicy.systemSticker.maximumPixelDimension)
+        #expect(SharedStickerCache.allowedPixelDimensions == StickerCachePolicy.systemSticker.allowedPixelDimensions)
+
+        // Two directories, or the two caches would overwrite each other's index.
+        #expect(StickerCachePolicy.fullSize.directoryName != StickerCachePolicy.systemSticker.directoryName)
+    }
+
+    @Test("The full-size policy accepts large and non-square images the sticker policy rejects")
+    func fullSizePolicyAcceptsLargeNonSquareImages() throws {
+        func png(_ width: Int, _ height: Int) -> Data {
+            UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).pngData { context in
+                UIColor.systemTeal.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            }
+        }
+
+        try SharedStickerCache.validateImage(png(1024, 1024), policy: .fullSize)
+        // Non-square is legitimate here: nothing crops a message attachment to a sticker.
+        try SharedStickerCache.validateImage(png(1024, 768), policy: .fullSize)
+        try SharedStickerCache.validateImage(png(300, 300), policy: .fullSize)
+
+        #expect(throws: StickerCacheError.self) {
+            try SharedStickerCache.validateImage(png(2048, 2048), policy: .fullSize)
+        }
+
+        // The bare overload must still mean exactly what it meant before the policy existed.
+        #expect(throws: StickerCacheError.self) { try SharedStickerCache.validateImage(png(1024, 1024)) }
+        #expect(throws: StickerCacheError.self) { try SharedStickerCache.validateImage(png(1024, 768)) }
+    }
+
+    @Test("previewAsset becomes a full-size rendition only when it is worth downloading")
+    func previewAssetDecodesIntoFullSizeRendition() async throws {
+        let transport = PreviewAssetTransport()
+        let client = StickerLibraryClient(baseURL: URL(string: "https://api.example/")!, transport: transport)
+        let byID = Dictionary(
+            uniqueKeysWithValues: try await client.fetchSections(accessToken: "access").map { ($0.stickerID, $0) }
+        )
+
+        let full = try #require(byID["full"]?.fullSize)
+        #expect(full.assetID == "master-1")
+        #expect(full.width == 1024)
+        #expect(!full.isSystemAssetFallback)
+
+        // A server that never learned the field, and one that has nothing bigger to offer.
+        #expect(byID["no-preview"]?.fullSize == nil)
+
+        // The animated chain coalesced down to the system asset: cached already, nothing to fetch.
+        let fallback = try #require(byID["fallback"]?.fullSize)
+        #expect(fallback.isSystemAssetFallback)
+        #expect(fallback.assetID == byID["fallback"]?.assetID)
+
+        // Not ready, oversized, and over-budget all fail closed rather than becoming a doomed tap.
+        #expect(byID["pending"]?.fullSize == nil)
+        #expect(byID["huge-pixels"]?.fullSize == nil)
+        #expect(byID["huge-bytes"]?.fullSize == nil)
+
+        // The sticker itself still appears in every one of those cases.
+        #expect(byID.count == 10)
+    }
+
+    /// An image send resolves one rendition or attaches the cached sticker file. There is no ladder
+    /// to walk: Small/Medium/Large stood here once and could not work, because `insertAttachment`
+    /// scales an image attachment to a fixed bubble width and ignores its pixel dimensions
+    /// entirely. Physical size is now the Sticker/Image choice, not a rendition.
+    @Test("An image send resolves the one rendition, or nothing at all")
+    func imageSendResolvesTheSingleRendition() async throws {
+        let transport = PreviewAssetTransport()
+        let client = StickerLibraryClient(baseURL: URL(string: "https://api.example/")!, transport: transport)
+        let byID = Dictionary(
+            uniqueKeysWithValues: try await client.fetchSections(accessToken: "access").map { ($0.stickerID, $0) }
+        )
+
+        let full = try #require(byID["full"])
+        #expect(full.fullSizeDescriptor()?.assetID == "master-1")
+        // Keyed apart from the system cache's entry for the same sticker, or the two would evict
+        // each other from the same `(section, sticker)` pair.
+        #expect(full.fullSizeDescriptor()?.variant == SystemStickerDescriptor.fullSizeVariant)
+
+        // Nothing to fetch: the caller attaches the cached ≤500 KB rendition instead, which is a
+        // legitimate send rather than a failed one.
+        #expect(try #require(byID["no-preview"]).fullSizeDescriptor() == nil)
+        // Coalesced onto the system asset, so it is already on disk and must not be downloaded
+        // into the full-size cache a second time.
+        #expect(try #require(byID["fallback"]).fullSizeDescriptor() == nil)
+    }
+
+
+    @Test("Only image types the cache can store survive as full-size renditions")
+    func previewAssetWithUnsupportedMimeTypeIsIgnored() async throws {
+        let transport = PreviewAssetTransport()
+        let client = StickerLibraryClient(baseURL: URL(string: "https://api.example/")!, transport: transport)
+        let byID = Dictionary(
+            uniqueKeysWithValues: try await client.fetchSections(accessToken: "access").map { ($0.stickerID, $0) }
+        )
+
+        // WebP and JPEG have no magic-byte branch in `validatedFileExtension`, so offering them
+        // would download bytes the cache then refuses.
+        #expect(byID["webp"]?.fullSize == nil)
+        // GIF is a real animated sharing rendition and must survive.
+        #expect(byID["gif"]?.fullSize?.mimeType == "image/gif")
+    }
+
+    @Test("The full-size descriptor swaps asset identity but keeps the sticker's placement")
+    func fullSizeDescriptorSwapsAssetIdentityOnly() {
+        var descriptor = SystemStickerDescriptor(
+            stickerID: "s1",
+            assetID: "system-1",
+            title: "Wave",
+            mimeType: "image/png",
+            byteSize: 400_000,
+            sha256: "system-sha",
+            updatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        descriptor.sectionID = "pack:p1"
+        descriptor.sectionTitle = "Cozy Cats"
+        descriptor.sectionPosition = 2
+        descriptor.position = 7
+        descriptor.fullSize = FullSizeRendition(
+            assetID: "master-1",
+            mimeType: "image/png",
+            byteSize: 3_000_000,
+            sha256: "master-sha",
+            width: 1024,
+            height: 1024,
+            isSystemAssetFallback: false
+        )
+
+        let full = try? #require(descriptor.fullSizeDescriptor())
+        #expect(full?.assetID == "master-1")
+        #expect(full?.byteSize == 3_000_000)
+        #expect(full?.sha256 == "master-sha")
+        // Placement is identity in the cache index — swapping it would file the copy under a
+        // different sticker.
+        #expect(full?.stickerID == "s1")
+        #expect(full?.sectionID == "pack:p1")
+        #expect(full?.position == 7)
+        // Nothing to recurse into.
+        #expect(full?.fullSize == nil)
+
+        // Two files, so two cache entries: the full-size copy must not share the ≤500 KB
+        // rendition's key, or one send would evict the other.
+        #expect(full?.key != descriptor.key)
+        #expect(full?.key.variant == SystemStickerDescriptor.fullSizeVariant)
+        #expect(full?.key.stickerID == descriptor.key.stickerID)
+        #expect(full?.key.sectionID == descriptor.key.sectionID)
+
+        // A fallback has nothing to describe: its asset is the ≤500 KB file already on disk.
+        descriptor.fullSize = FullSizeRendition(
+            assetID: "system-1",
+            mimeType: "image/png",
+            byteSize: 400_000,
+            sha256: "system-sha",
+            width: 618,
+            height: 618,
+            isSystemAssetFallback: true
+        )
+        #expect(descriptor.fullSizeDescriptor() == nil)
+
+        descriptor.fullSize = nil
+        #expect(descriptor.fullSizeDescriptor() == nil)
+    }
+
+    @Test("The full-size surface never tells anyone to drag the small sticker in")
+    func fullSizeHintNeverSuggestsPeelDrag() {
+        for outcome in [StickerInsertOutcome.unavailableInContext, .noConversation, .failed] {
+            for context in [MSMessagesAppPresentationContext.messages, .media] {
+                let hint = StickerInsertPolicy.hint(for: outcome, context: context, surface: .fullSize)
+                // Following that advice would insert the ≤500 KB MSSticker instead.
+                #expect(hint?.contains("Press and hold") == false)
+                #expect(hint?.isEmpty == false)
+            }
+        }
+        #expect(StickerInsertPolicy.hint(for: .inserted, context: .messages, surface: .fullSize) == nil)
+
+        // The sticker surface keeps its wording, including via the defaulted parameter.
+        #expect(StickerInsertPolicy.hint(for: .noConversation, context: .media, surface: .sticker)?
+            .contains("Press and hold") == true)
+        #expect(
+            StickerInsertPolicy.hint(for: .noConversation, context: .media)
+                == StickerInsertPolicy.hint(for: .noConversation, context: .media, surface: .sticker)
+        )
+    }
+
+    @Test("The download size gate is per call, not a single global ceiling")
+    func downloadSizeGateIsPerCall() async throws {
+        let transport = OversizedAssetTransport(byteCount: 1_000_000)
+        let client = StickerLibraryClient(baseURL: URL(string: "https://api.example/")!, transport: transport)
+
+        await #expect(throws: StickerLibraryError.self) {
+            try await client.download(
+                assetID: "a1",
+                accessToken: "access",
+                maximumByteCount: SharedStickerCache.maximumByteCount
+            )
+        }
+
+        let rendition = try await client.download(
+            assetID: "a1",
+            accessToken: "access",
+            maximumByteCount: StickerCachePolicy.fullSize.maximumByteCount
+        )
+        #expect(rendition.data.count == 1_000_000)
+    }
 }
 
 private struct MainTokenBundle: Codable {
@@ -443,6 +672,113 @@ private actor SectionedStickerTransport: StickerHTTPTransport {
         let response = try #require(HTTPURLResponse(
             url: url, statusCode: 200, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
+        ))
+        return .init(data: body, response: response)
+    }
+}
+
+/// One section covering every shape `previewAsset` arrives in, so the gating rules are exercised
+/// against real JSON rather than hand-built descriptors.
+private actor PreviewAssetTransport: StickerHTTPTransport {
+    func data(for request: URLRequest) async throws -> StickerHTTPResult {
+        let url = try #require(request.url)
+        func sticker(
+            _ id: String,
+            system: String,
+            preview: String?,
+            medium: String? = nil,
+            small: String? = nil
+        ) -> String {
+            let previewField = preview.map { "\"previewAsset\":\($0)," } ?? ""
+            let mediumField = medium.map { "\"attachmentMedium\":\($0)," } ?? ""
+            let smallField = small.map { "\"attachmentSmall\":\($0)," } ?? ""
+            return """
+            {"id":"\(id)","title":"\(id)","updatedAt":"2026-08-24T12:00:00Z",\(previewField)\(mediumField)\(smallField)
+             "systemSticker":{"assetId":"\(system)","mimeType":"image/png","byteSize":100,"sha256":"s"}}
+            """
+        }
+        let stickers = [
+            // The ordinary case: a 1024² master PNG alongside the 618 px sticker.
+            sticker("full", system: "sys-1", preview: """
+            {"id":"master-1","kind":"master","state":"ready","mimeType":"image/png","byteSize":900000,"width":1024,"height":1024,"sha256":"m"}
+            """),
+            sticker("no-preview", system: "sys-2", preview: nil),
+            // Animated with no APNG: the server's chain coalesces to the system asset itself.
+            sticker("fallback", system: "sys-3", preview: """
+            {"id":"sys-3","kind":"system","state":"ready","mimeType":"image/gif","byteSize":480000,"width":618,"height":618,"sha256":"f"}
+            """),
+            sticker("pending", system: "sys-4", preview: """
+            {"id":"master-4","kind":"master","state":"pending","mimeType":"image/png","byteSize":900000,"width":1024,"height":1024,"sha256":"p"}
+            """),
+            sticker("huge-pixels", system: "sys-5", preview: """
+            {"id":"master-5","kind":"master","state":"ready","mimeType":"image/png","byteSize":900000,"width":4096,"height":4096,"sha256":"h"}
+            """),
+            sticker("huge-bytes", system: "sys-6", preview: """
+            {"id":"master-6","kind":"master","state":"ready","mimeType":"image/png","byteSize":99000000,"width":1024,"height":1024,"sha256":"b"}
+            """),
+            sticker("webp", system: "sys-7", preview: """
+            {"id":"master-7","kind":"master","state":"ready","mimeType":"image/webp","byteSize":900000,"width":1024,"height":1024,"sha256":"w"}
+            """),
+            sticker("gif", system: "sys-8", preview: """
+            {"id":"share-8","kind":"gif","state":"ready","mimeType":"image/gif","byteSize":900000,"width":512,"height":512,"sha256":"g"}
+            """),
+            // What a sticker published since attachment renditions looks like: all three sizes.
+            sticker(
+                "sizes",
+                system: "sys-9",
+                preview: """
+                {"id":"apng-9","kind":"apng","state":"ready","mimeType":"image/png","byteSize":900000,"width":618,"height":618,"sha256":"l"}
+                """,
+                medium: """
+                {"id":"medium-9","kind":"attachment","state":"ready","mimeType":"image/png","byteSize":400000,"width":408,"height":408,"sha256":"m9"}
+                """,
+                small: """
+                {"id":"small-9","kind":"attachment","state":"ready","mimeType":"image/png","byteSize":200000,"width":300,"height":300,"sha256":"s9"}
+                """
+            ),
+            // Medium published, Small failed its gate. Asking for Small must land on Medium rather
+            // than skipping straight to Large or refusing.
+            sticker(
+                "gap",
+                system: "sys-10",
+                preview: """
+                {"id":"apng-10","kind":"apng","state":"ready","mimeType":"image/png","byteSize":900000,"width":618,"height":618,"sha256":"l10"}
+                """,
+                medium: """
+                {"id":"medium-10","kind":"attachment","state":"ready","mimeType":"image/png","byteSize":400000,"width":408,"height":408,"sha256":"m10"}
+                """,
+                small: """
+                {"id":"small-10","kind":"attachment","state":"pending","mimeType":"image/png","byteSize":200000,"width":300,"height":300,"sha256":"s10"}
+                """
+            ),
+        ].joined(separator: ",")
+
+        let body = Data("""
+        {"sections":[{"id":"mine","kind":"mine","title":"My Stickers","creator":null,"stickers":[\(stickers)]}],
+         "generatedAt":"2026-08-24T12:00:05Z"}
+        """.utf8)
+        let response = try #require(HTTPURLResponse(
+            url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        ))
+        return .init(data: body, response: response)
+    }
+}
+
+/// Serves raw image bytes of a fixed size, so the same body can be accepted or rejected purely on
+/// the ceiling the caller passed.
+private actor OversizedAssetTransport: StickerHTTPTransport {
+    let byteCount: Int
+
+    init(byteCount: Int) { self.byteCount = byteCount }
+
+    func data(for request: URLRequest) async throws -> StickerHTTPResult {
+        let url = try #require(request.url)
+        var body = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        body.append(Data(repeating: 0, count: byteCount - body.count))
+        let response = try #require(HTTPURLResponse(
+            url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "image/png"]
         ))
         return .init(data: body, response: response)
     }

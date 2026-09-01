@@ -88,6 +88,7 @@
       }
     },
     "%@. Detailed artwork can still be exported one size down, or as a still frame, to stay under Apple's 500 KB limit — the export always goes through." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -5273,6 +5274,7 @@
       }
     },
     "Sticker size" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {

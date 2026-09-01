@@ -56,7 +56,6 @@ final class StickerPublisher {
         revision: StickerRevision,
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
-        size: SystemStickerSize = .default,
         selection: StickerExportSelection = .default,
         sharing: StickerSharingFormat = .default,
         progress: StickerExportProgress? = nil
@@ -75,7 +74,6 @@ final class StickerPublisher {
             revision: revision,
             assets: assets,
             verifiedAssetIDs: verifiedAssetIDs,
-            size: size,
             rendering: selection,
             sharing: sharing,
             progress: progress
@@ -95,7 +93,6 @@ final class StickerPublisher {
         revision: StickerRevision,
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
-        size: SystemStickerSize = .default,
         selection: StickerExportSelection = .default,
         sharing: StickerSharingFormat = .default,
         progress: StickerExportProgress? = nil
@@ -105,7 +102,6 @@ final class StickerPublisher {
             revision: revision,
             assets: assets,
             verifiedAssetIDs: verifiedAssetIDs,
-            size: size,
             rendering: selection.includesVideo ? .both : .sticker,
             sharing: sharing,
             progress: progress
@@ -245,7 +241,6 @@ final class StickerPublisher {
         revision: StickerRevision,
         assets: [String: UIImage],
         verifiedAssetIDs: Set<String>,
-        size: SystemStickerSize,
         rendering: StickerExportSelection,
         sharing: StickerSharingFormat,
         progress: StickerExportProgress? = nil
@@ -289,7 +284,7 @@ final class StickerPublisher {
         }
         if rendering.includesSticker || document.kind == .static {
             progress?.begin(.renderSticker)
-            system = try await exporter.exportSystemSticker(document: document, assets: assets, size: size) {
+            system = try await exporter.exportSystemSticker(document: document, assets: assets) {
                 progress?.report($0, for: .renderSticker)
             }
         }

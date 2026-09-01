@@ -4,7 +4,10 @@ import Observation
 import OSLog
 import UIKit
 
-private let preferredStickerSizeKey = "StickerFactoryPreferredStickerSize"
+// There is no preferred sticker size any more. A publish renders every size the sticker can be
+// sent at, and which one arrives is chosen in WinkySticker at send time — where the conversation
+// it is going into is actually known. `StickerFactoryPreferredStickerSize` is deliberately not
+// migrated: the value it held is no longer a question anyone is asked.
 private let preferredExportSelectionKey = "StickerFactoryPreferredExportSelection"
 private let preferredSharingFormatKey = "StickerFactoryPreferredSharingFormat"
 
@@ -30,19 +33,6 @@ final class StickerExportModel {
     /// The run in flight, so Cancel has something to stop. Held here for the same reason the
     /// timeline is: the sheet that starts a run is not the only thing that can outlive it.
     private var exportTask: Task<Void, Never>?
-
-    /// Not part of the document: the canvas is normalized and every export is square, so the
-    /// rendition's pixel size is the only thing that decides how big the sticker arrives. It is
-    /// remembered across stickers rather than per sticker — someone who wants small stickers wants
-    /// them everywhere — and defaults to the largest rung, which is what the ladder did before.
-    var stickerSize: SystemStickerSize = SystemStickerSize(
-        rawValue: UserDefaults.standard.string(forKey: preferredStickerSizeKey) ?? ""
-    ) ?? .default {
-        didSet {
-            guard oldValue != stickerSize else { return }
-            UserDefaults.standard.set(stickerSize.rawValue, forKey: preferredStickerSizeKey)
-        }
-    }
 
     /// Which files the share sheet hands over. Remembered across stickers for the same reason the
     /// size is: someone who wants video wants it every time, not once.
@@ -258,7 +248,6 @@ final class StickerExportModel {
                     revision: exportRevision,
                     assets: assets,
                     verifiedAssetIDs: verifiedAssetIDs,
-                    size: stickerSize,
                     selection: selection,
                     sharing: sharingFormat,
                     progress: progress
@@ -275,7 +264,6 @@ final class StickerExportModel {
                     revision: exportRevision,
                     assets: assets,
                     verifiedAssetIDs: verifiedAssetIDs,
-                    size: stickerSize,
                     selection: selection,
                     sharing: sharingFormat,
                     progress: progress

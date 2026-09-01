@@ -25,7 +25,20 @@ export const AssetKindSchema = z.enum([
   "chat_attachment",
   /** A frame atlas: one transparent PNG holding a grid of frames lifted from a Live Photo. */
   "sequence",
+  /**
+   * A smaller copy of the sharing rendition, at 408 or 300 px.
+   *
+   * What WinkySticker attaches when someone picks Medium or Small. Distinct from `apng` because an
+   * attachment rendition can be a still — a static sticker has these too — and `apng` rejects a
+   * single-frame file by design. Distinct from `system` because nothing here is under Apple's
+   * 500 KB ceiling: these carry the document's own frame rate and full palette, which is the whole
+   * reason they exist.
+   */
+  "attachment",
 ]);
+
+/** Sizes an `attachment` rendition may be written at. Large is the sharing rendition itself. */
+export const ATTACHMENT_RENDITION_DIMENSIONS = { medium: 408, small: 300 } as const;
 
 /**
  * How a frame atlas is packed, declared by the client because the file cannot say.
@@ -141,6 +154,11 @@ export const CreateUploadRequestSchema = z.object({
   if (value.kind === "master" && value.mimeType !== "image/png") {
     context.addIssue({ code: "custom", message: "Static masters must use image/png" });
   }
+  // Same reasoning as `apng` above: an animated attachment rendition *is* a PNG to everything that
+  // transports it, and a static one genuinely is a still PNG.
+  if (value.kind === "attachment" && value.mimeType !== "image/png") {
+    context.addIssue({ code: "custom", message: "Attachment renditions must use image/png" });
+  }
 });
 
 export const CompleteUploadRequestSchema = z.object({
@@ -153,6 +171,15 @@ export const PublishExportsRequestSchema = z.object({
   apngAssetId: z.string().uuid().optional(),
   mp4AssetId: z.string().uuid().optional(),
   systemAssetId: z.string().uuid(),
+  /**
+   * The 408 px and 300 px copies of the sharing rendition.
+   *
+   * Optional, and jointly so — a client that predates them still publishes, and its stickers simply
+   * offer one size in WinkySticker. Sending one without the other is refused below rather than
+   * silently half-populating the set.
+   */
+  attachmentMediumAssetId: z.string().uuid().optional(),
+  attachmentSmallAssetId: z.string().uuid().optional(),
   mp4Background: Mp4BackgroundV1Schema.optional(),
   /**
    * Sent as `still` only by an animated export whose motion could not be squeezed under Apple's
@@ -160,7 +187,22 @@ export const PublishExportsRequestSchema = z.object({
    * Absent means the ordinary case, so an older client keeps meaning what it always did.
    */
   systemRenditionKind: z.enum(["animated", "still"]).optional(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (Boolean(value.attachmentMediumAssetId) !== Boolean(value.attachmentSmallAssetId)) {
+    context.addIssue({
+      code: "custom",
+      path: ["attachmentSmallAssetId"],
+      message: "Attachment renditions are published as a set: send both sizes or neither",
+    });
+  }
+  if (value.attachmentMediumAssetId && value.attachmentMediumAssetId === value.attachmentSmallAssetId) {
+    context.addIssue({
+      code: "custom",
+      path: ["attachmentSmallAssetId"],
+      message: "The medium and small renditions must be different assets",
+    });
+  }
+});
 
 /**
  * A document edited on the client, saved as a new revision.
@@ -245,6 +287,15 @@ export const StickerSummaryV1Schema = z.object({
   updatedAt: z.string().datetime(),
   previewAsset: AssetV1Schema.nullable(),
   systemSticker: SystemStickerV1Schema.nullable(),
+  /**
+   * The smaller sizes WinkySticker can attach, when this sticker has them.
+   *
+   * Large is deliberately absent: it is `previewAsset`, which every client already reads. Both are
+   * null for anything published before attachment renditions existed, and the extension walks up to
+   * the next size it does have rather than refusing to send.
+   */
+  attachmentMedium: AssetV1Schema.nullable(),
+  attachmentSmall: AssetV1Schema.nullable(),
 }).strict();
 
 export const StickerListResponseV1Schema = z.object({

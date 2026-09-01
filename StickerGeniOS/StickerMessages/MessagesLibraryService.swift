@@ -36,6 +36,7 @@ actor MessagesLibraryService {
     private let tokenBroker: SharedTokenBroker
     private let client: StickerLibraryClient
     private let cache: SharedStickerCache
+    private var descriptors: [SystemStickerDescriptor] = []
 
     init(bundle: Bundle = .main) throws {
         let authConfiguration = try SharedAuthConfiguration(bundle: bundle)
@@ -43,6 +44,13 @@ actor MessagesLibraryService {
         client = try StickerLibraryClient(bundle: bundle)
         cache = try SharedStickerCache()
     }
+
+    /// The descriptors behind the last successful refresh.
+    ///
+    /// A `CachedSticker` describes the file on disk and deliberately says nothing about other
+    /// renditions, so the full-size surface reads `previewAsset` from here instead. Empty until a
+    /// refresh reaches the server: an offline snapshot is served from cache and has none.
+    func lastDescriptors() -> [SystemStickerDescriptor] { descriptors }
 
     /// Cached sections the user still has, per the app's last published allowlist.
     ///
@@ -139,6 +147,7 @@ actor MessagesLibraryService {
             notIn: Set(descriptors.map(\.key)),
             for: session.subject
         )
+        self.descriptors = descriptors
         return MessagesLibrarySnapshot(
             sections: try await cache.cachedSections(for: session.subject),
             isOffline: false

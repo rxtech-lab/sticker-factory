@@ -1,16 +1,20 @@
 import Foundation
 
-/// How big the sticker arrives in someone else's conversation.
+/// Where the Messages sticker ladder starts.
 ///
-/// Messages draws a sticker in the transcript at its own pixel size over three, so the exported
-/// rendition's pixel dimension is the only thing that changes how large it lands — nothing about the
-/// document does. `AnimatedCanvas` in particular cannot: positions there are normalized, so a canvas
-/// resize that keeps the aspect ratio moves no pixel, and every exporter renders a square frame
-/// regardless of what the canvas says.
+/// No longer a user-facing choice. It used to be one — a picker in the export sheet that baked a
+/// dimension into the published `system` rendition — and that was the wrong moment to ask, because
+/// how big a sticker should arrive depends on the conversation it is going into. A publish now
+/// renders every size the sticker can be sent at and WinkySticker picks between them at send time;
+/// see `StickerExportMetadataPolicy.attachmentDimensions`.
 ///
-/// This is a *starting rung*, not a guarantee. `StickerExporter` still has to land under Apple's
-/// 500 KB ceiling, and dense artwork can force it down the ladder; asking for Large and receiving
-/// Small is a legitimate outcome for a detailed animation.
+/// What remains is the ladder's own vocabulary. `exportSystemSticker` starts at `.large`, which is
+/// what the ≤500 KB rendition Messages carries has always begun at, and the smaller cases still name
+/// the rungs below it for the tests that watch it walk.
+///
+/// A *starting rung*, not a guarantee: `StickerExporter` still has to land under Apple's 500 KB
+/// ceiling, and dense artwork can force it down. Only this rendition is bounded that way — the three
+/// attachment renditions are not, which is why none of them gives up frame rate.
 nonisolated enum SystemStickerSize: String, CaseIterable, Identifiable, Codable, Sendable {
     case large
     case medium

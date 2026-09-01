@@ -15,7 +15,9 @@
           "mimeType": "image/gif",
           "byteSize": 482100,
           "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        }
+        },
+        "attachmentMedium": null,
+        "attachmentSmall": null
       }
     ],
     "nextCursor": null
@@ -49,6 +51,8 @@
     "apngAssetId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
     "mp4AssetId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
     "systemAssetId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "attachmentMediumAssetId": "77777777-7777-4777-8777-777777777777",
+    "attachmentSmallAssetId": "88888888-8888-4888-8888-888888888888",
     "mp4Background": {
       "type": "linearGradient",
       "colors": ["#112233", "#445566"],
@@ -89,7 +93,9 @@
               "mimeType": "image/png",
               "byteSize": 91234,
               "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-            }
+            },
+            "attachmentMedium": null,
+            "attachmentSmall": null
           }
         ],
         "monetization": {
@@ -136,7 +142,9 @@
           "mimeType": "image/png",
           "byteSize": 91234,
           "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-        }
+        },
+        "attachmentMedium": null,
+        "attachmentSmall": null
       }
     ],
     "monetization": {
@@ -162,7 +170,9 @@
           "mimeType": "image/png",
           "byteSize": 91234,
           "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-        }
+        },
+        "attachmentMedium": null,
+        "attachmentSmall": null
       }
     ]
   },
@@ -186,12 +196,59 @@
             "activeRevisionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
             "createdAt": "2026-08-24T00:00:00.000Z",
             "updatedAt": "2026-08-24T00:01:00.000Z",
-            "previewAsset": null,
+            "previewAsset": {
+              "id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+              "stickerId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "kind": "apng",
+              "state": "ready",
+              "mimeType": "image/png",
+              "byteSize": 903112,
+              "width": 618,
+              "height": 618,
+              "frameCount": 60,
+              "durationSeconds": 2.6,
+              "fps": 30,
+              "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "hasAlpha": true,
+              "createdAt": "2026-08-24T00:01:00.000Z"
+            },
             "systemSticker": {
               "assetId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
               "mimeType": "image/gif",
               "byteSize": 482100,
               "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "attachmentMedium": {
+              "id": "77777777-7777-4777-8777-777777777777",
+              "stickerId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "kind": "attachment",
+              "state": "ready",
+              "mimeType": "image/png",
+              "byteSize": 418904,
+              "width": 408,
+              "height": 408,
+              "frameCount": 60,
+              "durationSeconds": 2.6,
+              "fps": 30,
+              "sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+              "hasAlpha": true,
+              "createdAt": "2026-08-24T00:01:00.000Z"
+            },
+            "attachmentSmall": {
+              "id": "88888888-8888-4888-8888-888888888888",
+              "stickerId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "kind": "attachment",
+              "state": "ready",
+              "mimeType": "image/png",
+              "byteSize": 236510,
+              "width": 300,
+              "height": 300,
+              "frameCount": 60,
+              "durationSeconds": 2.6,
+              "fps": 30,
+              "sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+              "hasAlpha": true,
+              "createdAt": "2026-08-24T00:01:00.000Z"
             }
           }
         ]
@@ -226,7 +283,9 @@
               "mimeType": "image/png",
               "byteSize": 91234,
               "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-            }
+            },
+            "attachmentMedium": null,
+            "attachmentSmall": null
           }
         ]
       }

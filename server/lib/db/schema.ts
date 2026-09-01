@@ -107,7 +107,10 @@ export const assets = sqliteTable("assets", {
    * client at upload time rather than read out of the file — the file itself is a single still.
    */
   kind: text("kind", {
-    enum: ["reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment", "sequence"],
+    enum: [
+      "reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment",
+      "sequence", "attachment",
+    ],
   }).notNull(),
   state: text("state", { enum: ["pending", "ready", "failed", "deleted"] }).notNull().default("pending"),
   r2Key: text("r2_key").notNull().unique(),
@@ -160,6 +163,16 @@ export const stickerRevisions = sqliteTable("sticker_revisions", {
   apngAssetId: text("apng_asset_id").references(() => assets.id, { onDelete: "set null" }),
   mp4AssetId: text("mp4_asset_id").references(() => assets.id, { onDelete: "set null" }),
   systemAssetId: text("system_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  /**
+   * Smaller copies of the sharing rendition, so WinkySticker can choose how big a sticker arrives.
+   *
+   * Large has no column of its own: it *is* the sharing rendition, `apngAssetId` for an animated
+   * sticker and `pngAssetId` for a static one. These two are the same artwork at 408 and 300 px,
+   * rendered without the 500 KB ceiling and therefore at the document's own frame rate — unlike
+   * `systemAssetId`, which is the only rendition Apple's limit governs.
+   */
+  attachmentMediumAssetId: text("attachment_medium_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  attachmentSmallAssetId: text("attachment_small_asset_id").references(() => assets.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
   decidedAt: timestamp("decided_at"),
 }, (table) => [

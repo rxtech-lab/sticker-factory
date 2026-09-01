@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
-import type { CreateUploadRequest } from "@/lib/contracts/api";
+import { ATTACHMENT_RENDITION_DIMENSIONS, type CreateUploadRequest } from "@/lib/contracts/api";
 import { MAX_RENDITION_SECONDS, SHARING_APNG_DIMENSIONS, type StickerDocument } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import { previewAssetIdSql } from "@/lib/db/columns";
@@ -274,6 +274,28 @@ function validateImageForKind(
       throw new ApiError(422, "INVALID_APNG_TIMING", `Animated sharing renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
+  if (asset.kind === "attachment") {
+    // Unlike `apng` this admits a single frame: a static sticker has Medium and Small renditions
+    // too, and they are ordinary still PNGs. What it does not admit is a *size* other than the two
+    // it is for — Large is the sharing rendition and never arrives under this kind, so a 618 or
+    // 1024 px file here is a client that filled the wrong column.
+    const sizes = Object.values(ATTACHMENT_RENDITION_DIMENSIONS) as number[];
+    if (inspection.mimeType !== "image/png" || inspection.width !== inspection.height
+      || !sizes.includes(inspection.width) || !inspection.hasAlpha || !inspection.hasTransparentPixels) {
+      throw new ApiError(
+        422,
+        "INVALID_ATTACHMENT_EXPORT",
+        `Attachment renditions must be transparent square PNGs at ${sizes.join(" or ")} pixels`,
+      );
+    }
+    // Animated ones answer to the same timing rules as the sharing rendition they are a copy of.
+    // They are rendered without the 500 KB ceiling, so — unlike the system sticker — they never
+    // trade frame rate away and this bound is the document's own.
+    if (inspection.frameCount > 1
+      && (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01)) {
+      throw new ApiError(422, "INVALID_ATTACHMENT_TIMING", `Animated attachment renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
+    }
+  }
 }
 
 export async function completeUpload(db: Database, ownerId: string, assetId: string, expectedSha256?: string) {
@@ -382,7 +404,12 @@ export type AssetAudience = "owner" | "pack-member";
  * before the switch. Dropping it here would blank the artwork on those packs' browse and detail
  * pages rather than merely serving an older container.
  */
-const PACK_SHARED_ASSET_KINDS = ["system", "preview", "apng", "gif", "master"] as const;
+/**
+ * `attachment` is here for the same reason `system` is: an installed pack's stickers have to be
+ * sendable from the Messages extensions, and without it Medium and Small would silently fall back
+ * to Large for every sticker the user did not create themselves.
+ */
+const PACK_SHARED_ASSET_KINDS = ["system", "preview", "apng", "gif", "master", "attachment"] as const;
 
 /**
  * Whether `asset` is artwork the marketplace has already made public.

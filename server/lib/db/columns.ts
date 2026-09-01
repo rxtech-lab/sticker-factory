@@ -11,6 +11,12 @@ import { assets, stickerRevisions } from "@/lib/db/schema";
  */
 export const systemAssets = alias(assets, "system_assets");
 export const previewAssets = alias(assets, "preview_assets");
+/**
+ * The smaller sizes WinkySticker can attach. There is no alias for Large: Large *is* the preview
+ * asset above, which every summary already joins.
+ */
+export const attachmentMediumAssets = alias(assets, "attachment_medium_assets");
+export const attachmentSmallAssets = alias(assets, "attachment_small_assets");
 
 /**
  * The asset a client shows for a revision, as SQL so a summary join can resolve it in the same

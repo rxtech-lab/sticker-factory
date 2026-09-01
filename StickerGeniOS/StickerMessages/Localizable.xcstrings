@@ -1,486 +1,513 @@
 {
-  "sourceLanguage": "en",
-  "strings": {
-    "A downloaded sticker exceeds the Messages file-size limit.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下载的贴纸超过了“信息”的文件大小限制。"
+  "sourceLanguage" : "en",
+  "strings" : {
+    "A downloaded sticker exceeds the Messages file-size limit." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载的贴纸超过了“信息”的文件大小限制。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下載的貼圖超過了“訊息”的檔案大小限制。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載的貼圖超過了“訊息”的檔案大小限制。"
           }
         }
       }
     },
-    "Create and publish a sticker in Sticker Factory, then return here.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请在 Sticker Factory 中创建并发布贴纸，然后返回此处。"
+    "by %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作者：%@"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "請在 Sticker Factory 中建立併發布貼圖，然後返回此處。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作者：%@"
           }
         }
       }
     },
-    "My Stickers": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "我的贴纸"
+    "Create and publish a sticker in Sticker Factory, then return here." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Sticker Factory 中创建并发布贴纸，然后返回此处。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "我的貼圖"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在 Sticker Factory 中建立併發布貼圖，然後返回此處。"
           }
         }
       }
     },
-    "Offline · cached": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "离线 · 已缓存"
+    "Full-size images need a connection." : {
+
+    },
+    "Image" : {
+
+    },
+    "My Stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的贴纸"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "離線 · 已快取"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的貼圖"
           }
         }
       }
     },
-    "Open Sticker Factory": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开 Sticker Factory"
+    "Offline · cached" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线 · 已缓存"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打開 Sticker Factory"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "離線 · 已快取"
           }
         }
       }
     },
-    "Open Sticker Factory and sign in to use your stickers.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开 Sticker Factory 并登录以使用你的贴纸。"
+    "Open a conversation to send a full-size image." : {
+
+    },
+    "Open Sticker Factory" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Sticker Factory"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打開 Sticker Factory 並登入以使用你的貼圖。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開 Sticker Factory"
           }
         }
       }
     },
-    "Open Sticker Factory from the Home Screen and sign in.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "从主屏幕打开 Sticker Factory 并登录。"
+    "Open Sticker Factory and sign in to use your stickers." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Sticker Factory 并登录以使用你的贴纸。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "從主畫面打開 Sticker Factory 並登入。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開 Sticker Factory 並登入以使用你的貼圖。"
           }
         }
       }
     },
-    "Press and hold a sticker to drag it in.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按住贴纸即可拖入对话。"
+    "Open Sticker Factory from the Home Screen and sign in." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从主屏幕打开 Sticker Factory 并登录。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按住貼圖即可拖入對話。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從主畫面打開 Sticker Factory 並登入。"
           }
         }
       }
     },
-    "Refreshing your stickers…": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在刷新你的贴纸…"
+    "Press and hold a sticker to drag it in." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按住贴纸即可拖入对话。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在刷新你的貼圖…"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按住貼圖即可拖入對話。"
           }
         }
       }
     },
-    "Shared credentials could not be read (Keychain status %d).": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法读取共享凭证（钥匙串状态 %d）。"
+    "Refreshing your stickers…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在刷新你的贴纸…"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無法讀取共享憑證（鑰匙串狀態 %d）。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在刷新你的貼圖…"
           }
         }
       }
     },
-    "Sticker": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "贴纸"
+    "Send as" : {
+
+    },
+    "Shared credentials could not be read (Keychain status %d)." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取共享凭证（钥匙串状态 %d）。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "貼圖"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取共享憑證（鑰匙串狀態 %d）。"
           }
         }
       }
     },
-    "Sticker Factory could not refresh the library (HTTP %lld).": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sticker Factory 无法刷新贴纸库（HTTP %lld）。"
+    "Sticker" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sticker Factory 無法刷新貼圖庫（HTTP %lld）。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖"
           }
         }
       }
     },
-    "Sticker Factory is missing the %@ configuration value.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sticker Factory 缺少 %@ 配置值。"
+    "Sticker Factory could not refresh the library (HTTP %lld)." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sticker Factory 无法刷新贴纸库（HTTP %lld）。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sticker Factory 缺少 %@ 配置值。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sticker Factory 無法刷新貼圖庫（HTTP %lld）。"
           }
         }
       }
     },
-    "Sticker Factory returned an invalid library response.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sticker Factory 返回了无效的贴纸库响应。"
+    "Sticker Factory is missing the %@ configuration value." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sticker Factory 缺少 %@ 配置值。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sticker Factory 返回了無效的貼圖庫回應。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sticker Factory 缺少 %@ 配置值。"
           }
         }
       }
     },
-    "Sticker Factory's API address is not configured.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未配置 Sticker Factory 的 API 地址。"
+    "Sticker Factory returned an invalid library response." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sticker Factory 返回了无效的贴纸库响应。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未配置 Sticker Factory 的 API 地址。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sticker Factory 返回了無效的貼圖庫回應。"
           }
         }
       }
     },
-    "Stickers": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "贴纸"
+    "Sticker Factory's API address is not configured." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置 Sticker Factory 的 API 地址。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "貼圖"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置 Sticker Factory 的 API 地址。"
           }
         }
       }
     },
-    "That sticker couldn't be added. Try again.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法添加该贴纸。请重试。"
+    "Stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無法加入該貼圖。請重試。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖"
           }
         }
       }
     },
-    "The authentication server returned an invalid token response.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "认证服务器返回了无效的令牌响应。"
+    "That image couldn't be sent. Try again." : {
+
+    },
+    "That sticker couldn't be added. Try again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法添加该贴纸。请重试。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "認證伺服器返回了無效的令牌回應。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法加入該貼圖。請重試。"
           }
         }
       }
     },
-    "The downloaded rendition exceeds the 500 KB Messages limit.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下载的版本超过了“信息”500 KB 的限制。"
+    "That sticker is no longer in your library." : {
+
+    },
+    "The authentication server returned an invalid token response." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "认证服务器返回了无效的令牌响应。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下載的版本超過了“訊息”500 KB 的限制。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認證伺服器返回了無效的令牌回應。"
           }
         }
       }
     },
-    "The downloaded rendition failed its integrity check.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下载的版本未通过完整性检查。"
+    "The downloaded rendition exceeds the 500 KB Messages limit." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载的版本超过了“信息”500 KB 的限制。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下載的版本未通過完整性檢查。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載的版本超過了“訊息”500 KB 的限制。"
           }
         }
       }
     },
-    "The downloaded rendition has invalid system-sticker dimensions.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下载的版本不符合系统贴纸尺寸要求。"
+    "The downloaded rendition failed its integrity check." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载的版本未通过完整性检查。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下載的版本不符合系統貼圖尺寸要求。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載的版本未通過完整性檢查。"
           }
         }
       }
     },
-    "The downloaded rendition is not a supported PNG, APNG, or GIF.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下载的版本不是受支持的 PNG、APNG 或 GIF。"
+    "The downloaded rendition has invalid system-sticker dimensions." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载的版本不符合系统贴纸尺寸要求。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下載的版本不是受支援的 PNG、APNG 或 GIF。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載的版本不符合系統貼圖尺寸要求。"
           }
         }
       }
     },
-    "The packs you added have nothing published right now. Open Sticker Factory to add more.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你添加的贴纸包目前没有已发布的内容。打开 Sticker Factory 以添加更多内容。"
+    "The downloaded rendition is not a supported PNG, APNG, or GIF." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载的版本不是受支持的 PNG、APNG 或 GIF。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你加入的貼圖包目前沒有已發佈的內容。打開 Sticker Factory 以加入更多內容。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載的版本不是受支援的 PNG、APNG 或 GIF。"
           }
         }
       }
     },
-    "The shared Sticker Factory container is unavailable.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "共享的 Sticker Factory 容器不可用。"
+    "The full-size image has unexpected dimensions." : {
+
+    },
+    "The full-size image is too large to send." : {
+
+    },
+    "The packs you added have nothing published right now. Open Sticker Factory to add more." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你添加的贴纸包目前没有已发布的内容。打开 Sticker Factory 以添加更多内容。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "共享的 Sticker Factory 容器不可用。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你加入的貼圖包目前沒有已發佈的內容。打開 Sticker Factory 以加入更多內容。"
           }
         }
       }
     },
-    "The shared sticker cache is unavailable.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "共享贴纸缓存不可用。"
+    "The shared sticker cache is unavailable." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享贴纸缓存不可用。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "共享貼圖快取不可用。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享貼圖快取不可用。"
           }
         }
       }
     },
-    "Your Sticker Factory sign-in has expired.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的 Sticker Factory 登录已过期。"
+    "The shared Sticker Factory container is unavailable." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享的 Sticker Factory 容器不可用。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的 Sticker Factory 登入已過期。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享的 Sticker Factory 容器不可用。"
           }
         }
       }
     },
-    "Your sign-in has expired. Open Sticker Factory to sign in again.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的登录已过期。打开 Sticker Factory 重新登录。"
+    "This sticker has no full-size copy yet. Republish it for a sharper image." : {
+
+    },
+    "Your sign-in has expired. Open Sticker Factory to sign in again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的登录已过期。打开 Sticker Factory 重新登录。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的登入已過期。打開 Sticker Factory 重新登入。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的登入已過期。打開 Sticker Factory 重新登入。"
           }
         }
       }
     },
-    "Your sign-in was revoked. Open Sticker Factory to sign in again.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的登录已被撤销。打开 Sticker Factory 重新登录。"
+    "Your sign-in was revoked. Open Sticker Factory to sign in again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的登录已被撤销。打开 Sticker Factory 重新登录。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的登入已被撤銷。打開 Sticker Factory 重新登入。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的登入已被撤銷。打開 Sticker Factory 重新登入。"
           }
         }
       }
     },
-    "Your sticker library is unavailable.": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的贴纸库不可用。"
+    "Your Sticker Factory sign-in has expired." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Sticker Factory 登录已过期。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的貼圖庫不可用。"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Sticker Factory 登入已過期。"
           }
         }
       }
     },
-    "by %@": {
-      "localizations": {
-        "zh-CN": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "作者：%@"
+    "Your sticker library is unavailable." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的贴纸库不可用。"
           }
         },
-        "zh-HK": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "作者：%@"
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的貼圖庫不可用。"
           }
         }
       }
     }
   },
-  "version": "1.0"
+  "version" : "1.0"
 }

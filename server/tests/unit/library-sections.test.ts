@@ -41,6 +41,38 @@ describe("library sections", () => {
     expect(borrowed.stickers[0].systemSticker?.assetId).toBe(theirs.systemAssetId);
   });
 
+  /**
+   * The two extra sizes have to survive both halves of this response, and they are resolved by
+   * different queries: `selectStickerSummaries` for the user's own stickers and `loadPackMembers`
+   * for an installed pack's. A join missing from either one reads to the extension as "this sticker
+   * only has Large", which is indistinguishable from a sticker published before they existed.
+   */
+  it("carries the attachment renditions through both the own and the pack query", async () => {
+    const own = await seedPublishedSticker(db, "installer", { title: "My Own", attachments: true });
+    const theirs = await seedPublishedSticker(db, "creator", { title: "Borrowed", attachments: true });
+    const legacy = await seedPublishedSticker(db, "creator", { title: "Legacy" });
+    const pack = await createPack(db, "creator", {
+      title: "Cozy Cats",
+      stickerIds: [theirs.stickerId, legacy.stickerId],
+      state: "published",
+    });
+    await installPack(db, "installer", pack.id);
+
+    const { sections } = await listLibrarySections(db, "installer");
+    const [mine, borrowed] = sections;
+
+    expect(mine.stickers[0].attachmentMedium).toMatchObject({ id: own.attachmentMediumAssetId, width: 408 });
+    expect(mine.stickers[0].attachmentSmall).toMatchObject({ id: own.attachmentSmallAssetId, width: 300 });
+
+    const byTitle = new Map(borrowed.stickers.map((sticker) => [sticker.title, sticker]));
+    expect(byTitle.get("Borrowed")?.attachmentMedium).toMatchObject({ id: theirs.attachmentMediumAssetId, width: 408 });
+    expect(byTitle.get("Borrowed")?.attachmentSmall).toMatchObject({ id: theirs.attachmentSmallAssetId, width: 300 });
+    // Published before attachment renditions existed. It still lists, and the extension walks up to
+    // the size it does have rather than refusing to send.
+    expect(byTitle.get("Legacy")?.attachmentMedium).toBeNull();
+    expect(byTitle.get("Legacy")?.attachmentSmall).toBeNull();
+  });
+
   it("drops a member the moment it stops being publishable, without dropping its section", async () => {
     const kept = await seedPublishedSticker(db, "creator", { title: "Kept" });
     const demoted = await seedPublishedSticker(db, "creator", { title: "Demoted" });
