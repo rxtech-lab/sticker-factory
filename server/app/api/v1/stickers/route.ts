@@ -41,6 +41,7 @@ export async function POST(request: Request) {
           intent: "generate",
           attachments: body.referenceAssetIds.map((assetId) => ({ assetId, kind: "reference" as const })),
           imagePlacement: "replace",
+          quick: body.quick,
         });
       } catch (error) {
         try {

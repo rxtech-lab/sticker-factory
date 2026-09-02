@@ -317,6 +317,17 @@ async function showStickerThroughTool(
   }
 }
 
+/**
+ * What the transcript records when quick mode skips the caption call.
+ *
+ * Written as the assistant would write it, because that is who it is attributed to when the project
+ * is opened in the main app later: a plain sentence about what just happened, and nothing that
+ * pretends to have looked at the result.
+ */
+function quickCaption(kind: "image" | "edit" | "animation"): string {
+  return kind === "edit" ? "Here's the updated sticker." : "Here's your sticker.";
+}
+
 async function assertJobStillRunning(jobId: string): Promise<void> {
   const current = await getDatabase().select({ state: generationJobs.state }).from(generationJobs)
     .where(eq(generationJobs.id, jobId)).get();
@@ -451,6 +462,7 @@ async function generateAndStoreAsset(
     mode: params.concept ? "concept" : params.mode,
     references: params.references.length,
     masked: Boolean(params.mask),
+    quick: job.quick,
   };
   // Every failure after this point replays the whole step, so a turn that dies late pays for the same
   // picture again on each attempt. The id is derived from the job, so an image already stored under it
@@ -472,6 +484,12 @@ async function generateAndStoreAsset(
       mask: params.mask,
       conversationContext: params.conversationContext,
       mode: params.mode,
+      // Read off the job rather than passed down through every call site, because it is a property
+      // of the turn: whatever a quick turn ends up drawing — one sticker, or each separated part of
+      // a composed one — is drawn by the same model. The concept branch above is deliberately left
+      // on the main model: a plan reference is opaque by design, so there is no background to key,
+      // and a quick turn only reaches it in the rare case where the agent decides to plan first.
+      quick: job.quick,
     })).catch((error: unknown) => {
     if (!isAbortError(error)) throw error;
     throw new FatalError("Image generation took too long to finish. Try that request again.");
@@ -558,9 +576,28 @@ async function selectImageReferences(
   instruction: string,
   history: string,
   candidates: AiImageReferenceCandidate[],
+  quick = false,
 ): Promise<Array<{ bytes: Uint8Array; mimeType: string }>> {
   const bounded = candidates.slice(0, 8);
   if (bounded.length === 0) return [];
+  if (bounded.every((candidate) => candidate.required)) {
+    // Nothing to choose. A required candidate is passed to the image model whatever the selector
+    // says — the union below puts it back — so a list with no optional images has exactly one
+    // possible answer, and asking for it costs a vision call on the orchestrator model (measured at
+    // 2-3s) to be told what was already decided. This is the common shape of an ordinary edit: the
+    // artwork being changed is required, and the user attached nothing to it.
+    traceEvent("selectImageReferences:decided", { candidates: bounded.length });
+    return bounded.map((candidate) => candidate.image);
+  }
+  if (quick) {
+    // The selector is a vision call on the orchestrator model, and it exists to protect a very
+    // expensive draw from being handed the wrong pictures. A quick draw is not expensive, and this
+    // deliberation costs more wall clock than the drawing it is deliberating about — so the quick
+    // path takes every candidate, which is the answer the selector almost always gives anyway once
+    // the list is already capped at eight.
+    traceEvent("selectImageReferences:quick", { candidates: bounded.length });
+    return bounded.map((candidate) => candidate.image);
+  }
   const selected = await getAiProvider().selectImageReferences({
     instruction,
     history,
@@ -2168,7 +2205,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
    * its own layer — so it stays on the deterministic path below rather than paying for an
    * orchestrator loop to decide the obvious.
    */
-  let editsThroughLoop = job.kind === "edit";
+  let editsThroughLoop = job.kind === "edit" && !job.quick;
   /**
    * Whether this animated project still has to be designed as layers before anything is drawn.
    *
@@ -2303,7 +2340,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       && action.usePlanImage === true;
     targetLayerId = action.type === "edit" || action.type === "animate" ? action.targetLayerId : undefined;
     imagePlacement = action.type === "edit" ? action.imagePlacement : addsLayer ? "add" : "replace";
-    editsThroughLoop = action.type === "edit";
+    editsThroughLoop = action.type === "edit" && !job.quick;
     await db.update(chatMessages).set({
       kind: effectiveKind === "animation" ? "animation" : effectiveKind === "edit" ? "image_edit" : "image",
       // Explicitly null: an undefined column is one drizzle leaves alone, which would strand the
@@ -2427,6 +2464,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         required: usePlanImage && index === 0,
       })),
     ],
+    job.quick,
   );
   const mask = maskRow
     ? await objectStore.get(maskRow.asset.r2Key).then((object) => ({ bytes: object.bytes, mimeType: maskRow.asset.mimeType }))
@@ -2480,11 +2518,18 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   await finishToolCall(job, primaryToolCallId);
   // A second model call, after the picture is already paid for and stored. If the step dies here the
   // artwork exists and the turn never finishes, so it gets its own span.
-  const content = await traceSpan(
-    "showSticker",
-    { jobId, revisionId },
-    () => showStickerThroughTool(job, revisionId, document.kind, instruction, history),
-  );
+  //
+  // Quick mode writes the line itself instead. The caption is a sentence about artwork the user is
+  // already looking at, on a surface that shows no transcript at all — and it is a vision call, so
+  // it routinely costs several times what the quick draw it describes cost. The transcript still
+  // needs a message, because a turn without one is a turn the main app cannot render later.
+  const content = job.quick
+    ? quickCaption(effectiveKind)
+    : await traceSpan(
+      "showSticker",
+      { jobId, revisionId },
+      () => showStickerThroughTool(job, revisionId, document.kind, instruction, history),
+    );
   const assistantMessageId = await insertAssistantMessage(job, content, effectiveKind === "edit" ? "image_edit" : "image", revisionId);
   const result = await turnResult(assistantMessageId, revisionId);
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "validating_candidate", progress: 0.85 });
@@ -2616,6 +2661,12 @@ export async function summarizeStickerTitleStep(jobId: string): Promise<string |
   try {
     const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
     if (!job) return undefined;
+    // Skipped for quick mode, and skipped in the one place that matters: this step runs *before*
+    // the job is completed, so its model call sits between the finished artwork and the moment the
+    // extension is told the turn is over. A sticker made in Messages is already named after the
+    // prompt that made it, which is a worse name than the model would write and an immeasurably
+    // better one than a name that arrives ten seconds late.
+    if (job.quick) return undefined;
     const sticker = await db.select().from(stickers)
       .where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).get();
     if (!sticker || sticker.status === "deleting") return undefined;

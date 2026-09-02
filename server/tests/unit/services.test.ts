@@ -165,6 +165,36 @@ describe("Sticker Factory services", () => {
     expect(fromStart.data.map((message) => message.sequence)).toEqual([1, 2]);
   });
 
+  it("records which turns quick mode asked for, including their retries", async () => {
+    const sticker = await createSticker(db, "owner-a", { title: "Wink", kind: "static", prompt: "A winking cat", referenceAssetIds: [] });
+    const quick = await createChatTurn(db, "owner-a", sticker.stickerId, {
+      text: "A winking cat",
+      intent: "generate",
+      attachments: [],
+      imagePlacement: "replace",
+      quick: true,
+    });
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, quick.jobId)).get())?.quick).toBe(true);
+
+    // A retry is the same turn asked again, so it has to reach the same image model. Nothing on the
+    // retry request says which surface started it — the extension's Retry button and the app's are
+    // the same call — so the flag can only come from the job being retried.
+    await db.update(generationJobs).set({ state: "failed", completedAt: new Date() }).where(eq(generationJobs.id, quick.jobId));
+    await db.update(chatMessages).set({ status: "failed" }).where(eq(chatMessages.id, quick.messageId));
+    const retry = await retryFailedChatTurn(db, "owner-a", sticker.stickerId, quick.messageId);
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, retry.jobId)).get())?.quick).toBe(true);
+    await db.update(generationJobs).set({ state: "succeeded", completedAt: new Date() }).where(eq(generationJobs.id, retry.jobId));
+
+    // Every other client omits the flag, and an omission is the slow, transparent model.
+    const ordinary = await createChatTurn(db, "owner-a", sticker.stickerId, {
+      text: "Make it wave instead",
+      intent: "edit",
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, ordinary.jobId)).get())?.quick).toBe(false);
+  });
+
   it("keeps revision core immutable while accept and revert create durable history", async () => {
     const sticker = await createSticker(db, "owner-a", { title: "Cloud", kind: "static", prompt: "Cloud", referenceAssetIds: [] });
     const turn = await createChatTurn(db, "owner-a", sticker.stickerId, {

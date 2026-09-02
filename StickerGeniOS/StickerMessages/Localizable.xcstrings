@@ -113,7 +113,13 @@
     "Drawing artwork" : {
 
     },
+    "Drawing it full size" : {
+
+    },
     "Drawing it…" : {
+
+    },
+    "Drawing the frames" : {
 
     },
     "Editing layers" : {
@@ -131,6 +137,9 @@
     "Finishing the plan" : {
 
     },
+    "Fitting it for Messages" : {
+
+    },
     "Full-size images need a connection." : {
 
     },
@@ -144,6 +153,9 @@
 
     },
     "Making that change…" : {
+
+    },
+    "Making the send sizes" : {
 
     },
     "Making your sticker" : {
@@ -307,6 +319,9 @@
 
     },
     "Saved to your stickers. Tap Send, or drag it into the conversation." : {
+
+    },
+    "Saving it" : {
 
     },
     "Selected photos are uploaded privately as generation references. New stickers are added to your library so you can send them straight away." : {

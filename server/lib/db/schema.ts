@@ -54,6 +54,11 @@ export const generationJobs = sqliteTable("generation_jobs", {
   stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
   sourceMessageId: text("source_message_id"),
   kind: text("kind", { enum: ["image", "edit", "animation", "chat", "plan", "compose", "export", "cleanup"] }).notNull(),
+  /**
+   * Started from the Messages extension's quick mode, so its images are drawn by
+   * `AI_QUICK_IMAGE_MODEL` against a chroma backdrop instead of by `AI_IMAGE_MODEL`.
+   */
+  quick: integer("quick", { mode: "boolean" }).notNull().default(false),
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
   state: text("state", { enum: ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] }).notNull().default("queued"),
   workflowRunId: text("workflow_run_id"),
