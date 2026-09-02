@@ -52,6 +52,8 @@ struct LibraryView: View {
     @Bindable var store: StickerStore
     /// Only needed so a pack section header can push that pack's detail without leaving the tab.
     @Bindable var marketplace: MarketplaceStore
+    /// Defaulted so previews and tests keep working; an unconfigured store shows no chip.
+    @Bindable var subscription: SubscriptionStore = SubscriptionStore()
     @State private var filter: LibraryFilter = .all
     @State private var searchText = ""
     @State private var showingCreation = false
@@ -263,6 +265,12 @@ struct LibraryView: View {
             CreatorPacksView(store: marketplace, handle: route.handle)
         }
         .toolbar {
+            if subscription.isReady {
+                ToolbarItem(placement: .topBarLeading) {
+                    CreditsChip(subscription: subscription)
+                }
+            }
+
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Create", systemImage: "wand.and.stars") {
                     generateTip.invalidate(reason: .actionPerformed)
@@ -353,6 +361,41 @@ struct LibraryView: View {
 /// A navigation value distinct from `String`, which the library already uses for sticker ids.
 struct PackRoute: Hashable {
     let packID: String
+}
+
+/// The credit balance, where a user is about to spend some.
+///
+/// Sits next to Create on purpose: running out is something to notice before starting a sticker,
+/// not after describing one. Tapping it opens the paywall, so topping up never requires hitting a
+/// wall first.
+private struct CreditsChip: View {
+    @Bindable var subscription: SubscriptionStore
+
+    var body: some View {
+        Button {
+            Haptics.tap(.light)
+            subscription.presentPaywall()
+        } label: {
+            Label {
+                if let credits = subscription.credits {
+                    Text(credits, format: .number).monospacedDigit()
+                } else {
+                    Text("—")
+                }
+            } icon: {
+                Image(systemName: "sparkles")
+            }
+            .font(.callout.weight(.medium))
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .tint(AppColors.accent)
+        .accessibilityLabel(
+            subscription.credits.map { String(localized: "\($0) credits. Tap to top up.") }
+                ?? String(localized: "Credits. Tap to top up.")
+        )
+        .accessibilityIdentifier("credits-chip")
+    }
 }
 
 private struct LibrarySectionHeader: View {

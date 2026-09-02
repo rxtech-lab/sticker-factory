@@ -12,6 +12,7 @@ final class AppEnvironment {
     let tokenBroker: SharedTokenBroker
     let store: StickerStore
     let marketplace: MarketplaceStore
+    let subscription: SubscriptionStore
     private(set) var authenticationState: AuthenticationPresentationState
     private(set) var isUITesting: Bool
     /// A sticker the user asked for from outside the UI — today, by tapping a "sticker ready"
@@ -27,6 +28,7 @@ final class AppEnvironment {
         tokenBroker: SharedTokenBroker,
         store: StickerStore,
         marketplace: MarketplaceStore? = nil,
+        subscription: SubscriptionStore? = nil,
         authenticationState: AuthenticationPresentationState = .checking,
         isUITesting: Bool = false,
         notifier: GenerationNotifier? = nil
@@ -37,6 +39,9 @@ final class AppEnvironment {
         self.tokenBroker = tokenBroker
         self.store = store
         self.marketplace = marketplace ?? MarketplaceStore(api: store.api)
+        // Defaulted rather than required so previews and tests keep building without one; the
+        // no-client store reports no paywall, which is what a preview wants anyway.
+        self.subscription = subscription ?? SubscriptionStore()
         self.authenticationState = authenticationState
         self.isUITesting = isUITesting
         // Installing or removing a pack changes which sections the Library shows. Wiring it here
@@ -88,6 +93,9 @@ final class AppEnvironment {
             authManager: manager,
             tokenBroker: broker,
             store: StickerStore(api: api, notifier: notifier),
+            // UI tests run against the mock API with no billing at all: a paywall in front of a
+            // scripted generation would fail every test that follows it.
+            subscription: isUITesting ? SubscriptionStore() : SubscriptionStore(configuration: configuration, tokenBroker: broker),
             authenticationState: isUITesting
                 ? (simulatesExpiredAuthentication ? .signedOut : .signedIn)
                 : .checking,
@@ -95,6 +103,16 @@ final class AppEnvironment {
             notifier: notifier
         )
         notifier?.onOpenSticker = { [weak environment] id in environment?.pendingStickerID = id }
+        // Every 402 from the server, wherever it came from, raises the paywall. The error itself
+        // still reaches whichever screen asked, so the user also reads the server's own words.
+        if let live = api as? StickerAPIClient {
+            let subscription = environment.subscription
+            Task {
+                await live.onSubscriptionRefusal { refusal in
+                    Task { @MainActor in subscription.presentPaywall(for: refusal) }
+                }
+            }
+        }
         // Hand the registry a client to upload with. The device token may already be waiting — APNs
         // answers on its own schedule — or may arrive long after this; whichever lands second sends.
         if !isUITesting { PushDeviceRegistry.shared.attach(api: api) }
@@ -114,12 +132,30 @@ final class AppEnvironment {
         }
         await authManager.checkExistingAuth()
         synchronizeAuthenticationState()
-        if authenticationState == .signedIn { await store.refresh() }
+        if authenticationState == .signedIn {
+            await store.refresh()
+            bindSubscription()
+        }
     }
 
     func authenticationCompleted() {
         synchronizeAuthenticationState()
         Task { await store.refresh() }
+        bindSubscription()
+    }
+
+    /// Points the subscription store at whoever is signed in.
+    ///
+    /// The rxlab user id comes from the shared token bundle's `subject` rather than from RxAuth's
+    /// profile, because that bundle is what the access token was minted for — and the subscription
+    /// service derives the same `sub` from that token, so anything else here would disagree with
+    /// the server.
+    private func bindSubscription() {
+        guard subscription.isConfigured else { return }
+        Task { [tokenBroker, subscription] in
+            guard let subject = try? await tokenBroker.currentBundle()?.subject else { return }
+            subscription.signedIn(rxlabUserID: subject)
+        }
     }
 
     func sessionExpired() async {
@@ -135,6 +171,7 @@ final class AppEnvironment {
         SharedLogoutPurger.purge()
         store.reset()
         marketplace.reset()
+        subscription.reset()
         // A banner tapped on the way out points at a library this account no longer has.
         pendingStickerID = nil
         authenticationState = .signedOut
@@ -147,6 +184,7 @@ final class AppEnvironment {
         SharedLogoutPurger.purge()
         store.reset()
         marketplace.reset()
+        subscription.reset()
         // A banner tapped on the way out points at a library this account no longer has.
         pendingStickerID = nil
         authenticationState = .signedOut

@@ -51,7 +51,11 @@ struct StickerFactoryTabView: View {
             // Library stays tag 0 and the default selection: launch lands on the user's own work,
             // not on a store.
             NavigationStack(path: $libraryPath) {
-                LibraryView(store: environment.store, marketplace: environment.marketplace)
+                LibraryView(
+                    store: environment.store,
+                    marketplace: environment.marketplace,
+                    subscription: environment.subscription
+                )
             }
                 .tabItem { Label("Library", systemImage: "square.grid.2x2") }
                 .tag(0)
@@ -96,6 +100,10 @@ struct StickerFactoryTabView: View {
                 showingWelcome = false
             }
         }
+        // Hosted once, at the root. A refusal can come from a chat turn, an export, or a publish —
+        // all on different screens, some of them already inside their own sheet — and presenting
+        // from each of them would mean a paywall that cannot open over whatever is in the way.
+        .subscriptionPaywall(environment.subscription)
     }
 }
 

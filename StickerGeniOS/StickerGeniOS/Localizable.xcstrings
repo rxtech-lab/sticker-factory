@@ -6839,6 +6839,262 @@
           }
         }
       }
+    },
+    "Credits" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "积分"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點數"
+          }
+        }
+      }
+    },
+    "Out of credits" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "积分不够了"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點數不足"
+          }
+        }
+      }
+    },
+    "Go Pro" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "升级 Pro"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "升級 Pro"
+          }
+        }
+      }
+    },
+    "Keep creating" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续创作"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繼續創作"
+          }
+        }
+      }
+    },
+    "This one needs %lld credits and you have %lld. Top up to finish it." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个需要 %1$lld 积分，你还有 %2$lld。充值后即可完成。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個需要 %1$lld 點數，你還有 %2$lld。增值後即可完成。"
+          }
+        }
+      }
+    },
+    "Top up to finish this sticker, or upgrade for a monthly allowance." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "充值以完成这个贴纸，或升级获得每月额度。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "增值以完成這個貼紙，或升級取得每月額度。"
+          }
+        }
+      }
+    },
+    "Sharing packs on the marketplace is part of a paid plan." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在市集分享贴纸包是付费方案的功能。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在市集分享貼紙包是付費方案的功能。"
+          }
+        }
+      }
+    },
+    "Credits pay for the AI that draws and animates your stickers." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "积分用于支付绘制和动画化贴纸的 AI。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點數用於支付繪製和動畫化貼紙的 AI。"
+          }
+        }
+      }
+    },
+    "Subscription" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "订阅"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訂閱"
+          }
+        }
+      }
+    },
+    "Plan" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案"
+          }
+        }
+      }
+    },
+    "Free" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "免费"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "免費"
+          }
+        }
+      }
+    },
+    "Manage Subscription" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理订阅"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理訂閱"
+          }
+        }
+      }
+    },
+    "Restore Purchases" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复购买"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回復購買"
+          }
+        }
+      }
+    },
+    "Purchases restored." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "购买已恢复。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "購買已回復。"
+          }
+        }
+      }
+    },
+    "%lld credits. Tap to top up." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 积分。点按以充值。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 點數。點按以增值。"
+          }
+        }
+      }
+    },
+    "Credits. Tap to top up." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "积分。点按以充值。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點數。點按以增值。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

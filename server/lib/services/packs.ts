@@ -29,6 +29,7 @@ import {
   systemAssetSummaryColumns,
   type StickerSummaryRow,
 } from "@/lib/services/stickers";
+import { requirePublishEntitlement } from "@/lib/subscription/credits";
 
 /** A pack is a curated set, not a dumping ground; the Messages grid also has to stay scrollable. */
 export const MAX_PACK_ITEMS = 60;
@@ -510,6 +511,10 @@ export async function createPack(
   if (wantsPublish && stickerIds.length === 0) {
     throw new ApiError(409, "PACK_EMPTY", "Add at least one published sticker before publishing a pack");
   }
+  // Creating a pack is always free; only putting one in front of other people
+  // needs the entitlement. Checked here as well as in `publishPack` because
+  // this call can go straight to `published` in one step.
+  if (wantsPublish) await requirePublishEntitlement(creatorId);
 
   const packId = crypto.randomUUID();
   const now = new Date();
@@ -560,6 +565,11 @@ export async function publishPack(db: Database, creatorId: string, packId: strin
   if ((members.get(packId) ?? []).length === 0) {
     throw new ApiError(409, "PACK_EMPTY", "A pack needs at least one published sticker before it can go live");
   }
+  // Unlike generation, publishing costs us nothing to run — it is a tier
+  // feature rather than a metered one, so it checks a permission instead of
+  // spending credits. Unpublishing is deliberately never gated: a plan lapsing
+  // must not trap a pack on the marketplace.
+  await requirePublishEntitlement(creatorId);
   await ensureCreatorProfile(db, creatorId);
   await db.update(stickerPacks).set({
     state: "published",

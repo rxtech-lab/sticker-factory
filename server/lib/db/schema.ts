@@ -57,6 +57,15 @@ export const generationJobs = sqliteTable("generation_jobs", {
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
   state: text("state", { enum: ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] }).notNull().default("queued"),
   workflowRunId: text("workflow_run_id"),
+  /**
+   * The RxSubscription hold placed before this job was queued, and what it
+   * holds. Credits are charged only when the job succeeds, so the id lives
+   * here for whichever terminal path the job takes to settle or release it.
+   * Null once the hold is closed, or when the job is free — and always null
+   * when billing is unconfigured.
+   */
+  reservationId: text("reservation_id"),
+  reservationAmount: integer("reservation_amount").notNull().default(0),
   attempts: integer("attempts").notNull().default(0),
   errorCode: text("error_code"),
   errorMessage: text("error_message"),

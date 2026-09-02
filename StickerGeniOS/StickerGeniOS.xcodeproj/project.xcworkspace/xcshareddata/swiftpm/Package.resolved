@@ -1,5 +1,5 @@
 {
-  "originHash" : "612812eae59404ad80215eb13dba4c94bf3debb2a74c7021c4ca4c007289a4b3",
+  "originHash" : "7443100f506838b9cac04e6f31d6511df7a250fae7c55fbd9e780dd88c084f2a",
   "pins" : [
     {
       "identity" : "kingfisher",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "32b9615ac69bd4be9bc25b0883441e8fd2d7784b",
         "version" : "1.2.0"
+      }
+    },
+    {
+      "identity" : "rxsubscriptionios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/rxtech-lab/RxSubscriptionIOS.git",
+      "state" : {
+        "revision" : "da227dbca9edf3476f3221461383beadd97d3390",
+        "version" : "1.0.0"
       }
     },
     {

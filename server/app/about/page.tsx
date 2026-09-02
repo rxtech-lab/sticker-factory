@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function AboutPage() {
   return (
     <main className="shell about-page">
-      <section className="about-hero glass-panel">
+      <section className="about-hero card">
         <div className="about-mark" aria-hidden="true">✦</div>
         <div>
           <div className="eyebrow">About Sticker Factory</div>

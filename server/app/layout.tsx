@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 
@@ -11,11 +12,30 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
       <body>
-        <div className="ambient ambient-one" aria-hidden="true" />
-        <div className="ambient ambient-two" aria-hidden="true" />
         <SiteHeader />
         {children}
-        <footer>Made for iPhone, iPad, Messages, and the system Stickers drawer.</footer>
+        <footer className="site-footer">
+          <div className="shell">
+            <div className="footer-grid">
+              <div className="footer-brand">
+                Sticker Factory
+                <p>Turn an idea into a sticker that actually moves. Private by default, native on iPhone, iPad, and Messages.</p>
+              </div>
+              <nav className="footer-links" aria-label="Footer">
+                <Link href="/#how-it-works">How it works</Link>
+                <Link href="/#revisions">Revisions</Link>
+                <Link href="/#faq">Questions</Link>
+                <Link href="/library">Your library</Link>
+                <Link href="/marketplace">Marketplace</Link>
+                <Link href="/about">About</Link>
+              </nav>
+            </div>
+            <div className="footer-bottom">
+              <span>© {new Date().getUTCFullYear()} Sticker Factory</span>
+              <span>iPhone · iPad · Messages · Stickers drawer</span>
+            </div>
+          </div>
+        </footer>
       </body>
     </html>
   );

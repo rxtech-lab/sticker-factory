@@ -39,6 +39,8 @@ import {
 import { ApiError } from "@/lib/http/errors";
 import { ensureSequencePosters, getReadyOwnedAssets } from "@/lib/services/assets";
 import { loadPlansByIds, serializePlan } from "@/lib/services/plans";
+import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
+import { jobCreditCost } from "@/lib/subscription/pricing";
 
 const MAX_AI_INPUT_BYTES = 32 * 1024 * 1024;
 const AI_REFERENCE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -464,9 +466,21 @@ export async function updateSticker(
   return getSticker(db, ownerId, stickerId);
 }
 
-export async function createExportJob(db: Database, ownerId: string, stickerId: string) {
+export async function createExportJob(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  creditCost = 0,
+) {
   await assertOwnedSticker(db, ownerId, stickerId);
   const id = crypto.randomUUID();
+  const reservationId = await holdCreditsForJob({
+    ownerId,
+    amount: creditCost,
+    idempotencyKey: `reserve:${id}`,
+    description: "Sticker export",
+    metadata: { jobId: id, stickerId, kind: "export" },
+  });
   try {
     await db.transaction(async (tx) => {
       const now = new Date();
@@ -476,12 +490,15 @@ export async function createExportJob(db: Database, ownerId: string, stickerId: 
         stickerId,
         kind: "export",
         state: "queued",
+        reservationId,
+        reservationAmount: reservationId ? creditCost : 0,
         createdAt: now,
         updatedAt: now,
       });
       await tx.insert(generationEvents).values({ jobId: id, ownerId, type: "queued", dataJson: { kind: "export" }, createdAt: now });
     });
   } catch (error) {
+    await abandonHold(reservationId, id, "job_not_created");
     if (isActiveJobConstraint(error)) {
       throw new ApiError(409, "AI_TURN_IN_PROGRESS", "Wait for the current sticker operation to finish");
     }
@@ -500,6 +517,8 @@ export async function createCleanupJob(db: Database, ownerId: string, stickerId:
     inArray(generationJobs.state, ["queued", "running", "waiting"]),
   )).get();
   if (active) throw new ApiError(409, "STICKER_OPERATION_IN_PROGRESS", "Wait for the current sticker operation before deleting this project");
+  // No credit hold. Deleting your own work is never billed — charging for it
+  // would let a user run out of credits with no way to free their storage.
   const id = crypto.randomUUID();
   const now = new Date();
   await db.transaction(async (tx) => {
@@ -997,76 +1016,92 @@ export async function createChatTurn(
   const messageId = crypto.randomUUID();
   const jobId = crypto.randomUUID();
   const now = new Date();
-  await db.transaction(async (tx) => {
-    const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-      .where(eq(chatMessages.threadId, thread.id)).get();
-    const sequence = (sequenceRow?.value ?? 0) + 1;
-    try {
-      await tx.insert(generationJobs).values({
-        id: jobId,
-        ownerId,
-        stickerId,
-        sourceMessageId: messageId,
-        kind: intentToJobKind(request.intent),
-        state: "queued",
-        createdAt: now,
-        updatedAt: now,
-      });
-    } catch (error) {
-      if (isActiveJobConstraint(error)) {
-        throw new ApiError(409, "AI_TURN_IN_PROGRESS", "This sticker already has an active AI turn");
-      }
-      throw error;
-    }
-    await tx.insert(chatMessages).values({
-      id: messageId,
-      threadId: thread.id,
-      ownerId,
-      role: "user",
-      kind: request.intent === "animate"
-        ? "animation"
-        : request.intent === "edit"
-          ? "image_edit"
-          : request.intent === "generate"
-            ? "image"
-            : "text",
-      content: request.text,
-      targetLayerId: request.targetLayerId,
-      baseRevisionId: baseRevision?.id,
-      imagePlacement: request.imagePlacement,
-      sequence,
-      jobId,
-      status: "streaming",
-      createdAt: now,
-    });
-    if (request.attachments.length > 0) {
-      await tx.insert(chatAttachments).values(request.attachments.map((attachment, position) => ({
-        messageId,
-        assetId: attachment.assetId,
-        kind: attachment.kind,
-        targetLayerId: attachment.targetLayerId ?? request.targetLayerId,
-        position,
-      })));
-      const expectedClaims = attachedAssets.filter((asset) => asset.stickerId === null).length;
-      const claimed = await tx.update(assets).set({ stickerId }).where(and(
-        eq(assets.ownerId, ownerId),
-        isNull(assets.stickerId),
-        inArray(assets.id, assetIds),
-      )).returning({ id: assets.id });
-      if (claimed.length !== expectedClaims) {
-        throw new ApiError(409, "ASSET_ALREADY_ATTACHED", "An attachment was concurrently claimed by another sticker");
-      }
-    }
-    await tx.update(chatThreads).set({ updatedAt: now }).where(eq(chatThreads.id, thread.id));
-    await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
-    await tx.insert(generationEvents).values({
-      jobId,
-      ownerId,
-      type: "queued",
-      dataJson: { intent: request.intent, messageId },
-      createdAt: now,
-    });
+  const jobKind = intentToJobKind(request.intent);
+  const creditCost = jobCreditCost(jobKind);
+  const reservationId = await holdCreditsForJob({
+    ownerId,
+    amount: creditCost,
+    idempotencyKey: `reserve:${jobId}`,
+    description: `Sticker ${request.intent}`,
+    metadata: { jobId, stickerId, kind: jobKind },
   });
+  try {
+    await db.transaction(async (tx) => {
+      const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
+        .where(eq(chatMessages.threadId, thread.id)).get();
+      const sequence = (sequenceRow?.value ?? 0) + 1;
+      try {
+        await tx.insert(generationJobs).values({
+          id: jobId,
+          ownerId,
+          stickerId,
+          sourceMessageId: messageId,
+          kind: jobKind,
+          state: "queued",
+          reservationId,
+          reservationAmount: reservationId ? creditCost : 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch (error) {
+        if (isActiveJobConstraint(error)) {
+          throw new ApiError(409, "AI_TURN_IN_PROGRESS", "This sticker already has an active AI turn");
+        }
+        throw error;
+      }
+      await tx.insert(chatMessages).values({
+        id: messageId,
+        threadId: thread.id,
+        ownerId,
+        role: "user",
+        kind: request.intent === "animate"
+          ? "animation"
+          : request.intent === "edit"
+            ? "image_edit"
+            : request.intent === "generate"
+              ? "image"
+              : "text",
+        content: request.text,
+        targetLayerId: request.targetLayerId,
+        baseRevisionId: baseRevision?.id,
+        imagePlacement: request.imagePlacement,
+        sequence,
+        jobId,
+        status: "streaming",
+        createdAt: now,
+      });
+      if (request.attachments.length > 0) {
+        await tx.insert(chatAttachments).values(request.attachments.map((attachment, position) => ({
+          messageId,
+          assetId: attachment.assetId,
+          kind: attachment.kind,
+          targetLayerId: attachment.targetLayerId ?? request.targetLayerId,
+          position,
+        })));
+        const expectedClaims = attachedAssets.filter((asset) => asset.stickerId === null).length;
+        const claimed = await tx.update(assets).set({ stickerId }).where(and(
+          eq(assets.ownerId, ownerId),
+          isNull(assets.stickerId),
+          inArray(assets.id, assetIds),
+        )).returning({ id: assets.id });
+        if (claimed.length !== expectedClaims) {
+          throw new ApiError(409, "ASSET_ALREADY_ATTACHED", "An attachment was concurrently claimed by another sticker");
+        }
+      }
+      await tx.update(chatThreads).set({ updatedAt: now }).where(eq(chatThreads.id, thread.id));
+      await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
+      await tx.insert(generationEvents).values({
+        jobId,
+        ownerId,
+        type: "queued",
+        dataJson: { intent: request.intent, messageId },
+        createdAt: now,
+      });
+    });
+  } catch (error) {
+    await abandonHold(reservationId, jobId, "job_not_created");
+    throw error;
+  }
   return { sticker, messageId, jobId };
 }
 
@@ -1102,6 +1137,16 @@ export async function retryFailedChatTurn(
     .where(and(eq(generationJobs.sourceMessageId, sourceMessageId), eq(generationJobs.ownerId, ownerId))).get();
   if ((attempts?.value ?? 0) >= 4) throw new ApiError(429, "RETRY_LIMIT_REACHED", "This AI turn has reached its retry limit");
   const jobId = crypto.randomUUID();
+  // A retry is a fresh attempt at the provider, so it costs what the original
+  // did. The original's own hold was released when it failed.
+  const creditCost = jobCreditCost(original.kind);
+  const reservationId = await holdCreditsForJob({
+    ownerId,
+    amount: creditCost,
+    idempotencyKey: `reserve:${jobId}`,
+    description: `Sticker ${original.kind} retry`,
+    metadata: { jobId, stickerId, kind: original.kind, retryOfJobId: original.id },
+  });
   try {
     await db.transaction(async (tx) => {
       const now = new Date();
@@ -1112,6 +1157,8 @@ export async function retryFailedChatTurn(
         sourceMessageId,
         kind: original.kind,
         state: "queued",
+        reservationId,
+        reservationAmount: reservationId ? creditCost : 0,
         createdAt: now,
         updatedAt: now,
       });
@@ -1132,6 +1179,7 @@ export async function retryFailedChatTurn(
       }
     });
   } catch (error) {
+    await abandonHold(reservationId, jobId, "job_not_created");
     if (isActiveJobConstraint(error)) {
       throw new ApiError(409, "AI_TURN_IN_PROGRESS", "This sticker already has an active AI turn");
     }

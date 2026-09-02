@@ -1,7 +1,15 @@
 // The project uses Debug.xcconfig and Release.xcconfig. These are the release
 // values to use when injecting equivalent settings from Xcode Cloud. The iOS
 // OAuth client is public: never put a client secret in the app or extension.
+//
+// STICKER_FACTORY_SUBSCRIPTION_KEY is a *publishable* RxSubscription key
+// (`rxs_pk_production_…`). It is not a secret: it does nothing without the
+// signed-in user's access token, can only act for that user, and cannot move a
+// balance or record usage. The server holds the secret key. Never put a secret
+// key (`rxs_production_…`) here — anyone can read it out of the binary.
 STICKER_FACTORY_API_BASE_URL = https:/$()/sticker.rxlab.app
 STICKER_FACTORY_OAUTH_ISSUER = https:/$()/auth.rxlab.app
 STICKER_FACTORY_AUTH_TOKEN_URL = https:/$()/auth.rxlab.app/api/oauth/token
 STICKER_FACTORY_IOS_CLIENT_ID = client_1ce3e6efd6da4214a61df67949a71622
+STICKER_FACTORY_SUBSCRIPTION_URL = https:/$()/subscription.rxlab.app
+STICKER_FACTORY_SUBSCRIPTION_KEY = rxs_pk_production_replace_me

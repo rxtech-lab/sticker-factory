@@ -1,2 +1,6 @@
 #include "Base.xcconfig"
 STICKER_FACTORY_API_BASE_URL = http:/$()/localhost:3000
+// The sandbox publishable key. Safe to check in: a publishable key does nothing without the
+// signed-in user's access token, only acts for that user, and cannot move a balance. Leave it empty
+// to run without a paywall at all — the app then hides every subscription surface.
+STICKER_FACTORY_SUBSCRIPTION_KEY = rxs_pk_sandbox_6efbaf3be92647faa8d10893079da55bba1c5442ceb9445289f25a60da90e731

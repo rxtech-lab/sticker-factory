@@ -53,6 +53,10 @@ struct AccountView: View {
                 .accessibilityIdentifier("signed-in-profile")
             }
 
+            if environment.subscription.isReady {
+                SubscriptionSection(subscription: environment.subscription)
+            }
+
             Section("Legal") {
                 NavigationLink(value: LegalDocument.privacy) {
                     Label("Privacy Policy", systemImage: LegalDocument.privacy.systemImage)
@@ -97,6 +101,7 @@ struct AccountView: View {
             }
         }
         .navigationTitle("Account")
+        .task { environment.subscription.refresh() }
         .navigationDestination(for: LegalDocument.self) { document in
             LegalDocumentView(document: document, baseURL: environment.configuration.apiBaseURL)
         }
@@ -105,6 +110,76 @@ struct AccountView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Shared credentials and cached iMessage stickers will be removed from this device.")
+        }
+    }
+}
+
+/// Plan, credit balance, and the two things App Review looks for: a way to manage the subscription
+/// and a way to restore purchases.
+private struct SubscriptionSection: View {
+    @Bindable var subscription: SubscriptionStore
+    @State private var isRestoring = false
+    @State private var restoreMessage: String?
+
+    var body: some View {
+        Section("Subscription") {
+            LabeledContent("Plan") {
+                Text(subscription.activePlanName ?? String(localized: "Free"))
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("subscription-plan")
+
+            LabeledContent("Credits") {
+                if let credits = subscription.credits {
+                    Text(credits, format: .number)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    // Nothing loaded yet, or the read failed. Either way a number here would be a
+                    // guess, and a wrong balance is worse than no balance.
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .accessibilityIdentifier("subscription-credits")
+
+            Button("Manage Subscription", systemImage: "creditcard") {
+                subscription.presentPaywall()
+            }
+            .accessibilityIdentifier("manage-subscription-button")
+
+            Button {
+                restore()
+            } label: {
+                HStack {
+                    Label("Restore Purchases", systemImage: "arrow.clockwise")
+                    if isRestoring {
+                        Spacer()
+                        ProgressView().controlSize(.small)
+                    }
+                }
+            }
+            .disabled(isRestoring)
+            .accessibilityIdentifier("restore-purchases-button")
+
+            if let restoreMessage {
+                Text(restoreMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func restore() {
+        isRestoring = true
+        restoreMessage = nil
+        Task {
+            defer { isRestoring = false }
+            do {
+                try await subscription.restorePurchases()
+                restoreMessage = String(localized: "Purchases restored.")
+            } catch {
+                restoreMessage = error.localizedDescription
+            }
         }
     }
 }

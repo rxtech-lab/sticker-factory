@@ -78,6 +78,7 @@ import { referencedAssetIds, renderSticker } from "@/lib/render/sticker-render";
 import type { RenderAssets } from "@/lib/render/document-svg";
 import { downscaleForModelInput, getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import { ApiError } from "@/lib/http/errors";
+import { chargeJobCredits, refundJobCredits } from "@/lib/subscription/credits";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 
 /**
@@ -2648,6 +2649,8 @@ export async function completeJobStep(jobId: string, result: Record<string, unkn
     }
     await tx.insert(generationEvents).values({ jobId, ownerId: job.ownerId, type: "completed", dataJson: result, createdAt: now });
   });
+  // The one path that actually charges. Everything else returns the hold.
+  await chargeJobCredits(db, job);
   await announceJobEnded(db, job, "ready");
 }
 
@@ -2708,8 +2711,12 @@ async function failJob(db: Database, jobId: string, message: string, publicReaso
     return true;
   });
   // Only the transition that actually happened announces itself — a late second call, or a job
-  // something else already finished, stays silent.
-  if (failed) await announceJobEnded(db, job, "failed");
+  // something else already finished, stays silent. The refund is guarded the same way, so a
+  // repeated call cannot release a hold that a different ending already settled.
+  if (failed) {
+    await refundJobCredits(db, job, "generation_failed");
+    await announceJobEnded(db, job, "failed");
+  }
 }
 
 export async function purgeStickerStep(jobId: string): Promise<string[]> {

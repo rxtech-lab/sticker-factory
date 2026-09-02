@@ -4,6 +4,7 @@ import type { PublishExportsRequest } from "@/lib/contracts/api";
 import type { Database } from "@/lib/db/client";
 import { chatMessages, generationEvents, generationJobs, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
+import { refundJobCredits } from "@/lib/subscription/credits";
 import {
   stickerCleanupWorkflow,
   stickerExportWorkflow,
@@ -18,9 +19,9 @@ async function recordRun(db: Database, jobId: string, runId: string) {
 }
 
 async function recordDispatchFailure(db: Database, jobId: string): Promise<void> {
-  await db.transaction(async (tx) => {
+  const failed = await db.transaction(async (tx) => {
     const job = await tx.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
-    if (!job || job.state === "failed") return;
+    if (!job || job.state === "failed") return null;
     const now = new Date();
     await tx.update(generationJobs).set({
       state: "failed",
@@ -42,7 +43,10 @@ async function recordDispatchFailure(db: Database, jobId: string): Promise<void>
       dataJson: { code: "WORKFLOW_DISPATCH_FAILED" },
       createdAt: now,
     });
+    return job;
   });
+  // Nothing ran, so nothing is owed.
+  if (failed) await refundJobCredits(db, failed, "workflow_dispatch_failed");
 }
 
 async function recordCleanupDispatchFailure(db: Database, jobId: string): Promise<void> {
@@ -147,6 +151,11 @@ export async function cancelGenerationWorkflow(db: Database, ownerId: string, jo
     });
     return true;
   });
+
+  // Stopping a turn must not cost anything — a user who changes their mind
+  // halfway gets their credits back, which is also what makes Stop safe to
+  // press.
+  if (cancelled) await refundJobCredits(db, job, "user_cancelled");
 
   if (cancelled && job.workflowRunId && !job.workflowRunId.startsWith("inline_")) {
     try {

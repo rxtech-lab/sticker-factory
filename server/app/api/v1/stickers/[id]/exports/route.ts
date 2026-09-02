@@ -4,6 +4,7 @@ import { withApiAuth } from "@/lib/http/handler";
 import { executeIdempotent, requireIdempotencyKey } from "@/lib/services/idempotency";
 import { createExportJob } from "@/lib/services/stickers";
 import { startExportWorkflow } from "@/lib/services/workflows";
+import { exportCreditCost } from "@/lib/subscription/pricing";
 
 type Context = { params: Promise<{ id: string }> };
 export async function POST(request: Request, context: Context) {
@@ -11,7 +12,7 @@ export async function POST(request: Request, context: Context) {
     const { id } = await context.params;
     const body = await readJson(request, PublishExportsRequestSchema.parse);
     const result = await executeIdempotent(db, { ownerId: principal.sub, operation: `exports:${id}`, key: requireIdempotencyKey(request), request: body }, async () => {
-      const jobId = await createExportJob(db, principal.sub, id);
+      const jobId = await createExportJob(db, principal.sub, id, exportCreditCost(body));
       let workflowRunId: string | null = null;
       let state: "queued" | "failed" = "queued";
       try {

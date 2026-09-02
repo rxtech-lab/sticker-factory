@@ -13,6 +13,7 @@
 		B00000000000000000000001 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000002 /* Kingfisher */; };
 		DF2A4294303DD070006910C8 /* AnimatedView in Frameworks */ = {isa = PBXBuildFile; productRef = DF2A4293303DD070006910C8 /* AnimatedView */; };
 		DFD446B430404667007C420E /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = DFD446B330404667007C420E /* icon.icon */; };
+		DFD461EA3047D1AE007C420E /* RxSubscriptionIOS in Frameworks */ = {isa = PBXBuildFile; productRef = C00000000000000000000002 /* RxSubscriptionIOS */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -142,6 +143,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DFD461EA3047D1AE007C420E /* RxSubscriptionIOS in Frameworks */,
 				B00000000000000000000001 /* Kingfisher in Frameworks */,
 				A00000000000000000000001 /* RxAuthSwift in Frameworks */,
 				DF2A4294303DD070006910C8 /* AnimatedView in Frameworks */,
@@ -273,6 +275,7 @@
 				A00000000000000000000019 /* RxAuthSwift */,
 				A00000000000000000000020 /* RxAuthSwiftUI */,
 				DF2A4293303DD070006910C8 /* AnimatedView */,
+				C00000000000000000000002 /* RxSubscriptionIOS */,
 			);
 			productName = StickerGeniOS;
 			productReference = DF2A3E15303C7709006910C8 /* StickerGeniOS.app */;
@@ -368,6 +371,7 @@
 			packageReferences = (
 				B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */,
 				A00000000000000000000018 /* XCRemoteSwiftPackageReference "RxAuthSwift" */,
+				C00000000000000000000001 /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */,
 				DF2A4292303DD070006910C8 /* XCLocalSwiftPackageReference "packages/AnimatedView" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -970,6 +974,14 @@
 				minimumVersion = 8.0.0;
 			};
 		};
+		C00000000000000000000001 /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/rxtech-lab/RxSubscriptionIOS.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -987,6 +999,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */;
 			productName = Kingfisher;
+		};
+		C00000000000000000000002 /* RxSubscriptionIOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C00000000000000000000001 /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */;
+			productName = RxSubscriptionIOS;
 		};
 		DF2A4293303DD070006910C8 /* AnimatedView */ = {
 			isa = XCSwiftPackageProductDependency;

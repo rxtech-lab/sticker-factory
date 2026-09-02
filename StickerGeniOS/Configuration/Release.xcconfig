@@ -1,2 +1,4 @@
 #include "Base.xcconfig"
 STICKER_FACTORY_API_BASE_URL = https:/$()/sticker.rxlab.app
+// Injected by Xcode Cloud — see Configuration/StickerFactory.xcconfig.example.
+STICKER_FACTORY_SUBSCRIPTION_KEY = rxs_pk_production_f233fbd09e8a480091610c63c4d0dd084f19c534d73d46afbc3c077d0c3da5ab

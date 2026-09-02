@@ -72,6 +72,15 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    /// Called when the server declines a request for want of credits or a plan.
+    ///
+    /// Hooked here rather than at each of the half-dozen call sites because a refusal can come back
+    /// from a generation, an export, or a pack publish, and every one of them would otherwise have
+    /// to recognise it separately — and the one that got forgotten would leave the user staring at
+    /// "you do not have enough credits" with no way to buy any. The error still propagates as
+    /// normal, so callers keep showing the server's own words; this only raises the paywall behind
+    /// them.
+    private var onSubscriptionRefusal: (@Sendable (SubscriptionRefusal) -> Void)?
 
     init(baseURL: URL, tokenBroker: SharedTokenBroker, session: URLSession = .shared) {
         self.baseURL = baseURL
@@ -79,6 +88,10 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         self.session = session
         encoder = JSONEncoder.api
         decoder = JSONDecoder.api
+    }
+
+    func onSubscriptionRefusal(_ handler: @escaping @Sendable (SubscriptionRefusal) -> Void) {
+        onSubscriptionRefusal = handler
     }
 
     func listStickers(cursor: String?) async throws -> Page<Sticker> {
@@ -590,6 +603,9 @@ actor StickerAPIClient: StickerAPIClientProtocol {
                 Self.networkLog.error(
                     "\(context, privacy: .public) → \(response.statusCode, privacy: .public) \(envelope.error.code, privacy: .public): \(envelope.error.message, privacy: .public) [request \(envelope.error.requestId, privacy: .public)] details=\(String(describing: envelope.error.details), privacy: .public)"
                 )
+                if let refusal = SubscriptionRefusal(code: envelope.error.code, details: envelope.error.details) {
+                    onSubscriptionRefusal?(refusal)
+                }
                 throw envelope
             }
             // Not an envelope, so the raw body is the only account of what went wrong — usually a
