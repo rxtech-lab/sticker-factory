@@ -1061,6 +1061,7 @@ export async function createChatTurn(
           stickerId,
           sourceMessageId: messageId,
           kind: jobKind,
+          quick: request.quick ?? false,
           state: "queued",
           reservationId,
           reservationAmount: reservationId ? creditHold : 0,
@@ -1180,6 +1181,10 @@ export async function retryFailedChatTurn(
         stickerId,
         sourceMessageId,
         kind: original.kind,
+        // Carried rather than defaulted: a retry is another attempt at the same turn, and the
+        // surface that asked for it has no chance to say so again — the extension's retry is the
+        // same Retry button the app has.
+        quick: original.quick,
         state: "queued",
         reservationId,
         reservationAmount: reservationId ? creditHold : 0,

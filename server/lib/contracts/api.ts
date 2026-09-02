@@ -55,11 +55,25 @@ export const SequenceMetadataSchema = z.object({
   frameRate: z.number().min(1).max(60),
 }).strict();
 
+/**
+ * Drawn by `AI_QUICK_IMAGE_MODEL` rather than `AI_IMAGE_MODEL`.
+ *
+ * Sent only by the Messages extension. Quick mode trades matte quality for latency and price — the
+ * quick model cannot draw transparency, so its background is keyed out server-side — and that is a
+ * trade only the surface asking can make, which is why it rides on the request instead of being
+ * inferred from the sticker.
+ *
+ * Optional rather than defaulted so that omitting it — which every other client does — stays
+ * absent all the way to the job row, where the column's own default decides.
+ */
+const QuickGenerationSchema = z.boolean().optional();
+
 export const CreateStickerRequestSchema = z.object({
   title: z.string().trim().min(1).max(100),
   kind: StickerKindSchema,
   prompt: z.string().trim().min(1).max(4_000),
   referenceAssetIds: z.array(z.string().uuid()).max(8).default([]),
+  quick: QuickGenerationSchema,
 }).strict();
 
 /**
@@ -91,6 +105,7 @@ export const PostChatMessageRequestSchema = z.object({
   targetLayerId: z.string().min(1).max(64).optional(),
   baseRevisionId: z.string().uuid().optional(),
   imagePlacement: z.enum(["replace", "add"]).default("replace"),
+  quick: QuickGenerationSchema,
 }).strict().superRefine((value, context) => {
   if (value.intent === "animate" && !value.baseRevisionId) {
     context.addIssue({ code: "custom", path: ["baseRevisionId"], message: "Animation requires an explicit base revision" });

@@ -9,9 +9,11 @@ Next.js 16 backend and read-only web library for Sticker Factory. The iOS app cr
 - `lib/contracts`: strict Zod `StickerDocumentV1`, operation, event, and API envelopes shared through `fixtures/`.
 - `lib/db` and `drizzle/0001_sticker_factory.sql`: Drizzle/libSQL model, active-job constraints, asset deletion guards, and immutable revision triggers.
 - `workflows/sticker-generation`: Vercel Workflow generation, editing, validated animation snapshots, export publication, decision transitions, and delayed R2 deletion sweeps.
-- `lib/ai`: Vercel AI Gateway adapter (`AI_IMAGE_MODEL` for every image generation/edit and
+- `lib/ai`: Vercel AI Gateway adapter (`AI_IMAGE_MODEL` for every image generation/edit,
+  `AI_QUICK_IMAGE_MODEL` for turns the Messages extension's quick mode starts, and
   `AI_ORCHESTRATOR_MODEL` for chat, routing, planning, review, and animation) plus a deterministic
-  local/test adapter.
+  local/test adapter. The quick model cannot draw transparency, so those turns are drawn against a
+  pure green or blue backdrop that `lib/ai/chroma-key.ts` cuts back out.
 - `lib/storage`: private R2 S3-compatible storage, signed URLs, checksum/media/transparency verification, and bounded image decoding.
 
 OAuth access tokens are verified against RxLab JWKS and are never forwarded to Vercel AI Gateway. Turso transcripts/revisions and private R2 assets are the recoverable AI context; provider conversation state is not the source of truth.

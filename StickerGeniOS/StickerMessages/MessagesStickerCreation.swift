@@ -627,6 +627,12 @@ private struct CreateStickerRequest: Encodable {
     let kind: String
     let prompt: String
     let referenceAssetIds: [String]
+    /// Always true here. It puts the turn on the server's quick image model, which draws in a
+    /// fraction of the time the main one takes and is keyed out of a coloured background rather
+    /// than arriving transparent. That is the right trade for someone holding a conversation open
+    /// waiting to send something; the main app, where the artwork is going to be edited and
+    /// published, keeps the slower model.
+    let quick = true
 }
 
 private struct CreateStickerResponse: Decodable {
@@ -650,6 +656,9 @@ private struct ChatMessageRequest: Encodable {
     /// box means is "change the picture" — and `generate` would start a fresh concept rather than
     /// alter the one the user is looking at.
     let intent: String
+    /// A revision is drawn by the same quick model that drew what the user is looking at, for the
+    /// same reason and with the same trade.
+    let quick = true
 }
 
 /// The `{ job: { id, state } }` both quick-mode POSTs answer with.

@@ -1629,6 +1629,75 @@ describe("durable sticker workflow", () => {
     await close();
   });
 
+  it("draws a quick-mode turn on the quick image model and leaves every other turn alone", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-quick", createdAt: new Date(), updatedAt: new Date() });
+    const photo = await attachablePhoto(db, store, "owner-quick");
+
+    const mockProvider = getAiProvider();
+    const drawnQuickly: Array<boolean | undefined> = [];
+    // Everything a turn can ask a reasoning model for, counted. Quick mode's whole latency budget is
+    // spent on these rather than on the draw: each is a vision call on the orchestrator model, and
+    // together they cost several times the two seconds the quick model needs for the picture.
+    const orchestrated = { selected: 0, shown: 0, named: 0 };
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      selectImageReferences: async (input) => {
+        orchestrated.selected += 1;
+        return mockProvider.selectImageReferences(input);
+      },
+      generateStickerImage: async (input) => {
+        drawnQuickly.push(input.quick);
+        return mockProvider.generateStickerImage(input);
+      },
+      editSticker: mockProvider.editSticker.bind(mockProvider),
+      showSticker: async (...args) => {
+        orchestrated.shown += 1;
+        return mockProvider.showSticker(...args);
+      },
+      summarizeStickerTitle: async (input) => {
+        orchestrated.named += 1;
+        return mockProvider.summarizeStickerTitle(input);
+      },
+    });
+
+    const sticker = await createSticker(db, "owner-quick", {
+      title: "Wink", kind: "static", prompt: "A winking cat", referenceAssetIds: [photo.id],
+    });
+    const fromMessages = await createChatTurn(db, "owner-quick", sticker.stickerId, {
+      text: "A winking cat",
+      intent: "generate",
+      attachments: [{ assetId: photo.id, kind: "reference" }],
+      imagePlacement: "replace",
+      quick: true,
+    });
+    expect((await stickerGenerationWorkflow(fromMessages.jobId)).workflowStatus).toBe("succeeded");
+
+    // One model call for the whole turn: the drawing. Not the reference selector, not the caption,
+    // not the renaming — all three deliberate on artwork nobody in Messages is going to read a
+    // sentence about, while the person who asked watches a spinner.
+    expect(orchestrated).toEqual({ selected: 0, shown: 0, named: 0 });
+    // The transcript still gets its assistant message, or the main app has a turn it cannot draw.
+    const transcript = await listChatMessages(db, "owner-quick", sticker.stickerId, { limit: 10 });
+    expect(transcript.data.at(-1)).toMatchObject({ role: "assistant", content: "Here's your sticker." });
+
+    // The same project, carried on in the main app: the flag belongs to the turn, so opening a
+    // sticker made in Messages does not condemn the rest of its life to the cheaper model — or to
+    // the shortcuts, which is why the orchestrator counts move again here.
+    const fromApp = await createChatTurn(db, "owner-quick", sticker.stickerId, {
+      text: "Give it a party hat", intent: "edit", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(fromApp.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(drawnQuickly).toEqual([true, false]);
+    expect(orchestrated.named).toBe(1);
+    await close();
+  });
+
   it("renames the sticker from its transcript when the turn finishes", async () => {
     const { db, close } = await createTestDatabase();
     setDatabaseForTests(db);

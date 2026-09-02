@@ -11,6 +11,12 @@ import sharp from "sharp";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
 import { recordImageApiCost, recordTextApiCost } from "@/lib/ai/cost";
+import {
+  alternateChromaKey,
+  chromaKeyBackground,
+  preferredChromaKey,
+  type ChromaKeyColor,
+} from "@/lib/ai/chroma-key";
 import { viewPlanImageTool } from "@/lib/ai/view-plan-image-tool";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { countKeyframes } from "@/lib/animation/compile";
@@ -52,6 +58,16 @@ export interface AiImageInput {
   mask?: { bytes: Uint8Array; mimeType: string };
   conversationContext?: string;
   mode: "generate" | "conversation_edit";
+  /**
+   * Draw this one on `AI_QUICK_IMAGE_MODEL` instead of `AI_IMAGE_MODEL`.
+   *
+   * Set only for turns started from the Messages extension, where someone is standing inside a
+   * conversation waiting to send something. The quick model costs and takes a fraction of what the
+   * main one does, and the trade is real: it cannot produce transparency at all, so the sticker is
+   * drawn against a chroma backdrop and cut out here (see `lib/ai/chroma-key.ts`). That is a worse
+   * matte than a model-native alpha channel, which is why the main app never takes this path.
+   */
+  quick?: boolean;
 }
 
 export interface AiImageReferenceCandidate {
@@ -837,10 +853,39 @@ const IMAGE_TIMEOUT_MS = (() => {
   return Number.isFinite(configured) && configured > 0 ? configured : 420_000;
 })();
 
-async function generateThroughImageModel(
-  input: AiImageInput,
-): Promise<Uint8Array> {
-  const instruction = [
+/**
+ * How the quick model is asked for a background it is incapable of leaving empty.
+ *
+ * `AI_QUICK_IMAGE_MODEL` has no transparency mode, so the alternative to a keyed backdrop is a
+ * sticker with a white box behind it. The wording is blunt on purpose: "solid", "uniform", "every
+ * pixel", and an explicit list of the things a model reaches for when it thinks it is being asked
+ * for a *background* — gradients, vignettes, cast shadows, checkerboards — each of which survives
+ * the key as a grey smear around the subject.
+ *
+ * Telling the model what the colour is *for* matters as much as naming it. Left unexplained, the
+ * backdrop colour leaks into the artwork: a green screen becomes green grass under the character's
+ * feet, and the character then stands in a hole.
+ */
+function chromaBackdropInstruction(color: ChromaKeyColor): string {
+  return [
+    `Place the sticker on a solid, uniform, pure ${color.name} background of exactly ${color.hex}.`,
+    "Every pixel that is not part of the sticker subject must be that exact colour: no gradient,",
+    "shading, vignette, texture, cast shadow, glow, checkerboard, border, or frame.",
+    `That background is removed afterwards to make the sticker transparent, so nothing drawn in ${color.name}`,
+    `survives — keep ${color.hex} and colours close to it out of the subject itself, including its outline,`,
+    "and never draw scenery, ground, or props in it.",
+  ].join(" ");
+}
+
+/**
+ * Everything the drawing model is told, on either path.
+ *
+ * Shared so the two models are asked for the same picture and differ in exactly one paragraph: how
+ * the background is supposed to arrive. Anything else that drifts between them shows up as quick
+ * mode quietly drawing a different kind of sticker.
+ */
+function stickerInstruction(input: AiImageInput, keyColor?: ChromaKeyColor): string {
+  return [
     input.mode === "conversation_edit"
       ? "Edit the supplied sticker references according to the latest instruction."
       : "Generate the sticker described by the latest instruction.",
@@ -848,10 +893,18 @@ async function generateThroughImageModel(
       ? `Recoverable project context:\n${input.conversationContext}`
       : "",
     `Latest instruction: ${input.prompt}`,
-    "Create a centered sticker with a genuinely transparent background.",
+    keyColor
+      ? `Draw one centered sticker subject. ${chromaBackdropInstruction(keyColor)}`
+      : "Create a centered sticker with a genuinely transparent background.",
     "Produce exactly one sticker subject. Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side.",
     "Return PNG.",
   ].filter(Boolean).join("\n\n");
+}
+
+async function generateThroughImageModel(
+  input: AiImageInput,
+): Promise<Uint8Array> {
+  const instruction = stickerInstruction(input);
   const prompt =
     input.references.length || input.mask
       ? {
@@ -873,6 +926,135 @@ async function generateThroughImageModel(
   });
   await recordImageApiCost(result);
   return result.image.uint8Array;
+}
+
+/**
+ * The quick model's budget. Far below the main model's, because the whole reason to take this path
+ * is that someone is waiting inside a conversation: an image that has not arrived in two minutes
+ * has already lost the argument against opening the main app.
+ */
+const QUICK_IMAGE_TIMEOUT_MS = (() => {
+  const configured = Number(process.env.AI_QUICK_IMAGE_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 120_000;
+})();
+
+/**
+ * Draws through the quick model, which is not an image model at all.
+ *
+ * Gemini's image models are multimodal *language* models that happen to answer with pictures, and
+ * the Gateway says so — routing one through `generateImage` is refused outright with "is a language
+ * model, not an image model". So the request is an ordinary chat completion: the instruction and any
+ * reference images go up as one user message, and the drawing comes back as a file part alongside
+ * whatever the model felt like saying about it.
+ *
+ * There is no `size` to ask for and no transparency option to set. The frame arrives at whatever
+ * shape the model chose, opaque, and `normalizeTransparentPng` squares it up after the key.
+ */
+async function generateThroughQuickImageModel(
+  input: AiImageInput,
+  keyColor: ChromaKeyColor,
+): Promise<Uint8Array> {
+  const result = await generateText({
+    model: gateway(process.env.AI_QUICK_IMAGE_MODEL ?? "google/gemini-3.1-flash-lite-image"),
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: stickerInstruction(input, keyColor) },
+        ...input.references.map((item) => ({
+          type: "file" as const,
+          data: item.bytes,
+          mediaType: item.mimeType,
+        })),
+      ],
+    }],
+    maxRetries: 2,
+    abortSignal: AbortSignal.timeout(QUICK_IMAGE_TIMEOUT_MS),
+  });
+  // Billed as an image, not as text, because that is what it is: this call replaces a `gpt-image-2`
+  // generation and belongs in the same column as one, however the provider happens to serve it.
+  await recordImageApiCost({
+    providerMetadata: result.providerMetadata ?? result.steps.at(-1)?.providerMetadata,
+  });
+  const drawn = result.files.find((file) => file.mediaType.startsWith("image/"));
+  if (!drawn) {
+    // A refusal, or an answer in words. Either way there is no picture, and the sentence the model
+    // wrote instead is the only clue about why, so it goes into the trace rather than nowhere.
+    traceEvent("gateway.quickImage:noImage", {
+      finishReason: result.finishReason,
+      said: result.text.slice(0, 200),
+    });
+    throw new Error("The quick image model answered without an image");
+  }
+  return drawn.uint8Array;
+}
+
+/**
+ * How much of the frame the key has to take for the cut-out to be believable, and how much is too
+ * much.
+ *
+ * Both ends are failures of the same instruction, read off the same number. Under the floor the
+ * model ignored the backdrop and returned an ordinary opaque illustration, so there is nothing to
+ * cut out. Over the ceiling the subject itself matched the key — a green frog on green — and what
+ * came back is a sticker-shaped hole. A sticker sitting in the middle of a flooded frame keys
+ * somewhere around half, and even a very large subject leaves well over a twentieth of the frame as
+ * background, so the band is wide enough that nothing legitimate lands outside it.
+ */
+const MINIMUM_KEYED_FRACTION = 0.05;
+const MAXIMUM_KEYED_FRACTION = 0.97;
+
+/**
+ * Quick mode's generation: draw the sticker against a chroma backdrop, then cut the backdrop out.
+ *
+ * Run twice at most, and the second run is not a repeat — it swaps the backdrop colour. Both ways
+ * the key can fail are colour-dependent, and neither is fixable by asking the same model for the
+ * same picture against the same screen again: a subject that matched green will match green a
+ * second time. Against blue it will not. This costs a second image on the quick model, which is
+ * roughly what one image on the main model costs, so it is worth doing once and not worth doing
+ * twice.
+ */
+async function generateKeyedStickerImage(input: AiImageInput): Promise<AiImageOutput> {
+  let keyColor: ChromaKeyColor = preferredChromaKey(input.prompt);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const raw = await traceSpan(
+      "gateway.image",
+      { path: "quickImageModel", mode: input.mode, key: keyColor.name, attempt },
+      () => generateThroughQuickImageModel(input, keyColor),
+    );
+    // Keying walks every pixel of a 1024x1024 image twice over — once in the matte pass, once in
+    // the re-encode — and like the normalize passes below it, it is CPU work the Gateway dashboard
+    // cannot see. Timed separately so a turn stalled in here is distinguishable from one waiting on
+    // the model.
+    const keyed = await traceSpan(
+      "gateway.chromaKey",
+      { bytes: raw.byteLength, key: keyColor.name },
+      () => chromaKeyBackground(raw, keyColor),
+    );
+    const normalized = await traceSpan(
+      "gateway.normalize",
+      { bytes: keyed.bytes.byteLength, key: keyColor.name },
+      () => normalizeTransparentPng(keyed.bytes),
+    );
+    if (
+      normalized.inspection.hasTransparentPixels
+      && normalized.inspection.hasNonTransparentPixels
+      && keyed.keyedFraction >= MINIMUM_KEYED_FRACTION
+      && keyed.keyedFraction <= MAXIMUM_KEYED_FRACTION
+    ) {
+      return { bytes: normalized.bytes, mimeType: "image/png" };
+    }
+    traceEvent("gateway.chromaKey:unusable", {
+      key: keyColor.name,
+      keyedFraction: Number(keyed.keyedFraction.toFixed(4)),
+      hasSubject: normalized.inspection.hasNonTransparentPixels,
+      attempt,
+    });
+    keyColor = alternateChromaKey(keyColor);
+  }
+  throw new ApiError(
+    502,
+    "OPAQUE_AI_OUTPUT",
+    "Image generation did not produce a sticker that could be separated from its background",
+  );
 }
 
 class GatewayAiProvider implements AiProvider {
@@ -977,6 +1159,12 @@ class GatewayAiProvider implements AiProvider {
         );
       }
     }
+
+    // A mask is the one thing the quick path cannot honour: it is an inpainting argument the quick
+    // model has no equivalent for, and the alpha the mask is drawn in is exactly what a chroma
+    // backdrop replaces. Masked edits come from the main app's brush anyway, never from Messages,
+    // so this is a guard rather than a fallback anyone actually hits.
+    if (input.quick && !input.mask) return generateKeyedStickerImage(input);
 
     const first = await traceSpan(
       "gateway.image",

@@ -2032,6 +2032,12 @@
         }
       }
     },
+    "Drawing it full size" : {
+
+    },
+    "Drawing the frames" : {
+
+    },
     "Edit" : {
       "localizations" : {
         "zh-CN" : {
@@ -2454,6 +2460,9 @@
           }
         }
       }
+    },
+    "Fitting it for Messages" : {
+
     },
     "Fitting Messages sticker" : {
       "localizations" : {
@@ -3130,6 +3139,9 @@
           }
         }
       }
+    },
+    "Making the send sizes" : {
+
     },
     "Making your sticker" : {
       "localizations" : {
@@ -4947,6 +4959,9 @@
       }
     },
     "Saving details…" : {
+
+    },
+    "Saving it" : {
 
     },
     "Saving replaces it with an unpublished draft. Export again to put it back in Messages." : {
