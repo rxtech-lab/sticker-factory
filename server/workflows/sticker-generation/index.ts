@@ -10,6 +10,7 @@ import {
   finalizeStickerPurgeStep,
   publishExportsStep,
   purgeStickerStep,
+  quickPublishStep,
   summarizeStickerTitleStep,
   sweepStickerObjectsStep,
   type RevisionDecisionInput,
@@ -45,6 +46,26 @@ export async function stickerExportWorkflow(jobId: string, request: PublishExpor
   await beginJobStep(jobId);
   try {
     const result = await publishExportsStep(jobId, request);
+    await completeJobStep(jobId, result);
+    return { workflowStatus: "succeeded" as const, result };
+  } catch (error) {
+    await failJobStep(jobId, error instanceof Error ? error.message : String(error));
+    return { status: "failed" as const };
+  }
+}
+
+/**
+ * Quick mode's publish: the server draws the renditions and binds them itself.
+ *
+ * Deliberately the same shape as `stickerExportWorkflow` — same job kind, same events, same
+ * terminal states — so the clients that already watch a publish need to learn nothing new about
+ * this one.
+ */
+export async function stickerQuickPublishWorkflow(jobId: string) {
+  "use workflow";
+  await beginJobStep(jobId);
+  try {
+    const result = await quickPublishStep(jobId);
     await completeJobStep(jobId, result);
     return { workflowStatus: "succeeded" as const, result };
   } catch (error) {

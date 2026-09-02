@@ -33,8 +33,8 @@ export const stickers = sqliteTable("stickers", {
   updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
   deletedAt: timestamp("deleted_at"),
 }, (table) => [
-  index("stickers_owner_updated_idx").on(table.ownerId, table.updatedAt),
-  index("stickers_owner_status_idx").on(table.ownerId, table.status),
+  index("stickers_owner_updated_idx").on(table.ownerId, table.updatedAt, table.id),
+  index("stickers_owner_status_updated_idx").on(table.ownerId, table.status, table.updatedAt, table.id),
 ]);
 
 export const chatThreads = sqliteTable("chat_threads", {
@@ -57,6 +57,18 @@ export const generationJobs = sqliteTable("generation_jobs", {
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
   state: text("state", { enum: ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] }).notNull().default("queued"),
   workflowRunId: text("workflow_run_id"),
+  /**
+   * The RxSubscription hold placed before this job was queued, and its estimate.
+   * The exact API-priced amount is accumulated below and settled on success.
+   * Null once the hold is closed, or when the job is free — and always null
+   * when billing is unconfigured.
+   */
+  reservationId: text("reservation_id"),
+  reservationAmount: integer("reservation_amount").notNull().default(0),
+  /** Text USD is rounded once for the turn; each image is rounded before entering apiImagePoints. */
+  apiTextCostNanodollars: integer("api_text_cost_nanodollars").notNull().default(0),
+  apiImageCostNanodollars: integer("api_image_cost_nanodollars").notNull().default(0),
+  apiImagePoints: integer("api_image_points").notNull().default(0),
   attempts: integer("attempts").notNull().default(0),
   errorCode: text("error_code"),
   errorMessage: text("error_message"),
@@ -304,7 +316,7 @@ export const stickerPackItems = sqliteTable("sticker_pack_items", {
   addedAt: timestamp("added_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   primaryKey({ columns: [table.packId, table.stickerId] }),
-  index("sticker_pack_items_pack_position_idx").on(table.packId, table.position),
+  index("sticker_pack_items_pack_position_idx").on(table.packId, table.position, table.stickerId),
   index("sticker_pack_items_sticker_idx").on(table.stickerId),
 ]);
 
@@ -325,7 +337,13 @@ export const packInstalls = sqliteTable("pack_installs", {
   uninstalledAt: timestamp("uninstalled_at"),
 }, (table) => [
   primaryKey({ columns: [table.packId, table.userId] }),
-  index("pack_installs_user_state_idx").on(table.userId, table.state, table.position),
+  index("pack_installs_user_state_idx").on(
+    table.userId,
+    table.state,
+    table.position,
+    table.installedAt,
+    table.packId,
+  ),
   index("pack_installs_pack_state_idx").on(table.packId, table.state),
 ]);
 

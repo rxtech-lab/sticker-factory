@@ -114,6 +114,43 @@ turn the user was still watching.
   too; `APNS_PRIVATE_KEY` takes the PEM or its base64. The topic is the app's bundle id,
   `app.rxlab.stickerfactory` — not the Messages extension's.
 
+## Credits and entitlements
+
+Generation is metered in points against the shared [RxSubscription](https://github.com/rxtech-lab/rx-subscription-service)
+service. `lib/subscription/` holds all of it: `client.ts` is the HTTP wrapper, `pricing.ts` the
+hold estimates, `credits.ts` the hold/settle/release cycle and the permission check.
+
+- Points are **held** before a job is queued and **charged** only when it succeeds. Generation is
+  asynchronous and fallible, so charging up front would bill people for stickers they never
+  received, and charging at the end would let someone queue ten jobs on points for one. The hold
+  leaves `available` immediately and comes back whole on failure, cancellation, or a workflow that
+  could not be dispatched.
+- Successful AI calls use the exact USD charge Vercel AI Gateway returns in
+  `providerMetadata.gateway.cost`. Ten USD converts to 700 points. All text calls in one chat turn
+  are added before rounding to the nearest point; every image generation is converted and rounded
+  separately. The up-front job table is only a reservation estimate, and unused held points are
+  released when the exact final amount is settled.
+- `generation_jobs.reservation_id` / `reservation_amount` carry the hold. Every terminal transition
+  a job can take has to be able to find it again, and no other row outlives all four. Both are
+  cleared once the hold closes, so a replayed transition cannot settle twice.
+- Reserving happens at each `generationJobs` insert; settling in `completeJobStep`, releasing in
+  `failJob`, `cancelGenerationWorkflow`, and `recordDispatchFailure`. A hold placed for a job that
+  then loses the one-active-job-per-sticker race is released by `abandonHold`.
+- Deleting your own work and still exports remain free. Animated exports keep their fixed charge
+  because they run a frame-by-frame encode rather than a paid AI API call.
+- Publishing a pack checks the `marketplace.publish` permission instead of spending credits — it is
+  a tier feature, not a metered one. Unpublishing is never gated: a lapsed plan must not trap a pack
+  on the marketplace.
+- Failures are told apart deliberately. Out of credits is `402 INSUFFICIENT_CREDITS`, no plan is
+  `402 SUBSCRIPTION_REQUIRED`, and a billing service that cannot be reached is `503`, never an empty
+  wallet. Settle and release swallow their errors — a job that really ran must not be reported as
+  failed because billing hiccuped, and an unreleased hold expires on its own.
+- Set `RX_SUBSCRIPTION_URL` and `RX_SUBSCRIPTION_API_KEY`. The key must be a **secret** one: it
+  holds and settles credits, which no client may be able to do. The iOS app carries its own
+  publishable key. Leaving either variable empty is a supported state that turns every credit and
+  entitlement check off — generation is unmetered and publishing ungated — which is how local
+  development and the test suites run.
+
 ## Media and deletion invariants
 
 - Private source/output assets use internal UUID references only.

@@ -160,15 +160,15 @@ const ASSET_EDGE = TILE * 2;
 const CELL_EDGE = TILE;
 
 /** How large each raster can usefully be, by asset id. Anything absent is left alone. */
-function assetEdges(document: StickerDocument): Map<string, number> {
+function assetEdges(document: StickerDocument, edge: number): Map<string, number> {
   const edges = new Map<string, number>();
-  const want = (id: string, edge: number) => edges.set(id, Math.max(edges.get(id) ?? 0, edge));
-  if (document.background.type === "image") want(document.background.assetId, ASSET_EDGE);
+  const want = (id: string, value: number) => edges.set(id, Math.max(edges.get(id) ?? 0, value));
+  if (document.background.type === "image") want(document.background.assetId, edge);
   for (const layer of document.layers) {
     // A sequence layer's atlas is handled by `sliceAtlases`, which replaces it with the individual
     // cells — so it is deliberately not listed here and never inlined whole.
     if (layer.type === "sequence") continue;
-    for (const id of layerImageAssetIds(layer)) want(id, ASSET_EDGE);
+    for (const id of layerImageAssetIds(layer)) want(id, edge);
   }
   return edges;
 }
@@ -213,6 +213,7 @@ async function sliceAtlases(
   assets: RenderAssets,
   times: number[],
   into: RenderAssets,
+  cellEdge: number,
 ): Promise<void> {
   await Promise.all([...requiredCells(document, times)].map(async ([assetId, indices]) => {
     const atlas = assets.get(assetId);
@@ -237,7 +238,7 @@ async function sliceAtlases(
           })
           // PNG, not WebP: see the note on `SHEET_MIME`. Alpha is load-bearing here — the cell is a
           // cut-out subject, and a white box behind it would read as a lift failure.
-          .resize(CELL_EDGE, CELL_EDGE, { fit: "inside", withoutEnlargement: true })
+          .resize(cellEdge, cellEdge, { fit: "inside", withoutEnlargement: true })
           .png({ compressionLevel: 9 })
           .toBuffer();
         into.set(sequenceCellKey(assetId, index), { bytes: new Uint8Array(bytes), mimeType: "image/png" });
@@ -283,8 +284,29 @@ export async function prepareSheetAssets(
 ): Promise<RenderAssets> {
   // `sampleTimes` is pure and deterministic, so deciding which atlas cells are needed here and
   // drawing them in `documentSvg` cannot disagree about which instants the sheet shows.
-  const times = sampleTimes(document);
-  const edges = assetEdges(document);
+  return prepareRenderAssets(document, assets, {
+    times: sampleTimes(document),
+    assetEdge: ASSET_EDGE,
+    cellEdge: CELL_EDGE,
+  });
+}
+
+/**
+ * The general form of the above: fit every bitmap for a render of `times` at a known box size.
+ *
+ * A publishable rendition (`lib/render/renditions.ts`) draws the same document through the same
+ * SVG renderer, but one instant per image at up to 1024px rather than six at 224px — so it needs
+ * the same atlas slicing and the same oversize guard with entirely different numbers. Sharing the
+ * body rather than copying it is what keeps the contact sheet and the published sticker showing
+ * the same pixels.
+ */
+export async function prepareRenderAssets(
+  document: StickerDocument,
+  assets: RenderAssets,
+  options: { times: number[]; assetEdge: number; cellEdge: number },
+): Promise<RenderAssets> {
+  const { times, assetEdge, cellEdge } = options;
+  const edges = assetEdges(document, assetEdge);
   const fitted: RenderAssets = new Map();
   const atlases = requiredCells(document, times);
   await Promise.all([...assets].map(async ([id, asset]) => {
@@ -324,7 +346,7 @@ export async function prepareSheetAssets(
       });
     }
   }));
-  await sliceAtlases(document, assets, times, fitted);
+  await sliceAtlases(document, assets, times, fitted, cellEdge);
   return fitted;
 }
 

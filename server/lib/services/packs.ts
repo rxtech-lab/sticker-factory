@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import type { Database } from "@/lib/db/client";
 import {
   attachmentMediumAssets,
@@ -22,13 +22,15 @@ import { ApiError } from "@/lib/http/errors";
 import {
   attachmentMediumSummaryColumns,
   attachmentSmallSummaryColumns,
-  listStickers,
+  buildStickerListQuery,
   previewAssetSummaryColumns,
+  serializeStickerListRows,
   serializeStickerSummary,
   stickerSummaryColumns,
   systemAssetSummaryColumns,
   type StickerSummaryRow,
 } from "@/lib/services/stickers";
+import { requirePublishEntitlement } from "@/lib/subscription/credits";
 
 /** A pack is a curated set, not a dumping ground; the Messages grid also has to stay scrollable. */
 export const MAX_PACK_ITEMS = 60;
@@ -231,21 +233,25 @@ function selectPacks(db: Database) {
  * carries no `system_asset_id` at all. The status and tombstone predicates are deliberately
  * redundant on top of it.
  */
-async function loadPackMembers(
-  db: Database,
-  packIds: string[],
-  options: { perPack?: number; query?: string | null } = {},
-): Promise<Map<string, StickerSummaryRow[]>> {
-  const byPack = new Map<string, StickerSummaryRow[]>();
-  if (packIds.length === 0) return byPack;
+type PackMemberRow = {
+  packId: string;
+  position: number;
+  sticker: StickerSummaryRow["sticker"];
+  systemAsset: StickerSummaryRow["systemAsset"];
+  previewAsset: StickerSummaryRow["previewAsset"];
+  attachmentMedium: StickerSummaryRow["attachmentMedium"];
+  attachmentSmall: StickerSummaryRow["attachmentSmall"];
+};
+
+function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | null) {
   const conditions = [
-    inArray(stickerPackItems.packId, packIds),
+    packFilter,
     eq(stickers.status, "published"),
     isNull(stickers.deletedAt),
   ];
-  const query = options.query?.trim();
-  if (query) conditions.push(sql`instr(lower(${stickers.title}), lower(${query})) > 0`);
-  const rows = await db.select({
+  const trimmedQuery = query?.trim();
+  if (trimmedQuery) conditions.push(sql`instr(lower(${stickers.title}), lower(${trimmedQuery})) > 0`);
+  return db.select({
     packId: stickerPackItems.packId,
     position: stickerPackItems.position,
     sticker: stickerSummaryColumns,
@@ -266,8 +272,14 @@ async function loadPackMembers(
     .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId))
     .where(and(...conditions))
     .orderBy(asc(stickerPackItems.packId), asc(stickerPackItems.position), asc(stickerPackItems.stickerId));
+}
 
-  const perPack = options.perPack ?? MAX_PACK_ITEMS;
+function groupPackMembers(
+  rows: PackMemberRow[],
+  packIds: string[],
+  perPack = MAX_PACK_ITEMS,
+): Map<string, StickerSummaryRow[]> {
+  const byPack = new Map<string, StickerSummaryRow[]>();
   for (const row of rows) {
     const bucket = byPack.get(row.packId) ?? [];
     if (bucket.length >= perPack) continue;
@@ -282,6 +294,16 @@ async function loadPackMembers(
   }
   for (const packId of packIds) if (!byPack.has(packId)) byPack.set(packId, []);
   return byPack;
+}
+
+async function loadPackMembers(
+  db: Database,
+  packIds: string[],
+  options: { perPack?: number; query?: string | null } = {},
+): Promise<Map<string, StickerSummaryRow[]>> {
+  if (packIds.length === 0) return new Map();
+  const rows = await selectPackMemberRows(db, inArray(stickerPackItems.packId, packIds), options.query);
+  return groupPackMembers(rows, packIds, options.perPack);
 }
 
 async function loadInstalledPackIds(db: Database, viewerId: string, packIds: string[]): Promise<Set<string>> {
@@ -510,6 +532,10 @@ export async function createPack(
   if (wantsPublish && stickerIds.length === 0) {
     throw new ApiError(409, "PACK_EMPTY", "Add at least one published sticker before publishing a pack");
   }
+  // Creating a pack is always free; only putting one in front of other people
+  // needs the entitlement. Checked here as well as in `publishPack` because
+  // this call can go straight to `published` in one step.
+  if (wantsPublish) await requirePublishEntitlement(creatorId);
 
   const packId = crypto.randomUUID();
   const now = new Date();
@@ -560,6 +586,11 @@ export async function publishPack(db: Database, creatorId: string, packId: strin
   if ((members.get(packId) ?? []).length === 0) {
     throw new ApiError(409, "PACK_EMPTY", "A pack needs at least one published sticker before it can go live");
   }
+  // Unlike generation, publishing costs us nothing to run — it is a tier
+  // feature rather than a metered one, so it checks a permission instead of
+  // spending credits. Unpublishing is deliberately never gated: a plan lapsing
+  // must not trap a pack on the marketplace.
+  await requirePublishEntitlement(creatorId);
   await ensureCreatorProfile(db, creatorId);
   await db.update(stickerPacks).set({
     state: "published",
@@ -771,6 +802,34 @@ export interface LibrarySectionV1 {
   stickers: ReturnType<typeof serializeStickerSummary>[];
 }
 
+function installedLibraryPackConditions(userId: string) {
+  return and(
+    eq(packInstalls.userId, userId),
+    eq(packInstalls.state, "installed"),
+    inArray(stickerPacks.state, [...PUBLIC_PACK_STATES]),
+  );
+}
+
+function selectInstalledLibraryPacks(db: Database, userId: string) {
+  return db.select({ pack: stickerPacks, profile: creatorProfiles, user: users, install: packInstalls })
+    .from(packInstalls)
+    .innerJoin(stickerPacks, eq(stickerPacks.id, packInstalls.packId))
+    .innerJoin(users, eq(users.id, stickerPacks.creatorId))
+    .leftJoin(creatorProfiles, eq(creatorProfiles.userId, stickerPacks.creatorId))
+    .where(installedLibraryPackConditions(userId))
+    .orderBy(asc(packInstalls.position), asc(packInstalls.installedAt), asc(packInstalls.packId))
+    .limit(MAX_INSTALLED_PACKS);
+}
+
+function selectInstalledLibraryPackIds(db: Database, userId: string) {
+  return db.select({ packId: packInstalls.packId })
+    .from(packInstalls)
+    .innerJoin(stickerPacks, eq(stickerPacks.id, packInstalls.packId))
+    .where(installedLibraryPackConditions(userId))
+    .orderBy(asc(packInstalls.position), asc(packInstalls.installedAt), asc(packInstalls.packId))
+    .limit(MAX_INSTALLED_PACKS);
+}
+
 /**
  * "My Stickers" plus one section per installed pack — the shape both the Library tab and the
  * Messages grid render.
@@ -787,28 +846,27 @@ export async function listLibrarySections(
 ): Promise<{ sections: LibrarySectionV1[]; generatedAt: string }> {
   const status = options.status ?? "published";
   const query = options.query?.trim();
-  const mine = await listStickers(db, userId, {
+  const mineSelection = buildStickerListQuery(db, userId, {
     limit: 100,
     status: status === "all" ? undefined : "published",
     query,
   });
+  const installedQuery = selectInstalledLibraryPacks(db, userId);
+  const membersQuery = selectPackMemberRows(
+    db,
+    inArray(stickerPackItems.packId, selectInstalledLibraryPackIds(db, userId)),
+    query,
+  );
 
-  const installed = await db.select({ pack: stickerPacks, profile: creatorProfiles, user: users, install: packInstalls })
-    .from(packInstalls)
-    .innerJoin(stickerPacks, eq(stickerPacks.id, packInstalls.packId))
-    .innerJoin(users, eq(users.id, stickerPacks.creatorId))
-    .leftJoin(creatorProfiles, eq(creatorProfiles.userId, stickerPacks.creatorId))
-    .where(and(
-      eq(packInstalls.userId, userId),
-      eq(packInstalls.state, "installed"),
-      inArray(stickerPacks.state, [...PUBLIC_PACK_STATES]),
-    ))
-    .orderBy(asc(packInstalls.position), asc(packInstalls.installedAt))
-    .limit(MAX_INSTALLED_PACKS);
-
-  // A separate members query, so a pack whose every member fell back to `draft` still yields a
-  // section with an empty sticker list rather than silently disappearing from the user's library.
-  const members = await loadPackMembers(db, installed.map((row) => row.pack.id), { query });
+  // These result sets are independent and travel in one libSQL batch. Keeping pack metadata and
+  // members separate still preserves an installed section when all its stickers fall back to draft.
+  const [mineRows, installed, memberRows] = await db.batch([
+    mineSelection.query,
+    installedQuery,
+    membersQuery,
+  ] as const);
+  const mine = serializeStickerListRows(mineRows, mineSelection.limit);
+  const members = groupPackMembers(memberRows, installed.map((row) => row.pack.id));
 
   const latest = (rows: { updatedAt: string }[], fallback: string) =>
     rows.reduce((newest, row) => (row.updatedAt > newest ? row.updatedAt : newest), fallback);

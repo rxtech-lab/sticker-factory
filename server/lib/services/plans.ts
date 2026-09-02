@@ -12,6 +12,8 @@ import type { Database } from "@/lib/db/client";
 import { assets, chatMessages, chatThreads, generationEvents, generationJobs, plans, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { isActiveJobConstraint } from "@/lib/services/stickers";
+import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
+import { jobCreditHold } from "@/lib/subscription/pricing";
 
 export type SerializedPlan = {
   id: string;
@@ -266,45 +268,56 @@ export async function confirmPlan(
   const messageId = crypto.randomUUID();
   const now = new Date();
   const generations = planGenerationCount(plan);
-  await db.transaction(async (tx) => {
-    try {
-      await tx.insert(generationJobs).values({
-        id: jobId,
-        ownerId,
-        stickerId,
-        sourceMessageId: messageId,
-        kind: "compose",
-        state: "queued",
-        createdAt: now,
-        updatedAt: now,
-      });
-    } catch (error) {
-      if (isActiveJobConstraint(error)) {
-        throw new ApiError(409, "AI_TURN_IN_PROGRESS", "This sticker already has an active AI turn");
+  const creditHold = jobCreditHold("compose");
+  const reservationId = await holdCreditsForJob({
+    ownerId,
+    amount: creditHold,
+    idempotencyKey: `reserve:${jobId}`,
+    description: "Sticker plan build",
+    metadata: { jobId, stickerId, kind: "compose", planId, generations },
+  });
+  try {
+    await db.transaction(async (tx) => {
+      try {
+        await tx.insert(generationJobs).values({
+          id: jobId,
+          ownerId,
+          stickerId,
+          sourceMessageId: messageId,
+          kind: "compose",
+          state: "queued",
+          reservationId,
+          reservationAmount: reservationId ? creditHold : 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch (error) {
+        if (isActiveJobConstraint(error)) {
+          throw new ApiError(409, "AI_TURN_IN_PROGRESS", "This sticker already has an active AI turn");
+        }
+        throw error;
       }
-      throw error;
-    }
-    const claimed = await tx.update(plans).set({ state: "confirmed", jobId, updatedAt: now, decidedAt: now })
-      .where(and(eq(plans.id, planId), eq(plans.state, "finalized")))
-      .returning({ id: plans.id });
-    if (claimed.length === 0) {
-      throw new ApiError(409, "PLAN_NOT_ACTIONABLE", "This plan was already decided");
-    }
-    const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-      .where(eq(chatMessages.threadId, row.threadId)).get();
-    await tx.insert(chatMessages).values({
-      id: messageId,
-      threadId: row.threadId,
-      ownerId,
-      role: "user",
-      kind: "text",
-      content: generations > 0
-        ? `Build this plan: ${plan.layers.length} layers, ${generations} to generate.`
-        : `Build this plan: ${plan.layers.length} layers.`,
-      sequence: (sequenceRow?.value ?? 0) + 1,
-      jobId,
-      status: "streaming",
-      createdAt: now,
+      const claimed = await tx.update(plans).set({ state: "confirmed", jobId, updatedAt: now, decidedAt: now })
+        .where(and(eq(plans.id, planId), eq(plans.state, "finalized")))
+        .returning({ id: plans.id });
+      if (claimed.length === 0) {
+        throw new ApiError(409, "PLAN_NOT_ACTIONABLE", "This plan was already decided");
+      }
+      const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
+        .where(eq(chatMessages.threadId, row.threadId)).get();
+      await tx.insert(chatMessages).values({
+        id: messageId,
+        threadId: row.threadId,
+        ownerId,
+        role: "user",
+        kind: "text",
+        content: generations > 0
+          ? `Build this plan: ${plan.layers.length} layers, ${generations} to generate.`
+          : `Build this plan: ${plan.layers.length} layers.`,
+        sequence: (sequenceRow?.value ?? 0) + 1,
+        jobId,
+        status: "streaming",
+        createdAt: now,
     });
     await tx.update(chatThreads).set({ updatedAt: now }).where(eq(chatThreads.id, row.threadId));
     await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
@@ -315,7 +328,11 @@ export async function confirmPlan(
       dataJson: { intent: "compose", messageId, planId },
       createdAt: now,
     });
-  });
+    });
+  } catch (error) {
+    await abandonHold(reservationId, jobId, "job_not_created");
+    throw error;
+  }
   return { messageId, jobId };
 }
 
@@ -361,43 +378,56 @@ export async function cancelPlan(
 
   const jobId = crypto.randomUUID();
   const messageId = crypto.randomUUID();
-  await db.transaction(async (tx) => {
-    const claimed = await cancel(tx);
-    if (claimed.length === 0) {
-      throw new ApiError(409, "PLAN_NOT_ACTIONABLE", "This plan was already decided");
-    }
-    try {
-      await tx.insert(generationJobs).values({
-        id: jobId,
-        ownerId,
-        stickerId,
-        sourceMessageId: messageId,
-        kind: "plan",
-        state: "queued",
-        createdAt: now,
-        updatedAt: now,
-      });
-    } catch (error) {
-      if (isActiveJobConstraint(error)) {
-        throw new ApiError(409, "AI_TURN_IN_PROGRESS", "This sticker already has an active AI turn");
+  // Planning is API-priced like every other text turn. The reservation is only
+  // an estimate; the exact Gateway cost is settled after the turn succeeds.
+  const creditHold = jobCreditHold("plan");
+  const reservationId = await holdCreditsForJob({
+    ownerId,
+    amount: creditHold,
+    idempotencyKey: `reserve:${jobId}`,
+    description: "Sticker planning turn",
+    metadata: { jobId, stickerId, kind: "plan", planId },
+  });
+  try {
+    await db.transaction(async (tx) => {
+      const claimed = await cancel(tx);
+      if (claimed.length === 0) {
+        throw new ApiError(409, "PLAN_NOT_ACTIONABLE", "This plan was already decided");
       }
-      throw error;
-    }
-    const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-      .where(eq(chatMessages.threadId, row.threadId)).get();
-    await tx.insert(chatMessages).values({
-      id: messageId,
-      threadId: row.threadId,
-      ownerId,
-      role: "user",
-      kind: "text",
-      // The reason verbatim: it is what the user typed, and the planning turn reads it as the
-      // instruction for the next draft.
-      content: trimmed,
-      sequence: (sequenceRow?.value ?? 0) + 1,
-      jobId,
-      status: "streaming",
-      createdAt: now,
+      try {
+        await tx.insert(generationJobs).values({
+          id: jobId,
+          ownerId,
+          stickerId,
+          sourceMessageId: messageId,
+          kind: "plan",
+          state: "queued",
+          reservationId,
+          reservationAmount: reservationId ? creditHold : 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch (error) {
+        if (isActiveJobConstraint(error)) {
+          throw new ApiError(409, "AI_TURN_IN_PROGRESS", "This sticker already has an active AI turn");
+        }
+        throw error;
+      }
+      const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
+        .where(eq(chatMessages.threadId, row.threadId)).get();
+      await tx.insert(chatMessages).values({
+        id: messageId,
+        threadId: row.threadId,
+        ownerId,
+        role: "user",
+        kind: "text",
+        // The reason verbatim: it is what the user typed, and the planning turn reads it as the
+        // instruction for the next draft.
+        content: trimmed,
+        sequence: (sequenceRow?.value ?? 0) + 1,
+        jobId,
+        status: "streaming",
+        createdAt: now,
     });
     await tx.update(chatThreads).set({ updatedAt: now }).where(eq(chatThreads.id, row.threadId));
     await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
@@ -408,7 +438,11 @@ export async function cancelPlan(
       dataJson: { intent: "plan", messageId, planId },
       createdAt: now,
     });
-  });
+    });
+  } catch (error) {
+    await abandonHold(reservationId, jobId, "job_not_created");
+    throw error;
+  }
   return { planId, state: "cancelled" as const, messageId, jobId };
 }
 

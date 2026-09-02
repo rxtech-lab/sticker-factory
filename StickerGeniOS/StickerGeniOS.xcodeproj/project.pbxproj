@@ -13,6 +13,9 @@
 		B00000000000000000000001 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000002 /* Kingfisher */; };
 		DF2A4294303DD070006910C8 /* AnimatedView in Frameworks */ = {isa = PBXBuildFile; productRef = DF2A4293303DD070006910C8 /* AnimatedView */; };
 		DFD446B430404667007C420E /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = DFD446B330404667007C420E /* icon.icon */; };
+		DFD465E53048198D007C420E /* RxSubscriptionIOS in Frameworks */ = {isa = PBXBuildFile; productRef = DFD465E43048198D007C420E /* RxSubscriptionIOS */; };
+		DFD465E8304847DD007C420E /* InAppPurchaseConfiguration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = DFD465E7304847DD007C420E /* InAppPurchaseConfiguration.storekit */; };
+		DFD465F730487904007C420E /* RxSubscriptionIOS in Frameworks */ = {isa = PBXBuildFile; productRef = DFD465F630487904007C420E /* RxSubscriptionIOS */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +73,7 @@
 		DF2A3E24303C770A006910C8 /* StickerGeniOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerGeniOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF2A3E2E303C770A006910C8 /* StickerGeniOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerGeniOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DFD446B330404667007C420E /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
+		DFD465E7304847DD007C420E /* InAppPurchaseConfiguration.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = InAppPurchaseConfiguration.storekit; path = Configuration/InAppPurchaseConfiguration.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -79,6 +83,13 @@
 				Info.plist,
 			);
 			target = DF2A3E14303C7709006910C8 /* StickerGeniOS */;
+		};
+		A00000000000000000000040 /* Exceptions for "StickerGeniOS" folder in "StickerMessages" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Views/StickerToolLabel.swift,
+			);
+			target = A00000000000000000000010 /* StickerMessages */;
 		};
 		A00000000000000000000007 /* Exceptions for "StickerMessages" folder in "StickerMessages" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -107,6 +118,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				A00000000000000000000006 /* Exceptions for "StickerGeniOS" folder in "StickerGeniOS" target */,
+				A00000000000000000000040 /* Exceptions for "StickerGeniOS" folder in "StickerMessages" target */,
 			);
 			path = StickerGeniOS;
 			sourceTree = "<group>";
@@ -146,6 +158,8 @@
 				A00000000000000000000001 /* RxAuthSwift in Frameworks */,
 				DF2A4294303DD070006910C8 /* AnimatedView in Frameworks */,
 				A00000000000000000000002 /* RxAuthSwiftUI in Frameworks */,
+				DFD465E53048198D007C420E /* RxSubscriptionIOS in Frameworks */,
+				DFD465F730487904007C420E /* RxSubscriptionIOS in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -179,6 +193,7 @@
 		DF2A3E0C303C7709006910C8 = {
 			isa = PBXGroup;
 			children = (
+				DFD465E7304847DD007C420E /* InAppPurchaseConfiguration.storekit */,
 				DFD446B330404667007C420E /* icon.icon */,
 				A00000000000000000000035 /* Configuration */,
 				DF2A3E17303C7709006910C8 /* StickerGeniOS */,
@@ -273,6 +288,8 @@
 				A00000000000000000000019 /* RxAuthSwift */,
 				A00000000000000000000020 /* RxAuthSwiftUI */,
 				DF2A4293303DD070006910C8 /* AnimatedView */,
+				DFD465E43048198D007C420E /* RxSubscriptionIOS */,
+				DFD465F630487904007C420E /* RxSubscriptionIOS */,
 			);
 			productName = StickerGeniOS;
 			productReference = DF2A3E15303C7709006910C8 /* StickerGeniOS.app */;
@@ -369,6 +386,7 @@
 				B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */,
 				A00000000000000000000018 /* XCRemoteSwiftPackageReference "RxAuthSwift" */,
 				DF2A4292303DD070006910C8 /* XCLocalSwiftPackageReference "packages/AnimatedView" */,
+				DFD465F530487904007C420E /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DF2A3E16303C7709006910C8 /* Products */;
@@ -403,6 +421,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DFD465E8304847DD007C420E /* InAppPurchaseConfiguration.storekit in Resources */,
 				DFD446B430404667007C420E /* icon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -970,6 +989,14 @@
 				minimumVersion = 8.0.0;
 			};
 		};
+		DFD465F530487904007C420E /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/rxtech-lab/RxSubscriptionIOS";
+			requirement = {
+				kind = exactVersion;
+				version = 1.1.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -991,6 +1018,15 @@
 		DF2A4293303DD070006910C8 /* AnimatedView */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AnimatedView;
+		};
+		DFD465E43048198D007C420E /* RxSubscriptionIOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RxSubscriptionIOS;
+		};
+		DFD465F630487904007C420E /* RxSubscriptionIOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DFD465F530487904007C420E /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */;
+			productName = RxSubscriptionIOS;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

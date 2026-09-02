@@ -31,6 +31,10 @@ struct StickerLibraryCard: View {
                 .foregroundStyle(.secondary)
             }
         }
+        // The animated thumbnail is a transparent UIKit-backed view. Without an explicit shape,
+        // a plain navigation link can derive its tappable area from the text below and leave the
+        // artwork out. Make the entire visible card one interaction surface.
+        .contentShape(.rect(cornerRadius: 24))
     }
 }
 
@@ -109,6 +113,9 @@ struct VerifiedAssetImage: View {
         Group {
             if let animation {
                 AnimatedStickerImage(animation: animation)
+                    // Playback is visual content. Its SwiftUI bridge must not compete with a card
+                    // or attachment button that owns the tap.
+                    .allowsHitTesting(false)
             } else if let image {
                 Image(uiImage: image).resizable().scaledToFit()
             } else {

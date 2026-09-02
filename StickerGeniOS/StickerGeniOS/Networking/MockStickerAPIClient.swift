@@ -14,9 +14,11 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     private(set) var uploadedKinds: [AssetKind] = []
     private(set) var publishedExportRequests: [PublishExportsRequest] = []
     private let failCreationAsUpload: Bool
+    private let failChatSendAsInsufficientCredits: Bool
 
-    init(failCreationAsUpload: Bool = false) {
+    init(failCreationAsUpload: Bool = false, failChatSendAsInsufficientCredits: Bool = false) {
         self.failCreationAsUpload = failCreationAsUpload
+        self.failChatSendAsInsufficientCredits = failChatSendAsInsufficientCredits
     }
 
     func listStickers(cursor: String?) async throws -> Page<Sticker> { .init(data: stickers, nextCursor: nil) }
@@ -119,6 +121,14 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     }
 
     func sendChatMessage(stickerID: String, request: SendChatMessageRequest, idempotencyKey: String) async throws -> SendChatMessageResponse {
+        if failChatSendAsInsufficientCredits {
+            throw APIErrorEnvelope(error: .init(
+                code: "INSUFFICIENT_CREDITS",
+                message: "You do not have enough points for this. Top up or upgrade your plan to keep creating.",
+                requestId: "ui-test-insufficient-credits",
+                details: nil
+            ))
+        }
         let message = ChatMessage(
             id: UUID().uuidString,
             role: .user,

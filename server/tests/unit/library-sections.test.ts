@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "@/lib/db/client";
 import { stickers } from "@/lib/db/schema";
+import { formatTimings, runTimed } from "@/lib/http/timing";
 import { MAX_PACK_ITEMS, createPack, installPack, listLibrarySections, uninstallPack } from "@/lib/services/packs";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { seedPublishedSticker, seedUser } from "@/tests/helpers/packs";
@@ -39,6 +40,25 @@ describe("library sections", () => {
     expect(borrowed.stickers.map((sticker) => sticker.title)).toEqual(["Borrowed"]);
     // The system rendition is what both the Library card and the Messages grid render.
     expect(borrowed.stickers[0].systemSticker?.assetId).toBe(theirs.systemAssetId);
+  });
+
+  it("loads the three section result sets in one database batch", async () => {
+    await seedPublishedSticker(db, "installer", { title: "My Own" });
+    const theirs = await seedPublishedSticker(db, "creator", { title: "Borrowed" });
+    const pack = await createPack(db, "creator", {
+      title: "Cozy Cats",
+      stickerIds: [theirs.stickerId],
+      state: "published",
+    });
+    await installPack(db, "installer", pack.id);
+
+    const timings = await runTimed(async () => {
+      await listLibrarySections(db, "installer");
+      return formatTimings();
+    });
+
+    expect(timings).toMatch(/^db=/);
+    expect(timings).not.toContain("db x");
   });
 
   /**

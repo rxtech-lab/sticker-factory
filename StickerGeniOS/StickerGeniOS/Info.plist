@@ -56,6 +56,10 @@
 	<string>$(STICKER_FACTORY_OAUTH_ISSUER)</string>
 	<key>StickerFactoryOAuthRedirectURI</key>
 	<string>stickerfactory://oauth/callback</string>
+	<key>StickerFactorySubscriptionKey</key>
+	<string>$(STICKER_FACTORY_SUBSCRIPTION_KEY)</string>
+	<key>StickerFactorySubscriptionURL</key>
+	<string>$(STICKER_FACTORY_SUBSCRIPTION_URL)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

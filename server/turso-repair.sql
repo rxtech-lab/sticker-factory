@@ -1,0 +1,12 @@
+PRAGMA foreign_keys=OFF;
+ALTER TABLE sticker_revisions RENAME TO sticker_revisions_old;
+DROP INDEX IF EXISTS sticker_revisions_parent_idx;
+DROP INDEX IF EXISTS sticker_revisions_sticker_created_idx;
+CREATE TABLE sticker_revisions (id text NOT NULL PRIMARY KEY, sticker_id text NOT NULL, parent_revision_id text, source_message_id text, kind text NOT NULL, candidate_state text NOT NULL DEFAULT 'candidate', document_json text NOT NULL, master_asset_id text, preview_asset_id text, png_asset_id text, gif_asset_id text, mp4_asset_id text, system_asset_id text, created_at integer NOT NULL, decided_at integer, apng_asset_id text, attachment_medium_asset_id TEXT, attachment_small_asset_id TEXT, FOREIGN KEY (sticker_id) REFERENCES stickers(id) ON DELETE CASCADE, FOREIGN KEY (source_message_id) REFERENCES chat_messages(id) ON DELETE SET NULL, FOREIGN KEY (master_asset_id) REFERENCES assets(id) ON DELETE SET NULL, FOREIGN KEY (preview_asset_id) REFERENCES assets(id) ON DELETE SET NULL, FOREIGN KEY (png_asset_id) REFERENCES assets(id) ON DELETE SET NULL, FOREIGN KEY (gif_asset_id) REFERENCES assets(id) ON DELETE SET NULL, FOREIGN KEY (apng_asset_id) REFERENCES assets(id) ON DELETE SET NULL, FOREIGN KEY (mp4_asset_id) REFERENCES assets(id) ON DELETE SET NULL, FOREIGN KEY (system_asset_id) REFERENCES assets(id) ON DELETE SET NULL, FOREIGN KEY (attachment_medium_asset_id) REFERENCES assets(id) ON DELETE SET NULL, FOREIGN KEY (attachment_small_asset_id) REFERENCES assets(id) ON DELETE SET NULL);
+INSERT INTO sticker_revisions (id, sticker_id, parent_revision_id, source_message_id, kind, candidate_state, document_json, master_asset_id, preview_asset_id, png_asset_id, gif_asset_id, mp4_asset_id, system_asset_id, created_at, decided_at, apng_asset_id, attachment_medium_asset_id, attachment_small_asset_id) SELECT id, sticker_id, parent_revision_id, source_message_id, kind, candidate_state, document_json, master_asset_id, preview_asset_id, png_asset_id, gif_asset_id, mp4_asset_id, system_asset_id, created_at, decided_at, apng_asset_id, attachment_medium_asset_id, attachment_small_asset_id FROM sticker_revisions_old;
+DROP TABLE sticker_revisions_old;
+CREATE INDEX sticker_revisions_parent_idx ON sticker_revisions (parent_revision_id);
+CREATE INDEX sticker_revisions_sticker_created_idx ON sticker_revisions (sticker_id, created_at);
+ALTER TABLE generation_jobs ADD COLUMN reservation_id text;
+ALTER TABLE generation_jobs ADD COLUMN reservation_amount integer NOT NULL DEFAULT 0;
+PRAGMA foreign_keys=ON;

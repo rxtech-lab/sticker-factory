@@ -25,9 +25,12 @@ export async function withApiAuth(
     try {
       const authenticatedPrincipal = await timeStage("auth", () => requireApiPrincipal(request));
       principal = authenticatedPrincipal;
-      stage = "ensure-user";
+      const requiresUserRow = request.method !== "GET" && request.method !== "HEAD";
+      stage = requiresUserRow ? "ensure-user" : "handler";
       const db = getDatabase();
-      await timeStage("ensure-user", () => ensureUser(db, authenticatedPrincipal));
+      if (requiresUserRow) {
+        await timeStage("ensure-user", () => ensureUser(db, authenticatedPrincipal));
+      }
       stage = "handler";
       const response = await timeStage("handler", () => action(authenticatedPrincipal, db, context));
       status = response.status;

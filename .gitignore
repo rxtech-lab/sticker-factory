@@ -8,3 +8,6 @@ xcuserdata/
 *.xcuserstate
 StickerGeniOS/build
 .vercel
+.playwright-mcp
+server/test-results
+tether-full.png

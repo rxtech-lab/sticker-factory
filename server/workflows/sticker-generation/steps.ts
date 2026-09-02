@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, max, ne } from "drizzle-orm";
 import { FatalError } from "workflow";
 import { compactTranscript, type TranscriptOptions } from "@/lib/ai/compaction";
+import { withAiApiCostRecorder } from "@/lib/ai/cost";
 import {
   assertAnimatedPlanUsesReferenceBackedArtwork,
   assertPlanReuseIsResolvable,
@@ -74,10 +75,12 @@ import {
   revertRevision,
   serializeChatMessage,
 } from "@/lib/services/stickers";
+import { quickPublishSticker } from "@/lib/services/quick-publish";
 import { referencedAssetIds, renderSticker } from "@/lib/render/sticker-render";
 import type { RenderAssets } from "@/lib/render/document-svg";
 import { downscaleForModelInput, getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import { ApiError } from "@/lib/http/errors";
+import { chargeJobCredits, recordJobApiCost, refundJobCredits } from "@/lib/subscription/credits";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 
 /**
@@ -1780,7 +1783,11 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
   // regenerating its image every time — otherwise reports nothing at all. Name the error on the way
   // out, with the frame that threw it, since several of these messages appear in more than one place.
   try {
-    return await runAiTurn(jobId);
+    const db = getDatabase();
+    return await withAiApiCostRecorder(
+      (event) => recordJobApiCost(db, jobId, event),
+      () => runAiTurn(jobId),
+    );
   } catch (error) {
     traceEvent("executeAiJobStep:fail", {
       jobId,
@@ -2492,6 +2499,45 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   return result;
 }
 
+/**
+ * The server-rendered publish behind quick mode.
+ *
+ * A step rather than a request handler because it draws the whole export ladder — for an animated
+ * sticker that is a few hundred librsvg rasterisations — and nothing that slow belongs on a
+ * connection an iMessage extension is holding open. The extension starts the job and watches its
+ * events like it watches a generation.
+ *
+ * `QuickPublishUnsupportedError` (and every other 4xx) fails the job once instead of retrying: a
+ * document this renderer will not draw fails identically on every attempt, and the message is the
+ * one the extension shows next to its "Open the main app" button.
+ */
+export async function quickPublishStep(jobId: string) {
+  "use step";
+  const db = getDatabase();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  if (!job || job.kind !== "export") throw new Error("Export job not found");
+  await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "rendering_exports", progress: 0.02 });
+  try {
+    // Reported as tool calls rather than as bare stages, because the surface watching a quick
+    // publish is the same list that just drew the artwork: the export ladder is several slow
+    // rasterisations, and one spinner for the lot of them says only that nothing has crashed.
+    const result = await quickPublishSticker(db, job.ownerId, job.stickerId, async (step) => {
+      await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+        toolCallId: `publish:${step.id}`,
+        toolName: step.id,
+        toolStatus: step.status === "complete" ? "complete" : "streaming",
+        progress: step.progress,
+      });
+    });
+    await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "verifying_exports", progress: 0.9 });
+    return result;
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status >= 500) throw error;
+    await failJob(db, jobId, error.message, error.message);
+    throw new FatalError(error.message);
+  }
+}
+
 export async function publishExportsStep(jobId: string, request: PublishExportsRequest) {
   "use step";
   const db = getDatabase();
@@ -2582,11 +2628,14 @@ export async function summarizeStickerTitleStep(jobId: string): Promise<string |
       .filter((message) => message.kind !== "status");
     if (transcript.length === 0) return undefined;
     const proposed = await traceSpan("summarizeStickerTitle", { jobId }, () =>
-      getAiProvider().summarizeStickerTitle({
-        currentTitle: sticker.title,
-        history: boundedTranscript(transcript, 8_000),
-        stickerKind: sticker.kind,
-      }));
+      withAiApiCostRecorder(
+        (event) => recordJobApiCost(db, jobId, event),
+        () => getAiProvider().summarizeStickerTitle({
+          currentTitle: sticker.title,
+          history: boundedTranscript(transcript, 8_000),
+          stickerKind: sticker.kind,
+        }),
+      ));
     const title = normalizeStickerTitle(proposed);
     if (!title || title === sticker.title) return undefined;
     await db.update(stickers).set({ title, updatedAt: new Date() })
@@ -2648,6 +2697,8 @@ export async function completeJobStep(jobId: string, result: Record<string, unkn
     }
     await tx.insert(generationEvents).values({ jobId, ownerId: job.ownerId, type: "completed", dataJson: result, createdAt: now });
   });
+  // The one path that actually charges. Everything else returns the hold.
+  await chargeJobCredits(db, job);
   await announceJobEnded(db, job, "ready");
 }
 
@@ -2708,8 +2759,12 @@ async function failJob(db: Database, jobId: string, message: string, publicReaso
     return true;
   });
   // Only the transition that actually happened announces itself — a late second call, or a job
-  // something else already finished, stays silent.
-  if (failed) await announceJobEnded(db, job, "failed");
+  // something else already finished, stays silent. The refund is guarded the same way, so a
+  // repeated call cannot release a hold that a different ending already settled.
+  if (failed) {
+    await refundJobCredits(db, job, "generation_failed");
+    await announceJobEnded(db, job, "failed");
+  }
 }
 
 export async function purgeStickerStep(jobId: string): Promise<string[]> {

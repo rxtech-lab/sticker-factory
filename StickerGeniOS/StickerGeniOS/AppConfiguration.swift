@@ -15,6 +15,19 @@ nonisolated struct AppConfiguration: Sendable {
     let oauthTokenURL: URL
     let oauthClientID: String
     let oauthRedirectURI: String
+    let subscriptionBaseURL: URL?
+    /// The RxSubscription *publishable* key.
+    ///
+    /// Not a secret, and deliberately so: it does nothing without the signed-in user's access
+    /// token, only ever acts for that user, and cannot move a balance or record usage. The server
+    /// holds the secret key that can. Empty in a build with no billing configured, which turns
+    /// every subscription surface off rather than showing an empty paywall.
+    let subscriptionPublishableKey: String?
+
+    /// Whether this build has a paywall at all.
+    var hasSubscriptions: Bool {
+        subscriptionBaseURL != nil && subscriptionPublishableKey != nil
+    }
 
     static var allowsInsecureSharedStorage: Bool {
         ProcessInfo.processInfo.arguments.contains("--ui-testing")
@@ -52,7 +65,9 @@ nonisolated struct AppConfiguration: Sendable {
             oauthIssuer: URL(string: configuredValue("StickerFactoryOAuthIssuer", bundle: bundle, fallback: "https://auth.rxlab.app"))!,
             oauthTokenURL: URL(string: configuredValue("StickerFactoryAuthTokenURL", bundle: bundle, fallback: "https://auth.rxlab.app/api/oauth/token"))!,
             oauthClientID: configuredValue("StickerFactoryIOSClientID", bundle: bundle, fallback: "client_1ce3e6efd6da4214a61df67949a71622"),
-            oauthRedirectURI: configuredValue("StickerFactoryOAuthRedirectURI", bundle: bundle, fallback: "stickerfactory://oauth/callback")
+            oauthRedirectURI: configuredValue("StickerFactoryOAuthRedirectURI", bundle: bundle, fallback: "stickerfactory://oauth/callback"),
+            subscriptionBaseURL: optionalConfiguredValue("StickerFactorySubscriptionURL", bundle: bundle).flatMap(URL.init(string:)),
+            subscriptionPublishableKey: optionalConfiguredValue("StickerFactorySubscriptionKey", bundle: bundle)
         )
     }
 

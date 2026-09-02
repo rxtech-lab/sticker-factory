@@ -190,7 +190,12 @@ export async function createUpload(db: Database, ownerId: string, request: Creat
   };
 }
 
-function validateImageForKind(
+/**
+ * Held to by everything that mints an asset row, uploads and server-rendered renditions
+ * alike — `lib/services/quick-publish.ts` runs its own output through this so a rendition the
+ * server drew answers to exactly the standard one the app uploaded does.
+ */
+export function validateImageForKind(
   asset: typeof assets.$inferSelect,
   inspection: ImageInspection,
 ): void {

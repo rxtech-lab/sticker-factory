@@ -117,7 +117,9 @@ final class StickerGeniOSUITests: XCTestCase {
     func testAnimatedPreviewOpensFullScreenPlayer() {
         let card = element("library-sticker-sticker-demo")
         XCTAssertTrue(card.waitForExistence(timeout: 5))
-        card.tap()
+        // Tap the artwork itself, not the title or kind label. The animated UIKit-backed preview
+        // must still hand the gesture to the card's navigation link.
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
 
         // The assistant attaches the sticker to its own message; that attachment is the preview.
         let preview = element("show-sticker-attachment")
@@ -228,6 +230,36 @@ final class StickerGeniOSUITests: XCTestCase {
         // turn it started comes back.
         expectation(for: NSPredicate(format: "value == %@", ""), evaluatedWith: composer)
         waitForExpectations(timeout: 5)
+    }
+
+    @MainActor
+    func testRejectedChatMessageShowsAnAlertInsteadOfInlineError() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = [
+            "--ui-testing",
+            "--reduce-motion",
+            "--ui-insufficient-credits",
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+        ]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 8))
+
+        element("library-sticker-sticker-demo").tap()
+        let composer = element("chat-composer")
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        composer.typeText("Add text hi")
+        element("send-chat-message").tap()
+
+        XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["You do not have enough points for this. Top up or upgrade your plan to keep creating."].exists)
+        XCTAssertFalse(element("error-banner").exists)
+        app.buttons["OK"].tap()
+
+        XCTAssertEqual(composer.value as? String, "Add text hi")
+        XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
     }
 
     @MainActor
