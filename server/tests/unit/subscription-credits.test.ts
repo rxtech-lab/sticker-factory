@@ -9,7 +9,7 @@ import {
   requirePermission,
 } from "@/lib/subscription/credits";
 import { subscriptionEnabled } from "@/lib/subscription/config";
-import { exportCreditCost, jobCreditCost } from "@/lib/subscription/pricing";
+import { exportCreditCost, jobCreditHold } from "@/lib/subscription/pricing";
 import type { GenerationJobRow } from "@/lib/db/schema";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 
@@ -61,6 +61,9 @@ function job(overrides: Partial<GenerationJobRow> = {}): GenerationJobRow {
     workflowRunId: null,
     reservationId: "res-1",
     reservationAmount: 10,
+    apiTextCostNanodollars: 100_000_000,
+    apiImageCostNanodollars: 20_000_000,
+    apiImagePoints: 2,
     attempts: 1,
     errorCode: null,
     errorMessage: null,
@@ -115,7 +118,17 @@ describe("when billing is unconfigured", () => {
 
 describe("holdCreditsForJob", () => {
   it("reserves the job's cost and returns the hold id", async () => {
-    respond = () => ({ status: 200, body: { reservation: { id: "res-9", unit: "credits", amount: 10, status: "open" } } });
+    respond = () => ({
+      status: 200,
+      body: {
+        reservationId: "res-9",
+        amount: 10,
+        available: 90,
+        expiresAt: new Date(60_000).toISOString(),
+        status: "open",
+        duplicate: false,
+      },
+    });
 
     const reservationId = await holdCreditsForJob({
       ownerId: "user-1",
@@ -130,7 +143,7 @@ describe("holdCreditsForJob", () => {
     expect(calls[0]).toMatchObject({ method: "POST", path: "/api/v1/balances/reserve" });
     expect(calls[0].body).toMatchObject({
       rxlabUserId: "user-1",
-      unit: "credits",
+      unit: "points",
       amount: 10,
       idempotencyKey: "reserve:job-1",
     });
@@ -165,7 +178,7 @@ describe("holdCreditsForJob", () => {
     const apiError = error as ApiError;
     expect(apiError.status).toBe(402);
     expect(apiError.code).toBe("INSUFFICIENT_CREDITS");
-    expect(apiError.details).toMatchObject({ available: 3, required: 10, unit: "credits" });
+    expect(apiError.details).toMatchObject({ available: 3, required: 10, unit: "points" });
   });
 
   it("does not read a billing outage as an empty wallet", async () => {
@@ -200,14 +213,37 @@ describe("holdCreditsForJob", () => {
 });
 
 describe("settling and releasing", () => {
-  it("charges the held amount when a job succeeds", async () => {
+  it("settles the exact API-priced amount and releases the rest when a job succeeds", async () => {
     const { db, cleared } = fakeDb();
     await chargeJobCredits(db, job());
 
     expect(calls).toHaveLength(1);
     expect(calls[0].path).toBe("/api/v1/balances/reservations/res-1/settle");
-    expect(calls[0].body).toMatchObject({ amount: 10, final: true, idempotencyKey: "settle:job-1" });
+    // $0.10 text = 7 points, plus 2 already-rounded image points.
+    expect(calls[0].body).toMatchObject({
+      amount: 9,
+      final: true,
+      idempotencyKey: "settle:job-1",
+      metadata: {
+        textCostNanodollars: 100_000_000,
+        imageCostNanodollars: 20_000_000,
+        imagePoints: 2,
+        chargedPoints: 9,
+      },
+    });
     expect(cleared).toHaveLength(1);
+  });
+
+  it("keeps fixed-price non-AI export charging", async () => {
+    const { db } = fakeDb();
+    await chargeJobCredits(db, job({
+      kind: "export",
+      apiTextCostNanodollars: 0,
+      apiImageCostNanodollars: 0,
+      apiImagePoints: 0,
+    }));
+
+    expect(calls[0].body).toMatchObject({ amount: 10, final: true });
   });
 
   it("returns the hold when a job fails", async () => {
@@ -298,17 +334,17 @@ describe("requirePermission", () => {
 });
 
 describe("pricing", () => {
-  it("charges for image work and nothing for text turns", () => {
-    expect(jobCreditCost("image")).toBeGreaterThan(0);
-    expect(jobCreditCost("edit")).toBeGreaterThan(0);
-    expect(jobCreditCost("animation")).toBeGreaterThan(jobCreditCost("image"));
-    expect(jobCreditCost("compose")).toBeGreaterThan(jobCreditCost("image"));
-    expect(jobCreditCost("chat")).toBe(0);
-    expect(jobCreditCost("plan")).toBe(0);
+  it("holds an estimate for every job that can call an AI API", () => {
+    expect(jobCreditHold("image")).toBeGreaterThan(0);
+    expect(jobCreditHold("edit")).toBeGreaterThan(0);
+    expect(jobCreditHold("animation")).toBeGreaterThan(jobCreditHold("image"));
+    expect(jobCreditHold("compose")).toBeGreaterThan(jobCreditHold("image"));
+    expect(jobCreditHold("chat")).toBeGreaterThan(0);
+    expect(jobCreditHold("plan")).toBeGreaterThan(0);
   });
 
   it("never charges anyone to delete their own work", () => {
-    expect(jobCreditCost("cleanup")).toBe(0);
+    expect(jobCreditHold("cleanup")).toBe(0);
   });
 
   it("charges for an animated export and not for a still one", () => {

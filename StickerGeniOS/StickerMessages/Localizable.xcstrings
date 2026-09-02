@@ -17,6 +17,39 @@
         }
       }
     },
+    "A joyful corgi in a raincoat, with a thick white sticker outline…" : {
+
+    },
+    "A reference image could not be uploaded (HTTP %lld)." : {
+
+    },
+    "Add" : {
+
+    },
+    "Add %lld/8" : {
+
+    },
+    "Adding a layer" : {
+
+    },
+    "Adding it to your stickers…" : {
+
+    },
+    "Adjusting animation" : {
+
+    },
+    "Almost there…" : {
+
+    },
+    "Animated" : {
+
+    },
+    "Animating sticker" : {
+
+    },
+    "Building plan" : {
+
+    },
     "by %@" : {
       "localizations" : {
         "zh-CN" : {
@@ -33,7 +66,20 @@
         }
       }
     },
+    "Change something — \"make it blue\", \"add sunglasses\"…" : {
+
+    },
+    "Checking it over…" : {
+
+    },
+    "Create" : {
+
+    },
+    "Create a sticker here, then review and publish it in the main app." : {
+
+    },
     "Create and publish a sticker in Sticker Factory, then return here." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -49,10 +95,58 @@
         }
       }
     },
+    "Create Sticker" : {
+
+    },
+    "Creating animation" : {
+
+    },
+    "Describe your sticker" : {
+
+    },
+    "Done" : {
+
+    },
+    "Drafting a plan" : {
+
+    },
+    "Drawing artwork" : {
+
+    },
+    "Drawing it…" : {
+
+    },
+    "Editing layers" : {
+
+    },
+    "Editing sticker" : {
+
+    },
+    "Finishing animation" : {
+
+    },
+    "Finishing the edit" : {
+
+    },
+    "Finishing the plan" : {
+
+    },
     "Full-size images need a connection." : {
 
     },
+    "Generate" : {
+
+    },
     "Image" : {
+
+    },
+    "Making it" : {
+
+    },
+    "Making that change…" : {
+
+    },
+    "Making your sticker" : {
 
     },
     "My Stickers" : {
@@ -138,6 +232,21 @@
         }
       }
     },
+    "Open Sticker Factory from the Home Screen to see this sticker." : {
+
+    },
+    "Open the main app" : {
+
+    },
+    "Open the main app and sign in before creating a sticker here." : {
+
+    },
+    "Planning it…" : {
+
+    },
+    "Planning sticker" : {
+
+    },
     "Press and hold a sticker to drag it in." : {
       "localizations" : {
         "zh-CN" : {
@@ -154,6 +263,18 @@
         }
       }
     },
+    "Reading your request…" : {
+
+    },
+    "Redrawing a layer" : {
+
+    },
+    "Reference images · optional" : {
+
+    },
+    "Reference images must be at least 64 pixels per side." : {
+
+    },
     "Refreshing your stickers…" : {
       "localizations" : {
         "zh-CN" : {
@@ -169,6 +290,30 @@
           }
         }
       }
+    },
+    "Remove reference image %lld" : {
+
+    },
+    "Reviewing the plan image" : {
+
+    },
+    "Reviewing the sticker" : {
+
+    },
+    "Revise" : {
+
+    },
+    "Revising the plan" : {
+
+    },
+    "Saved to your stickers. Tap Send, or drag it into the conversation." : {
+
+    },
+    "Selected photos are uploaded privately as generation references. New stickers are added to your library so you can send them straight away." : {
+
+    },
+    "Send" : {
+
     },
     "Send as" : {
 
@@ -188,6 +333,18 @@
           }
         }
       }
+    },
+    "Showing the plan" : {
+
+    },
+    "Showing the sticker" : {
+
+    },
+    "Starting securely…" : {
+
+    },
+    "Static" : {
+
     },
     "Sticker" : {
       "localizations" : {
@@ -285,7 +442,19 @@
         }
       }
     },
+    "Stop watching" : {
+
+    },
+    "That didn't finish. Try again." : {
+
+    },
     "That image couldn't be sent. Try again." : {
+
+    },
+    "That image format could not be read." : {
+
+    },
+    "That reference image is too large." : {
 
     },
     "That sticker couldn't be added. Try again." : {
@@ -441,7 +610,40 @@
         }
       }
     },
+    "The sticker service could not be reached (HTTP %lld). Try again." : {
+
+    },
+    "The sticker service could not start that. Try again." : {
+
+    },
+    "The sticker service is not configured in this build." : {
+
+    },
+    "The sticker service returned an invalid response." : {
+
+    },
+    "This is taking longer than expected. It is still running — open the main app to pick it up." : {
+
+    },
+    "This keeps running if you close Messages." : {
+
+    },
     "This sticker has no full-size copy yet. Republish it for a sharper image." : {
+
+    },
+    "Those reference images are too large together. Remove one and try again." : {
+
+    },
+    "Tuning a layer" : {
+
+    },
+    "Working" : {
+
+    },
+    "Writing a reply" : {
+
+    },
+    "You can attach up to eight reference images." : {
 
     },
     "Your sign-in has expired. Open Sticker Factory to sign in again." : {
@@ -476,6 +678,9 @@
         }
       }
     },
+    "Your sticker" : {
+
+    },
     "Your Sticker Factory sign-in has expired." : {
       "localizations" : {
         "zh-CN" : {
@@ -491,6 +696,9 @@
           }
         }
       }
+    },
+    "Your sticker is ready to finish in the main app." : {
+
     },
     "Your sticker library is unavailable." : {
       "localizations" : {

@@ -2,6 +2,44 @@ import Foundation
 import Observation
 import RxSubscriptionIOS
 
+nonisolated enum SubscriptionAccess {
+    /// Keep this aligned with the subscription backend's live entitlement statuses.
+    private static let activeStatuses = Set(["active", "trialing", "past_due"])
+
+    static func isActive(status: String) -> Bool {
+        activeStatuses.contains(status)
+    }
+}
+
+nonisolated enum SubscriptionBalance {
+    /// Matches `CREDIT_UNIT` on the Sticker Factory server.
+    static let creditUnit = "points"
+
+    static func credits(in balances: [Balance]) -> Int {
+        balances.first { $0.unit == creditUnit }?.available ?? 0
+    }
+}
+
+nonisolated enum SubscriptionPaywallContent: Equatable {
+    case plans
+    case credits
+    case suppressed
+
+    static func resolve(
+        hasActiveSubscription: Bool,
+        refusal: SubscriptionRefusal?
+    ) -> Self {
+        switch refusal {
+        case .insufficientCredits:
+            return .credits
+        case .subscriptionRequired:
+            return hasActiveSubscription ? .suppressed : .plans
+        case nil:
+            return hasActiveSubscription ? .credits : .plans
+        }
+    }
+}
+
 /// What the app knows about the signed-in user's plan, credits, and paywall.
 ///
 /// The RxSubscription client is stateless and each of the package's screens fetches for itself, so
@@ -15,8 +53,6 @@ import RxSubscriptionIOS
 @MainActor
 @Observable
 final class SubscriptionStore {
-    /// The balance unit generations are charged against, matching the server's `CREDIT_UNIT`.
-    private static let creditUnit = "credits"
     /// Matches `PUBLISH_PERMISSION` on the server.
     private static let publishPermission = "marketplace.publish"
 
@@ -48,12 +84,19 @@ final class SubscriptionStore {
     var isReady: Bool { client != nil }
 
     var credits: Int? {
-        entitlements?.balances.first { $0.unit == Self.creditUnit }?.available
+        guard let entitlements else { return nil }
+        // Free users may not have a balance row until their first grant. Once entitlements have
+        // loaded, absence means zero rather than an indefinitely loading balance.
+        return SubscriptionBalance.credits(in: entitlements.balances)
     }
 
     /// The plan to show in Account. Nil means the free tier, which has no subscription row.
     var activePlanName: String? {
-        entitlements?.plans.first { $0.status == "active" || $0.status == "trialing" }?.planName
+        entitlements?.plans.first { SubscriptionAccess.isActive(status: $0.status) }?.planName
+    }
+
+    var hasActiveSubscription: Bool {
+        activePlanName != nil
     }
 
     /// Whether the marketplace is open to this user. Unknown-yet reads as allowed: the server
@@ -113,8 +156,8 @@ final class SubscriptionStore {
 
     /// Reloads the cache, coalescing overlapping calls.
     ///
-    /// Several surfaces refresh on appear and a finished purchase refreshes again; without this a
-    /// user returning to the Library after buying credits would fire three identical requests.
+    /// Several surfaces refresh on appear and the open paywall monitors for fulfillment; without
+    /// this a user returning to the Library after buying credits would fire duplicate requests.
     func refresh() {
         guard let client else { return }
         guard refreshTask == nil else { return }
@@ -125,9 +168,22 @@ final class SubscriptionStore {
                 self?.isLoading = false
             }
             do {
-                let entitlements = try await client.entitlements()
-                self?.entitlements = entitlements
-                self?.lastError = nil
+                let updatedEntitlements = try await client.entitlements()
+                guard let self else { return }
+                let hadActiveSubscription = self.hasActiveSubscription
+                self.entitlements = updatedEntitlements
+                self.lastError = nil
+
+                // A purchase, restore, or remote backend update can land while the purchase wall
+                // is still open. Once the active plan arrives, keep the sheet open but stop
+                // presenting it as a subscription requirement; the view then changes in place to
+                // the credit/top-up surface with the refreshed balance.
+                if !hadActiveSubscription,
+                   self.hasActiveSubscription,
+                   self.isPaywallPresented,
+                   case .subscriptionRequired = self.pendingRefusal {
+                    self.pendingRefusal = nil
+                }
             } catch is CancellationError {
                 return
             } catch {
@@ -135,6 +191,28 @@ final class SubscriptionStore {
                 // of somebody who was doing something else; the surfaces that need it fall back to
                 // "unknown", and the server is the one that actually enforces.
                 self?.lastError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Keeps the app-level balance and plan cache current while the package-owned purchase UI is
+    /// visible. The package completes StoreKit fulfillment internally, so the containing app does
+    /// not receive a direct completion callback for purchases started inside `PaywallView`.
+    ///
+    /// Polling is deliberately scoped to the presented sheet and stops as soon as it closes. A
+    /// successful purchase changes the acquisition paywall to the credit controls in place and
+    /// refreshes the observable balance without requiring the user to close and reopen the sheet.
+    func monitorPresentedPaywall() async {
+        while isPaywallPresented, !Task.isCancelled {
+            refresh()
+            let currentRefresh = refreshTask
+            await currentRefresh?.value
+
+            guard isPaywallPresented, !Task.isCancelled else { return }
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
             }
         }
     }
@@ -167,8 +245,21 @@ final class SubscriptionStore {
     /// Raises the paywall, either because the user asked for it or because the server said no.
     func presentPaywall(for refusal: SubscriptionRefusal? = nil) {
         guard isReady else { return }
+        guard paywallContent(for: refusal) != .suppressed else {
+            // The cached entitlement and the server refusal disagree. Do not upsell an active
+            // subscriber; refresh so the rest of the UI converges on the newest backend state.
+            refresh()
+            return
+        }
         pendingRefusal = refusal
         isPaywallPresented = true
+    }
+
+    func paywallContent(for refusal: SubscriptionRefusal?) -> SubscriptionPaywallContent {
+        SubscriptionPaywallContent.resolve(
+            hasActiveSubscription: hasActiveSubscription,
+            refusal: refusal
+        )
     }
 
     /// Presents the paywall if this error was a billing refusal, and reports whether it did.

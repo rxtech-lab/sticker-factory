@@ -1,8 +1,8 @@
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 import type { GenerationJobRow } from "@/lib/db/schema";
 
-/** The balance unit generations are charged against, as configured in the console. */
-export const CREDIT_UNIT = "credits";
+/** The RxSubscription balance unit API spend is charged against. */
+export const CREDIT_UNIT = "points";
 
 /** Permission a creator needs before a pack can go live on the marketplace. */
 export const PUBLISH_PERMISSION = "marketplace.publish";
@@ -10,31 +10,30 @@ export const PUBLISH_PERMISSION = "marketplace.publish";
 type JobKind = GenerationJobRow["kind"];
 
 /**
- * What each kind of job costs, in credits.
+ * The estimated point hold placed before each kind of job starts.
  *
- * Roughly proportional to what the job spends downstream. Image work dominates:
- * `animation` renders a sequence of frames and `compose` builds a whole
- * confirmed plan, so both cost more than a single generation. `chat` and `plan`
- * are text-only turns — cheap enough that charging for them would mostly
- * punish people for thinking out loud, so they are free.
+ * This is not the charge. The charge comes from Vercel AI Gateway's exact USD
+ * cost after each text or image request, converted at 70 points/USD. A hold
+ * keeps concurrent jobs from spending the same balance and any unused amount
+ * is released when the job closes.
  *
  * `cleanup` is deletion. Charging a user to remove their own work would be
- * indefensible, and it would let a user run out of credits with no way to free
+ * indefensible, and it would let a user run out of points with no way to free
  * storage.
  */
-const JOB_COSTS: Record<JobKind, number> = {
+const JOB_HOLDS: Record<JobKind, number> = {
   image: 10,
   edit: 10,
   compose: 20,
   animation: 25,
-  chat: 0,
-  plan: 0,
+  chat: 10,
+  plan: 10,
   export: 0,
   cleanup: 0,
 };
 
-export function jobCreditCost(kind: JobKind): number {
-  return JOB_COSTS[kind] ?? 0;
+export function jobCreditHold(kind: JobKind): number {
+  return JOB_HOLDS[kind] ?? 0;
 }
 
 /**
@@ -49,4 +48,16 @@ const ANIMATED_EXPORT_COST = 5;
 export function exportCreditCost(request: PublishExportsRequest): number {
   const animated = Boolean(request.apngAssetId || request.mp4AssetId);
   return animated ? ANIMATED_EXPORT_COST : 0;
+}
+
+/**
+ * The same price, quoted before the renditions exist.
+ *
+ * A quick publish (`lib/services/quick-publish.ts`) renders on the server, so the hold has to be
+ * placed from the document's kind rather than from a request describing files that have not been
+ * drawn yet. It charges the same as the app's publish deliberately: where the encode runs is not
+ * something the user chose, and billing the same work differently by surface would be arbitrary.
+ */
+export function quickPublishCreditCost(kind: "static" | "animated"): number {
+  return kind === "animated" ? ANIMATED_EXPORT_COST : 0;
 }

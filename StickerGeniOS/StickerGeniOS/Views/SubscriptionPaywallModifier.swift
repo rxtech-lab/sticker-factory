@@ -11,7 +11,11 @@ private struct SubscriptionPaywallModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.sheet(isPresented: $subscription.isPaywallPresented) {
             if let client = subscription.client {
-                PaywallSheet(client: client, refusal: subscription.pendingRefusal)
+                PaywallSheet(
+                    client: client,
+                    subscription: subscription,
+                    refusal: subscription.pendingRefusal
+                )
             }
         }
         .onChange(of: subscription.isPaywallPresented) { _, isPresented in

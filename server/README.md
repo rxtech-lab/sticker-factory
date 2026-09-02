@@ -116,23 +116,28 @@ turn the user was still watching.
 
 ## Credits and entitlements
 
-Generation is metered against the shared [RxSubscription](https://github.com/rxtech-lab/rx-subscription-service)
+Generation is metered in points against the shared [RxSubscription](https://github.com/rxtech-lab/rx-subscription-service)
 service. `lib/subscription/` holds all of it: `client.ts` is the HTTP wrapper, `pricing.ts` the
-cost table, `credits.ts` the hold/settle/release cycle and the permission check.
+hold estimates, `credits.ts` the hold/settle/release cycle and the permission check.
 
-- Credits are **held** before a job is queued and **charged** only when it succeeds. Generation is
+- Points are **held** before a job is queued and **charged** only when it succeeds. Generation is
   asynchronous and fallible, so charging up front would bill people for stickers they never
-  received, and charging at the end would let someone queue ten jobs on credits for one. The hold
+  received, and charging at the end would let someone queue ten jobs on points for one. The hold
   leaves `available` immediately and comes back whole on failure, cancellation, or a workflow that
   could not be dispatched.
+- Successful AI calls use the exact USD charge Vercel AI Gateway returns in
+  `providerMetadata.gateway.cost`. Ten USD converts to 700 points. All text calls in one chat turn
+  are added before rounding to the nearest point; every image generation is converted and rounded
+  separately. The up-front job table is only a reservation estimate, and unused held points are
+  released when the exact final amount is settled.
 - `generation_jobs.reservation_id` / `reservation_amount` carry the hold. Every terminal transition
   a job can take has to be able to find it again, and no other row outlives all four. Both are
   cleared once the hold closes, so a replayed transition cannot settle twice.
 - Reserving happens at each `generationJobs` insert; settling in `completeJobStep`, releasing in
   `failJob`, `cancelGenerationWorkflow`, and `recordDispatchFailure`. A hold placed for a job that
   then loses the one-active-job-per-sticker race is released by `abandonHold`.
-- Chat and planning turns are free; so is deleting your own work, and so are still exports.
-  Animated exports cost, because they run a frame-by-frame encode.
+- Deleting your own work and still exports remain free. Animated exports keep their fixed charge
+  because they run a frame-by-frame encode rather than a paid AI API call.
 - Publishing a pack checks the `marketplace.publish` permission instead of spending credits — it is
   a tier feature, not a metered one. Unpublishing is never gated: a lapsed plan must not trap a pack
   on the marketplace.

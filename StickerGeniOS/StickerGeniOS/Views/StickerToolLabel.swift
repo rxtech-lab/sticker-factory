@@ -85,6 +85,14 @@ nonisolated enum StickerToolLabel {
         "finalize_edit": String(localized: "Finishing the edit"),
         "view_plan_image": String(localized: "Reviewing the plan image"),
         "view_sticker": String(localized: "Reviewing the sticker"),
+        // The server-rendered publish behind quick mode. Not tool calls in the agent's sense — no
+        // model runs them — but they are reported as such because they are exactly what the step
+        // list is for: several slow pieces of work, in order, that the user is waiting on.
+        "render_artwork": String(localized: "Drawing it full size"),
+        "render_frames": String(localized: "Drawing the frames"),
+        "render_attachments": String(localized: "Making the send sizes"),
+        "render_sizes": String(localized: "Fitting it for Messages"),
+        "save_renditions": String(localized: "Saving it"),
     ]
 
     /// An unknown tool still has to read as English, because the server can ship a new one before

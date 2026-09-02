@@ -27,10 +27,23 @@ export interface Entitlements {
 }
 
 export interface Reservation {
-  id: string;
-  unit: string;
+  reservationId: string;
   amount: number;
+  available: number;
+  expiresAt: string;
   status: string;
+  duplicate: boolean;
+}
+
+export interface ReservationSettlement {
+  reservationId: string;
+  operationRequestedAmount: number;
+  operationSettledAmount: number;
+  operationShortfallAmount: number;
+  remainingReserved: number;
+  balanceAfter: number;
+  status: string;
+  duplicate: boolean;
 }
 
 /** The shape RxSubscription returns on failure. */
@@ -145,13 +158,12 @@ export async function reserveCredits(input: {
   metadata?: Record<string, unknown>;
   expiresInSeconds?: number;
 }): Promise<Reservation> {
-  const { reservation } = await call<{ reservation: Reservation }>(
+  return call<Reservation>(
     requireConfig(),
     "POST",
     "balances/reserve",
     { body: input },
   );
-  return reservation;
 }
 
 export async function settleReservation(input: {
@@ -159,12 +171,14 @@ export async function settleReservation(input: {
   amount: number;
   idempotencyKey: string;
   description?: string;
-}): Promise<void> {
-  await call(requireConfig(), "POST", `balances/reservations/${input.reservationId}/settle`, {
+  metadata?: Record<string, unknown>;
+}): Promise<ReservationSettlement> {
+  return call<ReservationSettlement>(requireConfig(), "POST", `balances/reservations/${input.reservationId}/settle`, {
     body: {
       amount: input.amount,
       idempotencyKey: input.idempotencyKey,
       description: input.description,
+      metadata: input.metadata,
       final: true,
     },
   });

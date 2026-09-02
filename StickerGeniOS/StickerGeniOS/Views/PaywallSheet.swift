@@ -8,6 +8,7 @@ import SwiftUI
 /// never needs an app release. Only the header is ours.
 struct PaywallSheet: View {
     let client: Client
+    @Bindable var subscription: SubscriptionStore
     /// What the user was trying to do when the wall went up. Nil when they opened it themselves.
     var refusal: SubscriptionRefusal?
 
@@ -15,12 +16,36 @@ struct PaywallSheet: View {
 
     var body: some View {
         NavigationStack {
-            PaywallView(
-                client: client,
-                sections: [.plans, .topUps, .balances],
-                initialSection: initialSection
-            ) {
-                PaywallHeader(refusal: refusal)
+            Group {
+                switch subscription.paywallContent(for: refusal) {
+                case .plans:
+                    PaywallView(
+                        client: client,
+                        paywall: .server,
+                        sections: [.plans, .topUps, .balances],
+                        initialSection: initialSection
+                    ) {
+                        PaywallHeader(refusal: refusal, activePlanName: nil)
+                    }
+                case .credits:
+                    // The published server paywall is an acquisition page. Active subscribers and
+                    // users who merely ran out of credits need the package's credit controls, not
+                    // another Plus purchase button.
+                    PaywallView(
+                        client: client,
+                        paywall: .local,
+                        sections: [.topUps, .balances],
+                        initialSection: .topUps
+                    ) {
+                        PaywallHeader(
+                            refusal: refusal,
+                            activePlanName: subscription.activePlanName
+                        )
+                    }
+                case .suppressed:
+                    Color.clear
+                        .task { dismiss() }
+                }
             }
             .navigationTitle("Credits")
             .navigationBarTitleDisplayMode(.inline)
@@ -31,6 +56,7 @@ struct PaywallSheet: View {
                 }
             }
         }
+        .task { await subscription.monitorPresentedPaywall() }
     }
 
     /// Someone who ran out mid-sticker wants the cheapest way back to work, which is a top-up.
@@ -45,6 +71,7 @@ struct PaywallSheet: View {
 
 private struct PaywallHeader: View {
     let refusal: SubscriptionRefusal?
+    let activePlanName: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -63,7 +90,10 @@ private struct PaywallHeader: View {
         switch refusal {
         case .insufficientCredits: String(localized: "Out of credits")
         case .subscriptionRequired: String(localized: "Go Pro")
-        case nil: String(localized: "Keep creating")
+        case nil:
+            activePlanName == nil
+                ? String(localized: "Keep creating")
+                : String(localized: "Manage credits")
         }
     }
 
@@ -78,7 +108,11 @@ private struct PaywallHeader: View {
         case .subscriptionRequired:
             String(localized: "Sharing packs on the marketplace is part of a paid plan.")
         case nil:
-            String(localized: "Credits pay for the AI that draws and animates your stickers.")
+            if let activePlanName {
+                String(localized: "Your \(activePlanName) plan is active. Top up whenever you need more credits.")
+            } else {
+                String(localized: "Credits pay for the AI that draws and animates your stickers.")
+            }
         }
     }
 }

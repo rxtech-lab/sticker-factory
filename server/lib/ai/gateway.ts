@@ -10,6 +10,7 @@ import {
 import sharp from "sharp";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
+import { recordImageApiCost, recordTextApiCost } from "@/lib/ai/cost";
 import { viewPlanImageTool } from "@/lib/ai/view-plan-image-tool";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { countKeyframes } from "@/lib/animation/compile";
@@ -870,6 +871,7 @@ async function generateThroughImageModel(
     providerOptions: transparentProviderOptions,
     abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
   });
+  await recordImageApiCost(result);
   return result.image.uint8Array;
 }
 
@@ -932,6 +934,7 @@ class GatewayAiProvider implements AiProvider {
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(90_000),
     });
+    await recordTextApiCost(result);
     if (result.toolCalls.length !== 1 || result.toolCalls[0].toolName !== "select_references") {
       throw new Error("Reference selector must call select_references exactly once");
     }
@@ -1080,7 +1083,7 @@ class GatewayAiProvider implements AiProvider {
       }),
     };
 
-    await generateText({
+    const generation = await generateText({
       model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
       system: [
         "You are the final composition reviewer for a multi-layer sticker. The individual assets",
@@ -1129,6 +1132,7 @@ class GatewayAiProvider implements AiProvider {
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(120_000),
     });
+    await recordTextApiCost(generation);
 
     if (fatal) throw fatal;
     return state;
@@ -1290,7 +1294,7 @@ class GatewayAiProvider implements AiProvider {
       }),
     };
 
-    await generateText({
+    const generation = await generateText({
       model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
       system: [
         "You add motion to an existing sticker by applying operations to its document.",
@@ -1457,6 +1461,7 @@ class GatewayAiProvider implements AiProvider {
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(180_000),
     });
+    await recordTextApiCost(generation);
 
     if (fatal) throw fatal;
     return state;
@@ -1578,7 +1583,7 @@ class GatewayAiProvider implements AiProvider {
       }),
     };
 
-    await generateText({
+    const generation = await generateText({
       model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
       system: [
         "You change an existing sticker. It is a stack of layers, and you own all of it: you can",
@@ -1653,6 +1658,7 @@ class GatewayAiProvider implements AiProvider {
       // which is minutes rather than seconds. Four redraws is the step's own ceiling.
       abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS * 2),
     });
+    await recordTextApiCost(generation);
 
     if (fatal) throw fatal;
     return state;
@@ -1866,6 +1872,7 @@ class GatewayAiProvider implements AiProvider {
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(90_000),
     });
+    await recordTextApiCost(result);
     if (result.toolCalls.length !== 1)
       throw new Error("Sticker chat agent must return exactly one tool call");
     const call = result.toolCalls[0];
@@ -2011,7 +2018,7 @@ class GatewayAiProvider implements AiProvider {
       }),
     };
 
-    await generateText({
+    const generation = await generateText({
       model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
       system: [
         "You design stickers as a set of independent layers, then hand the design to the user.",
@@ -2260,6 +2267,7 @@ class GatewayAiProvider implements AiProvider {
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(180_000),
     });
+    await recordTextApiCost(generation);
 
     return state;
   }
@@ -2299,6 +2307,7 @@ class GatewayAiProvider implements AiProvider {
       // a plan silently losing its picture every time is not the "best effort" this was meant to be.
       abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
     });
+    await recordImageApiCost(result);
     const bytes = await sharp(Buffer.from(result.image.uint8Array))
       .resize(1024, 1024, {
         fit: "contain",
@@ -2335,6 +2344,7 @@ class GatewayAiProvider implements AiProvider {
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(60_000),
     });
+    await recordTextApiCost(result);
     if (result.toolCalls.length !== 1)
       throw new Error("Sticker agent must call show-sticker exactly once");
     const call = result.toolCalls[0];
@@ -2352,6 +2362,7 @@ class GatewayAiProvider implements AiProvider {
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(90_000),
     });
+    await recordTextApiCost(result);
     return result.text.trim();
   }
 
@@ -2376,6 +2387,7 @@ class GatewayAiProvider implements AiProvider {
       maxRetries: 1,
       abortSignal: AbortSignal.timeout(20_000),
     });
+    await recordTextApiCost(result);
     return result.text.trim();
   }
 }

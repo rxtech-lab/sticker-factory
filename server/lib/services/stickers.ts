@@ -40,7 +40,7 @@ import { ApiError } from "@/lib/http/errors";
 import { ensureSequencePosters, getReadyOwnedAssets } from "@/lib/services/assets";
 import { loadPlansByIds, serializePlan } from "@/lib/services/plans";
 import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
-import { jobCreditCost } from "@/lib/subscription/pricing";
+import { jobCreditHold } from "@/lib/subscription/pricing";
 
 const MAX_AI_INPUT_BYTES = 32 * 1024 * 1024;
 const AI_REFERENCE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -217,6 +217,14 @@ export type StickerSummaryRow = {
   attachmentSmall: AssetSummary | null;
 };
 
+export interface ListStickersOptions {
+  limit?: number;
+  cursor?: string | null;
+  kind?: "static" | "animated";
+  status?: "draft" | "published";
+  query?: string | null;
+}
+
 /**
  * An attachment rendition is only offered once it is actually downloadable. A `pending` row is a
  * publish that raced its own upload, and handing the extension its id would spend a tap on a 404.
@@ -267,16 +275,17 @@ async function serializeSticker(db: Database, sticker: typeof stickers.$inferSel
   });
 }
 
-export async function listStickers(
+/**
+ * Builds the bounded sticker query without executing it.
+ *
+ * `listLibrarySections` uses this form so its independent reads can share one libSQL batch and one
+ * regional round trip. Keep pagination finalization here too, so the batched endpoint and the
+ * standalone sticker endpoint cannot drift apart.
+ */
+export function buildStickerListQuery(
   db: Database,
   ownerId: string,
-  options: {
-    limit?: number;
-    cursor?: string | null;
-    kind?: "static" | "animated";
-    status?: "draft" | "published";
-    query?: string | null;
-  } = {},
+  options: ListStickersOptions = {},
 ) {
   const limit = Math.min(Math.max(options.limit ?? 30, 1), 100);
   const cursor = decodeCursor(options.cursor);
@@ -289,8 +298,14 @@ export async function listStickers(
     lt(stickers.updatedAt, new Date(cursor.updatedAt)),
     and(eq(stickers.updatedAt, new Date(cursor.updatedAt)), lt(stickers.id, cursor.id)),
   )!);
-  const rows = await selectStickerSummaries(db).where(and(...conditions))
-    .orderBy(desc(stickers.updatedAt), desc(stickers.id)).limit(limit + 1);
+  return {
+    limit,
+    query: selectStickerSummaries(db).where(and(...conditions))
+      .orderBy(desc(stickers.updatedAt), desc(stickers.id)).limit(limit + 1),
+  };
+}
+
+export function serializeStickerListRows(rows: StickerSummaryRow[], limit: number) {
   const page = rows.slice(0, limit);
   return {
     data: page.map(serializeStickerSummary),
@@ -298,6 +313,15 @@ export async function listStickers(
       ? encodeCursor({ updatedAt: page.at(-1)!.sticker.updatedAt.toISOString(), id: page.at(-1)!.sticker.id })
       : null,
   };
+}
+
+export async function listStickers(
+  db: Database,
+  ownerId: string,
+  options: ListStickersOptions = {},
+) {
+  const selection = buildStickerListQuery(db, ownerId, options);
+  return serializeStickerListRows(await selection.query, selection.limit);
 }
 
 export async function createSticker(db: Database, ownerId: string, request: CreateStickerRequest) {
@@ -1017,10 +1041,10 @@ export async function createChatTurn(
   const jobId = crypto.randomUUID();
   const now = new Date();
   const jobKind = intentToJobKind(request.intent);
-  const creditCost = jobCreditCost(jobKind);
+  const creditHold = jobCreditHold(jobKind);
   const reservationId = await holdCreditsForJob({
     ownerId,
-    amount: creditCost,
+    amount: creditHold,
     idempotencyKey: `reserve:${jobId}`,
     description: `Sticker ${request.intent}`,
     metadata: { jobId, stickerId, kind: jobKind },
@@ -1039,7 +1063,7 @@ export async function createChatTurn(
           kind: jobKind,
           state: "queued",
           reservationId,
-          reservationAmount: reservationId ? creditCost : 0,
+          reservationAmount: reservationId ? creditHold : 0,
           createdAt: now,
           updatedAt: now,
         });
@@ -1137,12 +1161,12 @@ export async function retryFailedChatTurn(
     .where(and(eq(generationJobs.sourceMessageId, sourceMessageId), eq(generationJobs.ownerId, ownerId))).get();
   if ((attempts?.value ?? 0) >= 4) throw new ApiError(429, "RETRY_LIMIT_REACHED", "This AI turn has reached its retry limit");
   const jobId = crypto.randomUUID();
-  // A retry is a fresh attempt at the provider, so it costs what the original
-  // did. The original's own hold was released when it failed.
-  const creditCost = jobCreditCost(original.kind);
+  // A retry is a fresh attempt at the provider, so it gets the same estimated
+  // hold. The original's own hold was released when it failed.
+  const creditHold = jobCreditHold(original.kind);
   const reservationId = await holdCreditsForJob({
     ownerId,
-    amount: creditCost,
+    amount: creditHold,
     idempotencyKey: `reserve:${jobId}`,
     description: `Sticker ${original.kind} retry`,
     metadata: { jobId, stickerId, kind: original.kind, retryOfJobId: original.id },
@@ -1158,7 +1182,7 @@ export async function retryFailedChatTurn(
         kind: original.kind,
         state: "queued",
         reservationId,
-        reservationAmount: reservationId ? creditCost : 0,
+        reservationAmount: reservationId ? creditHold : 0,
         createdAt: now,
         updatedAt: now,
       });

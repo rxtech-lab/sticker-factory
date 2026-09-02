@@ -72,17 +72,11 @@ struct StickerFactoryTabView: View {
         }
         .tint(AppColors.accent)
         .accessibilityIdentifier("sticker-factory-tabs")
-        .onChange(of: environment.pendingStickerID) { _, stickerID in
-            guard let stickerID else { return }
-            environment.pendingStickerID = nil
-            selection = 0
-            // Replace the stack rather than push onto it: the banner is an instruction to be *at*
-            // that sticker, not to go one level deeper into wherever the user already was.
-            var path = NavigationPath()
-            path.append(stickerID)
-            libraryPath = path
-        }
+        .onChange(of: environment.pendingStickerID) { _, _ in openPendingSticker() }
         .task {
+            // A deep link can arrive before authentication finishes and before this tab hierarchy
+            // exists. Consume it on first appearance as well as through `onChange`.
+            openPendingSticker()
             StickerOnboardingTips.setWelcomeCompleted(hasSeenWelcome)
             let arguments = ProcessInfo.processInfo.arguments
             if StickerOnboarding.shouldPresentWelcome(
@@ -104,6 +98,17 @@ struct StickerFactoryTabView: View {
         // all on different screens, some of them already inside their own sheet — and presenting
         // from each of them would mean a paywall that cannot open over whatever is in the way.
         .subscriptionPaywall(environment.subscription)
+    }
+
+    private func openPendingSticker() {
+        guard let stickerID = environment.pendingStickerID else { return }
+        environment.pendingStickerID = nil
+        selection = 0
+        // Replace the stack rather than push onto it: the external request is an instruction to be
+        // at that sticker, not one level deeper into wherever the user already was.
+        var path = NavigationPath()
+        path.append(stickerID)
+        libraryPath = path
     }
 }
 

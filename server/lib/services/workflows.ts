@@ -8,6 +8,7 @@ import { refundJobCredits } from "@/lib/subscription/credits";
 import {
   stickerCleanupWorkflow,
   stickerExportWorkflow,
+  stickerQuickPublishWorkflow,
   stickerGenerationWorkflow,
   revisionDecisionWorkflow,
 } from "@/workflows/sticker-generation";
@@ -179,6 +180,27 @@ export async function startExportWorkflow(db: Database, jobId: string, request: 
   }
   try {
     const run = await start(stickerExportWorkflow, [jobId, request]);
+    await safelyRecordRun(db, jobId, run.runId);
+    return run.runId;
+  } catch (error) {
+    await recordDispatchFailure(db, jobId);
+    throw error;
+  }
+}
+
+/**
+ * Starts quick mode's server-rendered publish.
+ *
+ * No request body to carry: everything it needs is on the sticker's own accepted revision, which is
+ * the whole point — the caller does not have to have rendered anything.
+ */
+export async function startQuickPublishWorkflow(db: Database, jobId: string): Promise<string> {
+  if (process.env.NODE_ENV === "test" && process.env.STICKER_FACTORY_INLINE_WORKFLOWS === "true") {
+    void stickerQuickPublishWorkflow(jobId);
+    return `inline_${jobId}`;
+  }
+  try {
+    const run = await start(stickerQuickPublishWorkflow, [jobId]);
     await safelyRecordRun(db, jobId, run.runId);
     return run.runId;
   } catch (error) {

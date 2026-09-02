@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { totalApiCostPoints, type AiApiCostEvent } from "@/lib/ai/cost";
 import type { Database } from "@/lib/db/client";
 import { generationJobs, type GenerationJobRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
@@ -57,13 +58,13 @@ export async function holdCreditsForJob(input: {
       metadata: input.metadata,
       expiresInSeconds: RESERVATION_TTL_SECONDS,
     });
-    return reservation.id;
+    return reservation.reservationId;
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       throw new ApiError(
         402,
         "INSUFFICIENT_CREDITS",
-        "You do not have enough credits for this. Top up or upgrade your plan to keep creating.",
+        "You do not have enough points for this. Top up or upgrade your plan to keep creating.",
         { required: error.required, available: error.available, unit: CREDIT_UNIT },
       );
     }
@@ -75,7 +76,8 @@ export async function holdCreditsForJob(input: {
 }
 
 /**
- * Charges a job's hold, on success.
+ * Settles a successful job at its exact API-priced point total and releases
+ * the unused part of the estimate. Exports keep their fixed non-AI charge.
  *
  * Failures here are logged and swallowed. The job really did succeed and the
  * user really does have their sticker; refusing to acknowledge that because
@@ -84,13 +86,38 @@ export async function holdCreditsForJob(input: {
  */
 export async function chargeJobCredits(db: Database, job: GenerationJobRow): Promise<void> {
   if (!job.reservationId || job.reservationAmount <= 0) return;
+  const amount = job.kind === "export"
+    ? job.reservationAmount
+    : totalApiCostPoints({
+      textCostNanodollars: job.apiTextCostNanodollars,
+      imagePoints: job.apiImagePoints,
+    });
   try {
-    await settleReservation({
+    const settlement = await settleReservation({
       reservationId: job.reservationId,
-      amount: job.reservationAmount,
+      amount,
       idempotencyKey: `settle:${job.id}`,
       description: `Sticker ${job.kind}`,
+      metadata: job.kind === "export"
+        ? { jobId: job.id, kind: job.kind }
+        : {
+          jobId: job.id,
+          kind: job.kind,
+          textCostNanodollars: job.apiTextCostNanodollars,
+          imageCostNanodollars: job.apiImageCostNanodollars,
+          imagePoints: job.apiImagePoints,
+          chargedPoints: amount,
+        },
     });
+    if (settlement.operationShortfallAmount > 0) {
+      console.error("A generation job's API-priced point charge was only partially settled", {
+        jobId: job.id,
+        reservationId: job.reservationId,
+        requested: settlement.operationRequestedAmount,
+        settled: settlement.operationSettledAmount,
+        shortfall: settlement.operationShortfallAmount,
+      });
+    }
     await clearJobReservation(db, job.id);
   } catch (error) {
     console.error("Could not settle a generation job's credit hold", {
@@ -99,6 +126,33 @@ export async function chargeJobCredits(db: Database, job: GenerationJobRow): Pro
       error,
     });
   }
+}
+
+/**
+ * Persists one Gateway-priced call as soon as its response arrives.
+ *
+ * Workflow steps may be replayed. Recording before the next side effect makes
+ * each provider call that actually happened part of the final turn total,
+ * including a paid call whose surrounding step later has to retry.
+ */
+export async function recordJobApiCost(
+  db: Database,
+  jobId: string,
+  event: AiApiCostEvent,
+): Promise<void> {
+  if (event.kind === "text") {
+    if (event.costNanodollars <= 0) return;
+    await db.update(generationJobs).set({
+      apiTextCostNanodollars: sql`${generationJobs.apiTextCostNanodollars} + ${event.costNanodollars}`,
+    }).where(eq(generationJobs.id, jobId));
+    return;
+  }
+
+  if (event.costNanodollars <= 0 && event.points <= 0) return;
+  await db.update(generationJobs).set({
+    apiImageCostNanodollars: sql`${generationJobs.apiImageCostNanodollars} + ${event.costNanodollars}`,
+    apiImagePoints: sql`${generationJobs.apiImagePoints} + ${event.points}`,
+  }).where(eq(generationJobs.id, jobId));
 }
 
 /**

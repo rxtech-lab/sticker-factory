@@ -70,6 +70,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     private let statusLabel = UILabel()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
     private let openAppButton = UIButton(type: .system)
+    private let createButton = UIButton(type: .system)
     private let offlineLabel = UILabel()
     private let hintLabel = UILabel()
 
@@ -90,6 +91,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     private var library: Library?
     private var loadTask: Task<Void, Never>?
     private var hintTask: Task<Void, Never>?
+    private var creationController: MessagesCreateViewController?
     /// Image sends only — a sticker send resolves nothing and finishes within the tap.
     private var sendTasks: [SendKey: Task<Void, Never>] = [:]
     private var insertGate = StickerInsertGate()
@@ -122,6 +124,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         configureModeControl()
         configureSurfaceContainer()
         configureStatusView()
+        configureCreateButton()
         configureOfflineBadge()
         configureHintLabel()
         applyPresentationContext()
@@ -132,13 +135,13 @@ final class MessagesViewController: MSMessagesAppViewController {
         lastKnownConversation = conversation
         // Before the refresh, so the snapshot lands in whichever surface this activation is for.
         applyPresentationContext()
-        refreshLibrary()
+        if creationController == nil { refreshLibrary() }
     }
 
     override func didBecomeActive(with conversation: MSConversation) {
         super.didBecomeActive(with: conversation)
         lastKnownConversation = conversation
-        gridViewController.resumeAnimations()
+        if creationController == nil { gridViewController.resumeAnimations() }
     }
 
     override func didResignActive(with conversation: MSConversation) {
@@ -148,6 +151,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         // In-flight downloads are abandoned rather than left to finish into a dead conversation.
         for task in sendTasks.values { task.cancel() }
         sendTasks.removeAll()
+        creationController?.cancelOutstandingWork()
         gridViewController.suspendAnimations()
         lastKnownConversation = nil
     }
@@ -163,6 +167,10 @@ final class MessagesViewController: MSMessagesAppViewController {
     private func applyPresentationContext() {
         let resolved = Surface(presentationContext)
         guard resolved != surface else { return }
+        if resolved == .sticker {
+            creationController?.cancelOutstandingWork()
+            creationController = nil
+        }
         surface = resolved
         logger.log("surface=\(String(describing: resolved), privacy: .public) context=\(self.presentationContext.rawValue)")
         installChild(for: resolved)
@@ -177,6 +185,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         // interaction in the Stickers drawer, and the wrong file only when the full-size surface is
         // sending images — so it follows the send mode there rather than being off outright.
         gridViewController.suppressesPeelDrag = surface == .fullSize && sendMode == .image
+        gridViewController.additionalSafeAreaInsets.bottom = surface == .fullSize ? 58 : 0
         gridViewController.onSelect = nil
         gridViewController.onSelectItem = nil
         switch surface {
@@ -192,6 +201,10 @@ final class MessagesViewController: MSMessagesAppViewController {
             }
         }
 
+        install(child)
+    }
+
+    private func install(_ child: UIViewController) {
         for existing in children where existing !== child {
             existing.willMove(toParent: nil)
             existing.view.removeFromSuperview()
@@ -318,7 +331,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         buttonConfiguration.cornerStyle = .capsule
         openAppButton.configuration = buttonConfiguration
         openAppButton.accessibilityIdentifier = "open-sticker-factory"
-        openAppButton.addTarget(self, action: #selector(openMainApplication), for: .touchUpInside)
+        openAppButton.addTarget(self, action: #selector(openMainApplicationFromButton), for: .touchUpInside)
 
         view.addSubview(statusContainer)
         NSLayoutConstraint.activate([
@@ -331,6 +344,93 @@ final class MessagesViewController: MSMessagesAppViewController {
             stack.topAnchor.constraint(equalTo: statusContainer.contentView.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(equalTo: statusContainer.contentView.bottomAnchor, constant: -20),
         ])
+    }
+
+    /// Creation is available only in the full Messages app. The system Stickers/media surface is
+    /// intentionally kept as a pure sticker picker because its host context offers fewer APIs and
+    /// can be embedded over the camera or FaceTime.
+    private func configureCreateButton() {
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = String(localized: "Create")
+        configuration.image = UIImage(systemName: "wand.and.stars")
+        configuration.imagePadding = 6
+        configuration.cornerStyle = .capsule
+        createButton.configuration = configuration
+        createButton.translatesAutoresizingMaskIntoConstraints = false
+        createButton.isHidden = true
+        createButton.accessibilityIdentifier = "sticker-factory-messages-create-button"
+        createButton.addTarget(self, action: #selector(showCreation), for: .touchUpInside)
+        view.addSubview(createButton)
+        NSLayoutConstraint.activate([
+            createButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            createButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            createButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+        ])
+    }
+
+    private func setCreateButtonVisible(_ visible: Bool) {
+        createButton.isHidden = !(visible && surface == .fullSize && creationController == nil)
+    }
+
+    @objc
+    private func showCreation() {
+        guard surface == .fullSize, creationController == nil else { return }
+        do {
+            let controller = MessagesCreateViewController(service: try MessagesStickerCreationService())
+            controller.onClose = { [weak self] in self?.closeCreation() }
+            controller.onReview = { [weak self] stickerID in
+                self?.openMainApplication(stickerID: stickerID)
+            }
+            // Quick mode publishes on the server, so by the time this runs the sticker is live and
+            // the only thing missing is a local copy. Refreshing here rather than in the create
+            // screen keeps the cache, the grid and the send paths owned by one object.
+            controller.onPublished = { [weak self] stickerID in
+                await self?.adoptPublishedSticker(stickerID)
+            }
+            controller.onSend = { [weak self] stickerID in
+                self?.send(StickerGridViewController.StickerItemID(
+                    sectionID: SharedStickerCache.mineSectionID,
+                    stickerID: stickerID
+                ))
+            }
+            creationController = controller
+            loadTask?.cancel()
+            setModeControlVisible(false)
+            setCreateButtonVisible(false)
+            statusContainer.isHidden = true
+            offlineLabel.isHidden = true
+            hintLabel.isHidden = true
+            install(controller)
+            requestPresentationStyle(.expanded)
+        } catch {
+            showError(error, offersOpenApp: true)
+        }
+    }
+
+    /// Pulls a just-published sticker into the local library and hands back its file.
+    ///
+    /// The refresh is the same one the grid does, so the sticker the create screen shows and the
+    /// sticker a tap on the grid would send are the same bytes on disk — and the grid is already
+    /// correct by the time someone presses Done.
+    ///
+    /// `nil` when the sticker did not arrive: the server has published it, but this device could not
+    /// download it, and the create screen then falls back to a still preview rather than offering a
+    /// Send that would insert nothing.
+    private func adoptPublishedSticker(_ stickerID: String) async -> URL? {
+        guard let library, let snapshot = try? await library.refresh() else { return nil }
+        replaceSections(with: snapshot.sections)
+        offlineLabel.isHidden = !snapshot.isOffline
+        return snapshot.stickers.first {
+            $0.stickerID == stickerID && $0.sectionID == SharedStickerCache.mineSectionID
+        }?.fileURL
+    }
+
+    private func closeCreation() {
+        creationController?.cancelOutstandingWork()
+        creationController = nil
+        guard let surface else { return }
+        installChild(for: surface)
+        refreshLibrary()
     }
 
     // The badge sits opposite the size control, which is why that control stops short of the
@@ -414,6 +514,7 @@ final class MessagesViewController: MSMessagesAppViewController {
                 guard !Task.isCancelled else { return }
                 replaceSections(with: snapshot.sections)
                 offlineLabel.isHidden = !snapshot.isOffline
+                setCreateButtonVisible(true)
                 if snapshot.stickers.isEmpty {
                     showEmptyLibrary(
                         hasInstalledPacks: snapshot.sections.contains { $0.id != SharedStickerCache.mineSectionID }
@@ -652,6 +753,15 @@ final class MessagesViewController: MSMessagesAppViewController {
     // MARK: - Outcome reporting
 
     private func applyInsertOutcome(_ outcome: StickerInsertOutcome) {
+        // A sticker that landed is the end of the errand: collapse so the conversation — and the
+        // sticker now staged in its input field — is what the user is looking at.
+        //
+        // The app drawer only. In the system Stickers drawer the host owns the presentation, and a
+        // sticker there is picked from a browsing surface someone is usually sending more than one
+        // thing from; taking that over would be this extension overruling Apple's own chrome.
+        if outcome == .inserted, surface == .fullSize {
+            requestPresentationStyle(.compact)
+        }
         guard let text = StickerInsertPolicy.hint(
             for: outcome,
             context: presentationContext,
@@ -694,6 +804,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         statusLabel.text = String(localized: "Refreshing your stickers…")
         activityIndicator.startAnimating()
         openAppButton.isHidden = true
+        setCreateButtonVisible(false)
         offlineLabel.isHidden = true
     }
 
@@ -704,7 +815,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         // packs that are currently empty.
         statusLabel.text = hasInstalledPacks
             ? String(localized: "The packs you added have nothing published right now. Open Sticker Factory to add more.")
-            : String(localized: "Create and publish a sticker in Sticker Factory, then return here.")
+            : String(localized: "Create a sticker here, then review and publish it in the main app.")
         activityIndicator.stopAnimating()
         openAppButton.isHidden = false
         offlineLabel.isHidden = true
@@ -717,19 +828,33 @@ final class MessagesViewController: MSMessagesAppViewController {
             ?? String(localized: "Your sticker library is unavailable.")
         activityIndicator.stopAnimating()
         openAppButton.isHidden = !offersOpenApp
+        setCreateButtonVisible(false)
         offlineLabel.isHidden = true
     }
 
     @objc
-    private func openMainApplication() {
+    private func openMainApplicationFromButton() {
+        openMainApplication(stickerID: nil)
+    }
+
+    private func openMainApplication(stickerID: String?) {
         let source = surface == .fullSize ? "fullsize" : "messages"
-        guard let url = URL(string: "stickerfactory://open?source=\(source)") else { return }
+        var components = URLComponents()
+        components.scheme = "stickerfactory"
+        components.host = stickerID == nil ? "open" : "sticker"
+        if let stickerID { components.path = "/\(stickerID)" }
+        components.queryItems = [URLQueryItem(name: "source", value: source)]
+        guard let url = components.url else { return }
         extensionContext?.open(url) { [weak self] opened in
             guard !opened else { return }
             Task { @MainActor in
                 guard let self else { return }
                 self.logger.error("extensionContext.open refused (context=\(self.presentationContext.rawValue))")
-                self.statusLabel.text = String(localized: "Open Sticker Factory from the Home Screen and sign in.")
+                if let creationController = self.creationController {
+                    creationController.showOpenAppFailure()
+                } else {
+                    self.statusLabel.text = String(localized: "Open Sticker Factory from the Home Screen and sign in.")
+                }
             }
         }
     }

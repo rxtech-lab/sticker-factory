@@ -13,7 +13,7 @@ import { assets, chatMessages, chatThreads, generationEvents, generationJobs, pl
 import { ApiError } from "@/lib/http/errors";
 import { isActiveJobConstraint } from "@/lib/services/stickers";
 import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
-import { jobCreditCost } from "@/lib/subscription/pricing";
+import { jobCreditHold } from "@/lib/subscription/pricing";
 
 export type SerializedPlan = {
   id: string;
@@ -268,10 +268,10 @@ export async function confirmPlan(
   const messageId = crypto.randomUUID();
   const now = new Date();
   const generations = planGenerationCount(plan);
-  const creditCost = jobCreditCost("compose");
+  const creditHold = jobCreditHold("compose");
   const reservationId = await holdCreditsForJob({
     ownerId,
-    amount: creditCost,
+    amount: creditHold,
     idempotencyKey: `reserve:${jobId}`,
     description: "Sticker plan build",
     metadata: { jobId, stickerId, kind: "compose", planId, generations },
@@ -287,7 +287,7 @@ export async function confirmPlan(
           kind: "compose",
           state: "queued",
           reservationId,
-          reservationAmount: reservationId ? creditCost : 0,
+          reservationAmount: reservationId ? creditHold : 0,
           createdAt: now,
           updatedAt: now,
         });
@@ -378,14 +378,12 @@ export async function cancelPlan(
 
   const jobId = crypto.randomUUID();
   const messageId = crypto.randomUUID();
-  // A planning turn is text-only and currently free, so this usually holds
-  // nothing. It goes through the same call anyway: every job insert reserving
-  // its own cost is what keeps a change to the price table from silently
-  // missing a path.
-  const creditCost = jobCreditCost("plan");
+  // Planning is API-priced like every other text turn. The reservation is only
+  // an estimate; the exact Gateway cost is settled after the turn succeeds.
+  const creditHold = jobCreditHold("plan");
   const reservationId = await holdCreditsForJob({
     ownerId,
-    amount: creditCost,
+    amount: creditHold,
     idempotencyKey: `reserve:${jobId}`,
     description: "Sticker planning turn",
     metadata: { jobId, stickerId, kind: "plan", planId },
@@ -405,7 +403,7 @@ export async function cancelPlan(
           kind: "plan",
           state: "queued",
           reservationId,
-          reservationAmount: reservationId ? creditCost : 0,
+          reservationAmount: reservationId ? creditHold : 0,
           createdAt: now,
           updatedAt: now,
         });

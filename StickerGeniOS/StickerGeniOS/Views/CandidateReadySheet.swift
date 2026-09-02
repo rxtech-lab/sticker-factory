@@ -18,8 +18,8 @@ struct CandidateReadySheet: View {
     let assets: [String: UIImage]
     let isBusy: Bool
     /// Both decisions report whether they landed. On success the sheet stays put and lets the
-    /// candidate disappearing take it away; on failure it leaves, because the error message it
-    /// would otherwise be covering lives under the composer.
+    /// candidate disappearing take it away; on failure it leaves so the chat can present its
+    /// error alert.
     let onAccept: () async -> Bool
     let onCompare: () -> Void
     let onReject: () async -> Bool
@@ -183,7 +183,7 @@ private extension CandidateReadySheet {
             let landed = await run()
             pending = nil
             // A failed decision leaves the candidate in place, so the sheet has to step aside for
-            // the error under the composer to be readable.
+            // the chat's error alert.
             if !landed { dismiss() }
         }
     }

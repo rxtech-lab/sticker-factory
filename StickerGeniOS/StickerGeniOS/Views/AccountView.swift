@@ -118,6 +118,7 @@ struct AccountView: View {
 /// and a way to restore purchases.
 private struct SubscriptionSection: View {
     @Bindable var subscription: SubscriptionStore
+    @Environment(\.openURL) private var openURL
     @State private var isRestoring = false
     @State private var restoreMessage: String?
 
@@ -142,8 +143,16 @@ private struct SubscriptionSection: View {
             }
             .accessibilityIdentifier("subscription-credits")
 
-            Button("Manage Subscription", systemImage: "creditcard") {
-                subscription.presentPaywall()
+            Button(
+                subscription.hasActiveSubscription ? "Manage Subscription" : "View Plans",
+                systemImage: "creditcard"
+            ) {
+                if subscription.hasActiveSubscription,
+                   let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                    openURL(url)
+                } else {
+                    subscription.presentPaywall()
+                }
             }
             .accessibilityIdentifier("manage-subscription-button")
 

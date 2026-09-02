@@ -28,8 +28,8 @@ struct StickerChatView: View {
     ///
     /// The publish has no card of its own to report into — it makes a *different* sticker, so
     /// nothing in this conversation is about it. It gets a pill over the message list rather than a
-    /// line under the composer: the composer's caption slot belongs to the draft being written, and
-    /// a status parked there reads as something wrong with the message about to be sent.
+    /// line under the composer: the composer belongs to the draft being written, while failures are
+    /// presented separately in an alert.
     @State private var packNotice: StickerPackNotice?
     @State private var assetStore = StickerAssetStore()
     @State private var exportModel = StickerExportModel()
@@ -86,6 +86,7 @@ struct StickerChatView: View {
     private var canSend: Bool {
         (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !references.isEmpty) && !isComputing
     }
+    private var presentedErrorMessage: String? { localError ?? store.errorMessage }
     /// Whether a plan card is live is the server's call: only it knows whether the card is still
     /// showing the current revision of a draft the agent may have rewritten since. Taking the
     /// newest on top of that keeps scrolled-up history inert even if two cards ever both qualify.
@@ -237,6 +238,12 @@ struct StickerChatView: View {
         } message: {
             Text("Reference images are uploaded privately and become part of this sticker’s persistent chat and revision history until project deletion.")
         }
+        .modifier(ChatErrorAlert(message: presentedErrorMessage) {
+            // Leaving either source set would immediately present the same alert again on the next
+            // render, so dismissing it consumes both the local and shared error.
+            localError = nil
+            store.errorMessage = nil
+        })
         .subjectLiftSheet(pending: $pendingLift, references: $references, basename: "chat-capture")
         .sheet(isPresented: $showingCandidate) {
             if let candidate {
@@ -655,13 +662,6 @@ struct StickerChatView: View {
             }
             .padding(12)
             .glassEffect(.regular, in: .rect(cornerRadius: 24))
-
-            if let error = localError ?? store.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
         }
     }
 
@@ -933,7 +933,7 @@ struct StickerChatView: View {
     }
 
     /// Returns whether the decision landed, so the sheet knows whether to keep its spinner up or
-    /// step aside for the error message under the composer.
+    /// step aside for the error alert.
     @discardableResult
     private func acceptCandidate(_ revision: StickerRevision) async -> Bool {
         isDeciding = true
@@ -1019,6 +1019,26 @@ struct StickerChatView: View {
             stoppedByUser = false
             localError = error.localizedDescription
             Haptics.failure()
+        }
+    }
+}
+
+private struct ChatErrorAlert: ViewModifier {
+    let message: String?
+    let onDismiss: () -> Void
+
+    private var isPresented: Binding<Bool> {
+        Binding(
+            get: { message != nil },
+            set: { if !$0 { onDismiss() } }
+        )
+    }
+
+    func body(content: Content) -> some View {
+        content.alert("Couldn’t Complete Action", isPresented: isPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(message ?? "")
         }
     }
 }

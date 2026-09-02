@@ -82,8 +82,12 @@ final class AppEnvironment {
         let isUITesting = arguments.contains("--ui-testing")
         let simulatesExpiredAuthentication = arguments.contains("--ui-auth-expired")
         let simulatesUploadFailure = arguments.contains("--ui-upload-failure")
+        let simulatesInsufficientCredits = arguments.contains("--ui-insufficient-credits")
         let api: StickerAPIClientProtocol = isUITesting
-            ? MockStickerAPIClient(failCreationAsUpload: simulatesUploadFailure)
+            ? MockStickerAPIClient(
+                failCreationAsUpload: simulatesUploadFailure,
+                failChatSendAsInsufficientCredits: simulatesInsufficientCredits
+            )
             : StickerAPIClient(baseURL: configuration.apiBaseURL, tokenBroker: broker)
         // UI tests run with no notifier at all: a system permission alert over the app would fail
         // every test that follows it, and the mock generations are watched, never walked away from.
@@ -142,6 +146,14 @@ final class AppEnvironment {
         synchronizeAuthenticationState()
         Task { await store.refresh() }
         bindSubscription()
+    }
+
+    /// Opens the exact project started in Messages. Unknown links — including the OAuth callback,
+    /// which uses the same custom scheme — are deliberately ignored here and remain owned by the
+    /// authentication library.
+    func handleIncomingURL(_ url: URL) {
+        guard let stickerID = StickerDeepLink.stickerID(from: url) else { return }
+        pendingStickerID = stickerID
     }
 
     /// Points the subscription store at whoever is signed in.

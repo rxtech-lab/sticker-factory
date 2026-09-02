@@ -53,7 +53,7 @@ struct LibraryView: View {
     /// Only needed so a pack section header can push that pack's detail without leaving the tab.
     @Bindable var marketplace: MarketplaceStore
     /// Defaulted so previews and tests keep working; an unconfigured store shows no chip.
-    @Bindable var subscription: SubscriptionStore = SubscriptionStore()
+    @Bindable var subscription: SubscriptionStore = .init()
     @State private var filter: LibraryFilter = .all
     @State private var searchText = ""
     @State private var showingCreation = false
@@ -126,8 +126,8 @@ struct LibraryView: View {
                         message: isSearchActive
                             ? String(localized: "Try a different search or filter.")
                             : filter == .all
-                                ? String(localized: "Create a static or animated sticker to get started.")
-                                : String(localized: "No \(filter.label.lowercased()) stickers match this filter.")
+                            ? String(localized: "Create a static or animated sticker to get started.")
+                            : String(localized: "No \(filter.label.lowercased()) stickers match this filter.")
                     )
                 } else {
                     ScrollView {
@@ -294,12 +294,12 @@ struct LibraryView: View {
                     showingCreation = false
                     openedStickerID = sticker.id
                 })
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { showingCreation = false }
-                                .accessibilityIdentifier("dismiss-create-button")
-                        }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { showingCreation = false }
+                            .accessibilityIdentifier("dismiss-create-button")
                     }
+                }
             }
             .interactiveDismissDisabled()
         }
@@ -312,7 +312,7 @@ struct LibraryView: View {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close") { previewedSticker = nil }
                         }
-                }
+                    }
             }
         }
         .stickerRenameAlert(
@@ -383,12 +383,10 @@ private struct CreditsChip: View {
                     Text("—")
                 }
             } icon: {
-                Image(systemName: "sparkles")
+                Image(systemName: "person")
             }
             .font(.callout.weight(.medium))
         }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
         .tint(AppColors.accent)
         .accessibilityLabel(
             subscription.credits.map { String(localized: "\($0) credits. Tap to top up.") }
