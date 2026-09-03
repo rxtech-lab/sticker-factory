@@ -114,12 +114,11 @@ struct LibraryView: View {
         StickerBackground {
             Group {
                 if !isSearchActive && store.isLoading && store.stickers.isEmpty && store.sections.isEmpty {
-                    ProgressView("Loading your library…")
+                    PosterProgress(message: String(localized: "Loading your library…"))
                 } else if isSearchActive && store.isSearchingLibrary && !hasAnything {
                     Color.clear
                 } else if !hasAnything {
                     EmptyStateView(
-                        symbol: isSearchActive ? "magnifyingglass" : "face.smiling.inverse",
                         title: isSearchActive
                             ? String(localized: "No matching stickers")
                             : String(localized: "No stickers yet"),
@@ -148,16 +147,20 @@ struct LibraryView: View {
                                                 .buttonStyle(.plain)
                                                 .accessibilityIdentifier("library-sticker-\(sticker.id)")
                                                 .contextMenu {
-                                                    Button("Rename", systemImage: "pencil") {
+                                                    Button {
                                                         renamingSticker = sticker
                                                         renameTitle = sticker.title
                                                         showingRename = true
+                                                    } label: {
+                                                        PosterMenuLabel("Rename", icon: .rename)
                                                     }
                                                     .accessibilityIdentifier("rename-library-sticker-\(sticker.id)")
 
-                                                    Button("Delete", systemImage: "trash", role: .destructive) {
+                                                    Button(role: .destructive) {
                                                         deletionCandidate = sticker
                                                         confirmingDelete = true
+                                                    } label: {
+                                                        PosterMenuLabel("Delete", icon: .delete)
                                                     }
                                                     .accessibilityIdentifier("delete-library-sticker-\(sticker.id)")
                                                 }
@@ -171,7 +174,7 @@ struct LibraryView: View {
                             }
 
                             if nextStickerCursor != nil {
-                                ProgressView("Loading more stickers…")
+                                PosterProgress(message: String(localized: "Loading more stickers…"))
                                     .frame(maxWidth: .infinity)
                                     .padding(.bottom, 8)
                                     .accessibilityIdentifier("library-pagination-progress")
@@ -230,10 +233,7 @@ struct LibraryView: View {
         .searchable(text: $searchText, prompt: "Search stickers")
         .overlay {
             if isSearchActive && store.isSearchingLibrary {
-                ProgressView("Searching…")
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                PosterProgress(message: String(localized: "Searching…"))
                     .accessibilityIdentifier("library-search-progress")
             }
         }
@@ -241,11 +241,8 @@ struct LibraryView: View {
             if let pendingEdit {
                 ZStack {
                     // Also swallows taps: the rows underneath are about to be renamed or removed.
-                    Color.black.opacity(0.15).ignoresSafeArea()
-                    ProgressView(pendingEdit.message)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    AppColors.ink.opacity(0.18).ignoresSafeArea()
+                    PosterProgress(message: pendingEdit.message)
                 }
                 .accessibilityIdentifier(pendingEdit.accessibilityIdentifier)
                 .transition(.opacity)
@@ -272,19 +269,25 @@ struct LibraryView: View {
             }
 
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button("Create", systemImage: "wand.and.stars") {
+                Button {
                     generateTip.invalidate(reason: .actionPerformed)
                     Haptics.tap(.light)
                     showingCreation = true
+                } label: {
+                    PosterToolbarIcon(glyph: .create)
                 }
+                .accessibilityLabel("Create")
                 .popoverTip(generateTip, arrowEdge: .top)
                 .accessibilityIdentifier("create-sticker-button")
 
-                Menu("Filter", systemImage: "line.3.horizontal.decrease.circle") {
+                Menu {
                     Picker("Filter", selection: $filter) {
                         ForEach(LibraryFilter.allCases) { Text($0.label).tag($0) }
                     }
+                } label: {
+                    PosterToolbarIcon(glyph: .filter)
                 }
+                .accessibilityLabel("Filter")
                 .accessibilityIdentifier("library-filter-menu")
             }
         }
@@ -376,16 +379,20 @@ private struct CreditsChip: View {
             Haptics.tap(.light)
             subscription.presentPaywall()
         } label: {
-            Label {
+            // Deliberately *not* a poster capsule. A toolbar item's content is composited
+            // inside the bar's Liquid Glass, which blends whatever colour it is given with the
+            // backdrop — a flat lime pill came out olive, and hiding the glass to stop that
+            // only moved the problem. The bar's own capsule is the button here, the same as the
+            // two controls opposite it, and the chip just fills it.
+            HStack(spacing: 4) {
+                PosterToolbarIcon(glyph: .credits, size: 17)
                 if let credits = subscription.credits {
                     Text(credits, format: .number).monospacedDigit()
                 } else {
                     Text("—")
                 }
-            } icon: {
-                Image(systemName: "person")
             }
-            .font(.callout.weight(.medium))
+            .font(.posterDisplay(14, weight: .heavy))
         }
         .tint(AppColors.accent)
         .accessibilityLabel(
@@ -402,24 +409,28 @@ private struct LibrarySectionHeader: View {
     let packID: String?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.title3.weight(.semibold))
-                if let subtitle {
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
+        PosterSectionHeader(
+            title: title,
+            subtitle: subtitle,
+            // A pack borrowed from someone else is marked in sky; the user's own work in lime.
+            highlight: packID == nil ? AppColors.lime : AppColors.sky
+        ) {
             if let packID {
                 NavigationLink(value: PackRoute(packID: packID)) {
-                    Label("Pack details", systemImage: "chevron.right")
-                        .labelStyle(.iconOnly)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    PosterSymbol("chevron.right")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(AppColors.ink)
+                        .frame(width: 30, height: 30)
+                        .posterSurface(
+                            cornerRadius: 15,
+                            lineWidth: Poster.hairline,
+                            offset: Poster.noShadow
+                        )
                 }
                 // `.plain`, or the link picks up the default button chrome and the chevron sits
                 // on a filled capsule.
                 .buttonStyle(.plain)
+                .accessibilityLabel("Pack details")
                 .accessibilityIdentifier("library-pack-header-\(packID)")
             }
         }
@@ -433,8 +444,8 @@ private struct SectionPlaceholder: View {
 
     var body: some View {
         Text(message)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .foregroundStyle(AppColors.muted)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal)
     }
@@ -455,10 +466,11 @@ struct PackStickerPreview: View {
                 // grid tile decodes them at.
                 StickerThumbnail(sticker: sticker, api: api, detail: .preview)
                     .aspectRatio(1, contentMode: .fit)
-                    .padding()
-                Label(sticker.kind.label, systemImage: sticker.kind.symbol)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .padding(18)
+                    .posterSurface(cornerRadius: Poster.cardRadius, fill: AppColors.paper)
+                    .padding(20)
+                Text(sticker.kind.label)
+                    .posterLabelStyle(10, color: AppColors.muted)
                 Spacer()
             }
         }

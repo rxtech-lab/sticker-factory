@@ -132,6 +132,8 @@ public struct AnimatedIconFrame: View {
                 .frame(width: canvasSize.width, height: canvasSize.height)
             case .sequence(let sequenceLayer):
                 sequenceContent(sequenceLayer, box: box)
+            case .video(let videoLayer):
+                videoContent(videoLayer, box: box)
             case .unsupported:
                 // Drawn as nothing rather than as a placeholder: the layer came from a newer build
                 // and we have no idea how large it is meant to be, so inventing a box in the middle
@@ -164,7 +166,7 @@ public struct AnimatedIconFrame: View {
             RoundedRectangle(cornerRadius: box.width * 0.12, style: .continuous)
                 .fill(.purple.gradient)
                 .overlay {
-                    Image(systemName: "wand.and.stars")
+                    AnimatedCartoonSymbol("wand.and.stars")
                         .font(.system(size: box.width * 0.28, weight: .bold))
                         .foregroundStyle(.white)
                 }
@@ -190,7 +192,37 @@ public struct AnimatedIconFrame: View {
             RoundedRectangle(cornerRadius: box.width * 0.12, style: .continuous)
                 .fill(.purple.gradient)
                 .overlay {
-                    Image(systemName: "livephoto")
+                    AnimatedCartoonSymbol("livephoto")
+                        .font(.system(size: box.width * 0.28, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: box.width * 0.74, height: box.height * 0.74)
+        }
+    }
+
+    @ViewBuilder
+    private func videoContent(_ layer: AnimatedVideoLayer, box: CGSize) -> some View {
+        let index = AnimationInterpolator.videoFrameIndex(layer, atDocumentTime: documentTime)
+        if let frame = VideoFrameCache.shared.frame(for: layer, index: index, assets: assets) {
+            Image(platformImage: frame)
+                .resizable()
+                .aspectRatio(contentMode: layer.contentMode == .fit ? .fit : .fill)
+                .frame(width: box.width, height: box.height)
+                .clipped()
+        } else if let poster = assets.image(for: layer.posterAssetId) {
+            // The still the clip was animated from, while the clip itself downloads and decodes.
+            // Not a placeholder: it is the exact subject at the exact size, so the layout is right
+            // and only the motion is missing.
+            Image(platformImage: poster)
+                .resizable()
+                .aspectRatio(contentMode: layer.contentMode == .fit ? .fit : .fill)
+                .frame(width: box.width, height: box.height)
+                .clipped()
+        } else {
+            RoundedRectangle(cornerRadius: box.width * 0.12, style: .continuous)
+                .fill(.purple.gradient)
+                .overlay {
+                    AnimatedCartoonSymbol("video")
                         .font(.system(size: box.width * 0.28, weight: .bold))
                         .foregroundStyle(.white)
                 }

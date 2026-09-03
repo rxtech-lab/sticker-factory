@@ -27,6 +27,7 @@ nonisolated struct PresentedStickerDocument: Identifiable, Sendable {
 struct FullScreenStickerPlayer: View {
     let document: AnimatedDocument
     let assets: [String: UIImage]
+    var videos: [String: KeyedVideoFrames] = [:]
     /// Everything a save needs. `nil` for a document with no revision behind it — a preview, or a
     /// candidate that has not been accepted — in which case editing is view-only.
     var editing: EditingContext?
@@ -51,7 +52,7 @@ struct FullScreenStickerPlayer: View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
-                StickerPlayer(document: document, assets: assets, repeats: true)
+                StickerPlayer(document: document, assets: assets, videos: videos, repeats: true)
                     .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityIdentifier("full-screen-sticker-player")
@@ -59,14 +60,20 @@ struct FullScreenStickerPlayer: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Label("Close", systemImage: "xmark")
+                    }
                         .accessibilityIdentifier("dismiss-full-screen-player")
                 }
                 if editing != nil {
                     ToolbarItem(placement: .primaryAction) {
-                        Button("Edit", systemImage: "slider.horizontal.3") {
+                        Button {
                             Haptics.tap(.light)
                             isEditing = true
+                        } label: {
+                            Label("Edit", systemImage: "slider.horizontal.3")
                         }
                             .accessibilityIdentifier("edit-sticker-button")
                     }

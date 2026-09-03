@@ -25,12 +25,14 @@ struct PackComposerView: View {
 
     var body: some View {
         Form {
-            Section("Pack") {
+            Section {
                 TextField("Name", text: $title)
                     .accessibilityIdentifier("pack-title-field")
                 TextField("Description", text: $summary, axis: .vertical)
                     .lineLimit(1...3)
                     .accessibilityIdentifier("pack-summary-field")
+            } header: {
+                PosterListHeader("Pack")
             }
 
             Section {
@@ -48,8 +50,7 @@ struct PackComposerView: View {
                                 StickerThumbnail(sticker: sticker, api: store.api)
                                     .aspectRatio(1, contentMode: .fit)
                                     .overlay(alignment: .topTrailing) {
-                                        Image(systemName: "minus.circle.fill")
-                                            .symbolRenderingMode(.palette)
+                                        PosterSymbol("minus.circle.fill")
                                             .foregroundStyle(.white, .red)
                                             .padding(6)
                                     }
@@ -61,8 +62,10 @@ struct PackComposerView: View {
                     }
                 }
 
-                Button("Choose stickers", systemImage: "plus.circle") {
+                Button {
                     showingPicker = true
+                } label: {
+                    Label("Choose stickers", systemImage: "plus.circle")
                 }
                 .accessibilityIdentifier("pack-choose-stickers-button")
             } header: {
@@ -102,6 +105,9 @@ struct PackComposerView: View {
         // The fields and the picker are the submission's input; editing them mid-flight would
         // describe a pack the server is no longer being asked for.
         .disabled(isSubmitting)
+        .scrollContentBackground(.hidden)
+        .background { PosterPaper() }
+        .listRowBackground(AppColors.card)
         .navigationTitle("New pack")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingPicker) {

@@ -16,6 +16,7 @@ struct CandidateReadySheet: View {
 
     let revision: StickerRevision
     let assets: [String: UIImage]
+    var videos: [String: KeyedVideoFrames] = [:]
     let isBusy: Bool
     /// Both decisions report whether they landed. On success the sheet stays put and lets the
     /// candidate disappearing take it away; on failure it leaves so the chat can present its
@@ -46,14 +47,7 @@ struct CandidateReadySheet: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [AppColors.accentSoft.opacity(0.5), .clear],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        )
+        .background { PosterPaper() }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         // Swiping the sheet away mid-decision would leave the spinner behind with nothing to
@@ -67,33 +61,27 @@ private extension CandidateReadySheet {
     /// Deliberately no big glyph: the sticker below *is* the icon, and at the medium
     /// detent every point spent on chrome is a point taken from the thing being judged.
     var header: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "sparkles")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(AppColors.accent)
+        VStack(spacing: 8) {
+            PosterEyebrow(text: String(localized: "Fresh off the press"), fill: AppColors.lime)
             Text("Candidate ready")
-                .font(.title2.bold())
+                .font(.posterDisplay(26, weight: .heavy))
+                .foregroundStyle(AppColors.ink)
             Text("Keep it and it becomes the sticker you build on.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 14, design: .rounded))
+                .foregroundStyle(AppColors.muted)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
     }
 
     var preview: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.background)
-            StickerPlayer(document: revision.document, assets: assets, repeats: true)
-                .padding(16)
-        }
-        .frame(height: 160)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08))
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        StickerPlayer(document: revision.document, assets: assets, videos: videos, repeats: true)
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .frame(height: 160)
+            .posterSurface(cornerRadius: Poster.cardRadius, fill: AppColors.paper)
+            .padding(.trailing, Poster.mediumShadow.width)
+            .padding(.bottom, Poster.mediumShadow.height)
         .accessibilityLabel(
             revision.document.kind == .animated ? "Candidate animated sticker" : "Candidate sticker"
         )
@@ -112,12 +100,10 @@ private extension CandidateReadySheet {
                     "Continue with this sticker",
                     systemImage: "checkmark.circle",
                     spinning: pending == .accept,
-                    spinnerTint: .white
+                    spinnerTint: AppColors.card
                 )
             }
-            .buttonStyle(.borderedProminent)
-            .tint(AppColors.accent)
-            .controlSize(.large)
+            .buttonStyle(.poster)
             .disabled(isLocked)
             .accessibilityIdentifier("accept-candidate-next")
 
@@ -128,9 +114,7 @@ private extension CandidateReadySheet {
                 Label("Compare with previous", systemImage: "rectangle.on.rectangle")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .tint(AppColors.accent)
-            .controlSize(.large)
+            .buttonStyle(.posterSecondary)
             .disabled(isLocked)
             .accessibilityIdentifier("compare-candidate")
 
@@ -139,16 +123,14 @@ private extension CandidateReadySheet {
             } label: {
                 decisionLabel(
                     "Reject",
-                    systemImage: "xmark.circle",
+                    systemImage: nil,
                     spinning: pending == .reject,
-                    spinnerTint: .red
+                    spinnerTint: AppColors.card
                 )
             }
-            .buttonStyle(.bordered)
-            // The destructive role alone does not colorize a bordered button against the
-            // app's purple accent, and rejecting must not read like another neutral choice.
-            .tint(.red)
-            .controlSize(.large)
+            // Coral, not another cream button: turning the sticker down must not read as the
+            // third neutral choice in a row.
+            .buttonStyle(.posterDanger)
             .disabled(isLocked)
             .accessibilityIdentifier("reject-candidate-next")
         }
@@ -160,11 +142,21 @@ private extension CandidateReadySheet {
     /// title stays centred on the button rather than shifting when the spinner appears.
     func decisionLabel(
         _ title: String,
-        systemImage: String,
+        systemImage: String?,
         spinning: Bool,
         spinnerTint: Color
     ) -> some View {
-        Label(title, systemImage: systemImage)
+        Group {
+            if let systemImage {
+                Label {
+                    Text(title)
+                } icon: {
+                    Image(systemName: systemImage)
+                }
+            } else {
+                Text(title)
+            }
+        }
             .frame(maxWidth: .infinity)
             .overlay(alignment: .trailing) {
                 if spinning {
@@ -205,16 +197,14 @@ struct CandidateReadyBanner: View {
                 Label("Candidate ready", systemImage: "sparkles")
                 Spacer(minLength: 8)
                 if isBusy {
-                    ProgressView().controlSize(.small)
+                    ProgressView().controlSize(.small).tint(AppColors.ink)
                 } else {
-                    Text("Review").fontWeight(.semibold)
+                    Text("Review")
                 }
             }
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glassProminent)
-        .tint(AppColors.accent)
-        .controlSize(.large)
+        .buttonStyle(.posterLime)
         .popoverTip(reviewTip, arrowEdge: .bottom)
         .accessibilityIdentifier("candidate-banner")
     }

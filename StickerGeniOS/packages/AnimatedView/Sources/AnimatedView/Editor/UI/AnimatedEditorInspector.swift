@@ -20,11 +20,11 @@ struct AnimatedEditorInspector: View {
                 typeSection(layer)
                 motionSection(layer)
             } else {
-                ContentUnavailableView(
-                    "No Layer Selected",
-                    systemImage: "square.dashed",
-                    description: Text("Tap a layer on the canvas or in the layer list.")
-                )
+                ContentUnavailableView {
+                    AnimatedCartoonLabel("No Layer Selected", icon: "square.dashed")
+                } description: {
+                    Text("Tap a layer on the canvas or in the layer list.")
+                }
             }
         }
         .formStyle(.grouped)
@@ -53,7 +53,7 @@ struct AnimatedEditorInspector: View {
             }
 
             LabeledContent("Kind") {
-                Label(layer.type.editorLabel, systemImage: layer.type.editorSymbol)
+                AnimatedCartoonLabel(verbatim: layer.type.editorLabel, icon: layer.type.editorSymbol)
                     .foregroundStyle(.secondary)
             }
         }
@@ -167,6 +167,8 @@ struct AnimatedEditorInspector: View {
             AnimatedParticleLayerInspector(editor: editor, layer: value)
         case .sequence(let value):
             AnimatedSequenceLayerInspector(editor: editor, layer: value, assets: assets)
+        case .video(let value):
+            AnimatedVideoLayerInspector(editor: editor, layer: value, assets: assets)
         case .unsupported:
             AnimatedUnsupportedLayerInspector()
         }
@@ -187,11 +189,13 @@ struct AnimatedEditorInspector: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Button("Convert to Keyframes", systemImage: "diamond") {
+                Button {
                     editor.detachAnimations(forLayer: layer.id)
+                } label: {
+                    Label("Convert to Keyframes", systemImage: "diamond")
                 }
             } header: {
-                Label("Preset Motion", systemImage: "wand.and.stars")
+                AnimatedCartoonLabel("Preset Motion", icon: "wand.and.stars")
             } footer: {
                 Text("""
                     These presets generate this layer's \(layer.animation.keyframeCount) keyframes, so the \

@@ -260,7 +260,7 @@ final class StickerExporter {
     /// the Messages ladder has to.
     func exportStaticPNG(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         dimension: Int = 1024
     ) throws -> RenderedStickerExport {
         _ = try document.validated()
@@ -305,7 +305,7 @@ final class StickerExporter {
     ///   between frames, so it is only ever read by the screen showing the progress.
     func exportAPNG(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         byteCeiling: Int = StickerExportMetadataPolicy.uploadByteCeiling,
         note: ((String) -> Void)? = nil
     ) async throws -> RenderedStickerExport {
@@ -334,7 +334,7 @@ final class StickerExporter {
 
     private func sharingAPNG(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         survey: ColorSurvey,
         ceiling: Int,
         note: ((String) -> Void)? = nil
@@ -401,7 +401,7 @@ final class StickerExporter {
     ///   between frames, so it is only ever read by the screen showing the progress.
     func exportGIF(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         byteCeiling: Int = StickerExportMetadataPolicy.uploadByteCeiling,
         note: ((String) -> Void)? = nil
     ) async throws -> RenderedStickerExport {
@@ -422,7 +422,7 @@ final class StickerExporter {
 
     private func sharingGIF(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         ceiling: Int,
         note: ((String) -> Void)? = nil
     ) async throws -> (data: Data, dimension: Int) {
@@ -452,7 +452,7 @@ final class StickerExporter {
     /// of them, and the estimate scales with area. The sample costs a fortieth of the pass it saves.
     private func startingGifRung(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         ceiling budget: Int
     ) async throws -> Int {
         let ladder = StickerExportMetadataPolicy.sharingGifDimensions
@@ -478,7 +478,7 @@ final class StickerExporter {
 
     private func sampledGifBytesPerPixel(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         dimension: Int
     ) async throws -> Double? {
         let data = NSMutableData()
@@ -512,7 +512,7 @@ final class StickerExporter {
 
     private func gifData(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         dimension: Int,
         fps: Int
     ) async throws -> Data {
@@ -556,7 +556,7 @@ final class StickerExporter {
     ///   count is worth more than a name.
     func exportMP4(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         note: ((String) -> Void)? = nil
     ) async throws -> RenderedStickerExport {
         _ = try document.validated()
@@ -683,7 +683,7 @@ final class StickerExporter {
     ///   likely to run long on dense artwork, and a rung is the only thing that says why.
     func exportSystemSticker(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         size: SystemStickerSize = .default,
         note: ((String) -> Void)? = nil
     ) async throws -> RenderedStickerExport {
@@ -753,7 +753,7 @@ final class StickerExporter {
     /// ladder re-rendered the whole cycle for each of its thirteen rungs and each of two formats.
     private func animatedSystemRendition(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         survey: ColorSurvey,
         maximumDimension: Int,
         note: ((String) -> Void)? = nil
@@ -827,7 +827,7 @@ final class StickerExporter {
     ///   cancelled, or every candidate outgrew the budget.
     private func indexedAnimation(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         survey: ColorSurvey,
         dimension: Int,
         fps: Int,
@@ -882,7 +882,7 @@ final class StickerExporter {
     /// so the last rung is under the ceiling by construction rather than by luck.
     private func stillSystemRendition(
         document: AnimatedDocument,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         survey: ColorSurvey,
         maximumDimension: Int,
         note: ((String) -> Void)? = nil
@@ -938,7 +938,7 @@ final class StickerExporter {
         var posterTime: Double
     }
 
-    private func colorSurvey(document: AnimatedDocument, assets: [String: UIImage]) async -> ColorSurvey {
+    private func colorSurvey(document: AnimatedDocument, assets: StickerRenderAssets) async -> ColorSurvey {
         var census = IndexedPNGEncoder.ColorCensus(lattice: .init(colorLevels: 32, alphaLevels: 8))
         var posterTime = 0.0
         guard document.kind == .animated else {
@@ -990,12 +990,12 @@ final class StickerExporter {
         document: AnimatedDocument,
         time: Double,
         dimension: Int,
-        assets: [String: UIImage]
+        assets: StickerRenderAssets
     ) -> CGImage? {
         let content = AnimatedIconFrame(
             document: document,
             documentTime: time,
-            assets: AnimatedAssetDictionary(images: assets)
+            assets: assets.dictionary
         )
             .frame(width: CGFloat(dimension), height: CGFloat(dimension))
         let renderer = ImageRenderer(content: content)

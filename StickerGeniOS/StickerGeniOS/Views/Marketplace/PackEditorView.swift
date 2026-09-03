@@ -99,6 +99,9 @@ struct PackEditorView: View {
         // The fields and the member list are the request's input; editing them mid-flight would
         // describe a pack the server is no longer being asked for.
         .disabled(isWorking)
+        .scrollContentBackground(.hidden)
+        .background { PosterPaper() }
+        .listRowBackground(AppColors.card)
         .navigationTitle("Edit pack")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -174,8 +177,10 @@ struct PackEditorView: View {
                 .onDelete { members.remove(atOffsets: $0) }
             }
 
-            Button("Choose stickers", systemImage: "plus.circle") {
+            Button {
                 showingPicker = true
+            } label: {
+                Label("Choose stickers", systemImage: "plus.circle")
             }
             .accessibilityIdentifier("pack-editor-choose-stickers-button")
         } header: {
@@ -201,11 +206,11 @@ struct PackEditorView: View {
     @ViewBuilder
     private var hiddenSection: some View {
         Section {
-            Label(
-                hiddenCount == 1
+            PosterSymbolLabel(
+                verbatim: hiddenCount == 1
                     ? String(localized: "1 sticker in this pack is hidden from people who added it.")
                     : String(localized: "\(hiddenCount) stickers in this pack are hidden from people who added it."),
-                systemImage: "eye.slash"
+                posterSymbol: "eye.slash"
             )
             .font(.footnote)
             Text("Editing a sticker on device returns it to draft, and a draft cannot appear in a pack. Publish it again to bring it back — but saving the sticker list here drops it from the pack for good.")

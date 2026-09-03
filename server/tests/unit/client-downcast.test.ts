@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import v3Fixture from "@/fixtures/sticker-document-v3.json";
+import v4Fixture from "@/fixtures/sticker-document-v4.json";
 import {
   clientDocumentVersion,
   CURRENT_DOCUMENT_VERSION,
@@ -84,6 +85,50 @@ describe("downcastForClient", () => {
     const reparsed = StickerDocumentSchema.parse(result);
     expect(reparsed.layers.every((layer) => layer.type !== "sequence")).toBe(true);
   });
+
+  it("hands a v3 client a v3 document with its sequence layer intact", () => {
+    // A v3 client can play footage; only the clip is beyond it. Degrading the sequence too would
+    // take away motion that client was built to show.
+    const result = downcastForClient(parsed(), 3) as typeof v3Fixture;
+    expect(result.version).toBe(3);
+    expect(result.layers[0].type).toBe("sequence");
+  });
+});
+
+describe("downcastForClient with a video layer", () => {
+  const withClip = () => StickerDocumentSchema.parse(v4Fixture);
+
+  it("replaces the clip with its poster for a v3 client and restamps to 3", () => {
+    const document = withClip();
+    const result = downcastForClient(document, 3) as typeof document;
+    expect(result.version).toBe(3);
+    const hero = result.layers[0];
+    if (hero.type !== "image") throw new Error("the downcast did not produce an image layer");
+    const source = document.layers[0];
+    if (source.type !== "video") throw new Error("the fixture's hero layer is not a video");
+    expect(hero.assetId).toBe(source.posterAssetId);
+    expect(hero.id).toBe(source.id);
+    expect(hero.anchor).toEqual(source.anchor);
+    expect(hero.animation).toEqual(source.animation);
+    for (const key of ["keyColor", "frameCount", "frameRate", "playback", "startSeconds", "posterAssetId"]) {
+      expect(hero).not.toHaveProperty(key);
+    }
+    expect(result.layers[1]).toEqual(document.layers[1]);
+    // It parses as the v3 the client will read it as.
+    expect(StickerDocumentSchema.parse(result).layers[0].type).toBe("image");
+  });
+
+  it("degrades both hops for a v2 client", () => {
+    const result = downcastForClient(withClip(), 2) as { version: number; layers: Array<{ type: string }> };
+    expect(result.version).toBe(2);
+    expect(result.layers.map((layer) => layer.type)).toEqual(["image", "particle"]);
+    expect(StickerDocumentSchema.parse(result).version).toBe(CURRENT_DOCUMENT_VERSION);
+  });
+
+  it("hands a current client the document unchanged", () => {
+    const document = withClip();
+    expect(downcastForClient(document, CURRENT_DOCUMENT_VERSION)).toBe(document);
+  });
 });
 
 describe("clientDocumentVersion", () => {
@@ -95,6 +140,7 @@ describe("clientDocumentVersion", () => {
 
   it("honours a header a client actually sends", () => {
     expect(clientDocumentVersion(headers("3"))).toBe(3);
+    expect(clientDocumentVersion(headers("4"))).toBe(4);
   });
 
   it("clamps nonsense to the floor rather than trusting it", () => {

@@ -130,11 +130,10 @@ struct StickerPickerSheet: View {
     @ViewBuilder
     private var content: some View {
         if model.isLoading && model.stickers.isEmpty {
-            ProgressView("Loading stickers…")
+            PosterProgress(message: String(localized: "Loading stickers…"))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.stickers.isEmpty {
             EmptyStateView(
-                symbol: "square.dashed",
                 title: query.isEmpty
                     ? String(localized: "No published stickers")
                     : String(localized: "No matches"),
@@ -163,7 +162,7 @@ struct StickerPickerSheet: View {
                 .padding()
 
                 if model.nextCursor != nil {
-                    ProgressView("Loading more stickers…")
+                    PosterProgress(message: String(localized: "Loading more stickers…"))
                         .frame(maxWidth: .infinity)
                         .padding(.bottom, 24)
                         .accessibilityIdentifier("sticker-picker-pagination-progress")
@@ -197,7 +196,7 @@ struct PickableSticker: View {
                     .strokeBorder(isSelected ? AppColors.accent : .clear, lineWidth: 3)
             }
             .overlay(alignment: .topTrailing) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                PosterSymbol(isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? AppColors.accent : Color.secondary)
                     .padding(6)
             }

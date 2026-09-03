@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { StickerDocumentSchema } from "@/lib/contracts/sticker";
+import { applyStickerOperationsV1, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
 import {
   applyLayoutAdjustment,
+  clampLayoutOnCanvas,
+  LAYER_FIT,
+  layerBounds,
   layoutDiagnostics,
 } from "@/lib/layout/composition";
 
@@ -87,5 +90,69 @@ describe("composition layout refinement", () => {
   it("requires a complete layer-order permutation", () => {
     expect(() => applyLayoutAdjustment(fixture(), { order: ["hero"] }))
       .toThrow(/order must contain every layer exactly once/);
+  });
+
+  // The native renderer fits glyphs inside their box rather than stretching them, so the box the
+  // layout reasons about has to be the square the letters actually occupy.
+  it("measures a text layer by the square its glyphs are fitted into", () => {
+    const document = applyStickerOperationsV1(fixture(), [{
+      op: "addLayer",
+      layer: {
+        id: "caption", name: "Caption", hidden: false, type: "text", text: "HI",
+        font: "rounded", weight: "bold", paint: { type: "solid", color: "#FF0055" },
+        anchor: {
+          position: { x: 0.5, y: 0.5 }, scale: { x: 0.9, y: 0.35 }, rotationDegrees: 0, opacity: 1,
+          trim: { start: 0, end: 1 },
+        },
+      },
+    }] as Parameters<typeof applyStickerOperationsV1>[1]);
+    const box = layerBounds(document.layers.find((layer) => layer.id === "caption")!);
+    expect(box.right - box.left).toBeCloseTo(LAYER_FIT * 0.35, 10);
+    expect(box.bottom - box.top).toBeCloseTo(LAYER_FIT * 0.35, 10);
+  });
+});
+
+describe("clampLayoutOnCanvas", () => {
+  const moveHero = (document: StickerDocument, anchor: { position?: { x: number; y: number }; scale?: { x: number; y: number } }) => {
+    const hero = document.layers.find((layer) => layer.id === "hero")!;
+    return applyStickerOperationsV1(document, [{
+      op: "setLayerAnimations",
+      layerId: "hero",
+      animations: hero.animations,
+      anchor: { ...hero.anchor, ...anchor },
+    }]);
+  };
+
+  it("shifts a layer hanging off the edge back onto the canvas and touches nothing else", () => {
+    const source = moveHero(fixture(), { position: { x: 0.1, y: 0.5 } });
+    expect(layoutDiagnostics(source).offCanvasLayerIds).toEqual(["hero"]);
+    const clamped = clampLayoutOnCanvas(source);
+    const hero = clamped.layers.find((layer) => layer.id === "hero")!;
+    expect(hero.anchor.position.x).toBeCloseTo(LAYER_FIT / 2, 10);
+    expect(hero.anchor.position.y).toBe(0.5);
+    expect(hero.anchor.scale).toEqual({ x: 1, y: 1 });
+    // The compiler rounds emitted keyframes, so the anchor is matched to their precision.
+    expect(hero.animation.position[0].timeSeconds).toBe(0);
+    expect(hero.animation.position[0].x).toBeCloseTo(hero.anchor.position.x, 4);
+    expect(hero.animation.position[0].y).toBe(0.5);
+    expect(clamped.layers.find((layer) => layer.id === "spark"))
+      .toEqual(source.layers.find((layer) => layer.id === "spark"));
+    expect(layoutDiagnostics(clamped).offCanvasLayerIds).toEqual([]);
+  });
+
+  it("shrinks a layer bigger than the canvas before shifting it", () => {
+    const source = moveHero(fixture(), { position: { x: 0.2, y: 0.5 }, scale: { x: 1.5, y: 1.5 } });
+    const clamped = clampLayoutOnCanvas(source);
+    const hero = clamped.layers.find((layer) => layer.id === "hero")!;
+    expect(hero.anchor.scale.x).toBeCloseTo(1 / LAYER_FIT, 10);
+    expect(hero.anchor.scale.y).toBe(hero.anchor.scale.x);
+    expect(hero.anchor.position.x).toBeCloseTo(0.5, 10);
+    expect(hero.anchor.position.y).toBe(0.5);
+    expect(layoutDiagnostics(clamped).offCanvasLayerIds).toEqual([]);
+  });
+
+  it("returns the same document when every layer is already on canvas", () => {
+    const source = fixture();
+    expect(clampLayoutOnCanvas(source)).toBe(source);
   });
 });

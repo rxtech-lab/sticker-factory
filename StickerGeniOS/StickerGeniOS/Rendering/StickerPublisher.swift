@@ -54,7 +54,7 @@ final class StickerPublisher {
     /// - Parameter progress: the timeline this run reports into, when one is on screen.
     func export(
         revision: StickerRevision,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         verifiedAssetIDs: Set<String>,
         selection: StickerExportSelection = .default,
         sharing: StickerSharingFormat = .default,
@@ -91,7 +91,7 @@ final class StickerPublisher {
     func publish(
         stickerID: String,
         revision: StickerRevision,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         verifiedAssetIDs: Set<String>,
         selection: StickerExportSelection = .default,
         sharing: StickerSharingFormat = .default,
@@ -169,7 +169,7 @@ final class StickerPublisher {
     ///   document is unchanged, and the same encode that would have run then runs now.
     func publishedExports(
         for revision: StickerRevision,
-        assets: [String: UIImage] = [:],
+        assets: StickerRenderAssets = .init(),
         verifiedAssetIDs: Set<String> = [],
         selection: StickerExportSelection = .default
     ) async throws -> [URL] {
@@ -210,36 +210,22 @@ final class StickerPublisher {
     }
 
     private func downloadExport(assetID: String) async throws -> URL {
-        let download = try await api.assetDownload(assetID: assetID)
-        let fileManager = FileManager.default
-        let directory = fileManager.temporaryDirectory
+        let directory = FileManager.default.temporaryDirectory
             .appending(path: "StickerFactoryExports", directoryHint: .isDirectory)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let fileExtension = UTType(mimeType: download.asset.mimeType)?.preferredFilenameExtension ?? "dat"
-        let url = directory.appending(path: assetID).appendingPathExtension(fileExtension)
-        if fileManager.fileExists(atPath: url.path(percentEncoded: false)) { return url }
-
-        let (data, response) = try await URLSession.shared.data(from: download.url)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+        do {
+            // The same digest check the image cache makes: a file that does not match what the
+            // server recorded is not the sticker that was published, and is not what gets shared.
+            return try await VerifiedAssetDownload.fetch(assetID: assetID, into: directory, api: api).url
+        } catch is VerifiedAssetDownload.Failure {
             throw StickerPublishError.exportDownloadFailed
         }
-        // The same digest check the image cache makes: a file that does not match what the server
-        // recorded is not the sticker that was published, and it is not what should be shared.
-        if let expected = download.asset.sha256 {
-            let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-            guard actual.caseInsensitiveCompare(expected) == .orderedSame else {
-                throw StickerPublishError.exportDownloadFailed
-            }
-        }
-        try data.write(to: url, options: .atomic)
-        return url
     }
 
     /// - Parameter rendering: which renditions are produced. `.both` is what a publish passes,
     ///   because the server accepts an animated sticker only with its complete set.
     private func renderExports(
         revision: StickerRevision,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         verifiedAssetIDs: Set<String>,
         rendering: StickerExportSelection,
         sharing: StickerSharingFormat,
@@ -293,13 +279,17 @@ final class StickerPublisher {
 
     private func validatedDocument(
         revision: StickerRevision,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         verifiedAssetIDs: Set<String>
     ) throws -> AnimatedDocument {
         guard revision.state == .accepted else { throw StickerPublishError.revisionNotAccepted }
         let document = try revision.document.validated()
         let requiredAssetIDs = Set(document.layers.flatMap(\.referencedImageAssetIDs))
-        let missing = requiredAssetIDs.filter { assets[$0]?.cgImage == nil || !verifiedAssetIDs.contains($0) }
+        var missing = requiredAssetIDs.filter { assets.images[$0]?.cgImage == nil || !verifiedAssetIDs.contains($0) }
+        // A video layer without its clip would export as its poster — a still where the user
+        // approved motion — so the clip is required the same way a bitmap is.
+        let requiredVideoIDs = Set(document.layers.flatMap(\.referencedVideoAssetIDs))
+        missing.formUnion(requiredVideoIDs.filter { assets.videos[$0] == nil || !verifiedAssetIDs.contains($0) })
         guard missing.isEmpty else { throw StickerPublishError.missingVerifiedAssets(missing.sorted()) }
         return document
     }

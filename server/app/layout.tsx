@@ -6,6 +6,17 @@ import { SiteHeader } from "@/components/site-header";
 export const metadata: Metadata = {
   title: { default: "Sticker Factory", template: "%s · Sticker Factory" },
   description: "Your private library for AI-created static and animated stickers.",
+  openGraph: {
+    type: "website",
+    siteName: "Sticker Factory",
+    title: "Sticker Factory",
+    description: "Say it with a sticker you made. Create, refine, animate, and share from iPhone and iPad.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Sticker Factory",
+    description: "Say it with a sticker you made. Create, refine, animate, and share from iPhone and iPad.",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

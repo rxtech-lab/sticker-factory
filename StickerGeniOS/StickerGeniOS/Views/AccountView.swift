@@ -32,16 +32,17 @@ struct AccountView: View {
 
     var body: some View {
         Form {
-            Section("Signed In") {
+            Section {
                 HStack(spacing: 16) {
                     AccountAvatar(name: userName, url: avatarURL)
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(userName)
-                            .font(.headline)
+                            .font(.posterDisplay(19, weight: .bold))
+                            .foregroundStyle(AppColors.ink)
                         Text(userEmail)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 13, design: .rounded))
+                            .foregroundStyle(AppColors.muted)
                             .textSelection(.enabled)
                     }
 
@@ -51,32 +52,44 @@ struct AccountView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Signed in as \(userName), \(userEmail)")
                 .accessibilityIdentifier("signed-in-profile")
+            } header: {
+                PosterListHeader("Signed In")
             }
 
             if environment.subscription.isReady {
                 SubscriptionSection(subscription: environment.subscription)
             }
 
-            Section("Legal") {
+            Section {
                 NavigationLink(value: LegalDocument.privacy) {
-                    Label("Privacy Policy", systemImage: LegalDocument.privacy.systemImage)
+                    Label("Privacy Policy", systemImage: LegalDocument.privacy.posterSymbol)
                 }
                 .accessibilityIdentifier("privacy-policy-link")
 
                 NavigationLink(value: LegalDocument.terms) {
-                    Label("Terms of Service", systemImage: LegalDocument.terms.systemImage)
+                    Label("Terms of Service", systemImage: LegalDocument.terms.posterSymbol)
                 }
                 .accessibilityIdentifier("terms-of-service-link")
+            } header: {
+                PosterListHeader("Legal")
             }
 
-            Section("Help") {
-                Button(howItWorksTitle, systemImage: "sparkles") {
+            Section {
+                Button {
                     onShowWelcome()
+                } label: {
+                    Label {
+                        Text(howItWorksTitle)
+                    } icon: {
+                        Image(systemName: "sparkles")
+                    }
                 }
                 .accessibilityIdentifier("show-welcome-button")
+            } header: {
+                PosterListHeader("Help")
             }
 
-            Section("About") {
+            Section {
                 NavigationLink {
                     AboutPageView(
                         baseURL: environment.configuration.apiBaseURL,
@@ -85,22 +98,39 @@ struct AccountView: View {
                         appBuild: environment.configuration.appBuild
                     )
                 } label: {
-                    Label(aboutTitle, systemImage: "info.circle.fill")
+                    Label {
+                        Text(aboutTitle)
+                    } icon: {
+                        Image(systemName: "info.circle.fill")
+                    }
                 }
                 .accessibilityIdentifier("about-page-link")
+            } header: {
+                PosterListHeader("About")
             }
 
             Section {
                 Button("Sign Out", role: .destructive) {
                     confirmingLogout = true
                 }
+                .font(.posterDisplay(16, weight: .bold))
+                .foregroundStyle(AppColors.coral)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .accessibilityIdentifier("sign-out-button")
             } footer: {
                 Text("Signing out removes shared credentials and cached iMessage stickers from this device.")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(AppColors.faint)
             }
         }
         .navigationTitle("Account")
+        // A `Form` paints its own grouped grey, which is the one surface in the app that is
+        // neither paper nor card. Hidden, so the poster page shows through and each row sits on
+        // cream instead.
+        .scrollContentBackground(.hidden)
+        .background { PosterPaper() }
+        .listRowBackground(AppColors.card)
+        .listRowSeparatorTint(AppColors.line)
         .task { environment.subscription.refresh() }
         .navigationDestination(for: LegalDocument.self) { document in
             LegalDocumentView(document: document, baseURL: environment.configuration.apiBaseURL)
@@ -123,7 +153,7 @@ private struct SubscriptionSection: View {
     @State private var restoreMessage: String?
 
     var body: some View {
-        Section("Subscription") {
+        Section {
             LabeledContent("Plan") {
                 Text(subscription.activePlanName ?? String(localized: "Free"))
                     .foregroundStyle(.secondary)
@@ -143,15 +173,22 @@ private struct SubscriptionSection: View {
             }
             .accessibilityIdentifier("subscription-credits")
 
-            Button(
-                subscription.hasActiveSubscription ? "Manage Subscription" : "View Plans",
-                systemImage: "creditcard"
-            ) {
+            Button {
                 if subscription.hasActiveSubscription,
                    let url = URL(string: "https://apps.apple.com/account/subscriptions") {
                     openURL(url)
                 } else {
                     subscription.presentPaywall()
+                }
+            } label: {
+                Label {
+                    Text(
+                        subscription.hasActiveSubscription
+                            ? String(localized: "Manage Subscription")
+                            : String(localized: "View Plans")
+                    )
+                } icon: {
+                    Image(systemName: "creditcard")
                 }
             }
             .accessibilityIdentifier("manage-subscription-button")
@@ -172,9 +209,11 @@ private struct SubscriptionSection: View {
 
             if let restoreMessage {
                 Text(restoreMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13, design: .rounded))
+                    .foregroundStyle(AppColors.muted)
             }
+        } header: {
+            PosterListHeader("Subscription")
         }
     }
 
@@ -206,11 +245,11 @@ private struct AccountAvatar: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(AppColors.accent.gradient)
+                .fill(AppColors.lime)
 
             Text(initials)
-                .font(.title2.bold())
-                .foregroundStyle(.white)
+                .font(.posterDisplay(22, weight: .heavy))
+                .foregroundStyle(AppColors.ink)
 
             if let url {
                 AsyncImage(url: url, transaction: Transaction(animation: .easeInOut)) { phase in
@@ -231,7 +270,10 @@ private struct AccountAvatar: View {
         .frame(width: 58, height: 58)
         .clipShape(.circle)
         .overlay {
-            Circle().stroke(.white.opacity(0.35), lineWidth: 1)
+            Circle().strokeBorder(AppColors.ink, lineWidth: Poster.border)
+        }
+        .background {
+            Circle().fill(AppColors.ink).offset(x: 3, y: 3)
         }
         .accessibilityHidden(true)
     }

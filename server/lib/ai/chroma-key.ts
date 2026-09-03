@@ -1,4 +1,13 @@
 import sharp from "sharp";
+import {
+  describeSubject,
+  emptyPixelBounds,
+  extendPixelBounds,
+  pixelBoundsAreEmpty,
+  subjectCropRect,
+  VISIBLE_ALPHA,
+  type SubjectBounds,
+} from "@/lib/images/subject-bounds";
 
 /**
  * Turning a solid coloured backdrop into alpha, because the quick image model cannot draw one.
@@ -83,14 +92,14 @@ const KEYED_DOMINANCE = 110;
  * The result is also cropped to what survived. Told to draw on a background, the quick model draws
  * a *scene*: a small subject sitting in the middle of a large flooded frame. Keyed and left alone
  * that becomes a sticker two thirds of which is empty, and since the export ladder fits the whole
- * square into 618px, the part anyone can see ends up half the size it should be. The main model has
- * no such habit — asked for a transparent background it fills the frame — so the crop lives here
- * rather than in `normalizeTransparentPng`, which both paths share.
+ * square into 618px, the part anyone can see ends up half the size it should be. The crop is fused
+ * into the keying pass rather than taken from `cropPngToSubject` afterwards because the matte
+ * already visits every pixel; the measurement itself is the shared one (`lib/images/subject-bounds`).
  */
 export async function chromaKeyBackground(
   bytes: Uint8Array,
   color: ChromaKeyColor,
-): Promise<{ bytes: Uint8Array; keyedFraction: number }> {
+): Promise<{ bytes: Uint8Array; keyedFraction: number; subject?: SubjectBounds }> {
   const { data, info } = await sharp(bytes, { limitInputPixels: 4096 * 4096 })
     .ensureAlpha()
     .raw()
@@ -100,7 +109,7 @@ export async function chromaKeyBackground(
   const rivalA = 0;
   const rivalB = color.channel === 1 ? 2 : 1;
   let removed = 0;
-  const bounds = { left: info.width, top: info.height, right: -1, bottom: -1 };
+  const bounds = emptyPixelBounds(info);
   for (let offset = 0; offset < data.length; offset += stride) {
     const key = data[offset + color.channel];
     const rival = Math.max(data[offset + rivalA], data[offset + rivalB]);
@@ -128,67 +137,18 @@ export async function chromaKeyBackground(
     if (data[offset + 3] <= VISIBLE_ALPHA) continue;
     const pixel = offset / stride;
     const x = pixel % info.width;
-    const y = (pixel - x) / info.width;
-    if (x < bounds.left) bounds.left = x;
-    if (x > bounds.right) bounds.right = x;
-    if (y < bounds.top) bounds.top = y;
-    if (y > bounds.bottom) bounds.bottom = y;
+    extendPixelBounds(bounds, x, (pixel - x) / info.width);
   }
   const keyed = sharp(data, {
     raw: { width: info.width, height: info.height, channels: stride as 4 },
   });
-  const subject = cropToSubject(info, bounds);
-  const png = await (subject ? keyed.extract(subject) : keyed)
+  const crop = subjectCropRect(info, bounds);
+  const png = await (crop ? keyed.extract(crop) : keyed)
     .png({ compressionLevel: 9, adaptiveFiltering: true })
     .toBuffer();
   return {
     bytes: new Uint8Array(png),
     keyedFraction: removed / (info.width * info.height),
-  };
-}
-
-/** Alpha at or below which a pixel is backdrop haze rather than artwork the crop has to keep. */
-const VISIBLE_ALPHA = 8;
-
-/**
- * The margin left around the subject, as a fraction of its longer edge.
- *
- * Not zero, because a sticker whose artwork runs into its own edge looks clipped rather than
- * die-cut, and the renditions are drawn from this square without any padding of their own.
- */
-const SUBJECT_MARGIN = 0.03;
-
-/**
- * The square to keep: the subject's bounds, squared up and given a margin.
- *
- * Squared rather than left as the subject's own rectangle so the crop cannot change the sticker's
- * proportions. A tall subject in a wide frame would otherwise come out of the later contain-resize
- * padded on the sides in a way the artist never asked for; growing the short side around the
- * subject's centre keeps it where it was drawn.
- *
- * Returns `undefined` when there is nothing to crop to — an empty key, or a subject already filling
- * the frame — and the caller keeps the whole image.
- */
-function cropToSubject(
-  info: { width: number; height: number },
-  bounds: { left: number; top: number; right: number; bottom: number },
-): { left: number; top: number; width: number; height: number } | undefined {
-  if (bounds.right < bounds.left || bounds.bottom < bounds.top) return undefined;
-  const width = bounds.right - bounds.left + 1;
-  const height = bounds.bottom - bounds.top + 1;
-  const size = Math.round(Math.min(
-    Math.max(width, height) * (1 + SUBJECT_MARGIN * 2),
-    info.width,
-    info.height,
-  ));
-  // Nothing to take: the subject already reaches both edges, so the crop would be the frame itself.
-  if (size >= info.width && size >= info.height) return undefined;
-  const centreX = (bounds.left + bounds.right) / 2;
-  const centreY = (bounds.top + bounds.bottom) / 2;
-  return {
-    left: Math.round(Math.min(Math.max(centreX - size / 2, 0), info.width - size)),
-    top: Math.round(Math.min(Math.max(centreY - size / 2, 0), info.height - size)),
-    width: size,
-    height: size,
+    subject: pixelBoundsAreEmpty(bounds) ? undefined : describeSubject(info, bounds, crop),
   };
 }

@@ -27,7 +27,7 @@ struct ChatTitleChip: View {
                     .transition(.opacity)
             }
         }
-        .glassChip()
+        .posterChip()
         .animation(.easeInOut(duration: 0.2), value: status)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(status.map { "\(title), \($0)" } ?? title)

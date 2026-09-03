@@ -10,6 +10,9 @@ struct StickerGeniOSApp: App {
     @State private var environment = AppEnvironment.live()
 
     init() {
+        // UIKit's bars are outside SwiftUI's reach, so they are repainted before the first one
+        // is ever built.
+        PosterChrome.apply()
         StickerOnboarding.configureTips(
             isUITesting: ProcessInfo.processInfo.arguments.contains("--ui-testing")
         )

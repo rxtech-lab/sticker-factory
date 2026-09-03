@@ -100,7 +100,7 @@ struct AnimatedEditorTimeline: View {
     private var header: some View {
         HStack(spacing: 8) {
             if isDeclarative, let id = layer?.id {
-                Label("Preset motion", systemImage: "wand.and.stars")
+                AnimatedCartoonLabel("Preset motion", icon: "wand.and.stars")
                     .font(.caption)
                     .foregroundStyle(.orange)
                 Button("Edit Keyframes") { pendingDetachLayerID = id }
@@ -133,7 +133,7 @@ struct AnimatedEditorTimeline: View {
         let count = layer.animation.count(of: channel)
 
         return HStack(spacing: 6) {
-            Image(systemName: channel.symbolName)
+            AnimatedCartoonSymbol(channel.symbolName)
                 .font(.caption2)
                 .frame(width: 18)
                 .foregroundStyle(supported ? .secondary : .tertiary)
@@ -153,7 +153,7 @@ struct AnimatedEditorTimeline: View {
             Button {
                 editor.insertKeyframe(on: channel, forLayer: layer.id)
             } label: {
-                Image(systemName: "plus.circle.fill").font(.caption)
+                AnimatedCartoonSymbol("plus.circle.fill").font(.caption)
             }
             .buttonStyle(.plain)
             .disabled(
@@ -180,7 +180,7 @@ struct AnimatedEditorTimeline: View {
         width: CGFloat
     ) -> some View {
         let isSelected = editor.selectedKeyframe == .init(layerID: layer.id, channel: channel, index: index)
-        return Image(systemName: isSelected ? "diamond.fill" : "diamond")
+        return AnimatedCartoonSymbol(isSelected ? "diamond.fill" : "diamond")
             .font(.system(size: 11))
             .foregroundStyle(isSelected ? Color.accentColor : .secondary)
             .offset(x: max(0, CGFloat(time / duration) * width) - 5.5)
@@ -201,8 +201,10 @@ struct AnimatedEditorTimeline: View {
                     .onEnded { _ in editor.endGesture() }
             )
             .contextMenu {
-                Button("Delete", systemImage: "trash", role: .destructive) {
+                Button(role: .destructive) {
                     editor.removeKeyframe(on: channel, forLayer: layer.id, index: index)
+                } label: {
+                    Label("Delete", systemImage: "trash")
                 }
             }
     }

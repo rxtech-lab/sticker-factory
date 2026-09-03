@@ -85,6 +85,24 @@ export const PlanLayerSourceV1Schema = z.discriminatedUnion("kind", [
     frameRate: z.number().min(1).max(60),
     playback: z.enum(["loop", "once", "pingPong"]).default("pingPong"),
   }).strict(),
+  z.object({
+    /**
+     * A short generated clip of the whole subject, for motion keyframes cannot express: a 3D
+     * turnaround, a change of viewing angle, a camera move, cloth, hair, or liquid physics, a
+     * morph between forms.
+     *
+     * Costs one image generation (the still it is animated from, separated from the approved
+     * reference like any `generate` layer) plus one video generation. The clip is shot against a
+     * chroma backdrop and keyed out on the device, so it composites like every other layer.
+     */
+    kind: z.literal("video"),
+    /** What to draw: the complete subject, same rules as a generate prompt. */
+    prompt: z.string().trim().min(1).max(2_000),
+    /** What the subject or camera does, e.g. "slow 360° turntable rotation, one full turn". */
+    motion: z.string().trim().min(1).max(500),
+    /** The video model's floor is 2 s; the plan timing's ceiling is 4 s. */
+    durationSeconds: z.number().int().min(2).max(4).default(3),
+  }).strict(),
 ]);
 
 /**
@@ -162,6 +180,33 @@ export const PlanV1Schema = z.object({
     ids.add(layer.layerId);
   }
 
+  // Video rules live here rather than on the source for the same reason the sequence grid check
+  // lives on the layer: a refinement on a union member hides its `kind` from the discriminator.
+  const videos = plan.layers.filter((layer) => layer.source.kind === "video");
+  if (videos.length > 0 && plan.kind === "static") {
+    context.addIssue({
+      code: "custom",
+      message: `Layer ${videos[0].layerId} is a video source, which needs an animated plan. `
+        + "Make the plan animated, or draw the layer with a generate source.",
+    });
+  }
+  if (videos.length > 1) {
+    context.addIssue({
+      code: "custom",
+      message: `At most one video layer per plan; ${videos.map((layer) => layer.layerId).join(", ")} are all video. `
+        + "Keep the one whose motion genuinely needs a clip and draw the rest with generate sources.",
+    });
+  }
+  // The summary is the assistant's chat message. A clip costs more and looks different from drawn
+  // artwork, so the user is told which layer is one before they confirm — not after it was billed.
+  if (videos.length > 0 && !/\bvideo\b/i.test(plan.summary)) {
+    context.addIssue({
+      code: "custom",
+      path: ["summary"],
+      message: "Say in the summary which layer is generated as a video and why its motion needs one.",
+    });
+  }
+
   // Compile here so a plan that cannot become a document can never be stored, let alone finalized.
   // Failing at draft time costs nothing; failing during execution would waste paid image generations.
   try {
@@ -206,6 +251,8 @@ function plannedLayerType(source: PlanLayerSourceV1): StickerLayerV1["type"] {
     return "image";
   case "sequence":
     return "sequence";
+  case "video":
+    return "video";
   case "text":
     return "text";
   case "shape":
@@ -252,9 +299,37 @@ export function compilePlanAnimations(plan: Pick<PlanV1, "kind" | "timing" | "la
   return compileLayerAnimations(inputs, planTiming(plan));
 }
 
-/** How many image generations executing this plan will cost. */
+/**
+ * How many image generations executing this plan will cost.
+ *
+ * A video layer counts: its clip is animated from a still that is separated from the approved
+ * reference exactly the way a generate layer's artwork is, so it pays for that image first.
+ */
 export function planGenerationCount(plan: Pick<PlanV1, "layers">): number {
-  return plan.layers.filter((layer) => layer.source.kind === "generate").length;
+  return plan.layers.filter((layer) => layer.source.kind === "generate" || layer.source.kind === "video").length;
+}
+
+/** How many video generations executing this plan will cost, on top of its image generations. */
+export function planVideoCount(plan: Pick<PlanV1, "layers">): number {
+  return plan.layers.filter((layer) => layer.source.kind === "video").length;
+}
+
+/**
+ * Rejects a plan the job that is drafting it could not build.
+ *
+ * A quick turn is the Messages extension's path, and its stickers are rendered on the server —
+ * which can draw a still for every layer type but cannot decode a clip. A video layer planned there
+ * would build a sticker whose one moving part is frozen in Messages. Refused at draft time so the
+ * model repairs the plan in the same conversation instead of the user confirming a broken one.
+ */
+export function assertPlanAllowedForJob(plan: Pick<PlanV1, "layers">, job: { quick: boolean }): void {
+  if (!job.quick) return;
+  const videos = plan.layers.filter((layer) => layer.source.kind === "video");
+  if (videos.length === 0) return;
+  throw new Error(
+    `Video layers are not available in quick mode: ${videos.map((layer) => layer.layerId).join(", ")}. `
+      + "Draw each one with a generate source and express its motion with animations instead.",
+  );
 }
 
 /**
@@ -289,6 +364,9 @@ export function planRequiresConcept(plan: Pick<PlanV1, "kind" | "layers">): bool
  * `sequence` is exempt for the same reason `existing` is, only more so: it is not app-rendered at
  * all. It is photographic frames the user captured, which is the highest-fidelity source in the
  * whole vocabulary — there is nothing for it to fail to match, because it *is* the reference.
+ *
+ * `video` is reference-backed: its clip is animated from a still separated from the approved
+ * image, so it inherits that image's look the same way a generate layer does.
  */
 export function assertAnimatedPlanUsesReferenceBackedArtwork(plan: PlanV1): void {
   if (plan.kind !== "animated") return;

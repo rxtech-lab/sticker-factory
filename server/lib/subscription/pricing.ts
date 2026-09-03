@@ -1,4 +1,5 @@
 import type { PublishExportsRequest } from "@/lib/contracts/api";
+import { planVideoCount, type PlanV1 } from "@/lib/contracts/plan";
 import type { GenerationJobRow } from "@/lib/db/schema";
 
 /** The RxSubscription balance unit API spend is charged against. */
@@ -34,6 +35,20 @@ const JOB_HOLDS: Record<JobKind, number> = {
 
 export function jobCreditHold(kind: JobKind): number {
   return JOB_HOLDS[kind] ?? 0;
+}
+
+/**
+ * What a video layer adds to a compose hold.
+ *
+ * A 480p clip of the longest allowed length is about 4 points at list price, and the still it is
+ * animated from is an ordinary generation the base hold already assumes. Ten covers the clip, a
+ * retry, and a pricier model without holding back a meaningful slice of anyone's balance.
+ */
+const VIDEO_LAYER_HOLD = 10;
+
+/** The compose hold for a specific plan: the flat estimate, plus one video's worth per clip. */
+export function composeCreditHold(plan: Pick<PlanV1, "layers">): number {
+  return jobCreditHold("compose") + VIDEO_LAYER_HOLD * planVideoCount(plan);
 }
 
 /**

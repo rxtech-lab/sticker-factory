@@ -34,7 +34,7 @@ struct PackDetailView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 24)
                 } else {
-                    ProgressView("Loading pack…")
+                    PosterProgress(message: String(localized: "Loading pack…"))
                         .frame(maxWidth: .infinity)
                         .padding(.top, 96)
                 }
@@ -103,7 +103,7 @@ struct PackDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Image(systemName: "chevron.right")
+                    PosterSymbol("chevron.right")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.tertiary)
                 }
@@ -111,7 +111,7 @@ struct PackDetailView: View {
                 .padding(.leading, 6)
                 .padding(.trailing, 14)
                 .padding(.vertical, 6)
-                .glassEffect(.regular, in: .capsule)
+                .posterCapsule()
             }
             // `.plain`, or the row picks up the default button chrome and stacks a filled capsule
             // on top of the glass one it already draws for itself.
@@ -164,7 +164,6 @@ struct PackDetailView: View {
     private func members(_ detail: StickerPackDetail) -> some View {
         if detail.stickers.isEmpty {
             EmptyStateView(
-                symbol: "square.stack.3d.up",
                 title: String(localized: "Nothing published right now"),
                 message: String(localized: "The creator is still working on it. Anything they publish shows up here automatically.")
             )
@@ -207,13 +206,12 @@ struct PackDetailView: View {
                 // thing the creator *can* do here. A published pack is editable exactly like a
                 // draft: the change reaches everyone who added it.
                 Button { openEditor() } label: {
-                    Label("Edit pack", systemImage: "slider.horizontal.3")
+                    Label("Edit pack", systemImage: "pencil")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(AppColors.accent)
+                .buttonStyle(.poster)
                 .accessibilityIdentifier("pack-edit-button")
 
                 Text("Your own stickers are already in your library.")
@@ -223,14 +221,13 @@ struct PackDetailView: View {
                 // Already added: the way out stays available but does not compete with the grid,
                 // so it drops to plain glass while adding keeps the tinted, prominent treatment.
                 Button { toggleInstall(detail) } label: { installLabel(detail) }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.posterSecondary)
                     .tint(.secondary)
                     .disabled(isWorking)
                     .accessibilityIdentifier("pack-install-button")
             } else {
                 Button { toggleInstall(detail) } label: { installLabel(detail) }
-                    .buttonStyle(.glassProminent)
-                    .tint(AppColors.accent)
+                    .buttonStyle(.poster)
                     .disabled(isWorking)
                     .accessibilityIdentifier("pack-install-button")
             }
@@ -297,11 +294,11 @@ private struct PackStatChip: View {
     let text: String
 
     var body: some View {
-        Label(text, systemImage: symbol)
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(.secondary)
+        PosterSymbolLabel(verbatim: text, posterSymbol: symbol)
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(AppColors.ink)
             .lineLimit(1)
-            .glassChip()
+            .posterChip()
     }
 }
 
@@ -321,18 +318,13 @@ private struct CreatorAvatar: View {
 
     var body: some View {
         Circle()
-            .fill(
-                LinearGradient(
-                    colors: [AppColors.accentSoft, AppColors.secondaryAccentSoft],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .fill(AppColors.sky)
             .frame(width: 36, height: 36)
+            .overlay { Circle().strokeBorder(AppColors.ink, lineWidth: Poster.hairline) }
             .overlay {
                 Text(initials)
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(AppColors.accent)
+                    .font(.posterDisplay(13, weight: .heavy))
+                    .foregroundStyle(AppColors.ink)
             }
     }
 }

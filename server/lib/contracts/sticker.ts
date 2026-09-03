@@ -51,8 +51,12 @@ export const LayerIdSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/)
  * `upcastV2ToV3` is a one-line rewrite. Bumping this is not free on the client, though: a shipped
  * iOS build throws on an unknown layer `type` and cannot open the project at all, so v3 documents
  * are downcast for clients that do not announce support. See `downcastForClient`.
+ *
+ * v4 adds the `video` layer: a short generated clip on a chroma backdrop, keyed out on device. Also
+ * purely additive, and downcast the same way — a client that predates it is served the clip's
+ * poster still as an image layer.
  */
-export const CURRENT_DOCUMENT_VERSION = 3;
+export const CURRENT_DOCUMENT_VERSION = 4;
 
 /**
  * How big a stored document may get, serialized.
@@ -230,6 +234,40 @@ export const SequenceLayerV1Schema = LayerBaseSchema.extend({
 });
 
 /**
+ * A short generated clip of the whole subject, played back on the timeline like captured footage.
+ *
+ * The clip is an opaque 1:1 MP4 shot against a solid chroma backdrop — the video models cannot
+ * render alpha any more than the quick image model can — and the *client* keys that backdrop out
+ * at render time, with the same dominance-and-despill rule `lib/ai/chroma-key.ts` applies to quick
+ * images on the server. The server never decodes it: everything that draws a document here — the
+ * layout review, quick publish, the marketplace stills, and `downcastForClient` — draws
+ * `posterAssetId` instead, which is the keyed transparent still the clip was animated from. That is
+ * why the poster is required where a sequence layer's is optional.
+ *
+ * `frameCount` and `frameRate` are read out of the file by `inspectMp4` when the asset is stored
+ * and copied onto the layer, so the renderer can pick a frame for a document time without opening
+ * the container first. `videoFrameIndex` composes them with the document's `fps` the way
+ * `sequenceFrameIndex` does for an atlas.
+ */
+export const VideoLayerV1Schema = LayerBaseSchema.extend({
+  type: z.literal("video"),
+  /** The MP4 (`assets.kind === "video"`). */
+  assetId: AssetIdSchema,
+  /** Which backdrop the clip was shot against, so the client knows what to key. */
+  keyColor: z.enum(["green", "blue"]),
+  frameCount: z.number().int().min(1).max(600),
+  /** The clip's own playback rate, in frames per second. */
+  frameRate: z.number().min(1).max(60),
+  /** How the clip repeats *within* the layer. Independent of the document's `loop`. */
+  playback: z.enum(["loop", "once", "pingPong"]).default("loop"),
+  /** When on the document timeline the first frame appears. Before it, the first frame is held. */
+  startSeconds: z.number().min(0).max(30).default(0),
+  contentMode: z.enum(["fit", "fill"]).default("fit"),
+  /** The keyed transparent still the clip was animated from. Required; see above. */
+  posterAssetId: AssetIdSchema,
+}).strict();
+
+/**
  * The v2 layer union, frozen so v2 documents keep parsing as v2.
  *
  * It shares the five layer schemas by reference rather than snapshotting them, which is sound only
@@ -244,6 +282,16 @@ const LegacyStickerLayerV2Schema = z.union([
   ParticleLayerV1Schema,
 ]);
 
+/** The v3 layer union, frozen the same way and for the same reason: v4 only adds `video`. */
+const LegacyStickerLayerV3Schema = z.union([
+  ImageLayerV1Schema,
+  TextLayerV1Schema,
+  ShapeLayerV1Schema,
+  SVGLayerV1Schema,
+  ParticleLayerV1Schema,
+  SequenceLayerV1Schema,
+]);
+
 export const StickerLayerV1Schema = z.union([
   ImageLayerV1Schema,
   TextLayerV1Schema,
@@ -253,6 +301,7 @@ export const StickerLayerV1Schema = z.union([
   SVGLayerV1Schema,
   ParticleLayerV1Schema,
   SequenceLayerV1Schema,
+  VideoLayerV1Schema,
 ]);
 
 export const Mp4BackgroundV1Schema = z.discriminatedUnion("type", [
@@ -560,6 +609,37 @@ export function upcastV2ToV3(document: z.infer<typeof LegacyStickerDocumentV2Sch
 }
 
 /**
+ * The v3 document, frozen like v2: v4 only widens the layer union with `video`, so v3 is the
+ * current base with an older stamp and the narrower union.
+ */
+const LegacyDocumentBaseV3Schema = DocumentBaseSchema.extend({
+  version: z.literal(3),
+  layers: z.array(LegacyStickerLayerV3Schema),
+});
+
+export const LegacyStickerDocumentV3Schema = z.discriminatedUnion("kind", [
+  LegacyDocumentBaseV3Schema.extend({
+    kind: z.literal("static"),
+    durationSeconds: z.literal(0),
+    fps: z.literal(0),
+    loop: z.literal("once"),
+    speed: z.literal(1).default(1),
+  }).strict(),
+  LegacyDocumentBaseV3Schema.extend({
+    kind: z.literal("animated"),
+    durationSeconds: z.number().min(0.1).max(30).default(2),
+    fps: z.number().int().min(1).max(60).default(30),
+    loop: z.enum(["once", "loop", "pingPong"]).default("loop"),
+    speed: z.number().min(0.1).max(8).default(1),
+  }).strict(),
+]);
+
+/** Rewrites a v3 document into the v4 shape. Total and lossless: only the stamp moves. */
+export function upcastV3ToV4(document: z.infer<typeof LegacyStickerDocumentV3Schema>): unknown {
+  return { ...document, version: 4 };
+}
+
+/**
  * The oldest document version a client may ask for. Anything below this is not a client we ever
  * shipped, so a header claiming it is treated as the floor rather than honoured.
  */
@@ -583,21 +663,41 @@ export const MIN_CLIENT_DOCUMENT_VERSION = 2;
  * atlas would render the whole sprite sheet at once, which looks like a rendering fault. Dropping
  * is honest, and the poster is derived whenever the server writes such a document.
  *
- * Applied on read, never on write. The stored row stays canonical v3 so a client that *can* read it
+ * A video layer (v4) degrades the same way for a client below v4, and its poster is required, so it
+ * is never dropped. Each hop is applied in turn — v4 to v3, then v3 to v2 — so a v2 client gets both
+ * degradations and a v3 client gets only the first.
+ *
+ * Applied on read, never on write. The stored row stays canonical so a client that *can* read it
  * still gets the footage.
  */
 export function downcastForClient(document: StickerDocument, clientVersion: number): unknown {
   if (clientVersion >= CURRENT_DOCUMENT_VERSION) return document;
 
-  const layers = document.layers.flatMap((layer) => {
-    if (layer.type !== "sequence") return [layer];
-    if (!layer.posterAssetId) return [];
-    const { columns, rows, frameCount, frameRate, playback, startSeconds, posterAssetId, type, assetId, ...base } = layer;
-    void columns; void rows; void frameCount; void frameRate; void playback; void startSeconds; void type; void assetId;
-    return [{ ...base, type: "image" as const, assetId: posterAssetId }];
-  });
+  let layers: StickerLayerV1[] = document.layers;
+  let version = CURRENT_DOCUMENT_VERSION;
 
-  return { ...document, version: MIN_CLIENT_DOCUMENT_VERSION, layers };
+  if (clientVersion < 4) {
+    layers = layers.flatMap((layer): StickerLayerV1[] => {
+      if (layer.type !== "video") return [layer];
+      const { keyColor, frameCount, frameRate, playback, startSeconds, posterAssetId, type, assetId, ...base } = layer;
+      void keyColor; void frameCount; void frameRate; void playback; void startSeconds; void type; void assetId;
+      return [{ ...base, type: "image" as const, assetId: posterAssetId }];
+    });
+    version = 3;
+  }
+
+  if (clientVersion < 3) {
+    layers = layers.flatMap((layer): StickerLayerV1[] => {
+      if (layer.type !== "sequence") return [layer];
+      if (!layer.posterAssetId) return [];
+      const { columns, rows, frameCount, frameRate, playback, startSeconds, posterAssetId, type, assetId, ...base } = layer;
+      void columns; void rows; void frameCount; void frameRate; void playback; void startSeconds; void type; void assetId;
+      return [{ ...base, type: "image" as const, assetId: posterAssetId }];
+    });
+    version = MIN_CLIENT_DOCUMENT_VERSION;
+  }
+
+  return { ...document, version, layers };
 }
 
 /**
@@ -631,9 +731,12 @@ const CurrentDocumentSchema = z.discriminatedUnion("kind", [
  */
 export const StickerDocumentSchema = z.union([
   CurrentDocumentSchema,
-  LegacyStickerDocumentV2Schema.transform(upcastV2ToV3).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV3Schema.transform(upcastV3ToV4).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV2Schema.transform(upcastV2ToV3)
+    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(CurrentDocumentSchema),
   LegacyStickerDocumentV1Schema.transform(upcastV1ToV2)
-    .pipe(LegacyStickerDocumentV2Schema).transform(upcastV2ToV3).pipe(CurrentDocumentSchema),
+    .pipe(LegacyStickerDocumentV2Schema).transform(upcastV2ToV3)
+    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(CurrentDocumentSchema),
 ]).superRefine((document, context) => {
   const layerIds = new Set<string>();
   let totalKeyframes = 0;
@@ -662,6 +765,24 @@ export const StickerDocumentSchema = z.union([
         context.addIssue({
           code: "custom",
           message: `Sequence layer ${layer.id} plays at ${layer.frameRate} fps but the document `
+            + `renders at ${document.fps}, so frames would be dropped. Raise the document's fps.`,
+        });
+      }
+    }
+
+    // The same two rules, for the same two reasons: a clip is footage with a frame rate of its own.
+    if (layer.type === "video") {
+      if (document.kind === "static" && layer.frameCount !== 1) {
+        context.addIssue({
+          code: "custom",
+          message: `Video layer ${layer.id} has ${layer.frameCount} frames in a static document, `
+            + "which can only ever show the first. Make the document animated.",
+        });
+      }
+      if (document.kind === "animated" && document.fps < layer.frameRate) {
+        context.addIssue({
+          code: "custom",
+          message: `Video layer ${layer.id} plays at ${layer.frameRate} fps but the document `
             + `renders at ${document.fps}, so frames would be dropped. Raise the document's fps.`,
         });
       }
@@ -725,10 +846,19 @@ export const StickerDocumentSchema = z.union([
   }
 });
 
+/**
+ * The highest stack position an operation can name.
+ *
+ * The layers array itself is unbounded, so this is a sanity bound on model output rather than a
+ * document limit — but it has to sit well above anything a plan can build (8 layers) or a reorder
+ * of a grown document could never reach the top of the stack.
+ */
+export const MAX_LAYER_INDEX = 31;
+
 export const StickerOperationV1Schema = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("addLayer"), layer: StickerLayerV1Schema, index: z.number().int().min(0).max(7).optional() }).strict(),
+  z.object({ op: z.literal("addLayer"), layer: StickerLayerV1Schema, index: z.number().int().min(0).max(MAX_LAYER_INDEX).optional() }).strict(),
   z.object({ op: z.literal("removeLayer"), layerId: LayerIdSchema }).strict(),
-  z.object({ op: z.literal("reorderLayer"), layerId: LayerIdSchema, index: z.number().int().min(0).max(7) }).strict(),
+  z.object({ op: z.literal("reorderLayer"), layerId: LayerIdSchema, index: z.number().int().min(0).max(MAX_LAYER_INDEX) }).strict(),
   z.object({ op: z.literal("renameLayer"), layerId: LayerIdSchema, name: z.string().trim().min(1).max(80) }).strict(),
   z.object({ op: z.literal("replaceAsset"), layerId: LayerIdSchema, assetId: AssetIdSchema, maskAssetId: AssetIdSchema.optional() }).strict(),
   /**
@@ -774,6 +904,13 @@ export const StickerOperationV1Schema = z.discriminatedUnion("op", [
     playback: z.enum(["loop", "once", "pingPong"]),
     startSeconds: z.number().min(0).max(30).default(0),
   }).strict(),
+  /** Retimes a generated clip without rebuilding the layer — the video counterpart of the above. */
+  z.object({
+    op: z.literal("setVideoPlayback"),
+    layerId: LayerIdSchema,
+    playback: z.enum(["loop", "once", "pingPong"]),
+    startSeconds: z.number().min(0).max(30).default(0),
+  }).strict(),
 ]);
 
 export const StickerOperationsV1Schema = z.array(StickerOperationV1Schema).min(1).max(32);
@@ -809,12 +946,25 @@ export function layerImageAssetIds(layer: StickerLayerV1): string[] {
     return layer.maskAssetId ? [layer.assetId, layer.maskAssetId] : [layer.assetId];
   case "sequence":
     return [layer.assetId];
+  // The server draws a video layer's poster, never its clip: the clip is not a bitmap it can open.
+  case "video":
+    return [layer.posterAssetId];
   case "text":
   case "shape":
   case "svg":
   case "particle":
     return [];
   }
+}
+
+/**
+ * The clip a layer plays, for the consumers that *can* open one — the client's preloader and
+ * export pre-flight, and the ownership checks. Kept apart from `layerImageAssetIds` so nothing that
+ * renders on the server is ever handed an MP4 as though it were a picture.
+ * Mirrors `AnimatedLayer.referencedVideoAssetIDs` in Swift.
+ */
+export function layerVideoAssetIds(layer: StickerLayerV1): string[] {
+  return layer.type === "video" ? [layer.assetId] : [];
 }
 
 /**
@@ -830,13 +980,31 @@ export function layerScaleIsAspectLocked(type: StickerLayerV1["type"]): boolean 
   switch (type) {
   case "image":
   case "sequence":
-    return true;
+  case "video":
+  // Glyphs are fitted, never stretched: the native renderer squares a text layer's scale before
+  // drawing it, and a layout that reads a wide text box as wide letters places its neighbours
+  // around type that is not there.
   case "text":
+    return true;
   case "shape":
   case "svg":
   case "particle":
     return false;
   }
+}
+
+/**
+ * The scale a renderer actually applies to a layer of this type.
+ *
+ * Aspect-locked layers are normally squared when their anchor is written, but a keyframe or a raw
+ * operation can still carry an unequal pair; every renderer and the layout geometry resolve it the
+ * same way so the reviewer's render, the diagnostics, and the device agree.
+ */
+export function effectiveLayerScale(
+  type: StickerLayerV1["type"],
+  scale: { x: number; y: number },
+): { x: number; y: number } {
+  return layerScaleIsAspectLocked(type) ? aspectLockedScale(scale) : scale;
 }
 
 /**
@@ -917,6 +1085,11 @@ export function applyStickerOperationsV1(
     } else if (operation.op === "setSequencePlayback") {
       const layer = document.layers[index];
       if (layer.type !== "sequence") throw new Error(`Layer ${operation.layerId} is not a sequence layer`);
+      layer.playback = operation.playback;
+      layer.startSeconds = operation.startSeconds;
+    } else if (operation.op === "setVideoPlayback") {
+      const layer = document.layers[index];
+      if (layer.type !== "video") throw new Error(`Layer ${operation.layerId} is not a video layer`);
       layer.playback = operation.playback;
       layer.startSeconds = operation.startSeconds;
     } else if (operation.op === "setLayerAnimations") {

@@ -2,8 +2,11 @@ import { and, asc, desc, eq, inArray, max, ne } from "drizzle-orm";
 import { FatalError } from "workflow";
 import { compactTranscript, type TranscriptOptions } from "@/lib/ai/compaction";
 import { withAiApiCostRecorder } from "@/lib/ai/cost";
+import sharp from "sharp";
+import { preferredChromaKey, type ChromaKeyColor } from "@/lib/ai/chroma-key";
 import {
   assertAnimatedPlanUsesReferenceBackedArtwork,
+  assertPlanAllowedForJob,
   assertPlanReuseIsResolvable,
   compilePlanAnimations,
   planLayerAnchor,
@@ -12,14 +15,17 @@ import {
   type PlanV1,
 } from "@/lib/contracts/plan";
 import {
+  aspectLockedScale,
   applyStickerOperationsV1,
   CURRENT_DOCUMENT_VERSION,
   layerImageAssetIds,
+  layerVideoAssetIds,
   StickerDocumentSchema,
   type StickerDocument,
   type StickerLayerV1,
   type StickerOperationV1,
 } from "@/lib/contracts/sticker";
+import { DEFAULT_ANCHOR } from "@/lib/contracts/animation";
 import { getDatabase, type Database } from "@/lib/db/client";
 import {
   assets,
@@ -47,7 +53,9 @@ import {
   type AiImageReferenceCandidate,
   type AiSequenceAsset,
 } from "@/lib/ai/gateway";
-import { applyLayoutAdjustment, layoutDiagnostics } from "@/lib/layout/composition";
+import { applyLayoutAdjustment, clampLayoutOnCanvas, layoutDiagnostics } from "@/lib/layout/composition";
+import { applyMeasuredPlacements, measuredPlacements, suggestFreePlacement } from "@/lib/layout/placement";
+import { SubjectBoundsSchema, type SubjectBounds } from "@/lib/images/subject-bounds";
 import {
   isNotifiableJobKind,
   notifyGenerationFinished,
@@ -78,7 +86,7 @@ import {
 import { quickPublishSticker } from "@/lib/services/quick-publish";
 import { referencedAssetIds, renderSticker } from "@/lib/render/sticker-render";
 import type { RenderAssets } from "@/lib/render/document-svg";
-import { downscaleForModelInput, getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
+import { downscaleForModelInput, getObjectStore, inspectImage, inspectMp4, objectKey, type ObjectStore } from "@/lib/storage/r2";
 import { ApiError } from "@/lib/http/errors";
 import { chargeJobCredits, recordJobApiCost, refundJobCredits } from "@/lib/subscription/credits";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
@@ -400,6 +408,9 @@ async function assertDocumentAssetsOwned(document: StickerDocument, ownerId: str
   const db = getDatabase();
   const ids = document.layers.flatMap((layer) => [
     ...layerImageAssetIds(layer),
+    // The clip itself: `layerImageAssetIds` deliberately reports a video layer's poster instead,
+    // because that is what the server draws, but the MP4 is the asset the client plays.
+    ...layerVideoAssetIds(layer),
     // The poster is derived from the atlas and belongs to the same sticker, so an unowned one is
     // the same ownership hole as an unowned atlas — and it is the asset older clients are served.
     ...(layer.type === "sequence" && layer.posterAssetId ? [layer.posterAssetId] : []),
@@ -448,7 +459,7 @@ async function generateAndStoreAsset(
      */
     concept?: boolean;
   },
-): Promise<void> {
+): Promise<{ subject?: SubjectBounds }> {
   const db = getDatabase();
   const objectStore = getObjectStore();
   const provider = getAiProvider();
@@ -474,7 +485,9 @@ async function generateAndStoreAsset(
   )).get();
   if (stored?.state === "ready") {
     traceEvent("generateImage:reused", trace);
-    return;
+    // The measurement was taken from the frame the model returned, which is gone: the stored master
+    // is the crop. It was written next to the object for exactly this replay.
+    return { subject: await storedSubjectBounds(objectStore, objectKey(job.ownerId, params.assetId, "image/png")) };
   }
   const generated = await traceSpan("generateImage", trace, () => params.concept
     ? provider.generateConceptImage({ prompt: params.prompt, references: params.references })
@@ -524,7 +537,11 @@ async function generateAndStoreAsset(
   await traceSpan("storeImage", { ...trace, r2Key }, () => objectStore.put(r2Key, {
     bytes: generated.bytes,
     contentType: "image/png",
-    metadata: { sha256: inspection.sha256, source: "vercel-ai-gateway" },
+    metadata: {
+      sha256: inspection.sha256,
+      source: "vercel-ai-gateway",
+      ...(generated.subject ? { subject: JSON.stringify(generated.subject) } : {}),
+    },
   }));
   const afterPutJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).get();
   if (afterPutJob?.state !== "running") {
@@ -564,6 +581,19 @@ async function generateAndStoreAsset(
     throw error;
   }
   traceEvent("generateImage:stored", trace);
+  return { subject: generated.subject };
+}
+
+/** The subject measurement written beside a stored master, or nothing for one stored without it. */
+async function storedSubjectBounds(objectStore: ObjectStore, r2Key: string): Promise<SubjectBounds | undefined> {
+  try {
+    const raw = (await objectStore.head(r2Key)).metadata?.subject;
+    return raw ? SubjectBoundsSchema.parse(JSON.parse(raw)) : undefined;
+  } catch (error) {
+    // Older objects, or a store that dropped the metadata: the plan's own layout still applies.
+    traceEvent("generateImage:subjectUnavailable", { r2Key, error: describeError(error) });
+    return undefined;
+  }
 }
 
 /**
@@ -626,6 +656,20 @@ function documentWithLayers(kind: "static" | "animated", layers: unknown[]): Sti
     : StickerDocumentSchema.parse({ ...base, kind, durationSeconds: 2, fps: 30, loop: "loop" });
 }
 
+/**
+ * Appends a drawn layer on top of the stack, in the free canvas rather than over the middle.
+ *
+ * The no-loop path has no model choosing a spot, so the spot is chosen here the way the edit loop
+ * chooses one for a model that stayed silent: the largest place that covers nothing.
+ */
+function addLayerBesideExisting(document: StickerDocument, layer: StickerLayerV1): StickerDocument {
+  const placement = suggestFreePlacement(document);
+  return clampLayoutOnCanvas(applyStickerOperationsV1(document, [
+    { op: "addLayer", layer },
+    { op: "setLayerAnimations", layerId: layer.id, animations: [], anchor: { ...DEFAULT_ANCHOR, ...placement } },
+  ]));
+}
+
 function emptyDocument(kind: "static" | "animated", assetId: string): StickerDocument {
   return documentWithLayers(kind, [{
     id: "hero",
@@ -646,9 +690,191 @@ function emptyDocument(kind: "static" | "animated", assetId: string): StickerDoc
  */
 function generatedLayers(plan: PlanV1, jobId: string) {
   let index = 0;
-  return plan.layers.flatMap((layer) => (layer.source.kind === "generate"
-    ? [{ layer, prompt: layer.source.prompt, assetId: derivedAssetId(jobId, index++) }]
-    : []));
+  return plan.layers.flatMap((layer): GeneratedLayer[] => {
+    if (layer.source.kind === "generate") {
+      return [{ layer, prompt: layer.source.prompt, assetId: derivedAssetId(jobId, index++) }];
+    }
+    if (layer.source.kind === "video") {
+      // The clip's still shares the generate index space, so its poster is stored and replayed
+      // exactly like any other part. The clip and its scratch backdrop get their own slots, named
+      // rather than numbered so they can never collide with a still's.
+      const slot = index++;
+      return [{
+        layer,
+        prompt: layer.source.prompt,
+        assetId: derivedAssetId(jobId, slot),
+        video: {
+          motion: layer.source.motion,
+          durationSeconds: layer.source.durationSeconds,
+          keyColor: preferredChromaKey(layer.source.prompt),
+          assetId: derivedAssetId(jobId, `video:${slot}`),
+          backdropAssetId: derivedAssetId(jobId, `video-backdrop:${slot}`),
+        },
+      }];
+    }
+    return [];
+  });
+}
+
+interface GeneratedLayer {
+  layer: PlanV1["layers"][number];
+  prompt: string;
+  /** The transparent still: the part itself, or the poster a clip is animated from. */
+  assetId: string;
+  /** Present for a `video` source: what to animate the still into, and where to store the clip. */
+  video?: {
+    motion: string;
+    durationSeconds: number;
+    keyColor: ChromaKeyColor;
+    assetId: string;
+    backdropAssetId: string;
+  };
+}
+
+/** What `documentFromPlan` needs to know about a clip that has already been stored. */
+interface StoredVideoTiming {
+  frameCount: number;
+  fps: number;
+  durationSeconds: number;
+}
+
+/**
+ * Animates a stored still into a clip and stores it as a ready `video` asset.
+ *
+ * The still is the transparent part `generateAndStoreAsset` just produced. The video model cannot
+ * take alpha, so it is flattened onto the key colour first; that flattened copy is a scratch
+ * object, presigned for the provider and deleted afterwards, never an asset row. The same guards
+ * apply as for an image: a stored clip is reused on replay, a timed-out generation is final, and a
+ * turn that was cancelled while the clip was in flight throws the clip away rather than storing it.
+ */
+async function generateAndStoreVideoAsset(
+  job: typeof generationJobs.$inferSelect,
+  stickerId: string,
+  item: GeneratedLayer & { video: NonNullable<GeneratedLayer["video"]> },
+): Promise<StoredVideoTiming> {
+  const db = getDatabase();
+  const objectStore = getObjectStore();
+  const provider = getAiProvider();
+  const { video } = item;
+  const trace = {
+    jobId: job.id,
+    assetId: video.assetId,
+    stillAssetId: item.assetId,
+    durationSeconds: video.durationSeconds,
+    keyColor: video.keyColor.name,
+  };
+  const stored = await db.select({
+    state: assets.state,
+    frameCount: assets.frameCount,
+    fps: assets.fps,
+    durationSeconds: assets.durationSeconds,
+  }).from(assets).where(and(
+    eq(assets.id, video.assetId),
+    eq(assets.ownerId, job.ownerId),
+    eq(assets.stickerId, stickerId),
+  )).get();
+  if (stored?.state === "ready" && stored.frameCount && stored.fps && stored.durationSeconds) {
+    traceEvent("generateVideo:reused", trace);
+    return { frameCount: stored.frameCount, fps: stored.fps, durationSeconds: stored.durationSeconds };
+  }
+
+  const still = await objectStore.get(objectKey(job.ownerId, item.assetId, "image/png"));
+  const backdropKey = objectKey(job.ownerId, video.backdropAssetId, "image/png");
+  const r2Key = objectKey(job.ownerId, video.assetId, "video/mp4");
+  try {
+    const flattened = await sharp(still.bytes).flatten({ background: video.keyColor.hex }).png().toBuffer();
+    await objectStore.put(backdropKey, { bytes: new Uint8Array(flattened), contentType: "image/png" });
+    // Fifteen minutes: the provider queues the request before it fetches the frame, and a link that
+    // expired in the queue fails the clip with an error that looks like a bad image.
+    const { url } = await objectStore.signedGet(backdropKey, undefined, 900);
+
+    const generated = await traceSpan("generateVideo", trace, () => provider.generateStickerVideo({
+      imageUrl: url,
+      motion: video.motion,
+      durationSeconds: video.durationSeconds,
+      keyColor: video.keyColor,
+    })).catch((error: unknown) => {
+      if (!isAbortError(error)) throw error;
+      throw new FatalError("Video generation took too long to finish. Try that request again.");
+    });
+
+    const currentJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).get();
+    const currentSticker = await db.select({ status: stickers.status }).from(stickers).where(eq(stickers.id, stickerId)).get();
+    if (currentJob?.state !== "running" || !currentSticker || currentSticker.status === "deleting") {
+      traceEvent("generateVideo:discarded", { ...trace, jobState: currentJob?.state, stickerStatus: currentSticker?.status });
+      throw new Error("Generation was cancelled before storage");
+    }
+
+    const inspection = inspectMp4(generated.bytes);
+    traceEvent("generateVideo:inspected", {
+      ...trace,
+      model: generated.modelId,
+      bytes: inspection.byteSize,
+      width: inspection.width,
+      height: inspection.height,
+      frameCount: inspection.frameCount,
+      fps: inspection.fps,
+      clipSeconds: inspection.durationSeconds,
+    });
+    if (inspection.width !== inspection.height) {
+      throw new Error("Generated clip is not square");
+    }
+
+    await traceSpan("storeVideo", { ...trace, r2Key }, () => objectStore.put(r2Key, {
+      bytes: generated.bytes,
+      contentType: "video/mp4",
+      metadata: { sha256: inspection.sha256, source: "vercel-ai-gateway", model: generated.modelId },
+    }));
+    const afterPutJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).get();
+    if (afterPutJob?.state !== "running") {
+      await objectStore.delete(r2Key);
+      throw new Error("Generation was cancelled during storage");
+    }
+    const timing = {
+      frameCount: inspection.frameCount,
+      fps: inspection.fps,
+      durationSeconds: inspection.durationSeconds,
+    };
+    try {
+      await db.insert(assets).values({
+        id: video.assetId,
+        ownerId: job.ownerId,
+        stickerId,
+        kind: "video",
+        state: "ready",
+        r2Key,
+        mimeType: "video/mp4",
+        byteSize: inspection.byteSize,
+        width: inspection.width,
+        height: inspection.height,
+        ...timing,
+        sha256: inspection.sha256,
+        hasAlpha: false,
+        createdAt: new Date(),
+        readyAt: new Date(),
+      }).onConflictDoUpdate({
+        target: assets.id,
+        set: {
+          state: "ready",
+          byteSize: inspection.byteSize,
+          width: inspection.width,
+          height: inspection.height,
+          ...timing,
+          sha256: inspection.sha256,
+          readyAt: new Date(),
+        },
+      });
+    } catch (error) {
+      await objectStore.delete(r2Key);
+      throw error;
+    }
+    return timing;
+  } finally {
+    // Scratch, not an asset: nothing references it once the provider has fetched it.
+    await objectStore.delete(backdropKey).catch((error: unknown) => {
+      traceEvent("generateVideo:backdropSweepFailed", { ...trace, error: describeError(error) });
+    });
+  }
 }
 
 /**
@@ -659,9 +885,16 @@ function generatedLayers(plan: PlanV1, jobId: string) {
  * returns a constant when a channel has one keyframe, and static documents are only allowed
  * keyframes at t=0, so this is the one encoding that works for both kinds.
  */
-function documentFromPlan(plan: PlanV1, jobId: string): StickerDocument {
+function documentFromPlan(
+  plan: PlanV1,
+  jobId: string,
+  /** Timing of every stored clip, by plan layer id. Required for each `video` source. */
+  videoTimings: ReadonlyMap<string, StoredVideoTiming> = new Map(),
+): StickerDocument {
   const compiled = compilePlanAnimations(plan);
-  const assetIds = new Map(generatedLayers(plan, jobId).map((item) => [item.layer.layerId, item.assetId]));
+  const generated = generatedLayers(plan, jobId);
+  const assetIds = new Map(generated.map((item) => [item.layer.layerId, item.assetId]));
+  const videoIds = new Map(generated.flatMap((item) => (item.video ? [[item.layer.layerId, item.video] as const] : [])));
 
   const layers = plan.layers.map((layer, index): StickerLayerV1 => {
     const base = {
@@ -733,6 +966,25 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocument {
         startSeconds: 0,
         contentMode: "fit",
       };
+    // The clip plays from the top of the timeline and repeats; its poster is the still it was
+    // animated from, which is what everything that cannot decode video draws in its place.
+    case "video": {
+      const video = videoIds.get(layer.layerId);
+      const timing = videoTimings.get(layer.layerId);
+      if (!video || !timing) throw new Error(`Video layer ${layer.layerId} has no stored clip`);
+      return {
+        ...base,
+        type: "video",
+        assetId: video.assetId,
+        keyColor: video.keyColor.name,
+        frameCount: timing.frameCount,
+        frameRate: timing.fps,
+        playback: "loop",
+        startSeconds: 0,
+        contentMode: "fit",
+        posterAssetId: assetIds.get(layer.layerId)!,
+      };
+    }
     }
   });
 
@@ -740,10 +992,12 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocument {
   // The document must sample at least as fast as the fastest capture in it, or the contract refuses
   // the document outright — and a plan the user already confirmed would fail at build time with an
   // error about frame rates. Raising the fps is both the fix and what the user meant: they asked for
-  // their footage, not for a slower version of it.
+  // their footage, not for a slower version of it. A clip is footage too, and the same goes for its
+  // length: a turnaround cut off before it comes round is not the motion that was planned.
   const captureRate = Math.max(0, ...plan.layers.map(
     (layer) => (layer.source.kind === "sequence" ? layer.source.frameRate : 0),
-  ));
+  ), ...[...videoTimings.values()].map((timing) => timing.fps));
+  const clipSeconds = Math.max(0, ...[...videoTimings.values()].map((timing) => timing.durationSeconds));
   return plan.kind === "static"
     ? StickerDocumentSchema.parse({
       version: CURRENT_DOCUMENT_VERSION, canvas, layers, kind: "static", durationSeconds: 0, fps: 0, loop: "once",
@@ -753,7 +1007,7 @@ function documentFromPlan(plan: PlanV1, jobId: string): StickerDocument {
       canvas,
       layers,
       kind: "animated",
-      durationSeconds: plan.timing.durationSeconds,
+      durationSeconds: Math.max(plan.timing.durationSeconds, clipSeconds),
       fps: Math.min(60, Math.max(plan.timing.fps, Math.ceil(captureRate))),
       loop: plan.timing.loop,
     });
@@ -938,6 +1192,7 @@ async function executePlanTurn(
     createPlan: async (plan) => {
       const call = await beginToolCall(job, "create_plan");
       try {
+        assertPlanAllowedForJob(plan, job);
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const created = await createPlan(db, {
@@ -964,6 +1219,7 @@ async function executePlanTurn(
       // stuck spinner instead of each revision.
       const call = await beginToolCall(job, "update_plan", undefined, `update_plan #${updates}`);
       try {
+        assertPlanAllowedForJob(plan, job);
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const updated = await updatePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId, plan });
@@ -1294,9 +1550,27 @@ async function executeEditTurn(
     }
   };
 
-  const land = async (operations: StickerOperationV1[]) => {
+  /**
+   * Applies operations to the working document.
+   *
+   * Off-canvas is the one layout invariant, and how it is enforced depends on who is paying for the
+   * mistake. A free operation is rejected with the same words the layout reviewer gets, so the
+   * model can fix its numbers. A drawn image has already been bought, so it is pulled back onto the
+   * canvas rather than thrown away with an error.
+   */
+  const land = async (
+    operations: StickerOperationV1[],
+    options: { offCanvas: "reject" | "clamp" } = { offCanvas: "reject" },
+  ) => {
     await assertJobStillRunning(job.id).catch(abort);
-    const document = applyStickerOperationsV1(working, operations);
+    let document = applyStickerOperationsV1(working, operations);
+    const offCanvas = layoutDiagnostics(document).offCanvasLayerIds;
+    if (offCanvas.length > 0) {
+      if (options.offCanvas === "reject") {
+        throw new Error(`Keep every complete layer box on canvas. Fix: ${offCanvas.join(", ")}`);
+      }
+      document = clampLayoutOnCanvas(document);
+    }
     await assertDocumentAssetsOwned(document, job.ownerId, sticker.id).catch(abort);
     working = document;
     changes += 1;
@@ -1374,7 +1648,7 @@ async function executeEditTurn(
           );
         }
         const assetId = await draw(prompt, layer);
-        const state = await land([{ op: "replaceAsset", layerId, assetId }]);
+        const state = await land([{ op: "replaceAsset", layerId, assetId }], { offCanvas: "clamp" });
         await finishToolCall(job, call);
         return state;
       } catch (error) {
@@ -1389,11 +1663,20 @@ async function executeEditTurn(
         const layer = emptyDocument(working.kind, assetId).layers[0];
         layer.id = `image_${assetId.replaceAll("-", "").slice(0, 12)}`;
         layer.name = name;
+        // Anything the model left unsaid is filled from the free canvas rather than from the
+        // centre: a new element dropped at full size over the middle covers whatever was there,
+        // which is the one outcome a user asking for "something next to it" never wants.
+        const fallback = suggestFreePlacement(working);
+        const requested = {
+          x: Math.min(1, scaleX ?? fallback.scale.x),
+          y: Math.min(1, scaleY ?? fallback.scale.y),
+        };
         // Layout goes through setLayerAnimations rather than onto the layer literal: the anchor is
         // only half of a positioned layer, and this is the operation that compiles the other half.
         const anchor = {
-          position: { x: x ?? 0.5, y: y ?? 0.5 },
-          scale: { x: scaleX ?? 1, y: scaleY ?? 1 },
+          position: { x: x ?? fallback.position.x, y: y ?? fallback.position.y },
+          // Square artwork fitted inside its box, the same squaring-off every other write applies.
+          scale: aspectLockedScale(requested),
           rotationDegrees: 0,
           opacity: 1,
           trim: { start: 0, end: 1 },
@@ -1401,7 +1684,7 @@ async function executeEditTurn(
         const state = await land([
           { op: "addLayer", layer, index },
           { op: "setLayerAnimations", layerId: layer.id, animations: [], anchor },
-        ]);
+        ], { offCanvas: "clamp" });
         await finishToolCall(job, call);
         return state;
       } catch (error) {
@@ -1470,7 +1753,9 @@ async function executeEditTurn(
   if (!result?.finalized) {
     console.warn("Finalizing an unfinished edit loop", { jobId: job.id, stickerId: sticker.id, changes });
   }
-  const document = working;
+  // Every landing already kept the layout on canvas; this catches nothing unless a future operation
+  // forgets to, and it is cheap enough to keep as the invariant's last word.
+  const document = clampLayoutOnCanvas(working);
 
   // Whatever artwork the edited sticker ends up carrying. An edit that only rearranged layers drew
   // nothing, so this is usually the base revision's own master, carried over untouched.
@@ -1624,7 +1909,9 @@ async function refineBuiltLayout(
       viewedRevision,
     });
   }
-  return result?.finalized ? working : (reviewed ?? document);
+  // finalize_layout refuses an off-canvas layout, so a finalized one is clean; the fallbacks are
+  // whatever the loop last looked at, which nothing has checked.
+  return result?.finalized ? working : clampLayoutOnCanvas(reviewed ?? document);
 }
 
 /** Loads the exact static reference attached to the confirmed animated plan. */
@@ -1716,6 +2003,16 @@ async function executePlanBuildTurn(
     layerCount: plan.layers.length,
   });
 
+  // Progress is split by what each part costs in wall clock: the stills share the first stretch
+  // and any clip takes the next, so a turnaround that runs for minutes is not shown as stuck at
+  // the end of an image bar.
+  const videoCount = generated.filter((item) => item.video).length;
+  const stillSpan = videoCount > 0 ? 0.5 : 0.7;
+  const videoTimings = new Map<string, StoredVideoTiming>();
+
+  // Where each separated part came back in the reference frame. Only meaningful when there is a
+  // reference: a part drawn from its prompt alone was drawn wherever the model liked.
+  const separatedParts: Array<{ layerId: string; subject: SubjectBounds | undefined }> = [];
   for (const [index, item] of generated.entries()) {
     await assertJobStillRunning(job.id);
     const label = `compose-part:${index} ${item.layer.name}`;
@@ -1728,6 +2025,12 @@ async function executePlanBuildTurn(
             "Preserve its exact silhouette, design, colours, outlines, bevels, highlights,",
             "shadows, texture, and proportions.",
             "Return that one part isolated on a transparent background; omit every other part.",
+            // Where the part sits in the reference is where it belongs on the canvas, and the
+            // build reads that position off the pixels that come back. Moved or enlarged, the
+            // measurement is wrong and the layer lands somewhere the user did not approve.
+            "Keep the part exactly where it sits in the reference, at exactly the same size and",
+            "position within the 1024x1024 frame: do not move it, centre it, enlarge it, or crop",
+            "the frame. Make every other pixel fully transparent.",
             `Part description: ${item.prompt}`,
           ].join(" ")
         : item.prompt;
@@ -1741,7 +2044,7 @@ async function executePlanBuildTurn(
         })),
       ].slice(0, 8);
       const selectedReferences = await selectImageReferences(prompt, history, candidates);
-      await generateAndStoreAsset(job, sticker.id, {
+      const { subject } = await generateAndStoreAsset(job, sticker.id, {
         assetId: item.assetId,
         prompt,
         // The approved concept is mandatory because it is the exact design being separated. The
@@ -1754,6 +2057,7 @@ async function executePlanBuildTurn(
         // prompt still names the mode so tests and provider adapters can enforce that distinction.
         mode: visualReference ? "conversation_edit" : "generate",
       });
+      if (visualReference) separatedParts.push({ layerId: item.layer.layerId, subject });
     } catch (error) {
       await finishToolCall(job, partToolCallId, "failed");
       throw error;
@@ -1761,14 +2065,47 @@ async function executePlanBuildTurn(
     await finishToolCall(job, partToolCallId);
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "composing_part",
-      progress: 0.05 + 0.7 * ((index + 1) / Math.max(generated.length, 1)),
+      progress: 0.05 + stillSpan * ((index + 1) / Math.max(generated.length, 1)),
       partIndex: index,
       partName: item.layer.name,
       partCount: generated.length,
     });
   }
 
-  let document = documentFromPlan(plan, job.id);
+  // Clips after every still, not interleaved: a clip is the slowest thing in the build, and a
+  // turn that is going to fail on its second image should fail before paying for a video.
+  let videosDone = 0;
+  for (const item of generated) {
+    if (!item.video) continue;
+    await assertJobStillRunning(job.id);
+    const videoToolCallId = await beginToolCall(job, "build-plan", undefined, `compose-video ${item.layer.name}`);
+    try {
+      const timing = await generateAndStoreVideoAsset(job, sticker.id, { ...item, video: item.video });
+      videoTimings.set(item.layer.layerId, timing);
+    } catch (error) {
+      await finishToolCall(job, videoToolCallId, "failed");
+      throw error;
+    }
+    await finishToolCall(job, videoToolCallId);
+    videosDone += 1;
+    await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+      stage: "composing_video",
+      progress: 0.05 + stillSpan + 0.2 * (videosDone / videoCount),
+      partName: item.layer.name,
+      videoIndex: videosDone - 1,
+      videoCount,
+    });
+  }
+
+  let document = documentFromPlan(plan, job.id, videoTimings);
+  // The reference is the picture the user approved, so a part measured in it outranks the position
+  // the planner guessed before that picture existed. Parts whose measurement is implausible keep
+  // the plan's layout, and the review below still looks at the whole.
+  const placements = measuredPlacements(separatedParts);
+  if (placements.size > 0) {
+    traceEvent("composeLayout:measured", { jobId: job.id, layerIds: [...placements.keys()] });
+    document = applyMeasuredPlacements(document, placements);
+  }
   // Covers the reused layers too: an `existing` source names an asset by id, and this is what stops
   // a plan from pointing at another sticker's artwork, or at one that has since been swept.
   await assertDocumentAssetsOwned(document, job.ownerId, sticker.id);
@@ -2491,16 +2828,13 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     const layer = emptyDocument(activeDocument.kind, assetId).layers[0];
     layer.id = `image_${assetId.replaceAll("-", "").slice(0, 12)}`;
     layer.name = "Generated layer";
-    document = applyStickerOperationsV1(activeDocument, [{ op: "addLayer", layer }]);
+    document = addLayerBesideExisting(activeDocument, layer);
   } else {
     const imageLayer = targetLayer ?? activeDocument.layers.find((layer) => layer.type === "image");
     if (imageLayer?.type === "image") {
       document = applyStickerOperationsV1(activeDocument, [{ op: "replaceAsset", layerId: imageLayer.id, assetId }]);
     } else {
-      document = applyStickerOperationsV1(activeDocument, [{
-        op: "addLayer",
-        layer: emptyDocument(activeDocument.kind, assetId).layers[0],
-      }]);
+      document = addLayerBesideExisting(activeDocument, emptyDocument(activeDocument.kind, assetId).layers[0]);
     }
   }
   await assertJobStillRunning(job.id);

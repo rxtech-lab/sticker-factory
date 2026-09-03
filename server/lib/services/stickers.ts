@@ -14,6 +14,7 @@ import {
   downcastForClient,
   EXPORT_LOOP_HOLD_SECONDS,
   layerImageAssetIds,
+  layerVideoAssetIds,
   StickerDocumentSchema,
   type StickerDocument,
 } from "@/lib/contracts/sticker";
@@ -780,9 +781,15 @@ export async function validateDocumentAssetReferences(
   const sequenceLayers = document.layers.filter(
     (layer): layer is Extract<typeof layer, { type: "sequence" }> => layer.type === "sequence",
   );
+  const videoLayers = document.layers.filter(
+    (layer): layer is Extract<typeof layer, { type: "video" }> => layer.type === "video",
+  );
   const ids = [...new Set([
     ...additionalAssetIds,
     ...document.layers.flatMap(layerImageAssetIds),
+    // The clip: `layerImageAssetIds` reports a video layer's poster, since that is what the server
+    // draws, and the MP4 the client plays has to clear the same ownership bar.
+    ...document.layers.flatMap(layerVideoAssetIds),
     // The poster is what a pre-v3 client is served in place of the footage, so it has to clear the
     // same ownership bar as everything else the document names.
     ...sequenceLayers.flatMap((layer) => (layer.posterAssetId ? [layer.posterAssetId] : [])),
@@ -835,6 +842,25 @@ export async function validateDocumentAssetReferences(
       if (poster.mimeType !== "image/png" || !poster.hasAlpha) {
         throw new ApiError(422, "INVALID_SEQUENCE_POSTER", "A capture layer's still frame must be a transparent PNG");
       }
+    }
+  }
+  for (const layer of videoLayers) {
+    const clip = byId.get(layer.assetId)!;
+    if (clip.kind !== "video" || clip.mimeType !== "video/mp4" || !clip.width || clip.width !== clip.height) {
+      throw new ApiError(422, "INVALID_VIDEO_ASSET", "Video layers must reference a validated square generated clip");
+    }
+    // Same reasoning as the capture check above: the renderer trusts the layer's timing, and the
+    // container is the one thing that knows the truth.
+    if (clip.frameCount !== layer.frameCount || clip.fps !== layer.frameRate) {
+      throw new ApiError(
+        422,
+        "VIDEO_METADATA_MISMATCH",
+        "A video layer's frame count and rate must match the stored clip",
+      );
+    }
+    const poster = byId.get(layer.posterAssetId)!;
+    if (poster.mimeType !== "image/png" || !poster.hasAlpha) {
+      throw new ApiError(422, "INVALID_VIDEO_POSTER", "A video layer's poster must be a transparent PNG");
     }
   }
   return byId;

@@ -16,6 +16,11 @@ const captureFixture = () => StickerDocumentSchema.parse(
   JSON.parse(readFileSync("fixtures/sticker-document-v3.json", "utf8")),
 );
 
+/** The v4 fixture, which is the one carrying a `video` layer. */
+const clipFixture = () => StickerDocumentSchema.parse(
+  JSON.parse(readFileSync("fixtures/sticker-document-v4.json", "utf8")),
+);
+
 /**
  * A frame atlas as heavy as the iOS encoder is allowed to ship one.
  *
@@ -152,6 +157,34 @@ describe("referenced assets", () => {
       { kind: "star", points: 5, innerRatio: 0.4 },
     );
     expect(referencedAssetIds(document)).toEqual([]);
+  });
+
+  it("asks for a video layer's poster and never for its clip", () => {
+    const document = clipFixture();
+    const hero = document.layers[0];
+    if (hero.type !== "video") throw new Error("the fixture's hero layer is not a video");
+    const ids = referencedAssetIds(document);
+    expect(ids).toContain(hero.posterAssetId);
+    expect(ids).not.toContain(hero.assetId);
+  });
+});
+
+describe("video layers", () => {
+  it("draws the poster still in place of the clip", async () => {
+    const document = clipFixture();
+    const hero = document.layers[0];
+    if (hero.type !== "video") throw new Error("the fixture's hero layer is not a video");
+    const poster = new Uint8Array(await sharp({
+      create: { width: 8, height: 8, channels: 4, background: { r: 200, g: 40, b: 40, alpha: 1 } },
+    }).png().toBuffer());
+    const { svg } = documentSvg(document, new Map([[hero.posterAssetId, { bytes: poster, mimeType: "image/png" }]]));
+    expect(svg).toContain(`data:image/png;base64,${Buffer.from(poster).toString("base64")}`);
+    expect(svg).not.toContain("video/mp4");
+  });
+
+  it("draws a placeholder for a poster it could not load instead of dropping the layer", () => {
+    const { svg } = documentSvg(clipFixture(), new Map());
+    expect(svg).toContain(">video<");
   });
 });
 
@@ -344,5 +377,38 @@ describe("rendering", () => {
     const { svg } = documentSvg(document, new Map());
     expect(svg).not.toContain("<script>");
     expect(svg).toContain("&lt;script&gt;");
+  });
+});
+
+describe("layer scale in the render", () => {
+  // The native renderer fits glyphs inside their box; the reviewer's render has to show the same
+  // square of letters, or the model corrects a stretch that only its own picture had.
+  it("squares a text layer's unequal scale the way the native renderer does", () => {
+    const document = applyStickerOperationsV1(fixture(), [{
+      op: "addLayer",
+      layer: {
+        id: "caption", name: "Caption", hidden: false, type: "text", text: "HI",
+        font: "rounded", weight: "bold", paint: { type: "solid", color: "#FF0055" },
+        anchor: {
+          position: { x: 0.5, y: 0.5 }, scale: { x: 0.9, y: 0.35 }, rotationDegrees: 0, opacity: 1,
+          trim: { start: 0, end: 1 },
+        },
+      },
+    }] as Parameters<typeof applyStickerOperationsV1>[1]);
+    const { svg } = documentSvg(document, new Map());
+    expect(svg).toContain("scale(0.35,0.35)");
+    expect(svg).not.toContain("scale(0.9,0.35)");
+  });
+
+  it("leaves a shape free to stretch", () => {
+    const document = withShape(fixture(), "banner", { kind: "roundedRectangle" });
+    const banner = document.layers.find((layer) => layer.id === "banner")!;
+    const stretched = applyStickerOperationsV1(document, [{
+      op: "setLayerAnimations",
+      layerId: "banner",
+      animations: [],
+      anchor: { ...banner.anchor, scale: { x: 0.9, y: 0.35 } },
+    }]);
+    expect(documentSvg(stretched, new Map()).svg).toContain("scale(0.9,0.35)");
   });
 });

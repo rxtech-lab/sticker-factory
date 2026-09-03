@@ -332,7 +332,7 @@ final class StickerStore {
         let registered = try await StickerPublisher(api: api).publish(
             stickerID: response.stickerId,
             revision: revision,
-            assets: [assetID: image],
+            assets: .init(images: [assetID: image]),
             verifiedAssetIDs: [assetID],
             selection: .sticker
         )

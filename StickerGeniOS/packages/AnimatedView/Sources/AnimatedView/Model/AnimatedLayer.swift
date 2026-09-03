@@ -1,7 +1,7 @@
 import Foundation
 
 public enum AnimatedLayerType: String, Codable, CaseIterable, Hashable, Sendable {
-    case image, text, shape, svg, particle, sequence
+    case image, text, shape, svg, particle, sequence, video
     /// Not a wire type. Stands for a layer a newer build wrote and this one cannot draw; the layer
     /// re-encodes its own original `type` string, so this raw value never reaches JSON.
     case unsupported
@@ -10,11 +10,39 @@ public enum AnimatedLayerType: String, Codable, CaseIterable, Hashable, Sendable
     ///
     /// `sequence` is authorable only in the sense that a document can contain one — the footage
     /// comes from lifting a subject out of a Live Photo in the picker, and there is nothing
-    /// meaningful to create from an empty editor menu. `unsupported` is never authorable at all.
+    /// meaningful to create from an empty editor menu. `video` is the same: the clip is generated
+    /// on the server from a confirmed plan, so there is nothing to author locally. `unsupported` is
+    /// never authorable at all.
     public var isAuthorable: Bool {
         switch self {
         case .image, .text, .shape, .svg, .particle: true
-        case .sequence, .unsupported: false
+        case .sequence, .video, .unsupported: false
+        }
+    }
+}
+
+/// The backdrop a generated clip was shot against, and which the renderer keys out.
+///
+/// Named rather than spelled as a colour because the key is a *channel*, not an exact value: the
+/// clip's background is never precisely `#00FF00` after a video encoder has been at it, so keying
+/// works on how far the key channel runs ahead of the other two. Mirrors `ChromaKeyColor` in
+/// `server/lib/ai/chroma-key.ts`, which is what chose the backdrop in the first place.
+public enum AnimatedVideoKeyColor: String, Codable, CaseIterable, Hashable, Sendable {
+    case green, blue
+
+    /// Index of the key channel in RGB order. Green is 1, blue is 2; red is always a rival.
+    public var channel: Int {
+        switch self {
+        case .green: 1
+        case .blue: 2
+        }
+    }
+
+    /// The colour the model was told to flood the background with.
+    public var rgb: (red: Double, green: Double, blue: Double) {
+        switch self {
+        case .green: (0, 1, 0)
+        case .blue: (0, 0, 1)
         }
     }
 }
@@ -456,6 +484,94 @@ public struct AnimatedSequenceLayer: Codable, Hashable, Sendable {
     }
 }
 
+/// A short generated clip of the whole subject, played back on the timeline.
+///
+/// This is the one layer whose pixels the server never draws: the clip is an opaque 1:1 MP4 shot
+/// against a solid chroma backdrop, and it is keyed to alpha *here*, on device, by
+/// `VideoFrameDecoder`. Everything that has to draw the layer without decoding video — the server
+/// renderer, the layout review, quick publish, and clients older than v4 — draws `posterAssetId`
+/// instead, which is why the poster is required rather than optional as it is on a sequence.
+///
+/// `frameRate` is the clip's own rate and is independent of the document's `fps`, exactly as for a
+/// sequence layer. `AnimationInterpolator.videoFrameIndex` is where the two meet.
+public struct AnimatedVideoLayer: Codable, Hashable, Sendable {
+    public var base: AnimatedLayerBase
+    /// The MP4 asset. Opaque, square, on a `keyColor` backdrop.
+    public var assetId: String
+    public var keyColor: AnimatedVideoKeyColor
+    public var frameCount: Int
+    public var frameRate: Double
+    public var playback: AnimatedSequencePlayback
+    /// When on the document timeline the first frame appears. Before it, the first frame is held.
+    public var startSeconds: Double
+    public var contentMode: AnimatedContentMode
+    /// The keyed transparent still the clip was animated from. Drawn while the clip is still
+    /// downloading or decoding, and by everything that cannot decode video at all.
+    public var posterAssetId: String
+
+    public init(
+        base: AnimatedLayerBase,
+        assetId: String,
+        keyColor: AnimatedVideoKeyColor,
+        frameCount: Int,
+        frameRate: Double,
+        playback: AnimatedSequencePlayback = .loop,
+        startSeconds: Double = 0,
+        contentMode: AnimatedContentMode = .fit,
+        posterAssetId: String
+    ) {
+        self.base = base
+        self.assetId = assetId
+        self.keyColor = keyColor
+        self.frameCount = frameCount
+        self.frameRate = frameRate
+        self.playback = playback
+        self.startSeconds = startSeconds
+        self.contentMode = contentMode
+        self.posterAssetId = posterAssetId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, assetId, keyColor, frameCount, frameRate, playback, startSeconds, contentMode, posterAssetId
+    }
+
+    public init(from decoder: Decoder) throws {
+        base = try AnimatedLayerBase(from: decoder)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        assetId = try c.decode(String.self, forKey: .assetId)
+        keyColor = try c.decode(AnimatedVideoKeyColor.self, forKey: .keyColor)
+        frameCount = try c.decode(Int.self, forKey: .frameCount)
+        frameRate = try c.decode(Double.self, forKey: .frameRate)
+        playback = try c.value(.playback, default: .loop)
+        startSeconds = try c.value(.startSeconds, default: 0)
+        contentMode = try c.value(.contentMode, default: .fit)
+        posterAssetId = try c.decode(String.self, forKey: .posterAssetId)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        try base.encode(to: encoder)
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(AnimatedLayerType.video, forKey: .type)
+        try c.encode(assetId, forKey: .assetId)
+        try c.encode(keyColor, forKey: .keyColor)
+        try c.encode(frameCount, forKey: .frameCount)
+        try c.encode(frameRate, forKey: .frameRate)
+        try c.encode(playback, forKey: .playback)
+        try c.encode(startSeconds, forKey: .startSeconds)
+        try c.encode(contentMode, forKey: .contentMode)
+        try c.encode(posterAssetId, forKey: .posterAssetId)
+    }
+
+    public var isValid: Bool {
+        base.isValid
+            && assetId.isAnimatedUUID
+            && posterAssetId.isAnimatedUUID
+            && (1...600).contains(frameCount)
+            && (1...60).contains(frameRate)
+            && (0...30).contains(startSeconds)
+    }
+}
+
 /// A layer written by a newer build, carried through untouched.
 ///
 /// Without this, an unknown `type` throws out of `AnimatedLayer.init(from:)`, which fails the whole
@@ -503,6 +619,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     case svg(AnimatedSVGLayer)
     case particle(AnimatedParticleLayer)
     case sequence(AnimatedSequenceLayer)
+    case video(AnimatedVideoLayer)
     /// A layer this build does not understand. See `AnimatedUnsupportedLayer`.
     case unsupported(AnimatedUnsupportedLayer)
 
@@ -522,6 +639,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .svg: self = .svg(try AnimatedSVGLayer(from: decoder))
         case .particle: self = .particle(try AnimatedParticleLayer(from: decoder))
         case .sequence: self = .sequence(try AnimatedSequenceLayer(from: decoder))
+        case .video: self = .video(try AnimatedVideoLayer(from: decoder))
         // `unsupported` is not a wire type, so a document that literally spells it is as unknown as
         // anything else — and falls into the same bucket rather than round-tripping as a real case.
         case .unsupported, nil: self = .unsupported(try AnimatedUnsupportedLayer(from: decoder))
@@ -536,6 +654,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .svg(let value): try value.encode(to: encoder)
         case .particle(let value): try value.encode(to: encoder)
         case .sequence(let value): try value.encode(to: encoder)
+        case .video(let value): try value.encode(to: encoder)
         case .unsupported(let value): try value.encode(to: encoder)
         }
     }
@@ -549,6 +668,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
             case .svg(let v): v.base
             case .particle(let v): v.base
             case .sequence(let v): v.base
+            case .video(let v): v.base
             case .unsupported(let v): v.base
             }
         }
@@ -560,6 +680,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
             case .svg(var v): v.base = newValue; self = .svg(v)
             case .particle(var v): v.base = newValue; self = .particle(v)
             case .sequence(var v): v.base = newValue; self = .sequence(v)
+            case .video(var v): v.base = newValue; self = .video(v)
             // Deliberately a no-op. `raw` is what gets encoded, so writing the base here would
             // change what the editor shows without changing what is saved.
             case .unsupported: break
@@ -583,6 +704,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .svg: .svg
         case .particle: .particle
         case .sequence: .sequence
+        case .video: .video
         case .unsupported: .unsupported
         }
     }
@@ -600,7 +722,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     public var supportsTrim: Bool {
         switch self {
         case .shape, .svg: true
-        case .image, .text, .particle, .sequence, .unsupported: false
+        case .image, .text, .particle, .sequence, .video, .unsupported: false
         }
     }
 
@@ -612,6 +734,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .svg(let v): v.isValid
         case .particle(let v): v.isValid
         case .sequence(let v): v.isValid
+        case .video(let v): v.isValid
         case .unsupported(let v): v.isValid
         }
     }
@@ -628,11 +751,24 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     /// would cost a download per sequence layer to hold an image only older clients are served.
     /// SVG asset sources are absent for the same reason — they resolve through `svgMarkup(for:)`,
     /// not through the image store.
+    ///
+    /// A video layer's poster *is* listed, unlike a sequence's: the renderer draws it while the
+    /// clip decodes, and the exporter falls back to it when the clip is missing. The clip itself is
+    /// not a bitmap and resolves through `referencedVideoAssetIDs` instead.
     public var referencedImageAssetIDs: [String] {
         switch self {
         case .image(let v): [v.assetId, v.maskAssetId].compactMap { $0 }
         case .sequence(let v): [v.assetId]
+        case .video(let v): [v.posterAssetId]
         case .text, .shape, .svg, .particle, .unsupported: []
+        }
+    }
+
+    /// Every clip this layer needs before it can play, resolved through `videoFrames(for:)`.
+    public var referencedVideoAssetIDs: [String] {
+        switch self {
+        case .video(let v): [v.assetId]
+        case .image, .sequence, .text, .shape, .svg, .particle, .unsupported: []
         }
     }
 }

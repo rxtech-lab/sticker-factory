@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fixture from "@/fixtures/sticker-document-v1.json";
 import { compileLayerAnimation } from "@/lib/animation/compile";
-import {
+import { MAX_LAYER_INDEX,
   applyStickerOperationsV1,
   CURRENT_DOCUMENT_VERSION,
   StickerDocumentSchema,
@@ -24,6 +24,19 @@ describe("StickerDocument", () => {
 
     expect(result.layers[0].animation.rotation).toHaveLength(2);
     expect(source.layers[0].animation.rotation).toHaveLength(0);
+  });
+
+  // The layers array is unbounded, so a document grown past eight layers by edits has to remain
+  // reorderable to its top; the cap is a sanity bound on model output, not a stack height.
+  it("reorders and inserts past the plan's eight layers, up to the operation index cap", () => {
+    const source = StickerDocumentSchema.parse(fixture);
+    const result = applyStickerOperationsV1(source, [
+      { op: "reorderLayer", layerId: source.layers[0].id, index: 20 },
+    ]);
+    expect(result.layers.at(-1)?.id).toBe(source.layers[0].id);
+    expect(() => applyStickerOperationsV1(source, [
+      { op: "reorderLayer", layerId: source.layers[0].id, index: MAX_LAYER_INDEX + 1 },
+    ])).toThrow();
   });
 
   it("rejects executable or URL-shaped layer payloads", () => {

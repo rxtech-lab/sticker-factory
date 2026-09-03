@@ -22,43 +22,67 @@ struct StickerChatActionsMenu: View {
         Menu {
             if candidate != nil {
                 Section {
-                    Button("Continue with this sticker", systemImage: "checkmark.circle") { onAcceptCandidate() }
+                    Button {
+                        onAcceptCandidate()
+                    } label: {
+                        PosterMenuLabel("Continue with this sticker", icon: .accept)
+                    }
                         .accessibilityIdentifier("accept-candidate")
-                    Button("Compare with previous", systemImage: "rectangle.on.rectangle") { onCompare() }
-                    Button("Reject candidate", systemImage: "xmark", role: .destructive) { onRejectCandidate() }
+                    Button {
+                        onCompare()
+                    } label: {
+                        PosterMenuLabel("Compare with previous", icon: .compare)
+                    }
+                    Button(role: .destructive) {
+                        onRejectCandidate()
+                    } label: {
+                        PosterMenuLabel("Reject candidate", icon: .reject)
+                    }
                         .accessibilityIdentifier("reject-candidate")
                 }
                 .disabled(isBusy)
             }
 
             Section {
-                Button(
-                    activeRevision?.canPublishExports == true ? "Export & Publish" : "Export",
-                    systemImage: "shippingbox"
-                ) {
+                Button {
                     versionsTip.invalidate(reason: .actionPerformed)
                     onExport()
+                } label: {
+                    PosterMenuLabel(
+                        activeRevision?.canPublishExports == true ? "Export & Publish" : "Export",
+                        icon: .export
+                    )
                 }
                     .disabled(activeRevision == nil)
                     .accessibilityIdentifier("export-sticker")
             }
 
             Section {
-                Button("Rename sticker", systemImage: "pencil") { onRename() }
+                Button {
+                    onRename()
+                } label: {
+                    PosterMenuLabel("Rename sticker", icon: .rename)
+                }
                     .accessibilityIdentifier("rename-sticker")
-                Button("Version history", systemImage: "clock.arrow.circlepath") {
+                Button {
                     versionsTip.invalidate(reason: .actionPerformed)
                     onViewVersions()
+                } label: {
+                    PosterMenuLabel("Version history", icon: .history)
                 }
                     .accessibilityIdentifier("view-versions")
             }
 
             Section {
-                Button("Delete project", systemImage: "trash", role: .destructive) { onDelete() }
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    PosterMenuLabel("Delete project", icon: .delete)
+                }
                     .accessibilityIdentifier("delete-project")
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            PosterSymbol("ellipsis.circle")
         }
         .popoverTip(
             candidate == nil && activeRevision != nil ? versionsTip : nil,

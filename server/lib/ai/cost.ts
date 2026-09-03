@@ -11,7 +11,8 @@ export const NANODOLLARS_PER_USD = 1_000_000_000;
 
 export type AiApiCostEvent =
   | { kind: "text"; costNanodollars: number }
-  | { kind: "image"; costNanodollars: number; points: number };
+  | { kind: "image"; costNanodollars: number; points: number }
+  | { kind: "video"; costNanodollars: number; points: number };
 
 type CostRecorder = (event: AiApiCostEvent) => Promise<void>;
 
@@ -88,13 +89,87 @@ export async function recordImageApiCost(result: { providerMetadata?: unknown })
   });
 }
 
-/** Text is rounded up once per chat turn; image points have already been rounded per image. */
+/**
+ * Gateway list prices per output second, in USD, for the video models a deployment may name.
+ *
+ * Used only when a video response carries no `gateway.cost`. Whether the Gateway prices video the
+ * way it prices images is not something this code can verify ahead of the first real call, and
+ * "no price" must not mean "free" — so the fallback is the published rate, which errs on the side
+ * of charging what the model card says the clip costs. Keep this in step with
+ * `https://ai-gateway.vercel.sh/v1/models` when adding a model.
+ */
+export const VIDEO_MODEL_USD_PER_SECOND: Readonly<Record<string, Readonly<Record<string, number>>>> = {
+  "bytedance/seedance-v1.0-pro-fast": { "480p": 0.0097, "720p": 0.0206, "1080p": 0.049 },
+  "bytedance/seedance-v1.5-pro": { "480p": 0.0121, "720p": 0.0259, "1080p": 0.0583 },
+  "spacexai/grok-imagine-video": { "480p": 0.05, "720p": 0.07 },
+};
+
+export interface VideoPricingInput {
+  modelId: string;
+  resolution: string;
+  durationSeconds: number;
+}
+
+/**
+ * The pricing tier a resolution string falls in.
+ *
+ * The Gateway prices video by named tier (`480p`), while the AI SDK spells a resolution as
+ * `{width}x{height}`; a deployment may configure either. A dimension pair is priced by its shorter
+ * side, which is what the tier names count.
+ */
+export function videoPricingTier(resolution: string): string {
+  const pair = /^(\d+)x(\d+)$/i.exec(resolution.trim());
+  if (!pair) return resolution.trim().toLowerCase();
+  return `${Math.min(Number(pair[1]), Number(pair[2]))}p`;
+}
+
+/** The list-price estimate for one clip, or `undefined` when the model or resolution is unknown. */
+export function estimatedVideoCostUsd(input: VideoPricingInput): number | undefined {
+  const perSecond = VIDEO_MODEL_USD_PER_SECOND[input.modelId]?.[videoPricingTier(input.resolution)];
+  if (perSecond === undefined || !Number.isFinite(input.durationSeconds) || input.durationSeconds <= 0) {
+    return undefined;
+  }
+  return perSecond * input.durationSeconds;
+}
+
+/**
+ * Records one video response, rounding this clip independently like an image.
+ *
+ * Takes the Gateway's own charge when it sends one and the list price otherwise; a clip whose price
+ * is known neither way is refused rather than handed out for nothing. Returns which one was used so
+ * the caller can trace an estimate — it is the signal that the fallback is still load-bearing.
+ */
+export async function recordVideoApiCost(
+  result: { providerMetadata?: unknown },
+  pricing: VideoPricingInput,
+): Promise<"gateway" | "estimate" | "unrecorded"> {
+  const recorder = recorderStorage.getStore();
+  if (!recorder) return "unrecorded";
+
+  const reported = gatewayCostUsd(result.providerMetadata);
+  const cost = reported ?? estimatedVideoCostUsd(pricing);
+  if (cost === undefined) {
+    throw new Error(
+      `AI Gateway did not return API pricing for a video response and ${pricing.modelId} at `
+        + `${pricing.resolution} has no list price`,
+    );
+  }
+  await recorder({
+    kind: "video",
+    costNanodollars: apiCostNanodollars(cost),
+    points: apiCostPoints(cost),
+  });
+  return reported === undefined ? "estimate" : "gateway";
+}
+
+/** Text is rounded up once per chat turn; image and video points have already been rounded per item. */
 export function totalApiCostPoints(input: {
   textCostNanodollars: number;
   imagePoints: number;
+  videoPoints?: number;
 }): number {
   const textPoints = Math.ceil(
     input.textCostNanodollars * POINTS_PER_USD / NANODOLLARS_PER_USD,
   );
-  return textPoints + input.imagePoints;
+  return textPoints + input.imagePoints + (input.videoPoints ?? 0);
 }

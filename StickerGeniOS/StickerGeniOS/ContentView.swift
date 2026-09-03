@@ -11,14 +11,13 @@ struct ContentView: View {
             switch environment.authenticationState {
             case .checking:
                 StickerBackground {
-                    ProgressView("Restoring your sticker library…")
-                        .controlSize(.large)
+                    PosterProgress(message: String(localized: "Restoring your sticker library…"))
                 }
             case .signedOut:
                 RxSignInView(
                     manager: environment.authManager,
                     appearance: .init(
-                        icon: .systemImage("face.smiling.inverse"),
+                        icon: .assetImage("PosterSignIn", nil),
                         title: LocalizedStringKey(AppConfiguration.defaultAppName),
                         subtitle: "Make expressive stickers from words and photos.",
                         signInButtonTitle: "Sign in with RxLab",
@@ -34,6 +33,14 @@ struct ContentView: View {
                 StickerFactoryTabView(environment: environment)
             }
         }
+        // The poster look is a printed one: cream paper, near-black ink. It has no dark
+        // counterpart on the web either, and inverting it would mean inventing a second palette
+        // that agrees with nothing. So the app stays in daylight.
+        .preferredColorScheme(.light)
+        // Set once, here, so every label in the app inherits the rounded display face rather
+        // than each view asking for it.
+        .fontDesign(.rounded)
+        .tint(AppColors.accent)
     }
 }
 

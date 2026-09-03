@@ -26,7 +26,6 @@ struct CreatorPacksView: View {
 
                         if response.items.isEmpty {
                             EmptyStateView(
-                                symbol: "square.stack.3d.up",
                                 title: String(localized: "No packs yet"),
                                 message: response.creator.isSelf
                                     ? String(localized: "Publish a pack and it will appear here.")
@@ -46,7 +45,7 @@ struct CreatorPacksView: View {
                     }
                     .padding()
                 } else {
-                    ProgressView("Loading creator…").padding(.top, 64)
+                    PosterProgress(message: String(localized: "Loading creator…")).padding(.top, 64)
                 }
             }
         }

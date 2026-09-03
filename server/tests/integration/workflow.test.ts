@@ -4,12 +4,15 @@ import sharp from "sharp";
 import { getAiProvider, setAiProviderForTests, type AiProvider, type AiTitleContext } from "@/lib/ai/gateway";
 import { PlanV1Schema } from "@/lib/contracts/plan";
 import { StickerDocumentSchema, type StickerOperationV1 } from "@/lib/contracts/sticker";
+import { cropPngToSubject } from "@/lib/images/subject-bounds";
+import { layoutDiagnostics } from "@/lib/layout/composition";
+import { placementFromSubject } from "@/lib/layout/placement";
 import { setDatabaseForTests } from "@/lib/db/client";
 import { assets, chatAttachments, chatMessages, generationEvents, generationJobs, plans as planRows, stickerRevisions, stickers, users } from "@/lib/db/schema";
 import { derivedAssetId } from "@/lib/services/assets";
 import { cancelPlan, confirmPlan } from "@/lib/services/plans";
 import { acceptRevision, bindExports, createCandidateRevision, createChatTurn, createCleanupJob, createSticker, listChatMessages, retryFailedChatTurn } from "@/lib/services/stickers";
-import { MemoryObjectStore, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
+import { MemoryObjectStore, normalizeTransparentPng, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { stickerGenerationWorkflow } from "@/workflows/sticker-generation";
 import { beginJobStep, executeAiJobStep, failJobStep, finalizeStickerPurgeStep, purgeStickerStep, sweepStickerObjectsStep } from "@/workflows/sticker-generation/steps";
@@ -25,6 +28,7 @@ const unusedAiProvider: AiProvider = {
   generateStickerImage: () => { throw new Error("Unexpected generateStickerImage"); },
   planSticker: () => { throw new Error("Unexpected planSticker"); },
   generateConceptImage: () => { throw new Error("Unexpected generateConceptImage"); },
+  generateStickerVideo: () => { throw new Error("Unexpected generateStickerVideo"); },
   refineStickerLayout: () => { throw new Error("Unexpected refineStickerLayout"); },
   animateSticker: () => { throw new Error("Unexpected animateSticker"); },
   editSticker: () => { throw new Error("Unexpected editSticker"); },
@@ -319,6 +323,13 @@ describe("durable sticker workflow", () => {
     expect(document.layers).toHaveLength(2);
     expect(document.layers[0]).toMatchObject({ id: baseDocument.layers[0].id, assetId: baseTurn.jobId });
     expect(document.layers[1]).toMatchObject({ type: "image", name: "Generated layer", assetId: addTurn.jobId });
+    // Beside it, not on top of it: the new layer is smaller than the hero, on canvas, and does not
+    // sit dead centre where a full-size default would have covered the original.
+    const added_layer = document.layers[1];
+    expect(added_layer.anchor.scale.x).toBeLessThan(1);
+    expect(added_layer.anchor.scale.x).toBe(added_layer.anchor.scale.y);
+    expect(added_layer.anchor.position).not.toEqual({ x: 0.5, y: 0.5 });
+    expect(layoutDiagnostics(document).offCanvasLayerIds).toEqual([]);
     const added = await db.select().from(assets).where(eq(assets.id, addTurn.jobId)).get();
     expect(added).toMatchObject({ kind: "master", state: "ready", hasAlpha: true });
     await close();
@@ -875,6 +886,166 @@ describe("durable sticker workflow", () => {
     expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(0);
     await close();
   });
+  /**
+   * A separated part on a transparent 1024 frame, drawn where the reference had it. Each call
+   * lands its block in the next cell of a grid, so every part measures somewhere different.
+   */
+  async function separatedPart(index: number): Promise<Uint8Array> {
+    const size = 1024;
+    const pixels = Buffer.alloc(size * size * 4);
+    const left = 62 + (index % 4) * 250;
+    const top = 100 + Math.floor(index / 4) * 300;
+    for (let y = top; y < top + 200; y += 1) {
+      for (let x = left; x < left + 200; x += 1) {
+        const offset = (y * size + x) * 4;
+        pixels[offset] = 220;
+        pixels[offset + 1] = 70;
+        pixels[offset + 2] = 90;
+        pixels[offset + 3] = 255;
+      }
+    }
+    return new Uint8Array(await sharp(pixels, { raw: { width: size, height: size, channels: 4 } }).png().toBuffer());
+  }
+
+  it("places each separated part where it sat in the approved reference", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-place", createdAt: new Date(), updatedAt: new Date() });
+    const mockProvider = getAiProvider();
+    let drawn = 0;
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: mockProvider.routeChatTurn.bind(mockProvider),
+      planSticker: mockProvider.planSticker.bind(mockProvider),
+      generateConceptImage: mockProvider.generateConceptImage.bind(mockProvider),
+      selectImageReferences: mockProvider.selectImageReferences.bind(mockProvider),
+      generateStickerImage: async () => {
+        // What the real path does after the model answers: crop to the part, square it back up to
+        // the frame size, and say where it was.
+        const { bytes, subject } = await normalizeTransparentPng(await separatedPart(drawn), { subjectCrop: true });
+        drawn += 1;
+        return { bytes, mimeType: "image/png", subject };
+      },
+      refineStickerLayout: mockProvider.refineStickerLayout.bind(mockProvider),
+      showSticker: mockProvider.showSticker.bind(mockProvider),
+      summarizeStickerTitle: mockProvider.summarizeStickerTitle.bind(mockProvider),
+    });
+
+    const sticker = await createSticker(db, "owner-place", { title: "HI", kind: "animated", prompt: "HI", referenceAssetIds: [] });
+    const planTurn = await createChatTurn(db, "owner-place", sticker.stickerId, {
+      text: "Make HI appear letter by letter like a typewriter",
+      intent: "chat",
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(planTurn.jobId)).workflowStatus).toBe("succeeded");
+    const [proposed] = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
+    const plan = PlanV1Schema.parse(proposed.planJson);
+    const generateIds = plan.layers.filter((layer) => layer.source.kind === "generate").map((layer) => layer.layerId);
+    expect(generateIds.length).toBeGreaterThanOrEqual(2);
+
+    const confirmed = await confirmPlan(db, "owner-place", sticker.stickerId, proposed.id);
+    expect((await stickerGenerationWorkflow(confirmed.jobId)).workflowStatus).toBe("succeeded");
+
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).get();
+    const document = StickerDocumentSchema.parse(revision!.documentJson);
+    for (const [index, layerId] of generateIds.entries()) {
+      const expected = placementFromSubject((await cropPngToSubject(await separatedPart(index))).subject)!;
+      const layer = document.layers.find((candidate) => candidate.id === layerId)!;
+      const planned = plan.layers.find((candidate) => candidate.layerId === layerId)!;
+      expect(layer.anchor.position.x).toBeCloseTo(expected.position.x, 6);
+      expect(layer.anchor.position.y).toBeCloseTo(expected.position.y, 6);
+      expect(layer.anchor.scale.x).toBeCloseTo(expected.scale.x, 6);
+      expect(layer.anchor.scale.y).toBeCloseTo(expected.scale.x, 6);
+      // And the plan's own guess was not what shipped.
+      expect([layer.anchor.position.x, layer.anchor.position.y]).not.toEqual([planned.x, planned.y]);
+      // The keyframes moved with the anchor (to the compiler's rounding).
+      expect(layer.animation.position[0].timeSeconds).toBe(0);
+      expect(layer.animation.position[0].x).toBeCloseTo(layer.anchor.position.x, 4);
+      expect(layer.animation.position[0].y).toBeCloseTo(layer.anchor.position.y, 4);
+    }
+    expect(layoutDiagnostics(document).offCanvasLayerIds).toEqual([]);
+
+    // The measurement is written beside the stored master, so a replay that reuses the asset can
+    // still place it: the frame it was measured in is gone, the crop is what is stored.
+    const head = await store.head(objectKey("owner-place", derivedAssetId(confirmed.jobId, 0), "image/png"));
+    expect(JSON.parse(head.metadata!.subject!)).toEqual((await cropPngToSubject(await separatedPart(0))).subject);
+    await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, confirmed.jobId));
+    const replay = await executeAiJobStep(confirmed.jobId);
+    expect(replay.revisionId).toBe(confirmed.jobId);
+    expect(drawn).toBe(generateIds.length);
+    await close();
+  }, 30_000);
+
+  it("places a drawn layer the model did not position in free canvas, and refuses to move one off it", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-free", createdAt: new Date(), updatedAt: new Date() });
+    const mockProvider = getAiProvider();
+
+    const sticker = await createSticker(db, "owner-free", { title: "Cloud", kind: "static", prompt: "Happy cloud", referenceAssetIds: [] });
+    const baseTurn = await createChatTurn(db, "owner-free", sticker.stickerId, {
+      text: "Happy cloud",
+      intent: "generate",
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    await stickerGenerationWorkflow(baseTurn.jobId);
+    await acceptRevision(db, "owner-free", sticker.stickerId, baseTurn.jobId);
+
+    let refused: string | undefined;
+    let afterAdd: ReturnType<typeof layoutDiagnostics> | undefined;
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      generateStickerImage: mockProvider.generateStickerImage.bind(mockProvider),
+      selectImageReferences: mockProvider.selectImageReferences.bind(mockProvider),
+      showSticker: async () => "Added a rainbow beside the cloud.",
+      async editSticker(_input, session) {
+        const added = await session.addImageLayer({ prompt: "A small rainbow", name: "Rainbow" });
+        afterAdd = layoutDiagnostics(added.document);
+        const hero = added.document.layers.find((layer) => layer.id === "hero")!;
+        // A free operation that would leave the hero hanging off the left edge comes back as an
+        // error naming the layer, and lands nothing.
+        await session.applyOperations([{
+          op: "setLayerAnimations",
+          layerId: "hero",
+          animations: hero.animations,
+          anchor: { ...hero.anchor, position: { x: -0.2, y: 0.5 } },
+        }]).catch((error: Error) => { refused = error.message; });
+        const finalized = await session.finalizeEdit();
+        return { revision: finalized.revision, finalized: true };
+      },
+    });
+
+    const editTurn = await createChatTurn(db, "owner-free", sticker.stickerId, {
+      text: "Add a rainbow next to it",
+      intent: "edit",
+      baseRevisionId: baseTurn.jobId,
+      attachments: [],
+      imagePlacement: "add",
+    });
+    expect((await stickerGenerationWorkflow(editTurn.jobId)).workflowStatus).toBe("succeeded");
+    expect(refused).toMatch(/Keep every complete layer box on canvas.*hero/);
+    expect(afterAdd?.offCanvasLayerIds).toEqual([]);
+
+    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
+    const document = StickerDocumentSchema.parse(edited!.documentJson);
+    expect(document.layers.map((layer) => layer.name)).toEqual(["Hero", "Rainbow"]);
+    const rainbow = document.layers[1];
+    // Not the centre at full size: the one placement guaranteed to hide the cloud.
+    expect(rainbow.anchor.scale.x).toBeLessThan(1);
+    expect(rainbow.anchor.scale.x).toBe(rainbow.anchor.scale.y);
+    expect(rainbow.anchor.position).not.toEqual({ x: 0.5, y: 0.5 });
+    expect(document.layers[0].anchor.position).toEqual({ x: 0.5, y: 0.5 });
+    expect(layoutDiagnostics(document).offCanvasLayerIds).toEqual([]);
+    await close();
+  }, 30_000);
+
   it("generates an approvable static reference, then separates matching parts after confirmation", async () => {
     const { db, close } = await createTestDatabase();
     const store = new MemoryObjectStore();
@@ -1025,6 +1196,126 @@ describe("durable sticker workflow", () => {
     expect(replay.revisionId).toBe(retry.jobId);
     expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(partCount + 2);
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.stickerId, sticker.stickerId))).toHaveLength(1);
+
+    await close();
+  });
+
+  it("animates a planned video layer from its still and stores the clip exactly once", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-v", createdAt: new Date(), updatedAt: new Date() });
+    const mockProvider = getAiProvider();
+    const videoRequests: Array<{ motion: string; durationSeconds: number; keyColor: string; backdropOpaque: boolean }> = [];
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: mockProvider.routeChatTurn.bind(mockProvider),
+      planSticker: mockProvider.planSticker.bind(mockProvider),
+      generateConceptImage: mockProvider.generateConceptImage.bind(mockProvider),
+      generateStickerImage: mockProvider.generateStickerImage.bind(mockProvider),
+      refineStickerLayout: mockProvider.refineStickerLayout.bind(mockProvider),
+      showSticker: mockProvider.showSticker.bind(mockProvider),
+      summarizeStickerTitle: mockProvider.summarizeStickerTitle.bind(mockProvider),
+      generateStickerVideo: async (input) => {
+        // The provider is handed a URL, not bytes, so the frame it would fetch has to be sitting in
+        // the store right now — and flattened, since a video model cannot take alpha.
+        const key = decodeURIComponent(new URL(input.imageUrl).pathname.slice(1));
+        const backdrop = await store.get(key);
+        const stats = await sharp(Buffer.from(backdrop.bytes)).stats();
+        videoRequests.push({
+          motion: input.motion,
+          durationSeconds: input.durationSeconds,
+          keyColor: input.keyColor.name,
+          backdropOpaque: stats.isOpaque,
+        });
+        return mockProvider.generateStickerVideo(input);
+      },
+    });
+
+    const sticker = await createSticker(db, "owner-v", {
+      title: "Spin", kind: "animated", prompt: "Spin", referenceAssetIds: [],
+    });
+    const planTurn = await createChatTurn(db, "owner-v", sticker.stickerId, {
+      text: "Plan a letter that spins all the way round",
+      intent: "chat",
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(planTurn.jobId)).workflowStatus).toBe("succeeded");
+
+    const [proposed] = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
+    expect(proposed.state).toBe("finalized");
+    expect(proposed.planJson.layers[0].source.kind).toBe("video");
+    // The card's message tells the user which layer is a clip before they pay for it.
+    expect(proposed.planJson.summary).toMatch(/video/i);
+    const partCount = proposed.planJson.layers.length;
+
+    const confirmed = await confirmPlan(db, "owner-v", sticker.stickerId, proposed.id);
+    expect((await stickerGenerationWorkflow(confirmed.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(videoRequests).toEqual([{
+      motion: expect.stringMatching(/turnaround/),
+      durationSeconds: 2,
+      keyColor: "green",
+      backdropOpaque: true,
+    }]);
+
+    // The concept preview, one transparent still per layer — the clip's poster among them — and
+    // the clip itself. Its timing comes off the container, not off the plan.
+    const stored = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
+    expect(stored).toHaveLength(partCount + 2);
+    expect(stored.filter((asset) => asset.kind === "master")).toHaveLength(partCount);
+    const clip = stored.find((asset) => asset.kind === "video");
+    expect(clip).toMatchObject({
+      id: derivedAssetId(confirmed.jobId, "video:0"),
+      state: "ready",
+      mimeType: "video/mp4",
+      width: 480,
+      height: 480,
+      frameCount: 24,
+      fps: 24,
+      durationSeconds: 1,
+      hasAlpha: false,
+    });
+    expect(store.objects.has(clip!.r2Key)).toBe(true);
+    // The flattened frame was scratch: presigned for the provider, then swept.
+    const backdropId = derivedAssetId(confirmed.jobId, "video-backdrop:0");
+    expect([...store.objects.keys()].some((key) => key.includes(backdropId))).toBe(false);
+    expect(stored.some((asset) => asset.id === backdropId)).toBe(false);
+
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).get();
+    const document = StickerDocumentSchema.parse(revision!.documentJson);
+    const hero = document.layers[0];
+    if (hero.type !== "video") throw new Error("the built document's first layer is not a video");
+    expect(hero).toMatchObject({
+      assetId: clip!.id,
+      posterAssetId: derivedAssetId(confirmed.jobId, 0),
+      keyColor: "green",
+      frameCount: 24,
+      frameRate: 24,
+      playback: "loop",
+      startSeconds: 0,
+    });
+    expect(document.fps).toBeGreaterThanOrEqual(24);
+    expect(document.durationSeconds).toBeGreaterThanOrEqual(1);
+    expect(document.layers.slice(1).every((layer) => layer.type === "image")).toBe(true);
+
+    const events = await db.select().from(generationEvents).where(eq(generationEvents.jobId, confirmed.jobId));
+    const stages = events.map((event) => (event.dataJson as { stage?: string }).stage);
+    expect(stages).toContain("composing_part");
+    expect(stages).toContain("composing_video");
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, confirmed.jobId)))
+      .filter((message) => message.role === "system").map((message) => message.content);
+    expect(toolRows.filter((name) => name.startsWith("compose-video"))).toHaveLength(1);
+
+    // A step retry after the clip landed must not buy a second one.
+    await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, confirmed.jobId));
+    const replay = await executeAiJobStep(confirmed.jobId);
+    expect(replay.revisionId).toBe(confirmed.jobId);
+    expect(videoRequests).toHaveLength(1);
+    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(partCount + 2);
 
     await close();
   });

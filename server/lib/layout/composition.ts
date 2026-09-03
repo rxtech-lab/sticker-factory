@@ -2,8 +2,10 @@ import { z } from "zod";
 import {
   applyStickerOperationsV1,
   aspectLockedScale,
+  effectiveLayerScale,
   layerScaleIsAspectLocked,
   LayerIdSchema,
+  MAX_LAYER_INDEX,
   StickerDocumentSchema,
   type StickerDocument,
 } from "@/lib/contracts/sticker";
@@ -26,9 +28,9 @@ export const LayoutPlacementSchema = z.object({
 }).strict();
 
 export const LayoutAdjustmentSchema = z.object({
-  placements: z.array(LayoutPlacementSchema).max(8).optional(),
+  placements: z.array(LayoutPlacementSchema).max(MAX_LAYER_INDEX + 1).optional(),
   /** Complete back-to-front layer order. A full permutation avoids ambiguous partial reorders. */
-  order: z.array(LayerIdSchema).max(8).optional(),
+  order: z.array(LayerIdSchema).max(MAX_LAYER_INDEX + 1).optional(),
 }).strict().superRefine((value, context) => {
   if (!value.placements?.length && !value.order?.length) {
     context.addIssue({ code: "custom", message: "Provide at least one placement or a layer order" });
@@ -41,30 +43,61 @@ export const LayoutAdjustmentSchema = z.object({
 
 export type LayoutAdjustment = z.infer<typeof LayoutAdjustmentSchema>;
 
-type Bounds = {
+/** A layer's footprint in canvas fractions. */
+export type Bounds = {
   left: number;
   right: number;
   top: number;
   bottom: number;
 };
 
-const LAYER_FIT = 0.86;
+/**
+ * The square every layer is drawn into before its scale is applied, as a fraction of the canvas.
+ *
+ * The one number the server renderer, the layout geometry, and the native renderer
+ * (`AnimatedIconFrame.layerFit`) all have to agree on: a placement is meaningless unless the box it
+ * describes is the box that gets drawn.
+ */
+export const LAYER_FIT = 0.86;
 
 /** Conservative rotated bounds for the same square layer box the native/server renderers use. */
-function layerBounds(layer: StickerDocument["layers"][number]): Bounds {
+export function layerBounds(layer: StickerDocument["layers"][number]): Bounds {
   const radians = (layer.anchor.rotationDegrees * Math.PI) / 180;
   const cosine = Math.abs(Math.cos(radians));
   const sine = Math.abs(Math.sin(radians));
-  const halfWidth = (LAYER_FIT / 2)
-    * (cosine * layer.anchor.scale.x + sine * layer.anchor.scale.y);
-  const halfHeight = (LAYER_FIT / 2)
-    * (sine * layer.anchor.scale.x + cosine * layer.anchor.scale.y);
+  const scale = effectiveLayerScale(layer.type, layer.anchor.scale);
+  const halfWidth = (LAYER_FIT / 2) * (cosine * scale.x + sine * scale.y);
+  const halfHeight = (LAYER_FIT / 2) * (sine * scale.x + cosine * scale.y);
   return {
     left: layer.anchor.position.x - halfWidth,
     right: layer.anchor.position.x + halfWidth,
     top: layer.anchor.position.y - halfHeight,
     bottom: layer.anchor.position.y + halfHeight,
   };
+}
+
+/** How much of the smaller of two boxes the other one covers, 0 when they are apart. */
+export function layerBoxCoverage(a: Bounds, b: Bounds): number {
+  const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+  const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  if (width === 0 || height === 0) return 0;
+  const areaA = (a.right - a.left) * (a.bottom - a.top);
+  const areaB = (b.right - b.left) * (b.bottom - b.top);
+  const smaller = Math.min(areaA, areaB);
+  return smaller > 0 ? (width * height) / smaller : 0;
+}
+
+/**
+ * Slack for a box that sits exactly on the edge. Positions are sums of fractions, and a layer
+ * pushed flush against the canvas by arithmetic lands a few ulps past it; that is not off canvas.
+ */
+const EDGE_TOLERANCE = 1e-6;
+
+function boundsLeaveCanvas(box: Bounds): boolean {
+  return box.left < -EDGE_TOLERANCE
+    || box.right > 1 + EDGE_TOLERANCE
+    || box.top < -EDGE_TOLERANCE
+    || box.bottom > 1 + EDGE_TOLERANCE;
 }
 
 export type LayoutDiagnostics = {
@@ -86,21 +119,14 @@ export type LayoutDiagnostics = {
 export function layoutDiagnostics(document: StickerDocument): LayoutDiagnostics {
   const visible = document.layers.filter((layer) => !layer.hidden && layer.anchor.opacity > 0);
   const bounds = new Map(visible.map((layer) => [layer.id, layerBounds(layer)]));
-  const offCanvasLayerIds = visible.flatMap((layer) => {
-    const box = bounds.get(layer.id)!;
-    return box.left < 0 || box.right > 1 || box.top < 0 || box.bottom > 1 ? [layer.id] : [];
-  });
+  const offCanvasLayerIds = visible.flatMap((layer) => (
+    boundsLeaveCanvas(bounds.get(layer.id)!) ? [layer.id] : []
+  ));
   const substantialOverlaps: LayoutDiagnostics["substantialOverlaps"] = [];
   for (let first = 0; first < visible.length; first += 1) {
     for (let second = first + 1; second < visible.length; second += 1) {
-      const a = bounds.get(visible[first].id)!;
-      const b = bounds.get(visible[second].id)!;
-      const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-      const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-      if (width === 0 || height === 0) continue;
-      const areaA = (a.right - a.left) * (a.bottom - a.top);
-      const areaB = (b.right - b.left) * (b.bottom - b.top);
-      const coverage = (width * height) / Math.min(areaA, areaB);
+      const coverage = layerBoxCoverage(bounds.get(visible[first].id)!, bounds.get(visible[second].id)!);
+      if (coverage === 0) continue;
       // Lower intersections are ordinary close composition. Covering most of the smaller layer is
       // the useful warning: it often means one independently generated element became hidden.
       if (coverage >= 0.65) {
@@ -162,4 +188,42 @@ export function applyLayoutAdjustment(
     );
   }
   return parsed;
+}
+
+/**
+ * Brings every resting layer box back onto the canvas, touching nothing that already is.
+ *
+ * The last line of defence, not a layout tool: a reviewer that ran out of steps, or an edit that
+ * bought an image and then placed it badly, must not ship a sticker with a layer hanging off the
+ * edge. A box wider or taller than the canvas is shrunk uniformly to fit; then the centre is
+ * shifted by however far the box overshoots. Rotation is left alone — the bounds already account
+ * for it — and motion is recompiled so the keyframes follow the anchor.
+ */
+export function clampLayoutOnCanvas(document: StickerDocument): StickerDocument {
+  const operations = document.layers.flatMap((layer) => {
+    if (layer.hidden || layer.anchor.opacity <= 0) return [];
+    let scale = layer.anchor.scale;
+    let box = layerBounds(layer);
+    if (!boundsLeaveCanvas(box)) return [];
+    const width = box.right - box.left;
+    const height = box.bottom - box.top;
+    if (width > 1 || height > 1) {
+      const factor = 1 / Math.max(width, height);
+      scale = { x: scale.x * factor, y: scale.y * factor };
+      box = layerBounds({ ...layer, anchor: { ...layer.anchor, scale } });
+    }
+    const dx = box.left < 0 ? -box.left : box.right > 1 ? 1 - box.right : 0;
+    const dy = box.top < 0 ? -box.top : box.bottom > 1 ? 1 - box.bottom : 0;
+    return [{
+      op: "setLayerAnimations" as const,
+      layerId: layer.id,
+      animations: layer.animations,
+      anchor: {
+        ...layer.anchor,
+        scale,
+        position: { x: layer.anchor.position.x + dx, y: layer.anchor.position.y + dy },
+      },
+    }];
+  });
+  return operations.length === 0 ? document : applyStickerOperationsV1(document, operations);
 }

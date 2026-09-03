@@ -62,9 +62,9 @@ struct MarkdownText: View {
 
         case let .quote(text):
             HStack(alignment: .top, spacing: 8) {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color.secondary.opacity(0.35))
-                    .frame(width: 3)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppColors.coral)
+                    .frame(width: 4)
                 Text(MarkdownInline.attributed(text, font: .body))
                     .foregroundStyle(.secondary)
                     .lineSpacing(style.lineSpacing)
@@ -73,8 +73,8 @@ struct MarkdownText: View {
 
         case .rule:
             Rectangle()
-                .fill(Color.secondary.opacity(0.25))
-                .frame(height: 1)
+                .fill(AppColors.line)
+                .frame(height: 1.5)
                 .padding(.vertical, 2)
         }
     }
@@ -147,7 +147,7 @@ private struct MarkdownListRow: View {
         case let .ordered(number):
             Text("\(number).")
         case let .task(done):
-            Image(systemName: done ? "checkmark.square.fill" : "square")
+            PosterSymbol(done ? "checkmark.square.fill" : "square")
                 .font(.footnote)
                 .foregroundStyle(done ? AppColors.accent : .secondary)
         }
@@ -177,7 +177,12 @@ private struct MarkdownCodeBlock: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 10))
+        .posterSurface(
+            cornerRadius: 10,
+            fill: AppColors.card,
+            lineWidth: Poster.hairline,
+            offset: .zero
+        )
     }
 }
 

@@ -164,16 +164,46 @@ public enum AnimationInterpolator {
     /// Mirrored byte for byte by `sequenceFrameIndex` in `server/lib/animation/sample.ts`, and
     /// pinned from both sides by `sequence-frame-index-parity.json`.
     public static func sequenceFrameIndex(_ layer: AnimatedSequenceLayer, atDocumentTime time: Double) -> Int {
-        let count = max(1, layer.frameCount)
+        frameIndex(
+            frameCount: layer.frameCount,
+            frameRate: layer.frameRate,
+            playback: layer.playback,
+            startSeconds: layer.startSeconds,
+            atDocumentTime: time
+        )
+    }
+
+    /// Which frame of a generated clip is showing. Same arithmetic as a sequence, deliberately: the
+    /// server's `videoFrameIndex` is the same function too, so the poster-drawing renderer and this
+    /// one agree on timing even though only one of them can see the footage.
+    public static func videoFrameIndex(_ layer: AnimatedVideoLayer, atDocumentTime time: Double) -> Int {
+        frameIndex(
+            frameCount: layer.frameCount,
+            frameRate: layer.frameRate,
+            playback: layer.playback,
+            startSeconds: layer.startSeconds,
+            atDocumentTime: time
+        )
+    }
+
+    /// The shared body of `sequenceFrameIndex` and `videoFrameIndex`.
+    public static func frameIndex(
+        frameCount: Int,
+        frameRate: Double,
+        playback: AnimatedSequencePlayback,
+        startSeconds: Double,
+        atDocumentTime time: Double
+    ) -> Int {
+        let count = max(1, frameCount)
         if count == 1 { return 0 }
 
-        let elapsed = time - layer.startSeconds
+        let elapsed = time - startSeconds
         // Before the layer's start the first tile is held rather than the layer being hidden: a
         // sequence that vanished for its first second would read as a failed asset load.
         if elapsed <= 0 { return 0 }
 
-        let raw = Int((elapsed * layer.frameRate).rounded(.down))
-        switch layer.playback {
+        let raw = Int((elapsed * frameRate).rounded(.down))
+        switch playback {
         case .once:
             return min(raw, count - 1)
         case .loop:

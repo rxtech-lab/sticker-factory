@@ -108,6 +108,11 @@ describe("chroma key", () => {
     expect(raw.width).toBeGreaterThanOrEqual(32);
     expect(raw.width).toBeLessThanOrEqual(36);
     expect(pixelAt(raw, raw.width >> 1, raw.height >> 1).alpha).toBe(255);
+    // And where in the model's frame the subject was, for a caller that places it by that.
+    expect(keyed.subject).toBeDefined();
+    expect(keyed.subject!.coverage).toBeCloseTo(0.25, 2);
+    expect(keyed.subject!.crop.width).toBeCloseTo(raw.width / 128, 5);
+    expect(keyed.subject!.crop.left + keyed.subject!.crop.width / 2).toBeCloseTo(0.5, 1);
   });
 
   it("keeps the whole frame when the subject already fills it", async () => {

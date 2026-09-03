@@ -144,7 +144,7 @@ final class StickerExportModel {
     func prepareShareFiles(
         store: StickerStore,
         revision: StickerRevision,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         verifiedAssetIDs: Set<String>
     ) async -> Bool {
         guard publishedURLs.isEmpty else { return true }
@@ -189,7 +189,7 @@ final class StickerExportModel {
         store: StickerStore,
         stickerID: String,
         revision: StickerRevision,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         verifiedAssetIDs: Set<String>,
         onFinish: @escaping @MainActor () -> Void = {}
     ) {
@@ -221,7 +221,7 @@ final class StickerExportModel {
         store: StickerStore,
         stickerID: String,
         revision: StickerRevision,
-        assets: [String: UIImage],
+        assets: StickerRenderAssets,
         verifiedAssetIDs: Set<String>
     ) async {
         isPublishing = true

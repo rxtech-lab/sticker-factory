@@ -14,27 +14,43 @@ struct StickerLibraryCard: View {
     var detail: StickerAnimationDetail = .thumbnail
 
     var body: some View {
-        GlassCard(padding: 10) {
+        PosterCard(padding: 10) {
             VStack(alignment: .leading, spacing: 10) {
+                // The artwork gets a plate of its own — outlined, and a shade off the card — so a
+                // transparent sticker reads as a thing pasted onto the tile rather than as a hole
+                // in it.
                 StickerThumbnail(sticker: sticker, api: api, detail: detail)
                     .aspectRatio(1, contentMode: .fit)
+                    .padding(6)
+                    .posterSurface(
+                        cornerRadius: Poster.tileRadius,
+                        fill: AppColors.paper,
+                        lineWidth: Poster.hairline,
+                        offset: Poster.noShadow
+                    )
 
                 Text(sticker.title)
-                    .font(.headline)
+                    .font(.posterDisplay(16, weight: .bold))
+                    .foregroundStyle(AppColors.ink)
                     .lineLimit(1)
-                HStack {
-                    Label(sticker.kind.label, systemImage: sticker.kind.symbol)
-                    Spacer()
-                    if showsStatus && sticker.status == .draft { Text("Draft") }
+                HStack(spacing: 6) {
+                    Text(sticker.kind.label)
+                        .posterLabelStyle(9, color: AppColors.muted)
+                    Spacer(minLength: 0)
+                    if showsStatus && sticker.status == .draft {
+                        Text("Draft")
+                            .posterLabelStyle(9)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .posterCapsule(fill: AppColors.peach, lineWidth: 1, offset: Poster.noShadow)
+                    }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
         }
         // The animated thumbnail is a transparent UIKit-backed view. Without an explicit shape,
         // a plain navigation link can derive its tappable area from the text below and leave the
         // artwork out. Make the entire visible card one interaction surface.
-        .contentShape(.rect(cornerRadius: 24))
+        .contentShape(.rect(cornerRadius: Poster.cardRadius))
     }
 }
 
@@ -76,13 +92,10 @@ struct StickerThumbnail: View {
                 detail: detail
             )
         } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(AppColors.accentSoft.opacity(0.55).gradient)
-                Image(systemName: sticker.kind.symbol)
-                    .font(.system(size: 42, weight: .medium))
-                    .foregroundStyle(AppColors.accent)
-            }
+            // Nothing to show yet. A blob rather than a grey box: an empty tile in a wall of
+            // stickers should still look like it belongs to the same craft project.
+            StickerBlobIcon(icon: sticker.kind.icon, fill: AppColors.sky, tilt: -4)
+                .padding(10)
         }
     }
 }
@@ -119,7 +132,7 @@ struct VerifiedAssetImage: View {
             } else if let image {
                 Image(uiImage: image).resizable().scaledToFit()
             } else {
-                ProgressView()
+                ProgressView().tint(AppColors.coral)
             }
         }
         .task(id: assetID) {
