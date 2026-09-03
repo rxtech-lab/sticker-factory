@@ -1,20 +1,16 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createDatabase, type Database } from "@/lib/db/client";
-import { readMigrations } from "@/lib/db/migrations";
 
+/**
+ * A private Postgres for one test, held entirely in memory.
+ *
+ * PGlite is Postgres compiled to WebAssembly, so the CHECK constraints, the partial unique index,
+ * and the PL/pgSQL triggers in `drizzle/` are enforced by the same engine that enforces them on
+ * Neon — which is the point: a test that passes against a different engine proves less than it
+ * looks like it does. The migrations are drizzle's own, applied from the same journal and files
+ * `bun run db:migrate` uses, so a test database can never be a schema version ahead or behind.
+ */
 export async function createTestDatabase(): Promise<{ db: Database; close: () => Promise<void> }> {
-  const directory = await mkdtemp(join(tmpdir(), "sticker-factory-test-"));
-  const { client, db } = createDatabase(`file:${join(directory, "test.db")}`);
-  for (const migration of await readMigrations()) {
-    await client.executeMultiple(migration);
-  }
-  return {
-    db,
-    close: async () => {
-      client.close();
-      await rm(directory, { recursive: true, force: true });
-    },
-  };
+  const handle = await createDatabase("pglite:");
+  await handle.migrate();
+  return { db: handle.db, close: handle.close };
 }

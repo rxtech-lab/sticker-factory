@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, lte } from "drizzle-orm";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { idempotencyKeys } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 
@@ -69,7 +69,7 @@ export async function executeIdempotent<T>(
   }).onConflictDoNothing().returning({ key: idempotencyKeys.key });
 
   if (inserted.length === 0) {
-    const existing = await db.select().from(idempotencyKeys).where(identity).get();
+    const existing = await db.select().from(idempotencyKeys).where(identity).then(firstRow);
     if (!existing || existing.requestHash !== hash) {
       throw new ApiError(409, "IDEMPOTENCY_KEY_REUSED", "This key was already used with a different request");
     }

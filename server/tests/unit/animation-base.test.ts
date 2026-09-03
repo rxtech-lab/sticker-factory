@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { chatMessages, stickerRevisions, stickers, users } from "@/lib/db/schema";
 import { createCandidateRevision, createSticker, isValidAnimationBase } from "@/lib/services/stickers";
 import { createTestDatabase } from "@/tests/helpers/database";
@@ -70,8 +70,8 @@ describe("animation base", () => {
   }
 
   const load = async (stickerId: string, revisionId: string) => ({
-    sticker: (await db.select().from(stickers).where(eq(stickers.id, stickerId)).get())!,
-    revision: (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, revisionId)).get())!,
+    sticker: (await db.select().from(stickers).where(eq(stickers.id, stickerId)).then(firstRow))!,
+    revision: (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, revisionId)).then(firstRow))!,
   });
 
   const keep = async (stickerId: string, revisionId: string) => {

@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { assets, stickerRevisions, stickers, users } from "@/lib/db/schema";
 import { quickPublishSticker } from "@/lib/services/quick-publish";
 import { createCandidateRevision, createChatTurn, createSticker } from "@/lib/services/stickers";
@@ -117,12 +117,12 @@ describe("quick mode's server-rendered publish", () => {
     expect(result.status).toBe("published");
     expect(result.sourceRevisionId).toBe(revisionId);
 
-    const sticker = await db.select().from(stickers).where(eq(stickers.id, stickerId)).get();
+    const sticker = await db.select().from(stickers).where(eq(stickers.id, stickerId)).then(firstRow);
     expect(sticker?.status).toBe("published");
     expect(sticker?.activeRevisionId).toBe(result.revisionId);
 
     const published = await db.select().from(stickerRevisions)
-      .where(eq(stickerRevisions.id, result.revisionId)).get();
+      .where(eq(stickerRevisions.id, result.revisionId)).then(firstRow);
     expect(published?.pngAssetId).toBeTruthy();
     expect(published?.systemAssetId).toBeTruthy();
     expect(published?.attachmentMediumAssetId).toBeTruthy();
@@ -130,7 +130,7 @@ describe("quick mode's server-rendered publish", () => {
 
     // The rendition Messages actually carries, held to Apple's ceiling.
     const system = await db.select().from(assets)
-      .where(eq(assets.id, published!.systemAssetId!)).get();
+      .where(eq(assets.id, published!.systemAssetId!)).then(firstRow);
     expect(system?.kind).toBe("system");
     expect([300, 408, 618]).toContain(system?.width);
     expect(system?.byteSize).toBeLessThan(500_000);
@@ -169,18 +169,18 @@ describe("quick mode's server-rendered publish", () => {
     expect(result.status).toBe("published");
 
     const published = await db.select().from(stickerRevisions)
-      .where(eq(stickerRevisions.id, result.revisionId)).get();
+      .where(eq(stickerRevisions.id, result.revisionId)).then(firstRow);
     expect(published?.apngAssetId).toBeTruthy();
     // An animated publish never carries a static PNG relation; `bindExports` refuses one.
     expect(published?.pngAssetId).toBeNull();
 
-    const sharing = await db.select().from(assets).where(eq(assets.id, published!.apngAssetId!)).get();
+    const sharing = await db.select().from(assets).where(eq(assets.id, published!.apngAssetId!)).then(firstRow);
     expect(sharing?.kind).toBe("apng");
     // 8 fps across the fixture's 2 s cycle, and the 0.6 s loop hold rides on the last frame's delay.
     expect(sharing?.frameCount).toBe(16);
     expect(sharing?.durationSeconds).toBeCloseTo(2.6, 1);
 
-    const system = await db.select().from(assets).where(eq(assets.id, published!.systemAssetId!)).get();
+    const system = await db.select().from(assets).where(eq(assets.id, published!.systemAssetId!)).then(firstRow);
     expect(system?.frameCount).toBeGreaterThan(1);
     expect(system?.byteSize).toBeLessThan(500_000);
   });

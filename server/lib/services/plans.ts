@@ -9,7 +9,7 @@ import {
   type PlanState,
   type PlanV1,
 } from "@/lib/contracts/plan";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { assets, chatMessages, chatThreads, generationEvents, generationJobs, plans, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { isActiveJobConstraint } from "@/lib/services/stickers";
@@ -73,7 +73,7 @@ async function loadPlan(db: Database, ownerId: string, stickerId: string, planId
     eq(plans.id, planId),
     eq(plans.ownerId, ownerId),
     eq(plans.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (!row) throw new ApiError(404, "PLAN_NOT_FOUND", "Plan not found");
   return row;
 }
@@ -90,7 +90,7 @@ export async function stickerHasPlan(db: Database, ownerId: string, stickerId: s
   const row = await db.select({ id: plans.id }).from(plans).where(and(
     eq(plans.ownerId, ownerId),
     eq(plans.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   return Boolean(row);
 }
 
@@ -100,7 +100,7 @@ export async function currentDraftPlan(db: Database, ownerId: string, stickerId:
     eq(plans.ownerId, ownerId),
     eq(plans.stickerId, stickerId),
     eq(plans.state, "draft"),
-  )).orderBy(desc(plans.createdAt)).get();
+  )).orderBy(desc(plans.createdAt)).then(firstRow);
 }
 
 // --- agent-facing mutations ------------------------------------------------------------------
@@ -139,7 +139,7 @@ export async function createPlan(
       eq(plans.ownerId, input.ownerId),
       eq(plans.stickerId, input.stickerId),
       inArray(plans.state, ["draft", "finalized"]),
-    )).orderBy(desc(plans.createdAt)).get();
+    )).orderBy(desc(plans.createdAt)).then(firstRow);
 
     if (previous) {
       await tx.update(plans).set({ state: "superseded", updatedAt: now, decidedAt: now })
@@ -229,7 +229,7 @@ export async function confirmPlan(
   const sticker = await db.select().from(stickers).where(and(
     eq(stickers.id, stickerId),
     eq(stickers.ownerId, ownerId),
-  )).get();
+  )).then(firstRow);
   if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
   if (sticker.status === "deleting") throw new ApiError(409, "STICKER_DELETING", "Sticker deletion is in progress");
 
@@ -252,7 +252,7 @@ export async function confirmPlan(
         eq(assets.ownerId, ownerId),
         eq(assets.stickerId, stickerId),
         eq(assets.state, "ready"),
-      )).get()
+      )).then(firstRow)
       : undefined;
     if (!reference) {
       throw new ApiError(
@@ -306,7 +306,7 @@ export async function confirmPlan(
         throw new ApiError(409, "PLAN_NOT_ACTIONABLE", "This plan was already decided");
       }
       const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-        .where(eq(chatMessages.threadId, row.threadId)).get();
+        .where(eq(chatMessages.threadId, row.threadId)).then(firstRow);
       await tx.insert(chatMessages).values({
         id: messageId,
         threadId: row.threadId,
@@ -374,7 +374,7 @@ export async function cancelPlan(
   const sticker = await db.select().from(stickers).where(and(
     eq(stickers.id, stickerId),
     eq(stickers.ownerId, ownerId),
-  )).get();
+  )).then(firstRow);
   if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
   if (sticker.status === "deleting") throw new ApiError(409, "STICKER_DELETING", "Sticker deletion is in progress");
 
@@ -416,7 +416,7 @@ export async function cancelPlan(
         throw error;
       }
       const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-        .where(eq(chatMessages.threadId, row.threadId)).get();
+        .where(eq(chatMessages.threadId, row.threadId)).then(firstRow);
       await tx.insert(chatMessages).values({
         id: messageId,
         threadId: row.threadId,
@@ -461,7 +461,7 @@ export async function latestPlanConcept(db: Database, ownerId: string, stickerId
     eq(plans.ownerId, ownerId),
     eq(plans.stickerId, stickerId),
     isNotNull(plans.conceptAssetId),
-  )).orderBy(desc(plans.updatedAt)).limit(1).get();
+  )).orderBy(desc(plans.updatedAt)).limit(1).then(firstRow);
 }
 
 /** Plans the user turned down, newest first, for feeding back into the next planning turn. */

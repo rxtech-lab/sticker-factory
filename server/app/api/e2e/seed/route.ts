@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { and, eq } from "drizzle-orm";
 import { start } from "workflow/api";
-import { getDatabase } from "@/lib/db/client";
+import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import { assets, creatorProfiles, stickerPacks, stickerRevisions, stickers, users } from "@/lib/db/schema";
 import { createPack } from "@/lib/services/packs";
 import { bindExports, acceptRevision, createChatTurn, createSticker } from "@/lib/services/stickers";
@@ -20,13 +20,13 @@ async function runGeneration(jobId: string): Promise<void> {
  * installer — the marketplace's interesting paths (install, creator byline, borrowed artwork)
  * all need a second owner to exist.
  */
-async function seedMarketplace(db: ReturnType<typeof getDatabase>, installerId: string) {
+async function seedMarketplace(db: Database, installerId: string) {
   const creatorId = `${installerId}-creator`;
   const existing = await db.select({ slug: stickerPacks.slug, creatorId: stickerPacks.creatorId })
-    .from(stickerPacks).where(eq(stickerPacks.creatorId, creatorId)).get();
+    .from(stickerPacks).where(eq(stickerPacks.creatorId, creatorId)).then(firstRow);
   if (existing) {
     const profile = await db.select({ handle: creatorProfiles.handle }).from(creatorProfiles)
-      .where(eq(creatorProfiles.userId, creatorId)).get();
+      .where(eq(creatorProfiles.userId, creatorId)).then(firstRow);
     return { packSlug: existing.slug, creatorHandle: profile?.handle ?? "" };
   }
 
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     return new Response(null, { status: 404 });
   }
   const ownerId = process.env.STICKER_FACTORY_E2E_USER_ID!;
-  const db = getDatabase();
+  const db = await getDatabase();
   await db.insert(users).values({
     id: ownerId,
     email: "playwright@example.test",
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
   const existing = await db.select({ id: stickers.id }).from(stickers).where(and(
     eq(stickers.ownerId, ownerId),
     eq(stickers.title, "Playwright Cloud"),
-  )).get();
+  )).then(firstRow);
   if (existing) return Response.json({ staticStickerId: existing.id, ...marketplace });
 
   const created = await createSticker(db, ownerId, {
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
   await runGeneration(secondTurn.jobId);
   await acceptRevision(db, ownerId, created.stickerId, secondTurn.jobId);
 
-  const master = await db.select().from(assets).where(eq(assets.id, secondTurn.jobId)).get();
+  const master = await db.select().from(assets).where(eq(assets.id, secondTurn.jobId)).then(firstRow);
   if (!master) throw new Error("E2E master asset was not generated");
   const store = getObjectStore();
   const masterObject = await store.get(master.r2Key);

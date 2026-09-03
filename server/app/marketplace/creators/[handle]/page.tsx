@@ -26,7 +26,7 @@ export default async function CreatorPage({
   const query = await searchParams;
   const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
 
-  const db = getDatabase();
+  const db = await getDatabase();
   let result;
   try {
     result = await listPacksByCreator(db, ownerId, handle, { cursor, limit: 24 });

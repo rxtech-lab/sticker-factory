@@ -7,6 +7,7 @@ import { executeIdempotent, requireIdempotencyKey } from "@/lib/services/idempot
 import { createExportJob } from "@/lib/services/stickers";
 import { startQuickPublishWorkflow } from "@/lib/services/workflows";
 import { quickPublishCreditCost } from "@/lib/subscription/pricing";
+import { firstRow } from "@/lib/db/client";
 
 /**
  * Quick mode's publish: accept the outstanding candidate, render its exports on the server, bind
@@ -37,14 +38,14 @@ export async function POST(request: Request, context: Context) {
       // price. Read the candidate first and the active revision second: the candidate is what the
       // publish will accept and draw.
       const sticker = await db.select().from(stickers)
-        .where(and(eq(stickers.id, id), eq(stickers.ownerId, principal.sub))).get();
+        .where(and(eq(stickers.id, id), eq(stickers.ownerId, principal.sub))).then(firstRow);
       if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
       const candidate = await db.select().from(stickerRevisions).where(and(
         eq(stickerRevisions.stickerId, id),
         eq(stickerRevisions.candidateState, "candidate"),
-      )).orderBy(desc(stickerRevisions.createdAt)).get();
+      )).orderBy(desc(stickerRevisions.createdAt)).then(firstRow);
       const target = candidate ?? (sticker.activeRevisionId
-        ? await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, sticker.activeRevisionId)).get()
+        ? await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, sticker.activeRevisionId)).then(firstRow)
         : undefined);
       if (!target) throw new ApiError(409, "NO_REVISION_TO_PUBLISH", "This sticker has nothing to publish yet");
 

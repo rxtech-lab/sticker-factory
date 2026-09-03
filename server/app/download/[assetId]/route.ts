@@ -8,6 +8,6 @@ export async function GET(request: Request, context: Context) {
   const ownerId = session?.user?.id;
   if (!ownerId) return Response.redirect(new URL("/login", request.url));
   const { assetId } = await context.params;
-  const download = await createAssetDownload(getDatabase(), ownerId, assetId);
+  const download = await createAssetDownload(await getDatabase(), ownerId, assetId);
   return Response.redirect(download.url, 307);
 }

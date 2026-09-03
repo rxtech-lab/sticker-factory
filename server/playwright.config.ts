@@ -2,7 +2,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
 
-const databaseUrl = `file:${join(tmpdir(), "sticker-factory-playwright.db")}`;
+// A PGlite data directory rather than a server: real Postgres, no daemon to install or start, and
+// `prepare-e2e` wipes it before every run. It is opened by `next dev`, so nothing else may hold it.
+const databaseUrl = `pglite:${join(tmpdir(), "sticker-factory-playwright")}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -21,7 +23,7 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       ...process.env,
-      TURSO_DATABASE_URL: databaseUrl,
+      DATABASE_URL: databaseUrl,
       STICKER_FACTORY_E2E: "true",
       STICKER_FACTORY_E2E_USER_ID: "playwright-user",
       STICKER_FACTORY_E2E_KEY: "local-playwright-seed",

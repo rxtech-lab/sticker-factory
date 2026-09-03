@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { generationEvents, generationJobs, stickers, users } from "@/lib/db/schema";
 import { createCleanupJob, createSticker } from "@/lib/services/stickers";
 import { startCleanupWorkflow } from "@/lib/services/workflows";
@@ -27,8 +27,8 @@ describe("workflow dispatch recovery", () => {
     const jobId = await createCleanupJob(db, "owner-a", sticker.stickerId);
     startMock.mockRejectedValueOnce(new Error("workflow unavailable"));
     await expect(startCleanupWorkflow(db, jobId)).rejects.toThrow(/unavailable/);
-    expect(await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get()).toMatchObject({ status: "draft", deletedAt: null });
-    expect(await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get()).toMatchObject({ state: "failed", errorCode: "WORKFLOW_DISPATCH_FAILED" });
+    expect(await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow)).toMatchObject({ status: "draft", deletedAt: null });
+    expect(await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow)).toMatchObject({ state: "failed", errorCode: "WORKFLOW_DISPATCH_FAILED" });
     expect((await db.select().from(generationEvents).where(eq(generationEvents.jobId, jobId))).at(-1)?.type).toBe("failed");
     await expect(createCleanupJob(db, "owner-a", sticker.stickerId)).resolves.toEqual(expect.any(String));
   });

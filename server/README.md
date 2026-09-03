@@ -7,7 +7,7 @@ Next.js 16 backend and read-only web library for Sticker Factory. The iOS app cr
 - `app/api/v1`: bearer-authenticated iOS and Messages APIs. Ownership always comes from the verified OAuth `sub` claim.
 - `app/library`: authenticated web Library, private previews/downloads, parent-based revision comparison, read-only chat, and durable deletion.
 - `lib/contracts`: strict Zod `StickerDocumentV1`, operation, event, and API envelopes shared through `fixtures/`.
-- `lib/db` and `drizzle/0001_sticker_factory.sql`: Drizzle/libSQL model, active-job constraints, asset deletion guards, and immutable revision triggers.
+- `lib/db` and `drizzle/`: Drizzle/Postgres model on Neon, active-job constraints, asset deletion guards, and immutable revision triggers. `drizzle/sqlite-legacy/` is the pre-migration libSQL history, kept for reference and never applied.
 - `workflows/sticker-generation`: Vercel Workflow generation, editing, validated animation snapshots, export publication, decision transitions, and delayed R2 deletion sweeps.
 - `lib/ai`: Vercel AI Gateway adapter (`AI_IMAGE_MODEL` for every image generation/edit,
   `AI_QUICK_IMAGE_MODEL` for turns the Messages extension's quick mode starts, and
@@ -16,7 +16,7 @@ Next.js 16 backend and read-only web library for Sticker Factory. The iOS app cr
   pure green or blue backdrop that `lib/ai/chroma-key.ts` cuts back out.
 - `lib/storage`: private R2 S3-compatible storage, signed URLs, checksum/media/transparency verification, and bounded image decoding.
 
-OAuth access tokens are verified against RxLab JWKS and are never forwarded to Vercel AI Gateway. Turso transcripts/revisions and private R2 assets are the recoverable AI context; provider conversation state is not the source of truth.
+OAuth access tokens are verified against RxLab JWKS and are never forwarded to Vercel AI Gateway. Postgres transcripts/revisions and private R2 assets are the recoverable AI context; provider conversation state is not the source of truth.
 
 ## Local setup
 
@@ -29,14 +29,14 @@ bun run db:migrate
 bun run dev
 ```
 
-For a local AI-free environment, set `STICKER_FACTORY_MOCK_SERVICES=true`; jobs still run through the local Vercel Workflow runtime. Never enable mock services in production. Missing OAuth, AI, Turso, or R2 secrets do not prevent a production build; the corresponding runtime operation returns a configuration error.
+For a local AI-free environment, set `STICKER_FACTORY_MOCK_SERVICES=true`; jobs still run through the local Vercel Workflow runtime. Never enable mock services in production. Missing OAuth, AI, database, or R2 secrets do not prevent a production build; the corresponding runtime operation returns a configuration error.
 
 Production needs separate RxLab OAuth clients:
 
 - confidential web client for `@rxtech-lab/authjs-rxlab@1.6.1`, including the registered Auth.js callback;
 - public iOS PKCE client `client_1ce3e6efd6da4214a61df67949a71622`, configured as `IOS_OAUTH_CLIENT_ID` (no client secret), plus any staged clients in `RXLAB_ALLOWED_CLIENT_IDS`.
 
-Configure Turso, a private R2 bucket, Vercel AI Gateway (API key or Vercel OIDC), and Vercel Workflow. Apply the SQL migration before serving traffic.
+Configure a Neon Postgres database (`DATABASE_URL`, the pooled connection string), a private R2 bucket, Vercel AI Gateway (API key or Vercel OIDC), and Vercel Workflow. Run `bun run db:migrate` before serving traffic.
 
 ## API v1
 
@@ -89,7 +89,7 @@ ships inside the app binary and can be newer than the server.
 - Publishing a pack is what makes its members' `system`/`preview` artwork readable by other users — `getReadableAsset` in `lib/services/assets.ts` is the only place that widens ownership, and it authorizes by publication, not by install, so browse can render art to people who have not installed. A borrowed download never echoes the creator's `originalFilename`.
 - Self-install is refused: the creator's stickers already appear under "My Stickers".
 - A pack slug is immutable once published, so a shared link survives a rename.
-- `install_count`/`item_count` are trigger-maintained. SQLite skips row triggers for FK-cascade deletes, so `bun run db:packs:recount` reconciles them.
+- `install_count`/`item_count` are trigger-maintained. Postgres fires row triggers for FK-cascade deletes, so these stay correct on their own; `bun run db:packs:recount` remains as a reconciliation backstop.
 
 ## Push notifications
 
@@ -160,7 +160,7 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
 - Static publication requires a rendered transparent PNG and a `<500,000` byte system rendition.
 - Animated publication verifies real GIF/MP4/system timing against the accepted cycle, including doubled `pingPong` duration.
 - Masks must match the target image format/dimensions and contain both transparent and painted alpha pixels.
-- Deletion marks a tombstone, blocks new asset binding, deletes known objects, waits past signed-PUT expiry, sweeps again, then cascades Turso rows.
+- Deletion marks a tombstone, blocks new asset binding, deletes known objects, waits past signed-PUT expiry, sweeps again, then cascades Postgres rows.
 
 Personal photos, masks, transcripts, sources, and immutable revisions remain private until project deletion. Web and iOS upload UI must show this disclosure before personal-photo upload.
 
@@ -174,6 +174,6 @@ bun run test:e2e
 bun run build
 ```
 
-Vitest covers contracts, bearer claims, refresh failure, services, revisions, idempotency, storage verification, SSE, and Workflow snapshots. Playwright uses a guarded temporary libSQL database and mock-auth/service harness; its seed endpoint is unavailable in production.
+Vitest covers contracts, bearer claims, refresh failure, services, revisions, idempotency, storage verification, SSE, and Workflow snapshots. Playwright uses a guarded temporary PGlite database — Postgres compiled to WebAssembly, so the triggers and constraints are the real ones — and a mock-auth/service harness; its seed endpoint is unavailable in production.
 
-Real OAuth, Turso/R2, AI Gateway, Workflow observation, and Messages/iOS device behavior remain staging/device checks because they require provisioned external credentials and Apple capabilities.
+Real OAuth, Neon/R2, AI Gateway, Workflow observation, and Messages/iOS device behavior remain staging/device checks because they require provisioned external credentials and Apple capabilities.

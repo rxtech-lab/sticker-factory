@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlanV1Schema, type PlanV1 } from "@/lib/contracts/plan";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { chatMessages, generationJobs, plans, users } from "@/lib/db/schema";
 import {
   cancelPlan,
@@ -77,7 +77,7 @@ describe("plan service", () => {
     const created = await create(plan("First"));
     expect(created.revision).toBe(1);
     expect(created.supersededPlanId).toBeNull();
-    const row = await db.select().from(plans).where(eq(plans.id, created.planId)).get();
+    const row = await db.select().from(plans).where(eq(plans.id, created.planId)).then(firstRow);
     expect(row?.state).toBe("draft");
   });
 
@@ -87,7 +87,7 @@ describe("plan service", () => {
     const third = await updatePlan(db, { ownerId: "owner-a", stickerId, planId: created.planId, plan: plan("Third", 3) });
     expect([second.revision, third.revision]).toEqual([2, 3]);
     expect(third.planId).toBe(created.planId);
-    const row = await db.select().from(plans).where(eq(plans.id, created.planId)).get();
+    const row = await db.select().from(plans).where(eq(plans.id, created.planId)).then(firstRow);
     expect(row?.planJson.title).toBe("Third");
     expect(row?.planJson.layers).toHaveLength(3);
   });
@@ -151,9 +151,9 @@ describe("plan service", () => {
     // The reason is not just filed away: it becomes the user's next message and starts a planning
     // turn, so the agent answers a rejection with a better plan instead of nothing at all.
     expect(cancelled.jobId).toBeTruthy();
-    const job = await db.select().from(generationJobs).where(eq(generationJobs.id, cancelled.jobId!)).get();
+    const job = await db.select().from(generationJobs).where(eq(generationJobs.id, cancelled.jobId!)).then(firstRow);
     expect(job).toMatchObject({ kind: "plan", state: "queued", sourceMessageId: cancelled.messageId });
-    const message = await db.select().from(chatMessages).where(eq(chatMessages.id, cancelled.messageId!)).get();
+    const message = await db.select().from(chatMessages).where(eq(chatMessages.id, cancelled.messageId!)).then(firstRow);
     expect(message).toMatchObject({ role: "user", content: "The letters overlap", status: "streaming" });
   });
 
@@ -173,7 +173,7 @@ describe("plan service", () => {
     await expect(cancelPlan(db, "owner-a", stickerId, created.planId, "Too cramped"))
       .rejects.toMatchObject({ code: "AI_TURN_IN_PROGRESS" });
     // And the plan is untouched, so the user can try again rather than losing the card.
-    expect((await db.select().from(plans).where(eq(plans.id, created.planId)).get())?.state).toBe("finalized");
+    expect((await db.select().from(plans).where(eq(plans.id, created.planId)).then(firstRow))?.state).toBe("finalized");
   });
 
   it("cannot cancel a plan that is still a draft", async () => {
@@ -186,7 +186,7 @@ describe("plan service", () => {
     const created = await create(plan("First"));
     await updatePlan(db, { ownerId: "owner-a", stickerId, planId: created.planId, plan: plan("Second") });
     await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: created.planId });
-    const row = (await db.select().from(plans).where(eq(plans.id, created.planId)).get())!;
+    const row = (await db.select().from(plans).where(eq(plans.id, created.planId)).then(firstRow))!;
 
     expect(serializePlan(row, { atRevision: 2 }).actionable).toBe(true);
     // A card posted when the draft was at revision 1 must not offer a live Generate button.
@@ -202,7 +202,7 @@ describe("plan service", () => {
       ],
     });
     const created = await create(mixed);
-    const row = (await db.select().from(plans).where(eq(plans.id, created.planId)).get())!;
+    const row = (await db.select().from(plans).where(eq(plans.id, created.planId)).then(firstRow))!;
     expect(serializePlan(row).generationCount).toBe(1);
   });
 
@@ -213,7 +213,7 @@ describe("plan service", () => {
 
     await expect(confirmPlan(db, "owner-a", stickerId, created.planId))
       .rejects.toMatchObject({ code: "PLAN_REFERENCE_REQUIRED" });
-    expect((await db.select().from(plans).where(eq(plans.id, created.planId)).get())?.state)
+    expect((await db.select().from(plans).where(eq(plans.id, created.planId)).then(firstRow))?.state)
       .toBe("finalized");
   });
 

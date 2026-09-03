@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { ATTACHMENT_RENDITION_DIMENSIONS, type CreateUploadRequest } from "@/lib/contracts/api";
 import { MAX_RENDITION_SECONDS, SHARING_APNG_DIMENSIONS, type StickerDocument } from "@/lib/contracts/sticker";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { previewAssetIdSql } from "@/lib/db/columns";
 import { assets, stickerPackItems, stickerPacks, stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
@@ -103,11 +103,11 @@ export async function ensureAtlasPoster(
   const posterId = derivedAssetId(atlas.assetId, "poster");
   try {
     const existing = await db.select({ id: assets.id, state: assets.state }).from(assets)
-      .where(and(eq(assets.id, posterId), eq(assets.ownerId, ownerId))).get();
+      .where(and(eq(assets.id, posterId), eq(assets.ownerId, ownerId))).then(firstRow);
     if (existing?.state === "ready") return posterId;
 
     const source = await db.select().from(assets)
-      .where(and(eq(assets.id, atlas.assetId), eq(assets.ownerId, ownerId), eq(assets.state, "ready"))).get();
+      .where(and(eq(assets.id, atlas.assetId), eq(assets.ownerId, ownerId), eq(assets.state, "ready"))).then(firstRow);
     if (!source?.width || !source.height) return undefined;
     const object = await getObjectStore().get(source.r2Key);
     // Integer division on the pixel dimensions, matching how the renderer slices tiles, so the
@@ -154,7 +154,7 @@ export async function ensureAtlasPoster(
 async function assertOwnedSticker(db: Database, ownerId: string, stickerId?: string): Promise<void> {
   if (!stickerId) return;
   const sticker = await db.select({ id: stickers.id, deletedAt: stickers.deletedAt }).from(stickers)
-    .where(and(eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId))).get();
+    .where(and(eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId))).then(firstRow);
   if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
 }
 
@@ -305,7 +305,7 @@ export function validateImageForKind(
 
 export async function completeUpload(db: Database, ownerId: string, assetId: string, expectedSha256?: string) {
   const asset = await db.select().from(assets)
-    .where(and(eq(assets.id, assetId), eq(assets.ownerId, ownerId))).get();
+    .where(and(eq(assets.id, assetId), eq(assets.ownerId, ownerId))).then(firstRow);
   if (!asset) throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
   if (asset.state === "ready") return serializeAsset(asset);
   if (asset.state !== "pending") throw new ApiError(409, "ASSET_NOT_PENDING", "The asset cannot be completed");
@@ -375,7 +375,7 @@ export async function completeUpload(db: Database, ownerId: string, assetId: str
 
 export async function getOwnedAsset(db: Database, ownerId: string, assetId: string) {
   const asset = await db.select().from(assets)
-    .where(and(eq(assets.id, assetId), eq(assets.ownerId, ownerId))).get();
+    .where(and(eq(assets.id, assetId), eq(assets.ownerId, ownerId))).then(firstRow);
   if (!asset || asset.state === "deleted") throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
   return asset;
 }
@@ -447,7 +447,7 @@ async function isPackPublishedAsset(db: Database, asset: typeof assets.$inferSel
       ),
     ))
     .limit(1)
-    .get();
+    .then(firstRow);
   return match !== undefined;
 }
 
@@ -464,7 +464,7 @@ export async function getReadableAsset(
   requesterId: string,
   assetId: string,
 ): Promise<{ asset: typeof assets.$inferSelect; audience: AssetAudience }> {
-  const asset = await db.select().from(assets).where(eq(assets.id, assetId)).get();
+  const asset = await db.select().from(assets).where(eq(assets.id, assetId)).then(firstRow);
   if (!asset || asset.state === "deleted") throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
   if (asset.ownerId === requesterId) return { asset, audience: "owner" };
   if (await isPackPublishedAsset(db, asset)) return { asset, audience: "pack-member" };

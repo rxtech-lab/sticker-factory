@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getRun, start } from "workflow/api";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { chatMessages, generationEvents, generationJobs, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { refundJobCredits } from "@/lib/subscription/credits";
@@ -21,7 +21,7 @@ async function recordRun(db: Database, jobId: string, runId: string) {
 
 async function recordDispatchFailure(db: Database, jobId: string): Promise<void> {
   const failed = await db.transaction(async (tx) => {
-    const job = await tx.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+    const job = await tx.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
     if (!job || job.state === "failed") return null;
     const now = new Date();
     await tx.update(generationJobs).set({
@@ -53,7 +53,7 @@ async function recordDispatchFailure(db: Database, jobId: string): Promise<void>
 async function recordCleanupDispatchFailure(db: Database, jobId: string): Promise<void> {
   const now = new Date();
   await db.transaction(async (tx) => {
-    const job = await tx.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+    const job = await tx.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
     if (!job) return;
     await tx.update(generationJobs).set({
       state: "failed",
@@ -106,7 +106,7 @@ export async function cancelGenerationWorkflow(db: Database, ownerId: string, jo
   const job = await db.select().from(generationJobs).where(and(
     eq(generationJobs.id, jobId),
     eq(generationJobs.ownerId, ownerId),
-  )).get();
+  )).then(firstRow);
   if (!job) throw new ApiError(404, "JOB_NOT_FOUND", "Generation job not found");
   // `compose` belongs here as much as any of the others: building a confirmed plan is the longest
   // turn the app runs, so it is the one a user is most likely to want to stop.
@@ -169,7 +169,7 @@ export async function cancelGenerationWorkflow(db: Database, ownerId: string, jo
   }
   const finalState = cancelled
     ? "cancelled" as const
-    : (await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, jobId)).get())?.state ?? job.state;
+    : (await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow))?.state ?? job.state;
   return { jobId, state: finalState };
 }
 

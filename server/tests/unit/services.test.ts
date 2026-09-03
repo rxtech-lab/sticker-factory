@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import stickerDocumentFixture from "@/fixtures/sticker-document-v1.json";
 import { SHARING_APNG_DIMENSIONS, StickerDocumentSchema } from "@/lib/contracts/sticker";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import {
   assets,
   chatMessages,
@@ -25,6 +25,7 @@ import {
   createSticker,
   getSticker,
   importSticker,
+  isActiveJobConstraint,
   listChatMessages,
   retryFailedChatTurn,
   revertRevision,
@@ -174,7 +175,7 @@ describe("Sticker Factory services", () => {
       imagePlacement: "replace",
       quick: true,
     });
-    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, quick.jobId)).get())?.quick).toBe(true);
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, quick.jobId)).then(firstRow))?.quick).toBe(true);
 
     // A retry is the same turn asked again, so it has to reach the same image model. Nothing on the
     // retry request says which surface started it — the extension's Retry button and the app's are
@@ -182,7 +183,7 @@ describe("Sticker Factory services", () => {
     await db.update(generationJobs).set({ state: "failed", completedAt: new Date() }).where(eq(generationJobs.id, quick.jobId));
     await db.update(chatMessages).set({ status: "failed" }).where(eq(chatMessages.id, quick.messageId));
     const retry = await retryFailedChatTurn(db, "owner-a", sticker.stickerId, quick.messageId);
-    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, retry.jobId)).get())?.quick).toBe(true);
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, retry.jobId)).then(firstRow))?.quick).toBe(true);
     await db.update(generationJobs).set({ state: "succeeded", completedAt: new Date() }).where(eq(generationJobs.id, retry.jobId));
 
     // Every other client omits the flag, and an omission is the slow, transparent model.
@@ -192,7 +193,7 @@ describe("Sticker Factory services", () => {
       attachments: [],
       imagePlacement: "replace",
     });
-    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, ordinary.jobId)).get())?.quick).toBe(false);
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, ordinary.jobId)).then(firstRow))?.quick).toBe(false);
   });
 
   it("keeps revision core immutable while accept and revert create durable history", async () => {
@@ -305,7 +306,7 @@ describe("Sticker Factory services", () => {
 
     const ambiguous = { ownerId: "owner-a", operation: "ambiguous", key: "ambiguous-key", request: { value: 2 } };
     await expect(executeIdempotent(db, ambiguous, async () => { throw new Error("connection lost after dispatch"); })).rejects.toThrow(/connection lost/);
-    expect((await db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, ambiguous.key)).get())?.responseStatus).toBeNull();
+    expect((await db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, ambiguous.key)).then(firstRow))?.responseStatus).toBeNull();
     await expect(executeIdempotent(db, ambiguous, async () => ({ status: 200, body: { ok: true } })))
       .rejects.toMatchObject({ code: "REQUEST_IN_PROGRESS" });
     await db.update(idempotencyKeys).set({ expiresAt: new Date(Date.now() - 1) }).where(eq(idempotencyKeys.key, ambiguous.key));
@@ -323,11 +324,11 @@ describe("Sticker Factory services", () => {
     });
 
     await expect(cancelGenerationWorkflow(db, "owner-a", turn.jobId)).resolves.toEqual({ jobId: turn.jobId, state: "cancelled" });
-    expect(await db.select().from(generationJobs).where(eq(generationJobs.id, turn.jobId)).get()).toMatchObject({
+    expect(await db.select().from(generationJobs).where(eq(generationJobs.id, turn.jobId)).then(firstRow)).toMatchObject({
       state: "cancelled",
       errorCode: "USER_CANCELLED",
     });
-    expect(await db.select().from(chatMessages).where(eq(chatMessages.id, turn.messageId)).get()).toMatchObject({ status: "complete" });
+    expect(await db.select().from(chatMessages).where(eq(chatMessages.id, turn.messageId)).then(firstRow)).toMatchObject({ status: "complete" });
     const terminal = (await listGenerationEvents(db, "owner-a", turn.jobId)).events.at(-1);
     expect(terminal).toMatchObject({ type: "completed", dataJson: { cancelled: true, message: "Stopped" } });
     await expect(createChatTurn(db, "owner-a", sticker.stickerId, {
@@ -348,7 +349,7 @@ describe("Sticker Factory services", () => {
       byteSize: png.byteLength,
       filename: "system.png",
     });
-    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(row!.r2Key, { bytes: png, contentType: "image/png" });
     const completed = await completeUpload(db, "owner-a", row!.id);
     expect(completed).toMatchObject({ state: "ready", width: 408, height: 408, hasAlpha: true });
@@ -368,7 +369,7 @@ describe("Sticker Factory services", () => {
       byteSize: png.byteLength,
       filename: "late.png",
     });
-    const pending = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const pending = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(pending!.r2Key, { bytes: png, contentType: "image/png" });
     await createCleanupJob(db, "owner-a", sticker.stickerId);
     await expect(completeUpload(db, "owner-a", pending!.id)).rejects.toMatchObject({ code: "STICKER_NOT_FOUND" });
@@ -389,7 +390,7 @@ describe("Sticker Factory services", () => {
     setObjectStoreForTests(store);
     const png = await sharp({ create: { width: 300, height: 300, channels: 4, background: { r: 10, g: 20, b: 30, alpha: 1 } } }).png().toBuffer();
     const created = await createUpload(db, "owner-a", { kind: "system", mimeType: "image/png", byteSize: png.byteLength, filename: "opaque.png" });
-    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(row!.r2Key, { bytes: png, contentType: "image/png" });
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "SYSTEM_STICKER_REQUIRES_TRANSPARENCY" });
   });
@@ -399,7 +400,7 @@ describe("Sticker Factory services", () => {
     setObjectStoreForTests(store);
     const png = await sharp({ create: { width: 320, height: 320, channels: 4, background: { r: 10, g: 20, b: 30, alpha: 0.5 } } }).png().toBuffer();
     const created = await createUpload(db, "owner-a", { kind: "system", mimeType: "image/png", byteSize: png.byteLength, filename: "wrong-size.png" });
-    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(row!.r2Key, { bytes: png, contentType: "image/png" });
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_SYSTEM_STICKER_SIZE" });
   });
@@ -420,7 +421,7 @@ describe("Sticker Factory services", () => {
       byteSize: apng.byteLength,
       filename: "sharing-512.png",
     });
-    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(row!.r2Key, { bytes: apng, contentType: "image/png" });
     expect(await completeUpload(db, "owner-a", row!.id))
       .toMatchObject({ state: "ready", width: 512, height: 512, frameCount: 4 });
@@ -437,7 +438,7 @@ describe("Sticker Factory services", () => {
       byteSize: apng.byteLength,
       filename: "sharing-640.png",
     });
-    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(row!.r2Key, { bytes: apng, contentType: "image/png" });
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_APNG_EXPORT" });
   });
@@ -458,7 +459,7 @@ describe("Sticker Factory services", () => {
       byteSize: still.byteLength,
       filename: "sharing-still.png",
     });
-    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(row!.r2Key, { bytes: still, contentType: "image/png" });
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_APNG_EXPORT" });
   });
@@ -482,7 +483,7 @@ describe("Sticker Factory services", () => {
         byteSize: bytes.byteLength,
         filename: `attachment-${dimension}.png`,
       });
-      const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+      const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
       await store.put(row!.r2Key, { bytes, contentType: "image/png" });
       expect(await completeUpload(db, "owner-a", row!.id))
         .toMatchObject({ state: "ready", width: dimension, height: dimension });
@@ -504,7 +505,7 @@ describe("Sticker Factory services", () => {
       byteSize: apng.byteLength,
       filename: "attachment-618.png",
     });
-    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(row!.r2Key, { bytes: apng, contentType: "image/png" });
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_ATTACHMENT_EXPORT" });
   });
@@ -514,7 +515,7 @@ describe("Sticker Factory services", () => {
     setObjectStoreForTests(store);
     const png = await sharp({ create: { width: 256, height: 256, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
     const created = await createUpload(db, "owner-a", { kind: "mask", mimeType: "image/png", byteSize: png.byteLength, filename: "empty-mask.png" });
-    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
     await store.put(row!.r2Key, { bytes: png, contentType: "image/png" });
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "MASK_REQUIRES_ALPHA" });
   });
@@ -587,12 +588,12 @@ describe("Sticker Factory services", () => {
     const publishedRevisionId = crypto.randomUUID();
     const published = await bindExports(db, "owner-a", sticker.stickerId, publishRequest, publishedRevisionId);
     expect(published.status).toBe("published");
-    const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).get();
+    const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).then(firstRow);
     expect(publishedRevision?.mp4AssetId).toBeNull();
     expect(publishedRevision?.apngAssetId).toBe(renditionIds.apng);
     expect(publishedRevision?.attachmentMediumAssetId).toBe(renditionIds.medium);
     expect(publishedRevision?.attachmentSmallAssetId).toBe(renditionIds.small);
-    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.status).toBe("published");
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.status).toBe("published");
   });
 
   /**
@@ -631,7 +632,7 @@ describe("Sticker Factory services", () => {
       systemAssetId: ids.system,
       mp4Background: { type: "solid" as const, color: "#FFFFFF" },
     }, publishedRevisionId);
-    const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).get();
+    const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).then(firstRow);
     expect(publishedRevision?.attachmentMediumAssetId).toBeNull();
     expect(publishedRevision?.attachmentSmallAssetId).toBeNull();
   });
@@ -680,11 +681,11 @@ describe("Sticker Factory services", () => {
       }, "11111111-1111-4111-8111-111111111111");
 
       expect(result).toMatchObject({ candidateState: "accepted", parentRevisionId: parentId });
-      const row = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, result.revisionId)).get();
+      const row = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, result.revisionId)).then(firstRow);
       expect(row?.candidateState).toBe("accepted");
       expect(row?.decidedAt).toBeTruthy();
       expect((row?.documentJson as typeof document).layers[0].name).toBe("Edited Dot");
-      const sticker = await db.select().from(stickers).where(eq(stickers.id, stickerId)).get();
+      const sticker = await db.select().from(stickers).where(eq(stickers.id, stickerId)).then(firstRow);
       expect(sticker?.activeRevisionId).toBe(result.revisionId);
     });
 
@@ -693,9 +694,9 @@ describe("Sticker Factory services", () => {
       const result = await saveEditedRevision(db, "owner-a", stickerId, {
         parentRevisionId: parentId, document, note: "Nudged the dot",
       });
-      const row = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, result.revisionId)).get();
+      const row = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, result.revisionId)).then(firstRow);
       expect(row?.sourceMessageId).toBeTruthy();
-      const message = await db.select().from(chatMessages).where(eq(chatMessages.id, row!.sourceMessageId!)).get();
+      const message = await db.select().from(chatMessages).where(eq(chatMessages.id, row!.sourceMessageId!)).then(firstRow);
       expect(message).toMatchObject({ role: "user", kind: "device_edit", content: "Nudged the dot", revisionId: result.revisionId });
     });
 
@@ -722,7 +723,7 @@ describe("Sticker Factory services", () => {
       });
 
       await saveEditedRevision(db, "owner-a", stickerId, { parentRevisionId: parentId, document });
-      const candidate = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, candidateId)).get();
+      const candidate = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, candidateId)).then(firstRow);
       expect(candidate?.candidateState).toBe("superseded");
     });
 
@@ -779,6 +780,35 @@ describe("Sticker Factory services", () => {
       await expect(saveEditedRevision(db, "owner-b", stickerId, { parentRevisionId: parentId, document }))
         .rejects.toMatchObject({ code: "STICKER_NOT_FOUND" });
     });
+  });
+
+  /**
+   * `isActiveJobConstraint` turns one specific database error into a 409 in five call sites, and it
+   * recognises it by the index's name appearing in the message. That name is the driver's wording,
+   * not ours — libSQL wrote "UNIQUE constraint failed: generation_jobs.sticker_id" and Postgres
+   * writes the constraint name, wrapped a layer deep inside drizzle's own error. Nothing else here
+   * would notice if a driver change turned every duplicate-job request into a 500.
+   */
+  it("recognises the active-job index firing through the driver's own error", async () => {
+    const now = new Date();
+    await db.insert(users).values({ id: "job-owner", createdAt: now, updatedAt: now });
+    await db.insert(stickers).values({
+      id: "job-sticker", ownerId: "job-owner", title: "Busy", kind: "static", createdAt: now, updatedAt: now,
+    });
+    const job = (id: string) => ({
+      id, ownerId: "job-owner", stickerId: "job-sticker", kind: "image" as const,
+      state: "queued" as const, createdAt: now, updatedAt: now,
+    });
+    await db.insert(generationJobs).values(job("job-first"));
+
+    const conflict = await db.insert(generationJobs).values(job("job-second")).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(conflict).toBeDefined();
+    expect(isActiveJobConstraint(conflict)).toBe(true);
+    // An unrelated failure must not be read as a queue conflict and answered with a 409.
+    expect(isActiveJobConstraint(new Error("connection terminated unexpectedly"))).toBe(false);
   });
 
 });

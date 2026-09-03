@@ -26,7 +26,7 @@ import {
   type StickerOperationV1,
 } from "@/lib/contracts/sticker";
 import { DEFAULT_ANCHOR } from "@/lib/contracts/animation";
-import { getDatabase, type Database } from "@/lib/db/client";
+import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import {
   assets,
   chatAttachments,
@@ -100,8 +100,8 @@ const MAX_SUMMARIZED_TITLE_LENGTH = 48;
 
 export async function beginJobStep(jobId: string): Promise<void> {
   "use step";
-  const db = getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  const db = await getDatabase();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   traceEvent("beginJobStep", { jobId, kind: job?.kind, state: job?.state, attempts: job?.attempts });
   if (!job) throw new Error("Generation job not found");
   // A step the runtime is re-running: the first attempt already claimed the job and then died
@@ -132,21 +132,21 @@ async function insertAssistantMessage(
   kind: typeof chatMessages.$inferInsert.kind,
   revisionId?: string,
 ) {
-  const db = getDatabase();
+  const db = await getDatabase();
   const existing = await db.select({ id: chatMessages.id }).from(chatMessages).where(and(
     eq(chatMessages.jobId, job.id),
     eq(chatMessages.role, "assistant"),
-  )).get();
+  )).then(firstRow);
   if (existing) return existing.id;
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
     const currentJob = await tx.select({ state: generationJobs.state }).from(generationJobs)
-      .where(eq(generationJobs.id, job.id)).get();
+      .where(eq(generationJobs.id, job.id)).then(firstRow);
     if (currentJob?.state !== "running") throw new Error("Generation was cancelled before the assistant response");
-    const thread = await tx.select().from(chatThreads).where(eq(chatThreads.stickerId, job.stickerId)).get();
+    const thread = await tx.select().from(chatThreads).where(eq(chatThreads.stickerId, job.stickerId)).then(firstRow);
     if (!thread) throw new Error("Chat thread not found");
     const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-      .where(eq(chatMessages.threadId, thread.id)).get();
+      .where(eq(chatMessages.threadId, thread.id)).then(firstRow);
     await tx.insert(chatMessages).values({
       id,
       threadId: thread.id,
@@ -177,8 +177,8 @@ export type AiTurnResult = {
 };
 
 async function turnResult(assistantMessageId: string, revisionId?: string): Promise<AiTurnResult> {
-  const row = await getDatabase().select().from(chatMessages)
-    .where(eq(chatMessages.id, assistantMessageId)).get();
+  const row = await (await getDatabase()).select().from(chatMessages)
+    .where(eq(chatMessages.id, assistantMessageId)).then(firstRow);
   // Assistant messages never carry attachments, so an empty list is exact, not a shortcut.
   return { revisionId, assistantMessageId, assistantMessage: row ? serializeChatMessage(row) : undefined };
 }
@@ -223,13 +223,13 @@ async function beginToolCall(
   revisionId?: string,
   label: string = toolName,
 ): Promise<string> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const existing = await db.select().from(chatMessages).where(and(
     eq(chatMessages.jobId, job.id),
     eq(chatMessages.role, "system"),
     eq(chatMessages.kind, "status"),
     eq(chatMessages.content, label),
-  )).get();
+  )).then(firstRow);
   if (existing) {
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       toolCallId: existing.id,
@@ -242,12 +242,12 @@ async function beginToolCall(
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
     const currentJob = await tx.select({ state: generationJobs.state }).from(generationJobs)
-      .where(eq(generationJobs.id, job.id)).get();
+      .where(eq(generationJobs.id, job.id)).then(firstRow);
     if (currentJob?.state !== "running") throw new Error("Generation was cancelled before the tool call");
-    const thread = await tx.select().from(chatThreads).where(eq(chatThreads.stickerId, job.stickerId)).get();
+    const thread = await tx.select().from(chatThreads).where(eq(chatThreads.stickerId, job.stickerId)).then(firstRow);
     if (!thread) throw new Error("Chat thread not found");
     const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-      .where(eq(chatMessages.threadId, thread.id)).get();
+      .where(eq(chatMessages.threadId, thread.id)).then(firstRow);
     await tx.insert(chatMessages).values({
       id,
       threadId: thread.id,
@@ -292,7 +292,7 @@ async function finishToolCall(
   status: "complete" | "failed" = "complete",
 ): Promise<void> {
   if (!toolCallId) return;
-  const db = getDatabase();
+  const db = await getDatabase();
   const changed = await db.update(chatMessages).set({ status }).where(and(
     eq(chatMessages.id, toolCallId),
     eq(chatMessages.jobId, job.id),
@@ -338,8 +338,8 @@ function quickCaption(kind: "image" | "edit" | "animation"): string {
 }
 
 async function assertJobStillRunning(jobId: string): Promise<void> {
-  const current = await getDatabase().select({ state: generationJobs.state }).from(generationJobs)
-    .where(eq(generationJobs.id, jobId)).get();
+  const current = await (await getDatabase()).select({ state: generationJobs.state }).from(generationJobs)
+    .where(eq(generationJobs.id, jobId)).then(firstRow);
   if (current?.state !== "running") throw new Error("Generation was cancelled");
 }
 
@@ -369,7 +369,7 @@ function boundedTranscript(
  * there, and see that its artwork is not.
  */
 async function renderWorkingDocument(document: StickerDocument, ownerId: string) {
-  const db = getDatabase();
+  const db = await getDatabase();
   const objectStore = getObjectStore();
   const ids = referencedAssetIds(document);
   const loaded: RenderAssets = new Map();
@@ -406,7 +406,7 @@ async function renderWorkingDocument(document: StickerDocument, ownerId: string)
 }
 
 async function assertDocumentAssetsOwned(document: StickerDocument, ownerId: string, stickerId: string): Promise<void> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const ids = document.layers.flatMap((layer) => [
     ...layerImageAssetIds(layer),
     // The clip itself: `layerImageAssetIds` deliberately reports a video layer's poster instead,
@@ -461,7 +461,7 @@ async function generateAndStoreAsset(
     concept?: boolean;
   },
 ): Promise<{ subject?: SubjectBounds }> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const objectStore = getObjectStore();
   const provider = getAiProvider();
   // A timed-out generation is the one failure the step must not hand back to the runtime: retrying
@@ -483,7 +483,7 @@ async function generateAndStoreAsset(
     eq(assets.id, params.assetId),
     eq(assets.ownerId, job.ownerId),
     eq(assets.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (stored?.state === "ready") {
     traceEvent("generateImage:reused", trace);
     // The measurement was taken from the frame the model returned, which is gone: the stored master
@@ -508,8 +508,8 @@ async function generateAndStoreAsset(
     if (!isAbortError(error)) throw error;
     throw new FatalError("Image generation took too long to finish. Try that request again.");
   });
-  const currentJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).get();
-  const currentSticker = await db.select({ status: stickers.status }).from(stickers).where(eq(stickers.id, stickerId)).get();
+  const currentJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).then(firstRow);
+  const currentSticker = await db.select({ status: stickers.status }).from(stickers).where(eq(stickers.id, stickerId)).then(firstRow);
   if (currentJob?.state !== "running" || !currentSticker || currentSticker.status === "deleting") {
     // The image exists and is about to be thrown away. Worth a line of its own: from the outside
     // this is indistinguishable from a generation that never happened, and the bill says otherwise.
@@ -544,7 +544,7 @@ async function generateAndStoreAsset(
       ...(generated.subject ? { subject: JSON.stringify(generated.subject) } : {}),
     },
   }));
-  const afterPutJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).get();
+  const afterPutJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).then(firstRow);
   if (afterPutJob?.state !== "running") {
     await objectStore.delete(r2Key);
     throw new Error("Generation was cancelled during storage");
@@ -762,7 +762,7 @@ async function generateAndStoreVideoAsset(
   stickerId: string,
   input: { stillAssetId: string; video: VideoGeneration },
 ): Promise<StoredVideoTiming> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const objectStore = getObjectStore();
   const provider = getAiProvider();
   const { video } = input;
@@ -782,7 +782,7 @@ async function generateAndStoreVideoAsset(
     eq(assets.id, video.assetId),
     eq(assets.ownerId, job.ownerId),
     eq(assets.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (stored?.state === "ready" && stored.frameCount && stored.fps && stored.durationSeconds) {
     traceEvent("generateVideo:reused", trace);
     return { frameCount: stored.frameCount, fps: stored.fps, durationSeconds: stored.durationSeconds };
@@ -808,8 +808,8 @@ async function generateAndStoreVideoAsset(
       throw new FatalError("Video generation took too long to finish. Try that request again.");
     });
 
-    const currentJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).get();
-    const currentSticker = await db.select({ status: stickers.status }).from(stickers).where(eq(stickers.id, stickerId)).get();
+    const currentJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).then(firstRow);
+    const currentSticker = await db.select({ status: stickers.status }).from(stickers).where(eq(stickers.id, stickerId)).then(firstRow);
     if (currentJob?.state !== "running" || !currentSticker || currentSticker.status === "deleting") {
       traceEvent("generateVideo:discarded", { ...trace, jobState: currentJob?.state, stickerStatus: currentSticker?.status });
       throw new Error("Generation was cancelled before storage");
@@ -835,7 +835,7 @@ async function generateAndStoreVideoAsset(
       contentType: "video/mp4",
       metadata: { sha256: inspection.sha256, source: "vercel-ai-gateway", model: generated.modelId },
     }));
-    const afterPutJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).get();
+    const afterPutJob = await db.select({ state: generationJobs.state }).from(generationJobs).where(eq(generationJobs.id, job.id)).then(firstRow);
     if (afterPutJob?.state !== "running") {
       await objectStore.delete(r2Key);
       throw new Error("Generation was cancelled during storage");
@@ -1036,11 +1036,11 @@ async function upsertPlanCard(
   revision: number,
   summary: string,
 ): Promise<string> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const existing = await db.select({ id: chatMessages.id }).from(chatMessages).where(and(
     eq(chatMessages.jobId, job.id),
     eq(chatMessages.role, "assistant"),
-  )).get();
+  )).then(firstRow);
   if (existing) {
     await db.update(chatMessages).set({ content: summary, kind: "plan", planId, planRevision: revision })
       .where(eq(chatMessages.id, existing.id));
@@ -1090,7 +1090,7 @@ function planReferencePrompt(plan: PlanV1): string | undefined {
  * worth failing a planning turn over, and confirmation does not depend on this asset existing.
  */
 async function attachCapturePreview(
-  db: ReturnType<typeof getDatabase>,
+  db: Database,
   stickerId: string,
   planId: string,
   plan: PlanV1,
@@ -1098,11 +1098,11 @@ async function attachCapturePreview(
   const capture = plan.layers.map((layer) => layer.source).find((source) => source.kind === "sequence");
   if (!capture) return;
   const row = await db.select({ conceptAssetId: plans.conceptAssetId }).from(plans)
-    .where(eq(plans.id, planId)).get();
+    .where(eq(plans.id, planId)).then(firstRow);
   const poster = derivedAssetId(capture.assetId, "poster");
   if (row?.conceptAssetId === poster) return;
   const sticker = await db.select({ ownerId: stickers.ownerId }).from(stickers)
-    .where(eq(stickers.id, stickerId)).get();
+    .where(eq(stickers.id, stickerId)).then(firstRow);
   if (!sticker) return;
   const attached = await ensureAtlasPoster(db, sticker.ownerId, stickerId, capture);
   if (attached) await attachPlanConcept(db, planId, attached);
@@ -1124,11 +1124,11 @@ async function renderPlanConcept(
   references: Array<{ bytes: Uint8Array; mimeType: string }>,
   history: string,
 ): Promise<void> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const prompt = planReferencePrompt(plan);
   if (!prompt) return attachCapturePreview(db, stickerId, planId, plan);
   const row = await db.select({ conceptAssetId: plans.conceptAssetId }).from(plans)
-    .where(eq(plans.id, planId)).get();
+    .where(eq(plans.id, planId)).then(firstRow);
   const assetId = derivedAssetId(planId, `concept:${revision}`);
   if (row?.conceptAssetId === assetId) return;
 
@@ -1188,7 +1188,7 @@ async function executePlanTurn(
   sequenceAssets: AiSequenceAsset[],
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const rejected = await recentlyRejectedPlans(db, job.ownerId, sticker.id);
   // The message the plan is anchored to must exist before the row that references it, and the
   // drafting turn has not written its assistant message yet. The tool-call row for `plan-sticker`
@@ -1320,7 +1320,7 @@ async function executeAnimationTurn(
   attachedImages: Array<{ bytes: Uint8Array; mimeType: string }>,
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
-  const db = getDatabase();
+  const db = await getDatabase();
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "planning_animation", progress: 0.35 });
 
   // Deterministic, so a workflow replay hands the model the same id it used before. Opaque to the
@@ -1539,7 +1539,7 @@ async function executeEditTurn(
   },
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
-  const db = getDatabase();
+  const db = await getDatabase();
   const objectStore = getObjectStore();
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "planning_edit", progress: 0.25 });
 
@@ -1593,7 +1593,7 @@ async function executeEditTurn(
 
   const loadArtwork = async (layer: StickerLayerV1 & { type: "image" }) => {
     const asset = await db.select().from(assets)
-      .where(and(eq(assets.id, layer.assetId), eq(assets.ownerId, job.ownerId))).get();
+      .where(and(eq(assets.id, layer.assetId), eq(assets.ownerId, job.ownerId))).then(firstRow);
     if (!asset || asset.state !== "ready") throw new Error(`Layer ${layer.id} has no readable artwork`);
     const object = await objectStore.get(asset.r2Key);
     return { bytes: object.bytes, mimeType: asset.mimeType };
@@ -2069,12 +2069,12 @@ async function loadPlanVisualReference(
   if (!planRow.conceptAssetId) {
     throw new Error("Confirmed animated plan is missing its approved static reference");
   }
-  const asset = await getDatabase().select().from(assets).where(and(
+  const asset = await (await getDatabase()).select().from(assets).where(and(
     eq(assets.id, planRow.conceptAssetId),
     eq(assets.ownerId, ownerId),
     eq(assets.stickerId, stickerId),
     eq(assets.state, "ready"),
-  )).get();
+  )).then(firstRow);
   if (!asset) throw new Error("Approved static plan reference is unavailable");
   const object = await getObjectStore().get(asset.r2Key);
   return { bytes: object.bytes, mimeType: asset.mimeType };
@@ -2109,12 +2109,12 @@ async function executePlanBuildTurn(
    */
   references: Array<{ bytes: Uint8Array; mimeType: string }>,
 ): Promise<AiTurnResult> {
-  const db = getDatabase();
+  const db = await getDatabase();
   let planRow = await db.select().from(plans).where(and(
     eq(plans.jobId, job.id),
     eq(plans.ownerId, job.ownerId),
     eq(plans.stickerId, sticker.id),
-  )).get();
+  )).then(firstRow);
   // Retrying a failed chat turn creates a new job but deliberately reuses the source message. The
   // confirmed plan remains linked to the original confirmation job, so resolve that job family
   // before declaring the plan missing. This also repairs retries created before this fallback
@@ -2131,7 +2131,7 @@ async function executePlanBuildTurn(
         eq(plans.ownerId, job.ownerId),
         eq(plans.stickerId, sticker.id),
         inArray(plans.jobId, composeJobs.map((candidate) => candidate.id)),
-      )).orderBy(desc(plans.decidedAt)).get();
+      )).orderBy(desc(plans.decidedAt)).then(firstRow);
     }
   }
   if (!planRow) throw new Error("Plan not found for this job");
@@ -2303,7 +2303,7 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
   // regenerating its image every time — otherwise reports nothing at all. Name the error on the way
   // out, with the frame that threw it, since several of these messages appear in more than one place.
   try {
-    const db = getDatabase();
+    const db = await getDatabase();
     return await withAiApiCostRecorder(
       (event) => recordJobApiCost(db, jobId, event),
       () => runAiTurn(jobId),
@@ -2321,28 +2321,28 @@ export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
 }
 
 async function runAiTurn(jobId: string): Promise<AiTurnResult> {
-  const db = getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  const db = await getDatabase();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   traceEvent("executeAiJobStep:context", { jobId, kind: job?.kind, state: job?.state, attempts: job?.attempts });
   if (!job || !job.sourceMessageId) throw new Error("Generation job or source message not found");
   if (job.state !== "running") throw new Error(`Generation job is not running (${job.state})`);
   const [sticker, sourceMessage] = await Promise.all([
-    db.select().from(stickers).where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).get(),
-    db.select().from(chatMessages).where(eq(chatMessages.id, job.sourceMessageId)).get(),
+    db.select().from(stickers).where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).then(firstRow),
+    db.select().from(chatMessages).where(eq(chatMessages.id, job.sourceMessageId)).then(firstRow),
   ]);
   if (!sticker || !sourceMessage) throw new Error("Sticker generation context not found");
   if (sticker.status === "deleting") throw new Error("Sticker deletion is in progress");
   const existingAssistant = await db.select({ id: chatMessages.id, revisionId: chatMessages.revisionId }).from(chatMessages).where(and(
     eq(chatMessages.jobId, job.id),
     eq(chatMessages.role, "assistant"),
-  )).get();
+  )).then(firstRow);
   if (existingAssistant) {
     // The turn already produced its reply on an earlier attempt, so this run is a replay of work
     // that landed. Says outright that the step is being executed more than once.
     traceEvent("executeAiJobStep:alreadyAnswered", { jobId, assistantMessageId: existingAssistant.id });
     return turnResult(existingAssistant.id, existingAssistant.revisionId ?? undefined);
   }
-  const thread = await db.select().from(chatThreads).where(eq(chatThreads.stickerId, sticker.id)).get();
+  const thread = await db.select().from(chatThreads).where(eq(chatThreads.stickerId, sticker.id)).then(firstRow);
   if (!thread) throw new Error("Chat thread not found");
   // Two reads rather than one capped read. A single capped read spends most of its rows on tool
   // calls — an edit turn writes one per tool it runs — so a 200-row window on a busy thread can
@@ -2380,7 +2380,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
 
   const baseRevisionId = sourceMessage.baseRevisionId ?? sticker.activeRevisionId;
   const activeRevision = baseRevisionId
-    ? await db.select().from(stickerRevisions).where(and(eq(stickerRevisions.id, baseRevisionId), eq(stickerRevisions.stickerId, sticker.id))).get()
+    ? await db.select().from(stickerRevisions).where(and(eq(stickerRevisions.id, baseRevisionId), eq(stickerRevisions.stickerId, sticker.id))).then(firstRow)
     : undefined;
   const activeDocument = activeRevision ? StickerDocumentSchema.parse(activeRevision.documentJson) : undefined;
   if (activeDocument) await assertDocumentAssetsOwned(activeDocument, job.ownerId, sticker.id);
@@ -2630,7 +2630,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     })();
     return referenceImagesPromise;
   };
-  const existingRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, job.id)).get();
+  const existingRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, job.id)).then(firstRow);
   if (existingRevision) {
     const existingDocument = StickerDocumentSchema.parse(existingRevision.documentJson);
     const kind = existingDocument.kind === "animated" && sourceMessage.kind === "animation"
@@ -2924,7 +2924,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   }
   const targetLayer = activeDocument?.layers.find((layer) => layer.type === "image" && (!targetLayerId || layer.id === targetLayerId));
   const targetAsset = targetLayer?.type === "image"
-    ? await db.select().from(assets).where(and(eq(assets.id, targetLayer.assetId), eq(assets.ownerId, job.ownerId))).get()
+    ? await db.select().from(assets).where(and(eq(assets.id, targetLayer.assetId), eq(assets.ownerId, job.ownerId))).then(firstRow)
     : undefined;
 
   const replacesExistingImage = effectiveKind === "edit" && imagePlacement !== "add";
@@ -3038,8 +3038,8 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
  */
 export async function quickPublishStep(jobId: string) {
   "use step";
-  const db = getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  const db = await getDatabase();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   if (!job || job.kind !== "export") throw new Error("Export job not found");
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "rendering_exports", progress: 0.02 });
   try {
@@ -3065,8 +3065,8 @@ export async function quickPublishStep(jobId: string) {
 
 export async function publishExportsStep(jobId: string, request: PublishExportsRequest) {
   "use step";
-  const db = getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  const db = await getDatabase();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   if (!job || job.kind !== "export") throw new Error("Export job not found");
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "verifying_exports", progress: 0.5 });
   try {
@@ -3137,9 +3137,9 @@ function normalizeStickerTitle(value: string): string | undefined {
  */
 export async function summarizeStickerTitleStep(jobId: string): Promise<string | undefined> {
   "use step";
-  const db = getDatabase();
+  const db = await getDatabase();
   try {
-    const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+    const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
     if (!job) return undefined;
     // Skipped for quick mode, and skipped in the one place that matters: this step runs *before*
     // the job is completed, so its model call sits between the finished artwork and the moment the
@@ -3148,9 +3148,9 @@ export async function summarizeStickerTitleStep(jobId: string): Promise<string |
     // better one than a name that arrives ten seconds late.
     if (job.quick) return undefined;
     const sticker = await db.select().from(stickers)
-      .where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).get();
+      .where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).then(firstRow);
     if (!sticker || sticker.status === "deleting") return undefined;
-    const thread = await db.select().from(chatThreads).where(eq(chatThreads.stickerId, sticker.id)).get();
+    const thread = await db.select().from(chatThreads).where(eq(chatThreads.stickerId, sticker.id)).then(firstRow);
     if (!thread) return undefined;
     // Tool-call rows are the turn's machinery, not its content — a transcript of them would name the
     // sticker after the tools that drew it.
@@ -3194,7 +3194,7 @@ async function announceJobEnded(
 ): Promise<void> {
   if (!isNotifiableJobKind(job.kind)) return;
   const sticker = await db.select({ id: stickers.id, title: stickers.title, status: stickers.status })
-    .from(stickers).where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).get();
+    .from(stickers).where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).then(firstRow);
   // A sticker the user has since deleted has nothing to open.
   if (!sticker || sticker.status === "deleting") return;
   await notifyGenerationFinished(db, {
@@ -3210,8 +3210,8 @@ async function announceJobEnded(
 
 export async function completeJobStep(jobId: string, result: Record<string, unknown>): Promise<void> {
   "use step";
-  const db = getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  const db = await getDatabase();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   traceEvent("completeJobStep", { jobId, state: job?.state });
   if (!job) return;
   if (job.state === "succeeded") return;
@@ -3235,7 +3235,7 @@ export async function completeJobStep(jobId: string, result: Record<string, unkn
 
 export async function failJobStep(jobId: string, message: string): Promise<void> {
   "use step";
-  return failJob(getDatabase(), jobId, message);
+  return failJob(await getDatabase(), jobId, message);
 }
 
 /**
@@ -3250,7 +3250,7 @@ export async function failJobStep(jobId: string, message: string): Promise<void>
  *   out and the wrong one for a request that will be refused the same way every time.
  */
 async function failJob(db: Database, jobId: string, message: string, publicReason?: string): Promise<void> {
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   traceEvent("failJobStep", { jobId, state: job?.state, message: message.slice(0, 200) });
   if (!job) return;
   if (job.state === "failed") return;
@@ -3300,8 +3300,8 @@ async function failJob(db: Database, jobId: string, message: string, publicReaso
 
 export async function purgeStickerStep(jobId: string): Promise<string[]> {
   "use step";
-  const db = getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  const db = await getDatabase();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   if (!job || job.kind !== "cleanup") throw new Error("Cleanup job not found");
   const objectStore = getObjectStore();
   const rows = await db.select().from(assets).where(and(eq(assets.stickerId, job.stickerId), eq(assets.ownerId, job.ownerId)));
@@ -3317,8 +3317,8 @@ export async function sweepStickerObjectsStep(objectKeys: string[]): Promise<voi
 
 export async function finalizeStickerPurgeStep(jobId: string): Promise<void> {
   "use step";
-  const db = getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).get();
+  const db = await getDatabase();
+  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   if (!job || job.kind !== "cleanup") throw new Error("Cleanup job not found");
   await db.delete(stickers).where(and(
     eq(stickers.id, job.stickerId),
@@ -3357,7 +3357,7 @@ export type RevisionDecisionInput = {
 
 export async function decideRevisionStep(input: RevisionDecisionInput) {
   "use step";
-  const db = getDatabase();
+  const db = await getDatabase();
   if (input.decision === "accept") return acceptRevision(db, input.ownerId, input.stickerId, input.revisionId);
   if (input.decision === "reject") return rejectRevision(db, input.ownerId, input.stickerId, input.revisionId);
   return revertRevision(db, input.ownerId, input.stickerId, input.revisionId, input.decisionId);

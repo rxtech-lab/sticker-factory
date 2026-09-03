@@ -4,7 +4,7 @@ import {
   downcastForClient,
   StickerDocumentSchema,
 } from "@/lib/contracts/sticker";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { generationEvents, generationJobs } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 
@@ -29,7 +29,7 @@ export async function appendGenerationEvent(
 
 export async function listGenerationEvents(db: Database, ownerId: string, jobId: string, afterId = 0, limit = 200) {
   const job = await db.select().from(generationJobs)
-    .where(and(eq(generationJobs.id, jobId), eq(generationJobs.ownerId, ownerId))).get();
+    .where(and(eq(generationJobs.id, jobId), eq(generationJobs.ownerId, ownerId))).then(firstRow);
   if (!job) throw new ApiError(404, "JOB_NOT_FOUND", "Generation job not found");
   const events = await db.select().from(generationEvents)
     .where(and(

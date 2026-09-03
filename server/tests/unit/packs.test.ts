@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { packInstalls, stickerPackItems, stickerPacks, stickers } from "@/lib/db/schema";
 import {
   MAX_INSTALLED_PACKS,
@@ -45,7 +45,7 @@ describe("sticker packs", () => {
       installCount: stickerPacks.installCount,
       installTotal: stickerPacks.installTotal,
       itemCount: stickerPacks.itemCount,
-    }).from(stickerPacks).where(eq(stickerPacks.id, packId)).get();
+    }).from(stickerPacks).where(eq(stickerPacks.id, packId)).then(firstRow);
 
   it("runs the create -> publish -> install -> uninstall lifecycle", async () => {
     const a = await seedPublishedSticker(db, "creator", { title: "Wave" });
@@ -202,13 +202,13 @@ describe("sticker packs", () => {
     // Removing the cover has to promote the next member, not leave a dangling reference.
     const withoutCover = await removePackItem(db, "creator", pack.id, c.stickerId);
     expect(withoutCover.stickers.map((sticker) => sticker.title)).toEqual(["A", "B"]);
-    const row = await db.select().from(stickerPacks).where(eq(stickerPacks.id, pack.id)).get();
+    const row = await db.select().from(stickerPacks).where(eq(stickerPacks.id, pack.id)).then(firstRow);
     expect(row?.coverStickerId).toBe(a.stickerId);
 
     await installPack(db, "installer", pack.id);
     await deletePack(db, "creator", pack.id);
     // The row survives so a future purchase record survives with it, but nothing can reach it.
-    expect((await db.select().from(stickerPacks).where(eq(stickerPacks.id, pack.id)).get())?.state).toBe("removed");
+    expect((await db.select().from(stickerPacks).where(eq(stickerPacks.id, pack.id)).then(firstRow))?.state).toBe("removed");
     await expect(getPack(db, "installer", pack.id)).rejects.toMatchObject({ code: "PACK_NOT_FOUND" });
     await expect(getPack(db, "creator", pack.id)).rejects.toMatchObject({ code: "PACK_NOT_FOUND" });
     expect(await listInstalledPacks(db, "installer")).toHaveLength(0);

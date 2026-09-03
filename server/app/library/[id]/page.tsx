@@ -25,7 +25,7 @@ export default async function StickerDetailPage({
   if (!ownerId) redirect("/login");
   const { id } = await params;
   const query = await searchParams;
-  const db = getDatabase();
+  const db = await getDatabase();
   let sticker;
   try { sticker = await getSticker(db, ownerId, id); } catch (error) {
     if (error instanceof ApiError && error.status === 404) notFound();

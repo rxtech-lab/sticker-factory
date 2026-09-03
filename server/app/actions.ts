@@ -37,7 +37,7 @@ export async function deleteStickerAction(formData: FormData) {
   const stickerId = String(formData.get("stickerId") ?? "");
   const idempotencyKey = String(formData.get("idempotencyKey") ?? "");
   if (!stickerId || !idempotencyKey) throw new Error("Invalid deletion request");
-  const db = getDatabase();
+  const db = await getDatabase();
   await executeIdempotent(db, {
     ownerId,
     operation: `delete-sticker:${stickerId}`,
@@ -66,7 +66,7 @@ async function packFormContext(formData: FormData) {
   if (!ownerId) redirect("/login");
   const idempotencyKey = String(formData.get("idempotencyKey") ?? "");
   if (!idempotencyKey) throw new Error("Invalid pack request");
-  return { ownerId, idempotencyKey, db: getDatabase() };
+  return { ownerId, idempotencyKey, db: await getDatabase() };
 }
 
 function requiredField(formData: FormData, name: string): string {

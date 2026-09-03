@@ -16,7 +16,7 @@ export default async function NewPackPage() {
   const ownerId = session?.user?.id;
   if (!ownerId) redirect("/login");
 
-  const db = getDatabase();
+  const db = await getDatabase();
   // Only published stickers: an unpublished one has no system rendition, so it would be invisible
   // in every surface a pack feeds.
   const eligible = await listStickers(db, ownerId, { status: "published", limit: 100 });

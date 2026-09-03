@@ -2,7 +2,7 @@ import { getDatabase } from "@/lib/db/client";
 import { requeueFailedCleanupJobs } from "@/lib/services/stickers";
 import { startCleanupWorkflow } from "@/lib/services/workflows";
 
-const db = getDatabase();
+const db = await getDatabase();
 const claimed = await requeueFailedCleanupJobs(db, { limit: 20 });
 for (const { jobId } of claimed) {
   try {
