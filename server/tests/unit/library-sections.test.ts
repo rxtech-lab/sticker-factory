@@ -42,7 +42,13 @@ describe("library sections", () => {
     expect(borrowed.stickers[0].systemSticker?.assetId).toBe(theirs.systemAssetId);
   });
 
-  it("loads the three section result sets in one database batch", async () => {
+  /**
+   * Three queries, however many packs are installed — the guard against a per-pack member lookup
+   * turning the response into an N+1. They are issued together rather than one after another, so
+   * the response waits for one round trip's latency and not three; libSQL expressed that as a
+   * batch, Postgres as three concurrent statements, and the count is what either one is judged on.
+   */
+  it("loads the three section result sets in a fixed number of queries", async () => {
     await seedPublishedSticker(db, "installer", { title: "My Own" });
     const theirs = await seedPublishedSticker(db, "creator", { title: "Borrowed" });
     const pack = await createPack(db, "creator", {
@@ -57,8 +63,7 @@ describe("library sections", () => {
       return formatTimings();
     });
 
-    expect(timings).toMatch(/^db=/);
-    expect(timings).not.toContain("db x");
+    expect(timings).toMatch(/^db x3=/);
   });
 
   /**

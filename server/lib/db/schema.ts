@@ -1,74 +1,120 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
+  boolean,
+  check,
+  doublePrecision,
   index,
   integer,
+  jsonb,
+  pgTable,
   primaryKey,
-  real,
-  sqliteTable,
   text,
+  timestamp,
   uniqueIndex,
-  type AnySQLiteColumn,
-} from "drizzle-orm/sqlite-core";
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 import type { PlanV1 } from "@/lib/contracts/plan";
 import type { StickerDocument } from "@/lib/contracts/sticker";
 
-const timestamp = (name: string) => integer(name, { mode: "timestamp_ms" });
+/**
+ * Every instant is a `timestamptz`, read back as a `Date`.
+ *
+ * On SQLite these were epoch milliseconds in an INTEGER column; Postgres has a real instant type,
+ * so the application-side shape (`Date` in, `Date` out) is unchanged while the database can now
+ * compare, index, and print them itself.
+ */
+const timestampColumn = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
-export const users = sqliteTable("users", {
+/**
+ * A 64-bit counter read back as a JS number.
+ *
+ * Postgres `integer` is 32 bits, so a running total in nanodollars would overflow at $2.15 — a
+ * ceiling SQLite's 64-bit INTEGER never had. Anything that accumulates spend uses this instead.
+ */
+const counter = (name: string) => bigint(name, { mode: "number" });
+
+/** The set literal a CHECK constraint needs, from the same array the column's TS union comes from. */
+const oneOf = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(", "));
+
+const stickerKinds = ["static", "animated"] as const;
+const stickerStatuses = ["draft", "published", "deleting"] as const;
+const jobKinds = ["image", "edit", "animation", "chat", "plan", "compose", "export", "cleanup"] as const;
+const jobStates = ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] as const;
+const messageRoles = ["user", "assistant", "system"] as const;
+const messageKinds = [
+  "text", "image", "image_edit", "animation", "device_edit", "plan", "export", "status",
+] as const;
+const messageStatuses = ["complete", "streaming", "failed"] as const;
+const imagePlacements = ["replace", "add"] as const;
+const assetKinds = [
+  "reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment",
+  "sequence", "attachment", "video",
+] as const;
+const assetStates = ["pending", "ready", "failed", "deleted"] as const;
+const candidateStates = ["candidate", "accepted", "rejected", "superseded"] as const;
+const attachmentKinds = ["reference", "mask"] as const;
+const eventTypes = [
+  "queued", "started", "progress", "document", "candidate", "waiting", "completed", "failed",
+] as const;
+const planStates = ["draft", "finalized", "confirmed", "superseded", "cancelled"] as const;
+const payoutStatuses = ["none", "pending", "active"] as const;
+const packStates = ["draft", "published", "unlisted", "removed"] as const;
+const monetizations = ["free", "paid", "subscription"] as const;
+const installStates = ["installed", "uninstalled"] as const;
+const acquisitions = ["free", "purchase", "gift", "promo"] as const;
+const devicePlatforms = ["ios"] as const;
+const apnsEnvironments = ["sandbox", "production"] as const;
+
+export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email"),
   displayName: text("display_name"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 });
 
-export const stickers = sqliteTable("stickers", {
+export const stickers = pgTable("stickers", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
-  kind: text("kind", { enum: ["static", "animated"] }).notNull(),
-  status: text("status", { enum: ["draft", "published", "deleting"] }).notNull().default("draft"),
+  kind: text("kind", { enum: stickerKinds }).notNull(),
+  status: text("status", { enum: stickerStatuses }).notNull().default("draft"),
   activeRevisionId: text("active_revision_id"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
-  deletedAt: timestamp("deleted_at"),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
+  deletedAt: timestampColumn("deleted_at"),
 }, (table) => [
   index("stickers_owner_updated_idx").on(table.ownerId, table.updatedAt, table.id),
   index("stickers_owner_status_updated_idx").on(table.ownerId, table.status, table.updatedAt, table.id),
+  check("stickers_kind_check", sql`${table.kind} IN (${oneOf(stickerKinds)})`),
+  check("stickers_status_check", sql`${table.status} IN (${oneOf(stickerStatuses)})`),
 ]);
 
-export const chatThreads = sqliteTable("chat_threads", {
+export const chatThreads = pgTable("chat_threads", {
   id: text("id").primaryKey(),
   stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   uniqueIndex("chat_threads_sticker_unique").on(table.stickerId),
   index("chat_threads_owner_idx").on(table.ownerId),
 ]);
 
-export const generationJobs = sqliteTable("generation_jobs", {
+export const generationJobs = pgTable("generation_jobs", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
   sourceMessageId: text("source_message_id"),
-  kind: text("kind", { enum: ["image", "edit", "animation", "chat", "plan", "compose", "export", "cleanup"] }).notNull(),
+  kind: text("kind", { enum: jobKinds }).notNull(),
   /**
    * Started from the Messages extension's quick mode, so its images are drawn by
    * `AI_QUICK_IMAGE_MODEL` against a chroma backdrop instead of by `AI_IMAGE_MODEL`.
-   *
-   * The default is written as `0` rather than `false` so that `drizzle-kit push` converges against
-   * Turso. Turso uppercases keyword defaults when it parses DDL — `DEFAULT false` comes back as
-   * `DEFAULT FALSE` — and drizzle-kit compares default text literally, so a boolean default never
-   * matches and every push plans an `ALTER COLUMN` here. On libSQL that rewrite drops every index
-   * on the table, which then collides with drizzle's own drop of the partial unique index below
-   * and fails the batch. A numeric literal is stored verbatim, so the diff stays empty. The column
-   * still reads and writes as a boolean; only the DDL text changes.
    */
-  quick: integer("quick", { mode: "boolean" }).notNull().default(0 as unknown as boolean),
+  quick: boolean("quick").notNull().default(false),
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
-  state: text("state", { enum: ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] }).notNull().default("queued"),
+  state: text("state", { enum: jobStates }).notNull().default("queued"),
   workflowRunId: text("workflow_run_id"),
   /**
    * The RxSubscription hold placed before this job was queued, and its estimate.
@@ -79,53 +125,56 @@ export const generationJobs = sqliteTable("generation_jobs", {
   reservationId: text("reservation_id"),
   reservationAmount: integer("reservation_amount").notNull().default(0),
   /** Text USD is rounded once for the turn; each image is rounded before entering apiImagePoints. */
-  apiTextCostNanodollars: integer("api_text_cost_nanodollars").notNull().default(0),
-  apiImageCostNanodollars: integer("api_image_cost_nanodollars").notNull().default(0),
+  apiTextCostNanodollars: counter("api_text_cost_nanodollars").notNull().default(0),
+  apiImageCostNanodollars: counter("api_image_cost_nanodollars").notNull().default(0),
   apiImagePoints: integer("api_image_points").notNull().default(0),
   /** Video clips keep the image shape: an exact USD audit total, and points rounded up per clip. */
-  apiVideoCostNanodollars: integer("api_video_cost_nanodollars").notNull().default(0),
+  apiVideoCostNanodollars: counter("api_video_cost_nanodollars").notNull().default(0),
   apiVideoPoints: integer("api_video_points").notNull().default(0),
   attempts: integer("attempts").notNull().default(0),
   errorCode: text("error_code"),
   errorMessage: text("error_message"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
-  completedAt: timestamp("completed_at"),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
+  completedAt: timestampColumn("completed_at"),
 }, (table) => [
   index("generation_jobs_owner_created_idx").on(table.ownerId, table.createdAt),
   index("generation_jobs_sticker_state_idx").on(table.stickerId, table.state),
   uniqueIndex("generation_jobs_one_active_per_sticker")
     .on(table.stickerId)
     .where(sql`${table.state} IN ('queued', 'running', 'waiting')`),
+  check("generation_jobs_kind_check", sql`${table.kind} IN (${oneOf(jobKinds)})`),
+  check("generation_jobs_state_check", sql`${table.state} IN (${oneOf(jobStates)})`),
 ]);
 
-export const chatMessages = sqliteTable("chat_messages", {
+export const chatMessages = pgTable("chat_messages", {
   id: text("id").primaryKey(),
   threadId: text("thread_id").notNull().references(() => chatThreads.id, { onDelete: "cascade" }),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  role: text("role", { enum: ["user", "assistant", "system"] }).notNull(),
+  role: text("role", { enum: messageRoles }).notNull(),
   /** `device_edit` is the on-device editor saving a revision; the transcript draws it as a marker. */
-  kind: text("kind", {
-    enum: ["text", "image", "image_edit", "animation", "device_edit", "plan", "export", "status"],
-  }).notNull(),
+  kind: text("kind", { enum: messageKinds }).notNull(),
   content: text("content").notNull(),
   targetLayerId: text("target_layer_id"),
   baseRevisionId: text("base_revision_id"),
-  imagePlacement: text("image_placement", { enum: ["replace", "add"] }).notNull().default("replace"),
+  imagePlacement: text("image_placement", { enum: imagePlacements }).notNull().default("replace"),
   sequence: integer("sequence").notNull(),
   revisionId: text("revision_id"),
   jobId: text("job_id").references(() => generationJobs.id, { onDelete: "set null" }),
-  status: text("status", { enum: ["complete", "streaming", "failed"] }).notNull().default("complete"),
+  status: text("status", { enum: messageStatuses }).notNull().default("complete"),
   /** For a `kind: "plan"` card: which plan it renders, and which revision it was showing. */
-  planId: text("plan_id").references((): AnySQLiteColumn => plans.id, { onDelete: "set null" }),
+  planId: text("plan_id").references((): AnyPgColumn => plans.id, { onDelete: "set null" }),
   planRevision: integer("plan_revision"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   uniqueIndex("chat_messages_thread_sequence_unique").on(table.threadId, table.sequence),
   index("chat_messages_thread_created_idx").on(table.threadId, table.createdAt),
+  check("chat_messages_role_check", sql`${table.role} IN (${oneOf(messageRoles)})`),
+  check("chat_messages_kind_check", sql`${table.kind} IN (${oneOf(messageKinds)})`),
+  check("chat_messages_status_check", sql`${table.status} IN (${oneOf(messageStatuses)})`),
 ]);
 
-export const assets = sqliteTable("assets", {
+export const assets = pgTable("assets", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   stickerId: text("sticker_id").references(() => stickers.id, { onDelete: "cascade" }),
@@ -137,26 +186,21 @@ export const assets = sqliteTable("assets", {
    * `video` is a generated clip: an opaque 1:1 MP4 on a chroma backdrop, keyed out on device. Its
    * `frame_count`/`fps`/`duration_seconds` are read out of the container by `inspectMp4`.
    */
-  kind: text("kind", {
-    enum: [
-      "reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment",
-      "sequence", "attachment", "video",
-    ],
-  }).notNull(),
-  state: text("state", { enum: ["pending", "ready", "failed", "deleted"] }).notNull().default("pending"),
+  kind: text("kind", { enum: assetKinds }).notNull(),
+  state: text("state", { enum: assetStates }).notNull().default("pending"),
   r2Key: text("r2_key").notNull().unique(),
   mimeType: text("mime_type").notNull(),
   byteSize: integer("byte_size"),
   width: integer("width"),
   height: integer("height"),
   frameCount: integer("frame_count"),
-  durationSeconds: real("duration_seconds"),
-  fps: real("fps"),
+  durationSeconds: doublePrecision("duration_seconds"),
+  fps: doublePrecision("fps"),
   sha256: text("sha256"),
-  hasAlpha: integer("has_alpha", { mode: "boolean" }),
+  hasAlpha: boolean("has_alpha"),
   originalFilename: text("original_filename"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  readyAt: timestamp("ready_at"),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  readyAt: timestampColumn("ready_at"),
   /**
    * The atlas grid, for `sequence` assets only. `frameCount`/`fps` say how many frames there are
    * and how fast they play; only this says where each one sits, and the image cannot say — a sprite
@@ -167,16 +211,18 @@ export const assets = sqliteTable("assets", {
 }, (table) => [
   index("assets_owner_created_idx").on(table.ownerId, table.createdAt),
   index("assets_sticker_kind_idx").on(table.stickerId, table.kind),
+  check("assets_kind_check", sql`${table.kind} IN (${oneOf(assetKinds)})`),
+  check("assets_state_check", sql`${table.state} IN (${oneOf(assetStates)})`),
 ]);
 
-export const stickerRevisions = sqliteTable("sticker_revisions", {
+export const stickerRevisions = pgTable("sticker_revisions", {
   id: text("id").primaryKey(),
   stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
   parentRevisionId: text("parent_revision_id"),
   sourceMessageId: text("source_message_id").references(() => chatMessages.id, { onDelete: "set null" }),
-  kind: text("kind", { enum: ["static", "animated"] }).notNull(),
-  candidateState: text("candidate_state", { enum: ["candidate", "accepted", "rejected", "superseded"] }).notNull().default("candidate"),
-  documentJson: text("document_json", { mode: "json" }).$type<StickerDocument>().notNull(),
+  kind: text("kind", { enum: stickerKinds }).notNull(),
+  candidateState: text("candidate_state", { enum: candidateStates }).notNull().default("candidate"),
+  documentJson: jsonb("document_json").$type<StickerDocument>().notNull(),
   masterAssetId: text("master_asset_id").references(() => assets.id, { onDelete: "set null" }),
   previewAssetId: text("preview_asset_id").references(() => assets.id, { onDelete: "set null" }),
   pngAssetId: text("png_asset_id").references(() => assets.id, { onDelete: "set null" }),
@@ -185,9 +231,8 @@ export const stickerRevisions = sqliteTable("sticker_revisions", {
    *
    * Read-only now: nothing publishes a GIF any more, but 121 revisions were published pointing at
    * one, and this column is the only thing that finds their artwork. It sits beside `apngAssetId`
-   * rather than being renamed into it because SQLite cannot drop a column another foreign key still
-   * names — Turso rejects the rewrite outright — and because a rename that guessed wrong would take
-   * every one of those revisions' sharing rendition with it.
+   * rather than being renamed into it because a rename that guessed wrong would take every one of
+   * those revisions' sharing rendition with it.
    */
   gifAssetId: text("gif_asset_id").references(() => assets.id, { onDelete: "set null" }),
   /** The sharing rendition every export written since the switch produces. */
@@ -204,34 +249,42 @@ export const stickerRevisions = sqliteTable("sticker_revisions", {
    */
   attachmentMediumAssetId: text("attachment_medium_asset_id").references(() => assets.id, { onDelete: "set null" }),
   attachmentSmallAssetId: text("attachment_small_asset_id").references(() => assets.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  decidedAt: timestamp("decided_at"),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  decidedAt: timestampColumn("decided_at"),
 }, (table) => [
   index("sticker_revisions_sticker_created_idx").on(table.stickerId, table.createdAt),
   index("sticker_revisions_parent_idx").on(table.parentRevisionId),
+  check("sticker_revisions_kind_check", sql`${table.kind} IN (${oneOf(stickerKinds)})`),
+  check("sticker_revisions_candidate_state_check", sql`${table.candidateState} IN (${oneOf(candidateStates)})`),
 ]);
 
-export const chatAttachments = sqliteTable("chat_attachments", {
+export const chatAttachments = pgTable("chat_attachments", {
   messageId: text("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
   assetId: text("asset_id").notNull().references(() => assets.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["reference", "mask"] }).notNull(),
+  kind: text("kind", { enum: attachmentKinds }).notNull(),
   targetLayerId: text("target_layer_id"),
   position: integer("position").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table.messageId, table.assetId] }),
   index("chat_attachments_asset_idx").on(table.assetId),
+  check("chat_attachments_kind_check", sql`${table.kind} IN (${oneOf(attachmentKinds)})`),
 ]);
 
-export const generationEvents = sqliteTable("generation_events", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const generationEvents = pgTable("generation_events", {
+  /**
+   * `generatedByDefault` rather than `generatedAlways` so the Turso import could carry the original
+   * ids across; the sequence was set past the highest one afterwards.
+   */
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   jobId: text("job_id").notNull().references(() => generationJobs.id, { onDelete: "cascade" }),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  type: text("type", { enum: ["queued", "started", "progress", "document", "candidate", "waiting", "completed", "failed"] }).notNull(),
-  dataJson: text("data_json", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
+  type: text("type", { enum: eventTypes }).notNull(),
+  dataJson: jsonb("data_json").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   index("generation_events_job_id_idx").on(table.jobId, table.id),
   index("generation_events_owner_id_idx").on(table.ownerId, table.id),
+  check("generation_events_type_check", sql`${table.type} IN (${oneOf(eventTypes)})`),
 ]);
 
 /**
@@ -244,31 +297,30 @@ export const generationEvents = sqliteTable("generation_events", {
  * while an earlier one is already finalized or confirmed links the new row via `supersedes_id`
  * rather than mutating the old one, so a confirmed plan always still describes what was built.
  */
-export const plans = sqliteTable("plans", {
+export const plans = pgTable("plans", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
   threadId: text("thread_id").notNull().references(() => chatThreads.id, { onDelete: "cascade" }),
   /** The message the plan was first shown in. Not unique: one plan can be shown many times. */
   messageId: text("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
-  planJson: text("plan_json", { mode: "json" }).$type<PlanV1>().notNull(),
-  state: text("state", {
-    enum: ["draft", "finalized", "confirmed", "superseded", "cancelled"],
-  }).notNull().default("draft"),
+  planJson: jsonb("plan_json").$type<PlanV1>().notNull(),
+  state: text("state", { enum: planStates }).notNull().default("draft"),
   /** Bumped by every `update_plan`, so a card can say which revision it rendered. */
   revision: integer("revision").notNull().default(1),
-  supersedesId: text("supersedes_id").references((): AnySQLiteColumn => plans.id, { onDelete: "set null" }),
+  supersedesId: text("supersedes_id").references((): AnyPgColumn => plans.id, { onDelete: "set null" }),
   jobId: text("job_id").references(() => generationJobs.id, { onDelete: "set null" }),
   /** A storyboard render of the plan, shown on the plan card before anything real is made. */
   conceptAssetId: text("concept_asset_id").references(() => assets.id, { onDelete: "set null" }),
   /** Why the user rejected the plan. Fed back into the next planning turn. */
   decisionReason: text("decision_reason"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
-  decidedAt: timestamp("decided_at"),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
+  decidedAt: timestampColumn("decided_at"),
 }, (table) => [
   index("plans_sticker_state_idx").on(table.stickerId, table.state),
   index("plans_owner_created_idx").on(table.ownerId, table.createdAt),
+  check("plans_state_check", sql`${table.state} IN (${oneOf(planStates)})`),
 ]);
 
 /**
@@ -278,20 +330,21 @@ export const plans = sqliteTable("plans", {
  * user-authored application state. `handle` is the only creator identifier that appears in URLs
  * and response bodies — the OAuth `sub` never leaves the server.
  */
-export const creatorProfiles = sqliteTable("creator_profiles", {
+export const creatorProfiles = pgTable("creator_profiles", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   handle: text("handle").notNull(),
   displayName: text("display_name"),
   bio: text("bio"),
   avatarAssetId: text("avatar_asset_id").references(() => assets.id, { onDelete: "set null" }),
   /** Monetization placeholders. Nothing reads or writes these yet. */
-  payoutStatus: text("payout_status", { enum: ["none", "pending", "active"] }).notNull().default("none"),
+  payoutStatus: text("payout_status", { enum: payoutStatuses }).notNull().default("none"),
   payoutProvider: text("payout_provider"),
   payoutAccountRef: text("payout_account_ref"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   uniqueIndex("creator_profiles_handle_unique").on(table.handle),
+  check("creator_profiles_payout_status_check", sql`${table.payoutStatus} IN (${oneOf(payoutStatuses)})`),
 ]);
 
 /**
@@ -301,38 +354,40 @@ export const creatorProfiles = sqliteTable("creator_profiles", {
  * decremented. Both are trigger-maintained rather than counted per row, because browse sorts by
  * popularity and shows a count on every card.
  */
-export const stickerPacks = sqliteTable("sticker_packs", {
+export const stickerPacks = pgTable("sticker_packs", {
   id: text("id").primaryKey(),
   creatorId: text("creator_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   /** Immutable once published, so a shared link never rots when the title changes. */
   slug: text("slug").notNull(),
   title: text("title").notNull(),
   summary: text("summary"),
-  state: text("state", { enum: ["draft", "published", "unlisted", "removed"] }).notNull().default("draft"),
+  state: text("state", { enum: packStates }).notNull().default("draft"),
   coverStickerId: text("cover_sticker_id").references(() => stickers.id, { onDelete: "set null" }),
   itemCount: integer("item_count").notNull().default(0),
   installCount: integer("install_count").notNull().default(0),
   installTotal: integer("install_total").notNull().default(0),
   /** Monetization placeholders. Every pack is free today; nothing charges. */
-  monetization: text("monetization", { enum: ["free", "paid", "subscription"] }).notNull().default("free"),
+  monetization: text("monetization", { enum: monetizations }).notNull().default("free"),
   priceCents: integer("price_cents").notNull().default(0),
   currency: text("currency").notNull().default("USD"),
   revenueShareBps: integer("revenue_share_bps").notNull().default(0),
-  publishedAt: timestamp("published_at"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
+  publishedAt: timestampColumn("published_at"),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   uniqueIndex("sticker_packs_slug_unique").on(table.slug),
   index("sticker_packs_creator_updated_idx").on(table.creatorId, table.updatedAt),
   index("sticker_packs_state_published_idx").on(table.state, table.publishedAt),
   index("sticker_packs_state_installs_idx").on(table.state, table.installCount),
+  check("sticker_packs_state_check", sql`${table.state} IN (${oneOf(packStates)})`),
+  check("sticker_packs_monetization_check", sql`${table.monetization} IN (${oneOf(monetizations)})`),
 ]);
 
-export const stickerPackItems = sqliteTable("sticker_pack_items", {
+export const stickerPackItems = pgTable("sticker_pack_items", {
   packId: text("pack_id").notNull().references(() => stickerPacks.id, { onDelete: "cascade" }),
   stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
   position: integer("position").notNull().default(0),
-  addedAt: timestamp("added_at").notNull().$defaultFn(() => new Date()),
+  addedAt: timestampColumn("added_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   primaryKey({ columns: [table.packId, table.stickerId] }),
   index("sticker_pack_items_pack_position_idx").on(table.packId, table.position, table.stickerId),
@@ -343,17 +398,17 @@ export const stickerPackItems = sqliteTable("sticker_pack_items", {
  * Uninstall flips `state`; it never deletes the row. That keeps uninstall/reinstall idempotent and
  * preserves the (future) entitlement, so a user who paid and later removed a pack never pays twice.
  */
-export const packInstalls = sqliteTable("pack_installs", {
+export const packInstalls = pgTable("pack_installs", {
   packId: text("pack_id").notNull().references(() => stickerPacks.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  state: text("state", { enum: ["installed", "uninstalled"] }).notNull().default("installed"),
+  state: text("state", { enum: installStates }).notNull().default("installed"),
   position: integer("position").notNull().default(0),
   /** Entitlement placeholders. Every acquisition is `free` today. */
-  acquisition: text("acquisition", { enum: ["free", "purchase", "gift", "promo"] }).notNull().default("free"),
+  acquisition: text("acquisition", { enum: acquisitions }).notNull().default("free"),
   priceCentsPaid: integer("price_cents_paid").notNull().default(0),
   orderRef: text("order_ref"),
-  installedAt: timestamp("installed_at").notNull().$defaultFn(() => new Date()),
-  uninstalledAt: timestamp("uninstalled_at"),
+  installedAt: timestampColumn("installed_at").notNull().$defaultFn(() => new Date()),
+  uninstalledAt: timestampColumn("uninstalled_at"),
 }, (table) => [
   primaryKey({ columns: [table.packId, table.userId] }),
   index("pack_installs_user_state_idx").on(
@@ -364,6 +419,8 @@ export const packInstalls = sqliteTable("pack_installs", {
     table.packId,
   ),
   index("pack_installs_pack_state_idx").on(table.packId, table.state),
+  check("pack_installs_state_check", sql`${table.state} IN (${oneOf(installStates)})`),
+  check("pack_installs_acquisition_check", sql`${table.acquisition} IN (${oneOf(acquisitions)})`),
 ]);
 
 /**
@@ -375,33 +432,35 @@ export const packInstalls = sqliteTable("pack_installs", {
  * person — re-registering after a different account signs in on the same phone must move the row
  * rather than leave the old owner pushing to it.
  */
-export const deviceTokens = sqliteTable("device_tokens", {
+export const deviceTokens = pgTable("device_tokens", {
   token: text("token").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  platform: text("platform", { enum: ["ios"] }).notNull().default("ios"),
+  platform: text("platform", { enum: devicePlatforms }).notNull().default("ios"),
   /** A sandbox token is rejected by the production APNs host and vice versa. */
-  environment: text("environment", { enum: ["sandbox", "production"] }).notNull().default("production"),
+  environment: text("environment", { enum: apnsEnvironments }).notNull().default("production"),
   bundleId: text("bundle_id"),
   appVersion: text("app_version"),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  updatedAt: timestamp("updated_at").notNull().$defaultFn(() => new Date()),
-  lastSeenAt: timestamp("last_seen_at").notNull().$defaultFn(() => new Date()),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
+  lastSeenAt: timestampColumn("last_seen_at").notNull().$defaultFn(() => new Date()),
   /** Set when APNs says the token is gone. Registering the same token again clears it. */
-  disabledAt: timestamp("disabled_at"),
+  disabledAt: timestampColumn("disabled_at"),
   disabledReason: text("disabled_reason"),
 }, (table) => [
   index("device_tokens_user_active_idx").on(table.userId, table.disabledAt),
+  check("device_tokens_platform_check", sql`${table.platform} IN (${oneOf(devicePlatforms)})`),
+  check("device_tokens_environment_check", sql`${table.environment} IN (${oneOf(apnsEnvironments)})`),
 ]);
 
-export const idempotencyKeys = sqliteTable("idempotency_keys", {
+export const idempotencyKeys = pgTable("idempotency_keys", {
   ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   operation: text("operation").notNull(),
   key: text("key").notNull(),
   requestHash: text("request_hash").notNull(),
   responseStatus: integer("response_status"),
-  responseJson: text("response_json", { mode: "json" }).$type<unknown>(),
-  createdAt: timestamp("created_at").notNull().$defaultFn(() => new Date()),
-  expiresAt: timestamp("expires_at").notNull(),
+  responseJson: jsonb("response_json").$type<unknown>(),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  expiresAt: timestampColumn("expires_at").notNull(),
 }, (table) => [
   primaryKey({ columns: [table.ownerId, table.operation, table.key] }),
   index("idempotency_keys_expiry_idx").on(table.expiresAt),

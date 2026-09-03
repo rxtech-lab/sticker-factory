@@ -26,7 +26,7 @@ export default async function EditPackPage({ params }: { params: Promise<{ slug:
   if (!ownerId) redirect("/login");
 
   const { slug } = await params;
-  const db = getDatabase();
+  const db = await getDatabase();
   let pack;
   try {
     pack = await getPack(db, ownerId, slug);

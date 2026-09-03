@@ -1,5 +1,5 @@
 import { count, eq } from "drizzle-orm";
-import { getDatabase } from "@/lib/db/client";
+import { firstRow, getDatabase } from "@/lib/db/client";
 import { packInstalls, stickerPackItems, stickerPacks } from "@/lib/db/schema";
 import { recomputePackCounters } from "@/lib/services/packs";
 
@@ -10,7 +10,7 @@ import { recomputePackCounters } from "@/lib/services/packs";
  * `PRAGMA recursive_triggers` is on, so a cascading delete can leave a counter high. Nothing
  * hard-deletes users today; this exists so that stays a repairable bug rather than a permanent one.
  */
-const db = getDatabase();
+const db = await getDatabase();
 
 const before = await db.select({
   id: stickerPacks.id,
@@ -23,13 +23,13 @@ await recomputePackCounters(db);
 let repaired = 0;
 for (const pack of before) {
   const installs = await db.select({ value: count() }).from(packInstalls)
-    .where(eq(packInstalls.packId, pack.id)).get();
+    .where(eq(packInstalls.packId, pack.id)).then(firstRow);
   const items = await db.select({ value: count() }).from(stickerPackItems)
-    .where(eq(stickerPackItems.packId, pack.id)).get();
+    .where(eq(stickerPackItems.packId, pack.id)).then(firstRow);
   const after = await db.select({
     installCount: stickerPacks.installCount,
     itemCount: stickerPacks.itemCount,
-  }).from(stickerPacks).where(eq(stickerPacks.id, pack.id)).get();
+  }).from(stickerPacks).where(eq(stickerPacks.id, pack.id)).then(firstRow);
   if (!after) continue;
   if (after.installCount !== pack.installCount || after.itemCount !== pack.itemCount) {
     repaired += 1;

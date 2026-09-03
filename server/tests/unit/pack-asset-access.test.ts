@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { assets, stickerPacks, stickers } from "@/lib/db/schema";
 import { createAssetDownload, createAssetPreview, getOwnedAsset } from "@/lib/services/assets";
 import { createPack, publishPack, unpublishPack } from "@/lib/services/packs";
@@ -104,7 +104,7 @@ describe("cross-owner pack asset access", () => {
   it("never echoes the creator's own filename to a borrower", async () => {
     const sticker = await seedPublishedSticker(db, "creator");
     await createPack(db, "creator", { title: "Names", stickerIds: [sticker.stickerId], state: "published" });
-    const row = await db.select().from(assets).where(eq(assets.id, sticker.systemAssetId)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, sticker.systemAssetId)).then(firstRow);
     expect(row?.originalFilename).toBe("system-secret-name.png");
 
     const own = await createAssetDownload(db, "creator", sticker.systemAssetId);

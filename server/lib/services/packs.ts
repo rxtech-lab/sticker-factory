@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import {
   attachmentMediumAssets,
   attachmentSmallAssets,
@@ -84,10 +84,10 @@ function slugifyHandleBase(source: string | null): string {
  * and the handle is public. A short random suffix keeps two users named "Alex" apart.
  */
 export async function ensureCreatorProfile(db: Database, userId: string): Promise<CreatorProfileRow> {
-  const existing = await db.select().from(creatorProfiles).where(eq(creatorProfiles.userId, userId)).get();
+  const existing = await db.select().from(creatorProfiles).where(eq(creatorProfiles.userId, userId)).then(firstRow);
   if (existing) return existing;
 
-  const user = await db.select({ displayName: users.displayName }).from(users).where(eq(users.id, userId)).get();
+  const user = await db.select({ displayName: users.displayName }).from(users).where(eq(users.id, userId)).then(firstRow);
   const base = slugifyHandleBase(user?.displayName ?? null);
   const now = new Date();
 
@@ -98,12 +98,12 @@ export async function ensureCreatorProfile(db: Database, userId: string): Promis
       const inserted = await db.insert(creatorProfiles)
         .values({ userId, handle, createdAt: now, updatedAt: now })
         .returning()
-        .get();
+        .then(firstRow);
       if (inserted) return inserted;
     } catch {
       // Either the handle collided or another request created the profile first. Re-read before
       // burning another attempt: the common case is a concurrent create, not a real collision.
-      const raced = await db.select().from(creatorProfiles).where(eq(creatorProfiles.userId, userId)).get();
+      const raced = await db.select().from(creatorProfiles).where(eq(creatorProfiles.userId, userId)).then(firstRow);
       if (raced) return raced;
     }
   }
@@ -112,7 +112,7 @@ export async function ensureCreatorProfile(db: Database, userId: string): Promis
   return db.insert(creatorProfiles)
     .values({ userId, handle: fallback, createdAt: now, updatedAt: now })
     .returning()
-    .get() as Promise<CreatorProfileRow>;
+    .then(firstRow) as Promise<CreatorProfileRow>;
 }
 
 type CreatorRow = {
@@ -154,11 +154,11 @@ export async function getCreatorByHandle(db: Database, handle: string) {
     .from(creatorProfiles)
     .innerJoin(users, eq(users.id, creatorProfiles.userId))
     .where(eq(creatorProfiles.handle, handle))
-    .get();
+    .then(firstRow);
   if (!row) throw new ApiError(404, "CREATOR_NOT_FOUND", "Creator not found");
   const packCount = await db.select({ value: count() }).from(stickerPacks)
     .where(and(eq(stickerPacks.creatorId, row.user.id), inArray(stickerPacks.state, [...PUBLIC_PACK_STATES])))
-    .get();
+    .then(firstRow);
   return { ...row, packCount: packCount?.value ?? 0 };
 }
 
@@ -250,7 +250,7 @@ function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | nu
     isNull(stickers.deletedAt),
   ];
   const trimmedQuery = query?.trim();
-  if (trimmedQuery) conditions.push(sql`instr(lower(${stickers.title}), lower(${trimmedQuery})) > 0`);
+  if (trimmedQuery) conditions.push(sql`strpos(lower(${stickers.title}), lower(${trimmedQuery})) > 0`);
   return db.select({
     packId: stickerPackItems.packId,
     position: stickerPackItems.position,
@@ -338,12 +338,15 @@ async function serializePackPage(db: Database, rows: PackJoinRow[], viewerId: st
  *
  * The wildcards are escaped: `%` and `_` are ordinary characters in a search field, and left raw a
  * lone `%` would quietly match every pack there is.
+ *
+ * `ILIKE` rather than `LIKE`: SQLite's `LIKE` folds ASCII case on its own, Postgres' does not, and
+ * a search field that suddenly stopped matching "Cats" for `cats` would read as a broken search.
  */
 function titleSearch(query: string | null | undefined) {
   const trimmed = query?.trim();
   if (!trimmed) return undefined;
   const escaped = trimmed.replace(/[\\%_]/g, (character) => `\\${character}`);
-  return sql`${stickerPacks.title} LIKE ${`%${escaped}%`} ESCAPE '\\'`;
+  return sql`${stickerPacks.title} ILIKE ${`%${escaped}%`} ESCAPE '\\'`;
 }
 
 export async function listMarketplacePacks(
@@ -455,7 +458,7 @@ export async function listPacksByCreator(
 export async function getPack(db: Database, viewerId: string, packRef: string): Promise<PackDetailV1> {
   const row = await selectPacks(db)
     .where(or(eq(stickerPacks.id, packRef), eq(stickerPacks.slug, packRef)))
-    .get();
+    .then(firstRow);
   if (!row) throw new ApiError(404, "PACK_NOT_FOUND", "Sticker pack not found");
   const isMine = row.pack.creatorId === viewerId;
   // `removed` is a tombstone — unreachable even for the creator. Everyone else additionally needs
@@ -485,7 +488,7 @@ export async function getPack(db: Database, viewerId: string, packRef: string): 
 async function requireOwnPack(db: Database, creatorId: string, packId: string): Promise<StickerPackRow> {
   const pack = await db.select().from(stickerPacks)
     .where(and(eq(stickerPacks.id, packId), eq(stickerPacks.creatorId, creatorId)))
-    .get();
+    .then(firstRow);
   if (!pack || pack.state === "removed") throw new ApiError(404, "PACK_NOT_FOUND", "Sticker pack not found");
   return pack;
 }
@@ -670,7 +673,7 @@ export async function removePackItem(
     const next = await db.select({ stickerId: stickerPackItems.stickerId }).from(stickerPackItems)
       .where(eq(stickerPackItems.packId, packId))
       .orderBy(asc(stickerPackItems.position))
-      .get();
+      .then(firstRow);
     await db.update(stickerPacks)
       .set({ coverStickerId: next?.stickerId ?? null, updatedAt: new Date() })
       .where(eq(stickerPacks.id, packId));
@@ -711,7 +714,7 @@ export async function reorderPackItems(
 export async function installPack(db: Database, userId: string, packRef: string) {
   const pack = await db.select().from(stickerPacks)
     .where(or(eq(stickerPacks.id, packRef), eq(stickerPacks.slug, packRef)))
-    .get();
+    .then(firstRow);
   if (!pack || !PUBLIC_PACK_STATES.includes(pack.state as (typeof PUBLIC_PACK_STATES)[number])) {
     throw new ApiError(404, "PACK_NOT_FOUND", "Sticker pack not found");
   }
@@ -723,12 +726,12 @@ export async function installPack(db: Database, userId: string, packRef: string)
 
   const already = await db.select({ packId: packInstalls.packId }).from(packInstalls)
     .where(and(eq(packInstalls.userId, userId), eq(packInstalls.packId, pack.id), eq(packInstalls.state, "installed")))
-    .get();
+    .then(firstRow);
   if (already) return { packId: pack.id, installed: true as const };
 
   const installedCount = await db.select({ value: count() }).from(packInstalls)
     .where(and(eq(packInstalls.userId, userId), eq(packInstalls.state, "installed")))
-    .get();
+    .then(firstRow);
   if ((installedCount?.value ?? 0) >= MAX_INSTALLED_PACKS) {
     throw new ApiError(409, "TOO_MANY_INSTALLED_PACKS", `You can keep at most ${MAX_INSTALLED_PACKS} packs installed`);
   }
@@ -753,7 +756,7 @@ export async function installPack(db: Database, userId: string, packRef: string)
 export async function uninstallPack(db: Database, userId: string, packRef: string) {
   const pack = await db.select({ id: stickerPacks.id }).from(stickerPacks)
     .where(or(eq(stickerPacks.id, packRef), eq(stickerPacks.slug, packRef)))
-    .get();
+    .then(firstRow);
   if (!pack) throw new ApiError(404, "PACK_NOT_FOUND", "Sticker pack not found");
   await db.update(packInstalls)
     .set({ state: "uninstalled", uninstalledAt: new Date() })
@@ -858,13 +861,14 @@ export async function listLibrarySections(
     query,
   );
 
-  // These result sets are independent and travel in one libSQL batch. Keeping pack metadata and
-  // members separate still preserves an installed section when all its stickers fall back to draft.
-  const [mineRows, installed, memberRows] = await db.batch([
+  // These result sets are independent, so they go out together and share the round-trip latency
+  // rather than stacking it. Keeping pack metadata and members separate still preserves an
+  // installed section when all its stickers fall back to draft.
+  const [mineRows, installed, memberRows] = await Promise.all([
     mineSelection.query,
     installedQuery,
     membersQuery,
-  ] as const);
+  ]);
   const mine = serializeStickerListRows(mineRows, mineSelection.limit);
   const members = groupPackMembers(memberRows, installed.map((row) => row.pack.id));
 
@@ -908,10 +912,10 @@ export async function listLibrarySections(
 /**
  * Reconcile the denormalized counters against the rows they summarize.
  *
- * SQLite does not fire row triggers for rows removed by a foreign-key `ON DELETE CASCADE` unless
- * `PRAGMA recursive_triggers` is on, so a cascading delete can leave `install_count` high. Nothing
- * hard-deletes users today; this exists so that stays a repairable bug rather than a permanent one.
- * `install_total` is intentionally left alone — it is a lifetime tally, not a summary of live rows.
+ * Postgres does fire row triggers for rows a foreign-key `ON DELETE CASCADE` removes, so the drift
+ * this existed to repair on SQLite cannot happen here. It is kept as a backstop for the counters
+ * generally — a failed migration, a manual fix-up, an import — and is what `bun run db:packs:recount`
+ * calls. `install_total` is left alone: it is a lifetime tally, not a summary of live rows.
  */
 export async function recomputePackCounters(db: Database, packId?: string): Promise<void> {
   const scope = packId ? eq(stickerPacks.id, packId) : undefined;

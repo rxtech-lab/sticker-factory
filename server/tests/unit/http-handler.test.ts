@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import type { ApiPrincipal } from "@/lib/auth/bearer";
-import { setDatabaseForTests, type Database } from "@/lib/db/client";
+import { firstRow, setDatabaseForTests, type Database } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { withApiAuth } from "@/lib/http/handler";
 import { createTestDatabase } from "@/tests/helpers/database";
@@ -37,7 +37,7 @@ describe("withApiAuth user provisioning", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ data: [], nextCursor: null });
-    expect(await db.select().from(users).where(eq(users.id, principal.sub)).get()).toBeUndefined();
+    expect(await db.select().from(users).where(eq(users.id, principal.sub)).then(firstRow)).toBeUndefined();
     expect(response.headers.get("server-timing")).not.toContain("ensure-user");
   });
 
@@ -48,7 +48,7 @@ describe("withApiAuth user provisioning", () => {
     );
 
     expect(response.status).toBe(204);
-    expect(await db.select().from(users).where(eq(users.id, principal.sub)).get()).toBeUndefined();
+    expect(await db.select().from(users).where(eq(users.id, principal.sub)).then(firstRow)).toBeUndefined();
     expect(response.headers.get("server-timing")).not.toContain("ensure-user");
   });
 
@@ -57,7 +57,7 @@ describe("withApiAuth user provisioning", () => {
     const response = await withApiAuth(
       new Request("http://localhost/api/v1/stickers", { method: "POST" }),
       async (_principal, requestDb) => {
-        userSeenByHandler = await requestDb.select().from(users).where(eq(users.id, principal.sub)).get();
+        userSeenByHandler = await requestDb.select().from(users).where(eq(users.id, principal.sub)).then(firstRow);
         return new Response(null, { status: 204 });
       },
     );

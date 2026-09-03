@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/sqlite-core";
+import { alias } from "drizzle-orm/pg-core";
 import { assets, stickerRevisions } from "@/lib/db/schema";
 
 /**

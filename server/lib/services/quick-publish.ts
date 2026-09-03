@@ -9,7 +9,7 @@ import {
   StickerDocumentSchema,
   type StickerDocument,
 } from "@/lib/contracts/sticker";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { assets, stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { describeError, traceEvent } from "@/lib/observability/trace";
@@ -371,20 +371,20 @@ export async function quickPublishSticker(
 ): Promise<QuickPublishResult> {
   const report: QuickPublishReporter = onProgress ?? (async () => {});
   const sticker = await db.select().from(stickers)
-    .where(and(eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId))).get();
+    .where(and(eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId))).then(firstRow);
   if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
 
   const candidate = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.stickerId, stickerId),
     eq(stickerRevisions.candidateState, "candidate"),
-  )).orderBy(desc(stickerRevisions.createdAt)).get();
+  )).orderBy(desc(stickerRevisions.createdAt)).then(firstRow);
 
   if (candidate) await acceptRevision(db, ownerId, stickerId, candidate.id);
 
   const targetId = candidate?.id ?? sticker.activeRevisionId;
   if (!targetId) throw new ApiError(409, "NO_REVISION_TO_PUBLISH", "This sticker has nothing to publish yet");
   const revision = await db.select().from(stickerRevisions)
-    .where(and(eq(stickerRevisions.id, targetId), eq(stickerRevisions.stickerId, stickerId))).get();
+    .where(and(eq(stickerRevisions.id, targetId), eq(stickerRevisions.stickerId, stickerId))).then(firstRow);
   if (!revision) throw new ApiError(409, "NO_REVISION_TO_PUBLISH", "This sticker has nothing to publish yet");
 
   // Already carrying its renditions — a replayed step, or a second press. `bindExports` is

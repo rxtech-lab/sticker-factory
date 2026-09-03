@@ -1905,8 +1905,9 @@ class GatewayAiProvider implements AiProvider {
               "motion describes what the subject or the camera does over the clip, e.g. 'slow 360°",
               "turntable rotation, one full turn' — not what the subject is, which the artwork",
               "already shows. durationSeconds is how long that motion takes; keep it short.",
-              "To animate something the sticker does not have yet, draw it with add_image_layer first",
-              "and then call this on the layer that produced.",
+              "To animate something the sticker does not have yet, draw it with add_image_layer and",
+              "then call this on the layer that call added — which spends an image and a video, so be",
+              "sure the request really needs both.",
             ].join(" "),
             inputSchema: z
               .object({

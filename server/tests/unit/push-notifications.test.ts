@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { deviceTokens, users } from "@/lib/db/schema";
 import { getApnsConfig, type ApnsConfig, type ApnsPush, type ApnsResult } from "@/lib/notifications/apns";
 import {
@@ -254,7 +254,7 @@ describe("generation push", () => {
 
     const remaining = await listActiveDeviceTokens(db, "owner-a");
     expect(remaining.map((device) => device.token)).toEqual([TOKEN_B]);
-    const disabled = await db.select().from(deviceTokens).where(eq(deviceTokens.token, TOKEN_A)).get();
+    const disabled = await db.select().from(deviceTokens).where(eq(deviceTokens.token, TOKEN_A)).then(firstRow);
     expect(disabled?.disabledReason).toBe("Unregistered");
   });
 

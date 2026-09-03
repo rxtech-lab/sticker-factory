@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ApiPrincipal } from "@/lib/auth/bearer";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { ensureUser } from "@/lib/services/users";
 import { createTestDatabase } from "@/tests/helpers/database";
@@ -38,7 +38,7 @@ describe("ensureUser", () => {
 
   it("creates the row on first sight", async () => {
     await ensureUser(db, principal());
-    const row = await db.select().from(users).where(eq(users.id, "owner-a")).get();
+    const row = await db.select().from(users).where(eq(users.id, "owner-a")).then(firstRow);
     expect(row).toMatchObject({ id: "owner-a", email: null, displayName: null });
     expect(writes).toBe(1);
   });
@@ -54,7 +54,7 @@ describe("ensureUser", () => {
     await ensureUser(db, principal());
     await ensureUser(db, principal({ name: "Ada Lovelace" }));
     expect(writes).toBe(1);
-    const row = await db.select().from(users).where(eq(users.id, "owner-a")).get();
+    const row = await db.select().from(users).where(eq(users.id, "owner-a")).then(firstRow);
     expect(row).toMatchObject({ email: null, displayName: null });
   });
 
@@ -71,7 +71,7 @@ describe("ensureUser", () => {
 
     await ensureUser(db, principal({ sub: "owner-b", email: "b@example.test", name: "Grace" }));
     expect(writes).toBe(1);
-    const row = await db.select().from(users).where(eq(users.id, "owner-b")).get();
+    const row = await db.select().from(users).where(eq(users.id, "owner-b")).then(firstRow);
     expect(row).toMatchObject({ email: "b@example.test", displayName: "Grace" });
   });
 
@@ -89,7 +89,7 @@ describe("ensureUser", () => {
     const other = await createTestDatabase();
     try {
       await ensureUser(other.db, principal());
-      const row = await other.db.select().from(users).where(eq(users.id, "owner-a")).get();
+      const row = await other.db.select().from(users).where(eq(users.id, "owner-a")).then(firstRow);
       expect(row).toMatchObject({ id: "owner-a", email: null, displayName: null });
     } finally {
       await other.close();

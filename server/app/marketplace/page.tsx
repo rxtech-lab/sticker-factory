@@ -22,7 +22,7 @@ export default async function MarketplacePage({ searchParams }: { searchParams: 
   const search = typeof query.q === "string" ? query.q : "";
   const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
 
-  const db = getDatabase();
+  const db = await getDatabase();
   const result = mine
     ? await listOwnPacks(db, ownerId, { cursor, limit: 24 })
     : await listMarketplacePacks(db, ownerId, { cursor, limit: 24, sort, query: search });

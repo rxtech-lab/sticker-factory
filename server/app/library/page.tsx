@@ -16,7 +16,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   if (!ownerId) redirect("/login");
   const query = await searchParams;
   const kind = query.kind === "static" || query.kind === "animated" ? query.kind : undefined;
-  const db = getDatabase();
+  const db = await getDatabase();
   const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
   const result = await listStickers(db, ownerId, { kind, cursor, limit: 24 });
   const installedPacks = await listInstalledPacks(db, ownerId);

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { ApiPrincipal } from "@/lib/auth/bearer";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 
 const MAX_ENSURED_ENTRIES = 10_000;
@@ -57,5 +57,5 @@ export async function ensureUser(db: Database, principal: ApiPrincipal): Promise
 }
 
 export async function getUser(db: Database, id: string) {
-  return db.select().from(users).where(eq(users.id, id)).get();
+  return db.select().from(users).where(eq(users.id, id)).then(firstRow);
 }

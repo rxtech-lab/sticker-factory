@@ -4,7 +4,7 @@ Sticker Factory is an iOS 26 sticker studio with a companion web library and two
 
 ## Workspace
 
-- `server/` — Next.js 16 web library and bearer-authenticated API, Turso/Drizzle data layer, private Cloudflare R2 storage, Vercel Workflow jobs, and Vercel AI Gateway integration.
+- `server/` — Next.js 16 web library and bearer-authenticated API, Neon Postgres/Drizzle data layer, private Cloudflare R2 storage, Vercel Workflow jobs, and Vercel AI Gateway integration.
 - `StickerGeniOS/` — Swift 6 iPhone/iPad app, RxAuthSwift sign-in, deterministic SwiftUI renderer/exporter, shared token broker, and both Messages extensions.
 - `server/fixtures/` — canonical JSON fixtures shared with the Swift contract tests.
 
@@ -86,7 +86,7 @@ the current rungs so revisions published before the switch to 618 still re-valid
 
 ## Local setup
 
-1. Copy `server/.env.example` to `server/.env.local` and configure the confidential web OAuth client, public iOS client allowlist, Turso, R2, Workflow, and AI Gateway.
+1. Copy `server/.env.example` to `server/.env.local` and configure the confidential web OAuth client, public iOS client allowlist, `DATABASE_URL`, R2, Workflow, and AI Gateway.
 2. In `server/`, run `bun install`, `bun run db:migrate`, and `bun run dev`.
 3. The checked-in iOS build configurations use `http://localhost:3000` for Debug and `https://sticker.rxlab.app` for Release. Update the public OAuth values in `StickerGeniOS/Configuration/Base.xcconfig` when needed, or inject equivalent settings from Xcode Cloud.
 4. Enable the App Group `group.app.rxlab.stickerfactory` and the shared Keychain group for all four Apple targets — `app.rxlab.stickerfactory`, `…​.message`, `app.rxlab.stickerfactory.winkysticker` and `…​.winkysticker.message`. A missing App Group surfaces at runtime as `StickerCacheError.appGroupUnavailable`, which reads like a sign-in bug. Enable Associated Domains with `webcredentials:rxlab.app` for the main app, add `T7GYB573Y6.app.rxlab.stickerfactory` to the public RxLab iOS client's Apple App IDs, and register `stickerfactory://oauth/callback` for that client.
@@ -96,7 +96,7 @@ The iOS client is public and must never contain an OAuth client secret. User OAu
 ## Required deployment resources
 
 - A confidential RxLab web OAuth client for Auth.js with `openid email profile`, and a separate public Authorization Code + PKCE iOS client with `openid`.
-- A Turso database with `server/drizzle/0001_sticker_factory.sql` applied.
+- A Neon Postgres database with `bun run db:migrate` applied.
 - A private Cloudflare R2 bucket and S3-compatible credentials.
 - Vercel Workflow plus AI Gateway credentials or Vercel OIDC authentication.
 - Apple App Group, shared Keychain, Associated Domains, and identifiers/profiles for the main app, its Messages extension, and the separate WinkySticker app and extension. `WinkySticker` is a second App Store product; once shipped with `LSApplicationLaunchProhibited`, its bundle id can never be reused for a regular iOS app.

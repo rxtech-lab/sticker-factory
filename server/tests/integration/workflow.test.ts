@@ -7,7 +7,7 @@ import { StickerDocumentSchema, type StickerOperationV1 } from "@/lib/contracts/
 import { cropPngToSubject } from "@/lib/images/subject-bounds";
 import { layoutDiagnostics } from "@/lib/layout/composition";
 import { placementFromSubject } from "@/lib/layout/placement";
-import { setDatabaseForTests } from "@/lib/db/client";
+import { firstRow, setDatabaseForTests } from "@/lib/db/client";
 import { assets, chatAttachments, chatMessages, generationEvents, generationJobs, plans as planRows, stickerRevisions, stickers, users } from "@/lib/db/schema";
 import { derivedAssetId } from "@/lib/services/assets";
 import { cancelPlan, confirmPlan } from "@/lib/services/plans";
@@ -84,9 +84,9 @@ describe("durable sticker workflow", () => {
     const sticker = await createSticker(db, "owner-a", { title: "Bounce", kind: "animated", prompt: "Happy cloud", referenceAssetIds: [] });
     const baseTurn = await drawnAnimatedBase(db, "owner-a", sticker.stickerId, "Happy cloud");
     expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
-    const baseJob = await db.select().from(generationJobs).where(eq(generationJobs.id, baseTurn.jobId)).get();
+    const baseJob = await db.select().from(generationJobs).where(eq(generationJobs.id, baseTurn.jobId)).then(firstRow);
     expect(baseJob?.state).toBe("succeeded");
-    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
+    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).then(firstRow);
     expect(baseRevision?.candidateState).toBe("candidate");
     await acceptRevision(db, "owner-a", sticker.stickerId, baseRevision!.id);
 
@@ -113,7 +113,7 @@ describe("durable sticker workflow", () => {
       imagePlacement: "replace",
     });
     expect((await stickerGenerationWorkflow(refinementTurn.jobId)).workflowStatus).toBe("succeeded");
-    expect((await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, refinementTurn.jobId)).get())?.parentRevisionId)
+    expect((await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, refinementTurn.jobId)).then(firstRow))?.parentRevisionId)
       .toBe(animationTurn.jobId);
     await acceptRevision(db, "owner-a", sticker.stickerId, animationTurn.jobId);
     await expect(createChatTurn(db, "owner-a", sticker.stickerId, {
@@ -125,7 +125,7 @@ describe("durable sticker workflow", () => {
       imagePlacement: "replace",
     })).rejects.toMatchObject({ code: "ANIMATION_BASE_NOT_ACCEPTED" });
 
-    const animationRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animationTurn.jobId)).get();
+    const animationRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animationTurn.jobId)).then(firstRow);
     const pingPongDocument = StickerDocumentSchema.parse({ ...animationRevision!.documentJson, loop: "pingPong" });
     const pingPongRevisionId = await createCandidateRevision(db, {
       ownerId: "owner-a",
@@ -161,9 +161,9 @@ describe("durable sticker workflow", () => {
     }, crypto.randomUUID())).rejects.toMatchObject({ code: "ANIMATED_EXPORT_MATRIX" });
     const published = await bindExports(db, "owner-a", sticker.stickerId, publishRequest, publishedRevisionId);
     expect((await bindExports(db, "owner-a", sticker.stickerId, publishRequest, publishedRevisionId)).revisionId).toBe(published.revisionId);
-    const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).get();
+    const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).then(firstRow);
     expect(StickerDocumentSchema.parse(publishedRevision!.documentJson).mp4Background.type).toBe("linearGradient");
-    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.activeRevisionId).toBe(publishedRevisionId);
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.activeRevisionId).toBe(publishedRevisionId);
 
     const retryTurn = await createChatTurn(db, "owner-a", sticker.stickerId, {
       text: "Make it warmer",
@@ -198,7 +198,7 @@ describe("durable sticker workflow", () => {
     }, crypto.randomUUID())).rejects.toMatchObject({ code: "INVALID_STILL_SYSTEM_RENDITION" });
     const stillPublishedId = crypto.randomUUID();
     await bindExports(db, "owner-a", sticker.stickerId, { ...stillRequest, systemRenditionKind: "still" as const }, stillPublishedId);
-    expect((await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, stillPublishedId)).get())?.systemAssetId)
+    expect((await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, stillPublishedId)).then(firstRow))?.systemAssetId)
       .toBe(stillSystemId);
     await close();
   }, 30_000);
@@ -233,8 +233,8 @@ describe("durable sticker workflow", () => {
       imagePlacement: "replace",
     });
     expect((await stickerGenerationWorkflow(editTurn.jobId)).workflowStatus).toBe("succeeded");
-    expect((await db.select().from(chatMessages).where(eq(chatMessages.id, editTurn.messageId)).get())?.kind).toBe("image_edit");
-    const editReply = await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId));
+    expect((await db.select().from(chatMessages).where(eq(chatMessages.id, editTurn.messageId)).then(firstRow))?.kind).toBe("image_edit");
+    const editReply = await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)).orderBy(chatMessages.sequence);
     expect(editReply.filter((message) => message.role === "system").map((message) => message.content))
       .toEqual(["edit-sticker", "edit_image_layer", "finalize_edit", "show-sticker"]);
     expect(editReply.filter((message) => message.role === "system").every((message) => message.status === "complete")).toBe(true);
@@ -265,14 +265,14 @@ describe("durable sticker workflow", () => {
       imagePlacement: "replace",
     });
     expect((await stickerGenerationWorkflow(showTurn.jobId)).workflowStatus).toBe("succeeded");
-    const showReply = await db.select().from(chatMessages).where(eq(chatMessages.jobId, showTurn.jobId));
+    const showReply = await db.select().from(chatMessages).where(eq(chatMessages.jobId, showTurn.jobId)).orderBy(chatMessages.sequence);
     expect(showReply.filter((message) => message.role === "system").map((message) => message.content))
       .toEqual(["show-sticker"]);
     expect(showReply.find((message) => message.role === "assistant")).toMatchObject({
       revisionId: editTurn.jobId,
       kind: "image",
     });
-    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, showTurn.jobId)).get()).toBeUndefined();
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, showTurn.jobId)).then(firstRow)).toBeUndefined();
     await close();
   }, 30_000);
 
@@ -298,7 +298,7 @@ describe("durable sticker workflow", () => {
     await stickerGenerationWorkflow(baseTurn.jobId);
     await acceptRevision(db, "owner-layer", sticker.stickerId, baseTurn.jobId);
     const baseDocument = StickerDocumentSchema.parse(
-      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get())!.documentJson,
+      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).then(firstRow))!.documentJson,
     );
     expect(baseDocument.layers).toHaveLength(1);
 
@@ -310,15 +310,15 @@ describe("durable sticker workflow", () => {
       imagePlacement: "replace",
     });
     expect((await stickerGenerationWorkflow(addTurn.jobId)).workflowStatus).toBe("succeeded");
-    expect((await db.select().from(chatMessages).where(eq(chatMessages.id, addTurn.messageId)).get()))
+    expect((await db.select().from(chatMessages).where(eq(chatMessages.id, addTurn.messageId)).then(firstRow)))
       .toMatchObject({ kind: "image_edit", imagePlacement: "add" });
-    const addReply = await db.select().from(chatMessages).where(eq(chatMessages.jobId, addTurn.jobId));
+    const addReply = await db.select().from(chatMessages).where(eq(chatMessages.jobId, addTurn.jobId)).orderBy(chatMessages.sequence);
     expect(addReply.filter((message) => message.role === "system").map((message) => message.content))
       .toEqual(["generate-image", "show-sticker"]);
 
     // The point of the tool: the original layer survives and the new artwork lands beside it.
     const document = StickerDocumentSchema.parse(
-      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, addTurn.jobId)).get())!.documentJson,
+      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, addTurn.jobId)).then(firstRow))!.documentJson,
     );
     expect(document.layers).toHaveLength(2);
     expect(document.layers[0]).toMatchObject({ id: baseDocument.layers[0].id, assetId: baseTurn.jobId });
@@ -330,7 +330,7 @@ describe("durable sticker workflow", () => {
     expect(added_layer.anchor.scale.x).toBe(added_layer.anchor.scale.y);
     expect(added_layer.anchor.position).not.toEqual({ x: 0.5, y: 0.5 });
     expect(layoutDiagnostics(document).offCanvasLayerIds).toEqual([]);
-    const added = await db.select().from(assets).where(eq(assets.id, addTurn.jobId)).get();
+    const added = await db.select().from(assets).where(eq(assets.id, addTurn.jobId)).then(firstRow);
     expect(added).toMatchObject({ kind: "master", state: "ready", hasAlpha: true });
     await close();
   }, 30_000);
@@ -389,11 +389,11 @@ describe("durable sticker workflow", () => {
     expect(rejections).toHaveLength(1);
     expect(rejections[0]).toContain("scale channel");
     const document = StickerDocumentSchema.parse(
-      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animateTurn.jobId)).get())!.documentJson,
+      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animateTurn.jobId)).then(firstRow))!.documentJson,
     );
     expect(document.layers[0].animations.map((animation) => animation.delay)).toEqual([0, 0.5]);
     // The retry gets its own transcript row: reusing the label would leave the failed one showing.
-    const rows = await db.select().from(chatMessages).where(eq(chatMessages.jobId, animateTurn.jobId));
+    const rows = await db.select().from(chatMessages).where(eq(chatMessages.jobId, animateTurn.jobId)).orderBy(chatMessages.sequence);
     const toolRows = rows.filter((message) => message.role === "system");
     expect(toolRows.map((message) => message.content))
       .toEqual(["animate-sticker", "create_animation", "create_animation #2", "finalize_animation", "show-sticker"]);
@@ -453,7 +453,7 @@ describe("durable sticker workflow", () => {
     const turn = await animateTurnOn(db, "owner-restate", stickerId, baseRevisionId);
     expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
     const document = StickerDocumentSchema.parse(
-      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get())!.documentJson,
+      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).then(firstRow))!.documentJson,
     );
     expect(document.layers[0].animations.map((animation) => animation.type)).toEqual(["spin"]);
     await close();
@@ -483,7 +483,7 @@ describe("durable sticker workflow", () => {
     const turn = await animateTurnOn(db, "owner-capped", stickerId, baseRevisionId);
     expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
     const document = StickerDocumentSchema.parse(
-      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get())!.documentJson,
+      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).then(firstRow))!.documentJson,
     );
     expect(document.layers[0].animations.map((animation) => animation.type)).toEqual(["float"]);
     await close();
@@ -503,10 +503,10 @@ describe("durable sticker workflow", () => {
 
     const turn = await animateTurnOn(db, "owner-empty", stickerId, baseRevisionId);
     expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).not.toBe("succeeded");
-    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, turn.jobId)).get())?.state).toBe("failed");
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, turn.jobId)).then(firstRow))?.state).toBe("failed");
     // Publishing the untouched base back as a candidate would ask the user to keep a sticker that
     // never changed, so nothing is written at all.
-    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get()).toBeUndefined();
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).then(firstRow)).toBeUndefined();
     await close();
   }, 30_000);
 
@@ -542,7 +542,7 @@ describe("durable sticker workflow", () => {
     const turn = await animateTurnOn(db, "owner-cancel", stickerId, baseRevisionId);
     expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).not.toBe("succeeded");
     expect(secondCallFailedWith).toBe("TurnAbort");
-    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get()).toBeUndefined();
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).then(firstRow)).toBeUndefined();
     await close();
   }, 30_000);
 
@@ -556,7 +556,7 @@ describe("durable sticker workflow", () => {
     const sticker = await createSticker(db, "owner-one-layer", { title: "OMG", kind: "animated", prompt: "OMG", referenceAssetIds: [] });
     const baseTurn = await drawnAnimatedBase(db, "owner-one-layer", sticker.stickerId, "OMG");
     await stickerGenerationWorkflow(baseTurn.jobId);
-    const drawn = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
+    const drawn = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).then(firstRow);
 
     // Two layers, so "leaves the rest standing" is something the document can actually show.
     const twoLayers = StickerDocumentSchema.parse({
@@ -616,7 +616,7 @@ describe("durable sticker workflow", () => {
 
     expect(refusedCrossLayerEdit).toContain("edit_layer_animation only changes omg_text");
     const document = StickerDocumentSchema.parse(
-      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).get())!.documentJson,
+      (await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, turn.jobId)).then(firstRow))!.documentJson,
     );
     const hero = document.layers.find((layer) => layer.id === "hero");
     const text = document.layers.find((layer) => layer.id === "omg_text");
@@ -628,7 +628,7 @@ describe("durable sticker workflow", () => {
     expect(text?.animation.rotation.map((frame) => frame.degrees)).toEqual([-8, 8]);
     expect(text?.animation.scale).toHaveLength(0);
 
-    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, turn.jobId)))
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, turn.jobId)).orderBy(chatMessages.sequence))
       .filter((message) => message.role === "system");
     expect(toolRows.map((message) => message.content)).toEqual([
       "animate-sticker", "create_animation", "edit_layer_animation", "edit_layer_animation #2",
@@ -649,12 +649,12 @@ describe("durable sticker workflow", () => {
     const sticker = await createSticker(db, "owner-first", { title: "Wave", kind: "animated", prompt: "Wave", referenceAssetIds: [] });
     const baseTurn = await drawnAnimatedBase(db, "owner-first", sticker.stickerId, "A waving hand");
     expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
-    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.activeRevisionId).toBeNull();
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.activeRevisionId).toBeNull();
 
     // Nothing has ever been accepted, so there is no chain to walk: this candidate is the project.
     const animateTurn = await animateTurnOn(db, "owner-first", sticker.stickerId, baseTurn.jobId);
     expect((await stickerGenerationWorkflow(animateTurn.jobId)).workflowStatus).toBe("succeeded");
-    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animateTurn.jobId)).get())
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animateTurn.jobId)).then(firstRow))
       .toMatchObject({ parentRevisionId: baseTurn.jobId, candidateState: "candidate" });
     await close();
   }, 30_000);
@@ -680,7 +680,7 @@ describe("durable sticker workflow", () => {
       imagePlacement: "replace",
     });
     expect((await stickerGenerationWorkflow(addTurn.jobId)).workflowStatus).toBe("succeeded");
-    expect((await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, addTurn.jobId)).get())?.candidateState)
+    expect((await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, addTurn.jobId)).then(firstRow))?.candidateState)
       .toBe("candidate");
 
     const animateTurn = await createChatTurn(db, "owner-unkept", sticker.stickerId, {
@@ -692,7 +692,7 @@ describe("durable sticker workflow", () => {
     });
     expect((await stickerGenerationWorkflow(animateTurn.jobId)).workflowStatus).toBe("succeeded");
 
-    const turnRows = await db.select().from(chatMessages).where(eq(chatMessages.jobId, animateTurn.jobId));
+    const turnRows = await db.select().from(chatMessages).where(eq(chatMessages.jobId, animateTurn.jobId)).orderBy(chatMessages.sequence);
     expect(turnRows.filter((message) => message.role === "system").map((message) => message.content))
       .toEqual([
         "animate-sticker", "create_animation", "update_animation", "edit_layer_animation",
@@ -700,13 +700,13 @@ describe("durable sticker workflow", () => {
       ]);
     expect(turnRows.find((message) => message.role === "assistant"))
       .toMatchObject({ kind: "animation", revisionId: animateTurn.jobId });
-    expect((await db.select().from(chatMessages).where(eq(chatMessages.id, animateTurn.messageId)).get())?.kind)
+    expect((await db.select().from(chatMessages).where(eq(chatMessages.id, animateTurn.messageId)).then(firstRow))?.kind)
       .toBe("animation");
 
     // The motion branched off the candidate, and deciding about it is still the user's to make.
-    const animated = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animateTurn.jobId)).get();
+    const animated = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animateTurn.jobId)).then(firstRow);
     expect(animated).toMatchObject({ parentRevisionId: addTurn.jobId, candidateState: "candidate" });
-    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.activeRevisionId)
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.activeRevisionId)
       .toBe(baseTurn.jobId);
     await close();
   }, 30_000);
@@ -721,7 +721,7 @@ describe("durable sticker workflow", () => {
     const sticker = await createSticker(db, "owner-text", { title: "OMG", kind: "animated", prompt: "OMG", referenceAssetIds: [] });
     const baseTurn = await drawnAnimatedBase(db, "owner-text", sticker.stickerId, "OMG");
     await stickerGenerationWorkflow(baseTurn.jobId);
-    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
+    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).then(firstRow);
 
     // What a confirmed plan leaves behind: lettering and effects the app draws, and no artwork at
     // all for the image model to work from.
@@ -756,7 +756,7 @@ describe("durable sticker workflow", () => {
 
     // The point of the loop: deleting a layer the app draws is an edit, served in one turn by the
     // free operation. It used to be rewritten into a plan card the user then had to confirm.
-    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)))
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)).orderBy(chatMessages.sequence))
       .filter((message) => message.role === "system").map((message) => message.content);
     expect(toolRows).toEqual(["edit-sticker", "edit_layers", "finalize_edit", "show-sticker"]);
     // Only the draft the base setup turned down, and it is still turned down: the edit turn drafted
@@ -765,13 +765,13 @@ describe("durable sticker workflow", () => {
       .map((plan) => plan.state)).toEqual(["cancelled"]);
 
     // Nothing was drawn and nothing else was touched: the confetti survives exactly as it was.
-    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
+    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).then(firstRow);
     expect(edited?.candidateState).toBe("candidate");
     expect(StickerDocumentSchema.parse(edited!.documentJson).layers).toEqual([
       StickerDocumentSchema.parse(textOnly).layers[1],
     ]);
     // Still the user's decision to make, so the sticker on screen has not changed underneath them.
-    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.activeRevisionId)
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.activeRevisionId)
       .toBe(textOnlyRevisionId);
     await close();
   }, 30_000);
@@ -829,14 +829,14 @@ describe("durable sticker workflow", () => {
     expect((await stickerGenerationWorkflow(editTurn.jobId)).workflowStatus).toBe("succeeded");
     expect(refused).toMatch(/edit_image_layer/);
 
-    const turnRows = await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId));
+    const turnRows = await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)).orderBy(chatMessages.sequence);
     expect(turnRows.filter((message) => message.role === "system").map((message) => message.content))
       .toEqual(["edit-sticker", "edit_layers", "edit_layers #2", "finalize_edit", "show-sticker"]);
     // The rejected call keeps its own failed row rather than poisoning the one that succeeded.
     expect(turnRows.find((message) => message.content === "edit_layers")?.status).toBe("failed");
     expect(turnRows.find((message) => message.content === "edit_layers #2")?.status).toBe("complete");
 
-    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
+    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(edited!.documentJson);
     expect(document.layers.map((layer) => [layer.id, layer.type, layer.name]))
       .toEqual([["caption", "text", "Caption"], ["hero", "image", "Cloud"]]);
@@ -861,14 +861,14 @@ describe("durable sticker workflow", () => {
     const turn = await createChatTurn(db, "owner-b", sticker.stickerId, { text: "Delete", intent: "generate", attachments: [{ assetId: referenceId, kind: "reference" }], imagePlacement: "replace" });
     await stickerGenerationWorkflow(turn.jobId);
     await acceptRevision(db, "owner-b", sticker.stickerId, turn.jobId);
-    const generatedAsset = await db.select().from(assets).where(eq(assets.id, turn.jobId)).get();
+    const generatedAsset = await db.select().from(assets).where(eq(assets.id, turn.jobId)).then(firstRow);
     const key = generatedAsset!.r2Key;
     expect(store.objects.has(key)).toBe(true);
     const cleanupJobId = await createCleanupJob(db, "owner-b", sticker.stickerId);
     await beginJobStep(cleanupJobId);
     const keys = await purgeStickerStep(cleanupJobId);
     expect(store.objects.has(key)).toBe(false);
-    expect(await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get()).toBeTruthy();
+    expect(await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow)).toBeTruthy();
     await failJobStep(cleanupJobId, "simulated R2 outage after first sweep");
     const retriedCleanupJobId = await createCleanupJob(db, "owner-b", sticker.stickerId);
     expect(retriedCleanupJobId).toBe(cleanupJobId);
@@ -879,7 +879,7 @@ describe("durable sticker workflow", () => {
     await sweepStickerObjectsStep([...new Set([...keys, ...retriedKeys])]);
     expect(store.objects.has(key)).toBe(false);
     await finalizeStickerPurgeStep(cleanupJobId);
-    expect(await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get()).toBeUndefined();
+    expect(await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow)).toBeUndefined();
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.stickerId, sticker.stickerId))).toHaveLength(0);
     expect(await db.select().from(chatMessages)).toHaveLength(0);
     expect(await db.select().from(chatAttachments)).toHaveLength(0);
@@ -950,7 +950,7 @@ describe("durable sticker workflow", () => {
     const confirmed = await confirmPlan(db, "owner-place", sticker.stickerId, proposed.id);
     expect((await stickerGenerationWorkflow(confirmed.jobId)).workflowStatus).toBe("succeeded");
 
-    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).get();
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     for (const [index, layerId] of generateIds.entries()) {
       const expected = placementFromSubject((await cropPngToSubject(await separatedPart(index))).subject)!;
@@ -1033,7 +1033,7 @@ describe("durable sticker workflow", () => {
     expect(refused).toMatch(/Keep every complete layer box on canvas.*hero/);
     expect(afterAdd?.offCanvasLayerIds).toEqual([]);
 
-    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
+    const edited = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(edited!.documentJson);
     expect(document.layers.map((layer) => layer.name)).toEqual(["Hero", "Rainbow"]);
     const rainbow = document.layers[1];
@@ -1114,7 +1114,7 @@ describe("durable sticker workflow", () => {
     expect(planMessage?.plan?.plan.layers.length).toBeGreaterThanOrEqual(2);
 
     // Each plan tool call left its own row, so the client can render the drafting sequence live.
-    const planToolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, planTurn.jobId)))
+    const planToolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, planTurn.jobId)).orderBy(chatMessages.sequence))
       .filter((message) => message.role === "system").map((message) => message.content);
     expect(planToolRows).toEqual(expect.arrayContaining([
       "plan-sticker", "create_plan", "update_plan #1", "show_plan", "finalize_plan",
@@ -1156,7 +1156,7 @@ describe("durable sticker workflow", () => {
       .toEqual(Array.from({ length: partCount }, (_, index) => derivedAssetId(retry.jobId, index)).sort());
     expect(composedAssets.find((asset) => asset.kind === "preview")?.id).toBe(referenceAsset.id);
 
-    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, retry.jobId)).get();
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, retry.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     expect(document.layers).toHaveLength(partCount);
     for (const layer of document.layers) {
@@ -1181,7 +1181,7 @@ describe("durable sticker workflow", () => {
         .toEqual([round(spec.delay), round(spec.delay + spec.duration)]);
     }
 
-    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, retry.jobId)))
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, retry.jobId)).orderBy(chatMessages.sequence))
       .filter((message) => message.role === "system").map((message) => message.content);
     expect(toolRows).toContain("build-plan");
     expect(toolRows.filter((name) => name.startsWith("compose-part:"))).toHaveLength(partCount);
@@ -1285,7 +1285,7 @@ describe("durable sticker workflow", () => {
     expect([...store.objects.keys()].some((key) => key.includes(backdropId))).toBe(false);
     expect(stored.some((asset) => asset.id === backdropId)).toBe(false);
 
-    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).get();
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     const hero = document.layers[0];
     if (hero.type !== "video") throw new Error("the built document's first layer is not a video");
@@ -1306,7 +1306,7 @@ describe("durable sticker workflow", () => {
     const stages = events.map((event) => (event.dataJson as { stage?: string }).stage);
     expect(stages).toContain("composing_part");
     expect(stages).toContain("composing_video");
-    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, confirmed.jobId)))
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, confirmed.jobId)).orderBy(chatMessages.sequence))
       .filter((message) => message.role === "system").map((message) => message.content);
     expect(toolRows.filter((name) => name.startsWith("compose-video"))).toHaveLength(1);
 
@@ -1381,7 +1381,7 @@ describe("durable sticker workflow", () => {
     const baseTurn = await drawnAnimatedBase(db, "owner-clip", sticker.stickerId, "A red mask");
     expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
     await acceptRevision(db, "owner-clip", sticker.stickerId, baseTurn.jobId);
-    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
+    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).then(firstRow);
     const base = StickerDocumentSchema.parse(baseRevision!.documentJson);
     const still = base.layers[0];
     if (still.type !== "image") throw new Error("the drawn base is not a single image layer");
@@ -1419,9 +1419,9 @@ describe("durable sticker workflow", () => {
     // The flattened frame the provider was pointed at is scratch, swept whichever path ordered it.
     const backdropId = derivedAssetId(editTurn.jobId, "edit-video-backdrop-0");
     expect([...store.objects.keys()].some((key) => key.includes(backdropId))).toBe(false);
-    expect(await db.select().from(assets).where(eq(assets.id, backdropId)).get()).toBeUndefined();
+    expect(await db.select().from(assets).where(eq(assets.id, backdropId)).then(firstRow)).toBeUndefined();
 
-    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     expect(document.layers).toHaveLength(base.layers.length);
     const hero = document.layers[0];
@@ -1448,7 +1448,7 @@ describe("durable sticker workflow", () => {
     // layer the sticker had is the one that became a clip.
     expect(revision).toMatchObject({ masterAssetId: still.assetId, previewAssetId: still.assetId });
 
-    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)))
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)).orderBy(chatMessages.sequence))
       .filter((message) => message.role === "system");
     expect(toolRows.map((message) => message.content))
       .toEqual(["edit-sticker", "create_video", "create_video #2", "create_video #3", "finalize_edit", "show-sticker"]);
@@ -1625,7 +1625,7 @@ describe("durable sticker workflow", () => {
     const sticker = await createSticker(db, "owner-replan", { title: "Cloud", kind: "animated", prompt: "Happy cloud", referenceAssetIds: [] });
     const baseTurn = await drawnAnimatedBase(db, "owner-replan", sticker.stickerId, "Happy cloud");
     expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
-    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
+    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).then(firstRow);
     await acceptRevision(db, "owner-replan", sticker.stickerId, baseRevision!.id);
 
     let planned: { references: number; priorArt: Array<{ label: string; bytes: number }> } | undefined;
@@ -1946,7 +1946,7 @@ describe("durable sticker workflow", () => {
       .toEqual(originalAssets.filter((asset) => asset.kind === "master").map((asset) => asset.id).sort());
     expect(finalAssets.map((asset) => asset.id).sort())
       .toEqual([...originalAssetIds, revised.conceptAssetId!].sort());
-    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, rebuilt.jobId)).get();
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, rebuilt.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     expect(document.layers.flatMap((layer) => (layer.type === "image" ? [layer.assetId] : [])).sort())
       .toEqual(reusedIds.sort());
@@ -1990,7 +1990,7 @@ describe("durable sticker workflow", () => {
     // A dismissal records why, so the next planning turn can be told what was turned down.
     expect(await cancelPlan(db, "owner-d", sticker.stickerId, live.id, "Too cramped"))
       .toMatchObject({ state: "cancelled" });
-    expect((await db.select().from(planRows).where(eq(planRows.id, live.id)).get())?.decisionReason)
+    expect((await db.select().from(planRows).where(eq(planRows.id, live.id)).then(firstRow))?.decisionReason)
       .toBe("Too cramped");
     await expect(confirmPlan(db, "owner-d", sticker.stickerId, live.id))
       .rejects.toMatchObject({ code: "PLAN_NOT_ACTIONABLE" });
@@ -2047,7 +2047,7 @@ describe("durable sticker workflow", () => {
     // Only the static visual reference is drawn until the user confirms the plan.
     expect(await db.select().from(assets).where(eq(assets.stickerId, animated.stickerId)))
       .toEqual([expect.objectContaining({ kind: "preview", state: "ready" })]);
-    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animatedTurn.jobId)).get())
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, animatedTurn.jobId)).then(firstRow))
       .toBeFalsy();
 
     // A static project never moves, so there is nothing to design as layers: it is drawn straight.
@@ -2060,7 +2060,7 @@ describe("durable sticker workflow", () => {
     expect((await stickerGenerationWorkflow(stillTurn.jobId)).workflowStatus).toBe("succeeded");
 
     expect(await db.select().from(planRows).where(eq(planRows.stickerId, still.stickerId))).toHaveLength(0);
-    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, stillTurn.jobId)).get()).toBeTruthy();
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, stillTurn.jobId)).then(firstRow)).toBeTruthy();
     await close();
   });
 
@@ -2159,7 +2159,7 @@ describe("durable sticker workflow", () => {
     });
     expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
 
-    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.title)
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.title)
       .toBe("Sunglasses Cat");
     expect(summarized).toHaveLength(1);
     expect(summarized[0].currentTitle).toBe(prompt);
@@ -2190,9 +2190,9 @@ describe("durable sticker workflow", () => {
     });
     expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
 
-    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, turn.jobId)).get())?.state)
+    expect((await db.select().from(generationJobs).where(eq(generationJobs.id, turn.jobId)).then(firstRow))?.state)
       .toBe("succeeded");
-    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.title)
+    expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.title)
       .toBe("Wave");
     await close();
   });
@@ -2218,7 +2218,7 @@ describe("durable sticker workflow", () => {
     });
     await stickerGenerationWorkflow(turn.jobId);
 
-    const title = (await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).get())?.title;
+    const title = (await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.title;
     expect(title).toBe("A Very Enthusiastic Cat Wearing Tiny Mirrored");
     expect(title!.length).toBeLessThanOrEqual(48);
     await close();

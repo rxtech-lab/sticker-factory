@@ -18,7 +18,7 @@ import {
   StickerDocumentSchema,
   type StickerDocument,
 } from "@/lib/contracts/sticker";
-import type { Database } from "@/lib/db/client";
+import { firstRow, type Database } from "@/lib/db/client";
 import {
   attachmentMediumAssets,
   attachmentSmallAssets,
@@ -70,10 +70,7 @@ export function isActiveJobConstraint(error: unknown): boolean {
   let current: unknown = error;
   for (let depth = 0; current && depth < 5; depth += 1) {
     const message = current instanceof Error ? current.message : String(current);
-    if (message.includes("generation_jobs_one_active_per_sticker")
-      || message.includes("UNIQUE constraint failed: generation_jobs.sticker_id")) {
-      return true;
-    }
+    if (message.includes("generation_jobs_one_active_per_sticker")) return true;
     current = typeof current === "object" && "cause" in current ? (current as { cause?: unknown }).cause : undefined;
   }
   return false;
@@ -98,7 +95,7 @@ export async function assertOwnedSticker(db: Database, ownerId: string, stickerI
   const sticker = await db.select().from(stickers).where(and(
     eq(stickers.id, stickerId),
     eq(stickers.ownerId, ownerId),
-  )).get();
+  )).then(firstRow);
   if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
   return sticker;
 }
@@ -266,7 +263,7 @@ export function serializeStickerSummary({
 }
 
 async function serializeSticker(db: Database, sticker: typeof stickers.$inferSelect) {
-  const row = await selectStickerSummaries(db).where(eq(stickers.id, sticker.id)).get();
+  const row = await selectStickerSummaries(db).where(eq(stickers.id, sticker.id)).then(firstRow);
   return serializeStickerSummary(row ?? {
     sticker,
     systemAsset: null,
@@ -294,7 +291,7 @@ export function buildStickerListQuery(
   if (options.kind) conditions.push(eq(stickers.kind, options.kind));
   if (options.status) conditions.push(eq(stickers.status, options.status));
   const query = options.query?.trim();
-  if (query) conditions.push(sql`instr(lower(${stickers.title}), lower(${query})) > 0`);
+  if (query) conditions.push(sql`strpos(lower(${stickers.title}), lower(${query})) > 0`);
   if (cursor) conditions.push(or(
     lt(stickers.updatedAt, new Date(cursor.updatedAt)),
     and(eq(stickers.updatedAt, new Date(cursor.updatedAt)), lt(stickers.id, cursor.id)),
@@ -533,14 +530,14 @@ export async function createExportJob(
 }
 
 export async function createCleanupJob(db: Database, ownerId: string, stickerId: string) {
-  const sticker = await db.select().from(stickers).where(and(eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId))).get();
+  const sticker = await db.select().from(stickers).where(and(eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId))).then(firstRow);
   if (!sticker) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
   if (sticker.status === "deleting") return retryFailedCleanupJob(db, ownerId, stickerId);
   if (sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
   const active = await db.select({ id: generationJobs.id }).from(generationJobs).where(and(
     eq(generationJobs.stickerId, stickerId),
     inArray(generationJobs.state, ["queued", "running", "waiting"]),
-  )).get();
+  )).then(firstRow);
   if (active) throw new ApiError(409, "STICKER_OPERATION_IN_PROGRESS", "Wait for the current sticker operation before deleting this project");
   // No credit hold. Deleting your own work is never billed — charging for it
   // would let a user run out of credits with no way to free their storage.
@@ -571,7 +568,7 @@ export async function retryFailedCleanupJob(db: Database, ownerId: string, stick
     eq(stickers.id, stickerId),
     eq(stickers.ownerId, ownerId),
     eq(stickers.status, "deleting"),
-  )).get();
+  )).then(firstRow);
   if (!sticker) throw new ApiError(404, "STICKER_NOT_FOUND", "Deleting sticker not found");
   const job = await db.select().from(generationJobs).where(and(
     eq(generationJobs.stickerId, stickerId),
@@ -579,7 +576,7 @@ export async function retryFailedCleanupJob(db: Database, ownerId: string, stick
     eq(generationJobs.kind, "cleanup"),
     eq(generationJobs.state, "failed"),
     gt(generationJobs.attempts, 0),
-  )).orderBy(desc(generationJobs.updatedAt)).get();
+  )).orderBy(desc(generationJobs.updatedAt)).then(firstRow);
   if (!job) throw new ApiError(409, "CLEANUP_NOT_RETRYABLE", "The cleanup is not in a retryable failed state");
   if (job.attempts >= 5) throw new ApiError(409, "CLEANUP_RETRY_LIMIT", "Cleanup requires operator reconciliation after five attempts");
   const now = new Date();
@@ -894,7 +891,7 @@ async function animationBaseRejection(
   const active = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, activeRevisionId),
     eq(stickerRevisions.stickerId, sticker.id),
-  )).get();
+  )).then(firstRow);
   if (!active) return { reason: "active_revision_missing", detail: { activeRevisionId } };
   if (active.candidateState !== "accepted") {
     return { reason: "active_revision_not_accepted", detail: { activeCandidateState: active.candidateState } };
@@ -920,7 +917,7 @@ async function animationBaseRejection(
     const parent = await db.select().from(stickerRevisions).where(and(
       eq(stickerRevisions.id, current.parentRevisionId),
       eq(stickerRevisions.stickerId, sticker.id),
-    )).get();
+    )).then(firstRow);
     if (!parent) return { reason: "parent_revision_missing", detail: { walked, parentRevisionId: current.parentRevisionId } };
     current = parent;
   }
@@ -984,7 +981,7 @@ export async function createChatTurn(
   const thread = await db.select().from(chatThreads).where(and(
     eq(chatThreads.stickerId, stickerId),
     eq(chatThreads.ownerId, ownerId),
-  )).get();
+  )).then(firstRow);
   if (!thread) throw new ApiError(500, "CHAT_THREAD_MISSING", "Sticker chat thread is missing");
 
   const assetIds = request.attachments.map((attachment) => attachment.assetId);
@@ -994,9 +991,9 @@ export async function createChatTurn(
     ? await db.select().from(stickerRevisions).where(and(
       eq(stickerRevisions.id, request.baseRevisionId),
       eq(stickerRevisions.stickerId, stickerId),
-    )).get()
+    )).then(firstRow)
     : sticker.activeRevisionId
-      ? await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, sticker.activeRevisionId)).get()
+      ? await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, sticker.activeRevisionId)).then(firstRow)
       : undefined;
   if (request.baseRevisionId && !baseRevision) {
     throw new ApiError(422, "INVALID_BASE_REVISION", "The selected base revision does not belong to this sticker");
@@ -1078,7 +1075,7 @@ export async function createChatTurn(
   try {
     await db.transaction(async (tx) => {
       const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-        .where(eq(chatMessages.threadId, thread.id)).get();
+        .where(eq(chatMessages.threadId, thread.id)).then(firstRow);
       const sequence = (sequenceRow?.value ?? 0) + 1;
       try {
         await tx.insert(generationJobs).values({
@@ -1166,26 +1163,26 @@ export async function retryFailedChatTurn(
   const thread = await db.select().from(chatThreads).where(and(
     eq(chatThreads.stickerId, stickerId),
     eq(chatThreads.ownerId, ownerId),
-  )).get();
+  )).then(firstRow);
   if (!thread) throw new ApiError(404, "CHAT_NOT_FOUND", "Chat not found");
   const message = await db.select().from(chatMessages).where(and(
     eq(chatMessages.id, sourceMessageId),
     eq(chatMessages.threadId, thread.id),
     eq(chatMessages.ownerId, ownerId),
     eq(chatMessages.role, "user"),
-  )).get();
+  )).then(firstRow);
   if (!message || !message.jobId) throw new ApiError(404, "MESSAGE_NOT_FOUND", "Retry source message not found");
   if (message.status !== "failed") throw new ApiError(409, "MESSAGE_NOT_RETRYABLE", "Only the latest failed AI turn can be retried");
   const original = await db.select().from(generationJobs).where(and(
     eq(generationJobs.id, message.jobId),
     eq(generationJobs.ownerId, ownerId),
     eq(generationJobs.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (!original || (original.state !== "failed" && original.state !== "cancelled")) {
     throw new ApiError(409, "JOB_NOT_RETRYABLE", "Only failed or cancelled AI turns can be retried");
   }
   const attempts = await db.select({ value: count() }).from(generationJobs)
-    .where(and(eq(generationJobs.sourceMessageId, sourceMessageId), eq(generationJobs.ownerId, ownerId))).get();
+    .where(and(eq(generationJobs.sourceMessageId, sourceMessageId), eq(generationJobs.ownerId, ownerId))).then(firstRow);
   if ((attempts?.value ?? 0) >= 4) throw new ApiError(429, "RETRY_LIMIT_REACHED", "This AI turn has reached its retry limit");
   const jobId = crypto.randomUUID();
   // A retry is a fresh attempt at the provider, so it gets the same estimated
@@ -1250,7 +1247,7 @@ export async function listChatMessages(
   options: { afterSequence?: number; beforeSequence?: number; limit?: number; latest?: boolean } = {},
 ) {
   await assertOwnedSticker(db, ownerId, stickerId);
-  const thread = await db.select().from(chatThreads).where(eq(chatThreads.stickerId, stickerId)).get();
+  const thread = await db.select().from(chatThreads).where(eq(chatThreads.stickerId, stickerId)).then(firstRow);
   if (!thread || thread.ownerId !== ownerId) throw new ApiError(404, "CHAT_NOT_FOUND", "Chat not found");
   const limit = Math.min(options.limit ?? 100, 200);
   const newestFirst = options.beforeSequence !== undefined || Boolean(options.latest) || options.afterSequence === undefined;
@@ -1320,7 +1317,7 @@ export async function acceptRevision(db: Database, ownerId: string, stickerId: s
   const revision = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, revisionId),
     eq(stickerRevisions.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (!revision) throw new ApiError(404, "REVISION_NOT_FOUND", "Revision not found");
   if (revision.candidateState === "accepted" && sticker.activeRevisionId === revisionId) {
     return { revisionId, candidateState: "accepted" as const, activeRevisionId: revisionId };
@@ -1353,7 +1350,7 @@ export async function rejectRevision(db: Database, ownerId: string, stickerId: s
   const existing = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, revisionId),
     eq(stickerRevisions.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (existing?.candidateState === "rejected") return { revisionId, candidateState: "rejected" as const };
   const [revision] = await db.update(stickerRevisions).set({ candidateState: "rejected", decidedAt: new Date() })
     .where(and(
@@ -1370,14 +1367,14 @@ export async function revertRevision(db: Database, ownerId: string, stickerId: s
   const priorResult = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, decisionId),
     eq(stickerRevisions.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (priorResult) {
     return { revisionId: priorResult.id, revertedFromRevisionId: revisionId, activeRevisionId: priorResult.id };
   }
   const target = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, revisionId),
     eq(stickerRevisions.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (!target) throw new ApiError(404, "REVISION_NOT_FOUND", "Revision not found");
   const newRevisionId = decisionId;
   const now = new Date();
@@ -1438,7 +1435,7 @@ export async function createCandidateRevision(
     throw new ApiError(422, "REVISION_KIND_MISMATCH", "Revision document kind must match the sticker project kind");
   }
   if (input.id) {
-    const existing = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, input.id)).get();
+    const existing = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, input.id)).then(firstRow);
     if (existing) {
       if (existing.stickerId !== input.stickerId || existing.sourceMessageId !== input.sourceMessageId) {
         throw new ApiError(409, "REVISION_ID_CONFLICT", "The deterministic revision ID belongs to another result");
@@ -1450,7 +1447,7 @@ export async function createCandidateRevision(
     const parent = await db.select({ id: stickerRevisions.id }).from(stickerRevisions).where(and(
       eq(stickerRevisions.id, input.parentRevisionId),
       eq(stickerRevisions.stickerId, input.stickerId),
-    )).get();
+    )).then(firstRow);
     if (!parent) throw new ApiError(422, "INVALID_PARENT_REVISION", "The revision parent does not belong to this sticker");
   }
   const assetIds = [input.masterAssetId, input.previewAssetId].filter((value): value is string => Boolean(value));
@@ -1498,7 +1495,7 @@ export async function saveEditedRevision(
   const prior = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, revisionId),
     eq(stickerRevisions.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (prior) {
     return {
       revisionId: prior.id,
@@ -1515,7 +1512,7 @@ export async function saveEditedRevision(
   const activeJob = await db.select({ id: generationJobs.id }).from(generationJobs).where(and(
     eq(generationJobs.stickerId, stickerId),
     inArray(generationJobs.state, ["queued", "running", "waiting"]),
-  )).get();
+  )).then(firstRow);
   if (activeJob) {
     throw new ApiError(409, "STICKER_OPERATION_IN_PROGRESS", "Wait for the current sticker operation before saving an edit");
   }
@@ -1530,7 +1527,7 @@ export async function saveEditedRevision(
   const parent = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.id, request.parentRevisionId),
     eq(stickerRevisions.stickerId, stickerId),
-  )).get();
+  )).then(firstRow);
   if (!parent) throw new ApiError(422, "INVALID_PARENT_REVISION", "The revision parent does not belong to this sticker");
   // Editing forward from a branch that was already turned down would resurrect it silently.
   if (parent.candidateState === "rejected" || parent.candidateState === "superseded") {
@@ -1545,11 +1542,11 @@ export async function saveEditedRevision(
     // posted as `device_edit` rather than as an ordinary turn: the user never said this, and a
     // bubble quoting words they did not type reads as a message the agent should answer. The app
     // draws the kind as a divider instead.
-    const thread = await tx.select().from(chatThreads).where(eq(chatThreads.stickerId, stickerId)).get();
+    const thread = await tx.select().from(chatThreads).where(eq(chatThreads.stickerId, stickerId)).then(firstRow);
     let sourceMessageId: string | undefined;
     if (thread) {
       const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
-        .where(eq(chatMessages.threadId, thread.id)).get();
+        .where(eq(chatMessages.threadId, thread.id)).then(firstRow);
       sourceMessageId = crypto.randomUUID();
       await tx.insert(chatMessages).values({
         id: sourceMessageId,
@@ -1617,7 +1614,7 @@ export async function bindExports(
   publishedRevisionId = crypto.randomUUID(),
 ) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
-  const existingPublished = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).get();
+  const existingPublished = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).then(firstRow);
   if (existingPublished) {
     if (existingPublished.stickerId !== stickerId || existingPublished.parentRevisionId !== request.revisionId) {
       throw new ApiError(409, "PUBLISHED_REVISION_CONFLICT", "The deterministic published revision ID belongs to another export");
@@ -1631,7 +1628,7 @@ export async function bindExports(
     eq(stickerRevisions.id, request.revisionId),
     eq(stickerRevisions.stickerId, stickerId),
     eq(stickerRevisions.candidateState, "accepted"),
-  )).get();
+  )).then(firstRow);
   if (!revision) throw new ApiError(409, "REVISION_NOT_ACCEPTED", "The revision must be accepted before publishing");
   const ids = [
     request.pngAssetId,
