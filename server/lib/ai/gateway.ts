@@ -511,6 +511,21 @@ export interface EditDraftingSession extends RenderableSession {
     scaleY?: number;
   }): Promise<EditDraftState>;
   /**
+   * Animates one image layer into a generated clip, replacing it with a `video` layer in place.
+   *
+   * The layer's own artwork is the still the clip is animated from, and stays on as the layer's
+   * poster — so this is a change of layer kind, not a redraw: the sticker keeps looking like
+   * itself, and everything that cannot decode video keeps drawing the frame it already knows.
+   *
+   * The most expensive call in the loop, and the only one that is not undoable by another tool:
+   * costs one video generation, and no tool turns a clip back into a still.
+   */
+  createVideoLayer(input: {
+    layerId: string;
+    motion: string;
+    durationSeconds: number;
+  }): Promise<EditDraftState>;
+  /**
    * Applies free document operations: adding, removing, reordering, renaming, and re-laying-out
    * layers the app draws itself. Nothing here generates artwork, so nothing here costs anything.
    */
@@ -1865,6 +1880,47 @@ class GatewayAiProvider implements AiProvider {
           .strict(),
         execute: async (value) => guard(() => session.addImageLayer(value)),
       }),
+      // Absent from a static sticker's tool set rather than present and refusing: a clip is frames,
+      // and the document contract will not hold more than one of them in a static document. The
+      // project's kind is fixed when it is created and no edit can change it, so a tool the model
+      // could only ever be told "no" by is better not offered at all.
+      ...(input.document?.kind === "animated"
+        ? {
+          create_video: tool({
+            description: [
+              "Turn one image layer into a short generated clip: a video model animates the layer's",
+              "own artwork, and the layer becomes a video layer that plays that clip in the same",
+              "place, at the same size, carrying the same motion you gave it. The artwork stays on as",
+              "the layer's still, so nothing about how the sticker looks changes — only that this",
+              "part of it now moves on its own.",
+              "This is the most expensive tool here: it costs a video generation, it takes longer than",
+              "an image does, and once a layer is a clip no tool can turn it back into a still. You",
+              "get one clip per turn, and a sticker can hold only one.",
+              "Use it only for motion that keyframes genuinely cannot express — a turnaround or any",
+              "change of viewing angle, a camera move, cloth, hair, fur, smoke, fire or liquid, a",
+              "morph from one form into another. Everything a layer can do while staying the same",
+              "picture — moving, spinning flat, scaling, pulsing, fading, shining, wiping — is a",
+              "keyframe animation: free, instant, sharper, and transparent by construction. Reach for",
+              "those first and leave this alone unless the request is impossible without it.",
+              "motion describes what the subject or the camera does over the clip, e.g. 'slow 360°",
+              "turntable rotation, one full turn' — not what the subject is, which the artwork",
+              "already shows. durationSeconds is how long that motion takes; keep it short.",
+              "To animate something the sticker does not have yet, draw it with add_image_layer first",
+              "and then call this on the layer that produced.",
+            ].join(" "),
+            inputSchema: z
+              .object({
+                layerId: z.string().min(1).max(64),
+                motion: z.string().trim().min(1).max(500),
+                // The same window the plan's `video` source allows: the model's own floor is 2s,
+                // and the document timing this loop can set tops out at 4s.
+                durationSeconds: z.number().int().min(2).max(4).default(3),
+              })
+              .strict(),
+            execute: async (value) => guard(() => session.createVideoLayer(value)),
+          }),
+        }
+        : {}),
       finalize_edit: tool({
         description: [
           "Finish and show the edited sticker to the user. Call this once, when the sticker matches",
@@ -1891,9 +1947,24 @@ class GatewayAiProvider implements AiProvider {
         "Your calls stack: each one is applied to the result of the last, and there is no undo. Read",
         "the layer list each tool returns before deciding what to do next.",
         "",
-        "Two of these tools spend money. edit_image_layer and add_image_layer each run an image model,",
-        "which is slow and billed; edit_layers is free and instant. If the request can be served by",
-        "moving, removing, restyling, or re-lettering layers, serve it with edit_layers alone.",
+        "Some of these tools spend money. edit_image_layer and add_image_layer each run an image",
+        "model, which is slow and billed; edit_layers is free and instant. If the request can be",
+        "served by moving, removing, restyling, or re-lettering layers, serve it with edit_layers",
+        "alone.",
+        // Named here as well as in its own description because the failure this guards against is
+        // not the model misusing the tool, it is the model reaching for it at all: "make it move"
+        // is a keyframe animation nine times out of ten, and a clip is the expensive tenth.
+        ...(input.document?.kind === "animated"
+          ? [
+            "create_video costs the most of all and cannot be undone: it animates one image layer's",
+            "artwork into a clip and that layer is a clip from then on. Motion is normally free —",
+            "a layer can move, spin, scale, pulse, fade, shine and wipe from its animations without",
+            "any generation at all — so reach for create_video only when the sticker has to show",
+            "something the same picture cannot: a turnaround or another angle, a camera move, cloth,",
+            "hair, fur, smoke, fire, liquid, or a morph into a different form. One clip per turn, one",
+            "per sticker.",
+          ]
+          : []),
         "",
         "Layer types. image layers are drawn artwork and can only be changed by the two image tools.",
         "text, shape, and particle layers are drawn by the app from the document, so edit_layers can",
@@ -2796,14 +2867,14 @@ export function validateEditOperation(
       "Captured footage can only be added by the user; it cannot be introduced by an edit",
     );
   }
-  // A clip is only ever made by building a plan: it costs a video generation and needs a still to
-  // animate from, neither of which the edit loop has. An `addLayer` naming one would point at an
-  // asset this turn did not produce.
+  // A clip has to be generated, and generating one is what `create_video` owns: it buys the video,
+  // stores it, and writes the layer that points at it. An `addLayer` naming a video asset by hand
+  // would point at one this turn never produced.
   if (operation.op === "addLayer" && operation.layer.type === "video") {
     throw new ApiError(
       422,
       "UNSAFE_EDIT_OPERATION",
-      "A video layer can only be produced by a plan; plan the sticker again to add one",
+      "A clip has to be generated; turn an image layer into one with create_video instead",
     );
   }
   return operation;
@@ -2953,9 +3024,10 @@ class MockAiProvider implements AiProvider {
    * callbacks and the transcript rows they write.
    *
    * Which change it makes is keyed off the request the same way the real model is asked to read it:
-   * the free operation when the words ask for a removal, new artwork when the router said `add` or
-   * when there is no artwork to work from, and otherwise a redraw of the targeted image layer —
-   * which is the whole of what the edit turn could do before it became a loop.
+   * the free operation when the words ask for a removal, a clip when the words ask for motion no
+   * keyframe can express, new artwork when the router said `add` or when there is no artwork to
+   * work from, and otherwise a redraw of the targeted image layer — which is the whole of what the
+   * edit turn could do before it became a loop.
    */
   async editSticker(
     input: AiEditContext,
@@ -2974,6 +3046,14 @@ class MockAiProvider implements AiProvider {
 
     if (/\b(remove|delete|drop)\b/.test(normalized) && appDrawn) {
       await session.applyOperations([{ op: "removeLayer", layerId: appDrawn.id }]);
+    // Read off the words the way the real loop's prompt tells it to: a request for an angle change
+    // is the one thing keyframes cannot serve, so it is the one that buys a clip.
+    } else if (artwork && input.document.kind === "animated" && /\b(turnaround|turntable|spin all the way|clip|video)\b/.test(normalized)) {
+      await session.createVideoLayer({
+        layerId: artwork.id,
+        motion: input.instruction,
+        durationSeconds: 2,
+      });
     } else if (input.imagePlacement === "add" || !artwork) {
       await session.addImageLayer({ prompt: input.instruction, name: "Generated layer" });
       // Artwork standing in for an app-drawn layer the user named: the layer it replaces goes too.

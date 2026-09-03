@@ -115,6 +115,20 @@ describe("media and animation hardening", () => {
     expect(() => validateEditOperation({
       op: "replaceAsset", layerId: "hero", assetId: crypto.randomUUID(),
     })).toThrow(/edit_image_layer/);
+    // Same line again for a clip, which has the extra property that the asset has to be *bought*:
+    // a hand-written video layer would name an MP4 no generation in this turn produced.
+    expect(() => validateEditOperation({
+      op: "addLayer",
+      layer: {
+        ...shape.layer,
+        type: "video",
+        assetId: crypto.randomUUID(),
+        posterAssetId: crypto.randomUUID(),
+        keyColor: "green",
+        frameCount: 24,
+        frameRate: 24,
+      },
+    } as never)).toThrow(/create_video/);
   });
 
   it("prevents structural operations from escaping a targeted animation", () => {

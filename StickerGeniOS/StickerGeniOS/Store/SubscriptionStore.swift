@@ -1,6 +1,19 @@
 import Foundation
 import Observation
 import RxSubscriptionIOS
+import StoreKit
+
+nonisolated extension SubscriptionEnvironment {
+    static func currentVerified() async -> Self? {
+        guard let result = try? await AppTransaction.shared else { return nil }
+        guard case .verified(let appTransaction) = result else { return nil }
+
+        if appTransaction.environment == .xcode { return .xcode }
+        if appTransaction.environment == .sandbox { return .sandbox }
+        if appTransaction.environment == .production { return .production }
+        return nil
+    }
+}
 
 nonisolated enum SubscriptionAccess {
     /// Keep this aligned with the subscription backend's live entitlement statuses.
@@ -71,14 +84,17 @@ final class SubscriptionStore {
     private(set) var client: Client?
 
     @ObservationIgnored private let serverURL: URL?
-    @ObservationIgnored private let publishableKey: String?
+    @ObservationIgnored private let publishableKeys: SubscriptionPublishableKeys
     @ObservationIgnored private let tokenBroker: SharedTokenBroker?
+    @ObservationIgnored private let environmentProvider: () async -> SubscriptionEnvironment?
+    @ObservationIgnored private var clientBindingTask: Task<Void, Never>?
+    @ObservationIgnored private var bindingUserID: String?
     @ObservationIgnored private var transactionObserver: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
     /// Whether this build has a paywall at all. A build with no key configured hides every
     /// subscription surface rather than showing an empty one.
-    var isConfigured: Bool { serverURL != nil && publishableKey != nil }
+    var isConfigured: Bool { serverURL != nil && publishableKeys.hasAnyKey }
 
     /// Whether there is a client to hand the package's views.
     var isReady: Bool { client != nil }
@@ -107,20 +123,33 @@ final class SubscriptionStore {
         return entitlements.permissions.contains(Self.publishPermission)
     }
 
-    init(configuration: AppConfiguration, tokenBroker: SharedTokenBroker) {
+    init(
+        configuration: AppConfiguration,
+        tokenBroker: SharedTokenBroker,
+        environmentProvider: @escaping () async -> SubscriptionEnvironment? = {
+            await SubscriptionEnvironment.currentVerified()
+        }
+    ) {
         self.serverURL = configuration.subscriptionBaseURL
-        self.publishableKey = configuration.subscriptionPublishableKey
+        self.publishableKeys = configuration.subscriptionPublishableKeys
         self.tokenBroker = tokenBroker
+        self.environmentProvider = environmentProvider
     }
 
     /// For previews and UI tests: a store with nothing configured, which reports no paywall.
     init() {
         self.serverURL = nil
-        self.publishableKey = nil
+        self.publishableKeys = SubscriptionPublishableKeys(
+            xcode: nil,
+            sandbox: nil,
+            production: nil
+        )
         self.tokenBroker = nil
+        self.environmentProvider = { nil }
     }
 
     deinit {
+        clientBindingTask?.cancel()
         transactionObserver?.cancel()
     }
 
@@ -129,29 +158,54 @@ final class SubscriptionStore {
     /// Safe to call on every launch and after every sign-in; re-binding to the same user is a
     /// no-op, and binding to a different one throws away the previous user's cache first.
     func signedIn(rxlabUserID: String) {
-        guard let serverURL, let publishableKey, let tokenBroker else { return }
+        guard let serverURL, let tokenBroker, publishableKeys.hasAnyKey else { return }
         guard client?.user.rxlabUserID != rxlabUserID else {
             refresh()
             return
         }
+        guard bindingUserID != rxlabUserID else { return }
         reset()
+        bindingUserID = rxlabUserID
+        let environmentProvider = self.environmentProvider
 
-        let client = Client(
-            serverURL: serverURL,
-            publishableKey: publishableKey,
-            rxlabUserID: rxlabUserID,
-            userToken: { forceRefresh in
-                try await tokenBroker.validAccessToken(forceRefresh: forceRefresh)
+        clientBindingTask = Task { [weak self] in
+            let environment = await environmentProvider()
+            guard let self,
+                  !Task.isCancelled,
+                  self.bindingUserID == rxlabUserID else { return }
+            guard let environment else {
+                self.bindingUserID = nil
+                self.clientBindingTask = nil
+                self.lastError = "The App Store environment could not be verified."
+                return
             }
-        )
-        self.client = client
-        // Renewals and Ask-to-Buy approvals never come back as the result of a purchase call, so
-        // without this they would reach the server only through App Store notifications and the
-        // app's own credit count would sit stale until the next cold start.
-        self.transactionObserver = client.observeTransactionUpdates { [weak self] _ in
-            self?.refresh()
+            guard let publishableKey = self.publishableKeys.key(for: environment) else {
+                self.bindingUserID = nil
+                self.clientBindingTask = nil
+                self.lastError = "No valid \(environment.rawValue) subscription publishable key is configured."
+                return
+            }
+
+            let client = Client(
+                serverURL: serverURL,
+                publishableKey: publishableKey,
+                rxlabUserID: rxlabUserID,
+                userToken: { forceRefresh in
+                    try await tokenBroker.validAccessToken(forceRefresh: forceRefresh)
+                }
+            )
+            self.client = client
+            self.bindingUserID = nil
+            self.clientBindingTask = nil
+            self.lastError = nil
+            // Renewals and Ask-to-Buy approvals never come back as the result of a purchase call,
+            // so without this they would reach the server only through App Store notifications
+            // and the app's own credit count would sit stale until the next cold start.
+            self.transactionObserver = client.observeTransactionUpdates { [weak self] _ in
+                self?.refresh()
+            }
+            self.refresh()
         }
-        refresh()
     }
 
     /// Reloads the cache, coalescing overlapping calls.
@@ -230,6 +284,9 @@ final class SubscriptionStore {
     /// but the next user must not see the last one's balance, and the client is bound to an
     /// `rxlabUserID` that is no longer signed in.
     func reset() {
+        clientBindingTask?.cancel()
+        clientBindingTask = nil
+        bindingUserID = nil
         transactionObserver?.cancel()
         transactionObserver = nil
         refreshTask?.cancel()

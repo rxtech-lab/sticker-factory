@@ -4,6 +4,32 @@ import XCTest
 @testable import StickerGeniOS
 
 final class SubscriptionAccessTests: XCTestCase {
+    func testPublishableKeysSelectOnlyTheMatchingEnvironment() {
+        let keys = SubscriptionPublishableKeys(
+            xcode: "rxs_pk_xcode_local",
+            sandbox: "rxs_pk_sandbox_testflight",
+            production: "rxs_pk_production_appstore"
+        )
+
+        XCTAssertEqual(keys.key(for: .xcode), "rxs_pk_xcode_local")
+        XCTAssertEqual(keys.key(for: .sandbox), "rxs_pk_sandbox_testflight")
+        XCTAssertEqual(keys.key(for: .production), "rxs_pk_production_appstore")
+        XCTAssertTrue(keys.hasAnyKey)
+    }
+
+    func testPublishableKeysRejectSecretsAndMismatchedEnvironments() {
+        let keys = SubscriptionPublishableKeys(
+            xcode: "rxs_xcode_secret",
+            sandbox: "rxs_pk_production_wrong_environment",
+            production: nil
+        )
+
+        XCTAssertNil(keys.key(for: .xcode))
+        XCTAssertNil(keys.key(for: .sandbox))
+        XCTAssertNil(keys.key(for: .production))
+        XCTAssertFalse(keys.hasAnyKey)
+    }
+
     func testBackendLiveStatusesCountAsActiveSubscriptions() {
         XCTAssertTrue(SubscriptionAccess.isActive(status: "active"))
         XCTAssertTrue(SubscriptionAccess.isActive(status: "trialing"))
