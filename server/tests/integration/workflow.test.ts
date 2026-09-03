@@ -1320,6 +1320,150 @@ describe("durable sticker workflow", () => {
     await close();
   });
 
+  it("turns an image layer into a clip through create_video and keeps the layer it replaced", async () => {
+    const { db, close } = await createTestDatabase();
+    const store = new MemoryObjectStore();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(store);
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-clip", createdAt: new Date(), updatedAt: new Date() });
+    const mockProvider = getAiProvider();
+    const videoRequests: Array<{ motion: string; durationSeconds: number; keyColor: string; backdropOpaque: boolean }> = [];
+    // Filled by the scripted loop below, so the refusals can be read as the model would see them:
+    // as the text of a tool error, in the same turn that is still free to carry on afterwards.
+    let refusedUnknownLayer = "";
+    let refusedSecondClip = "";
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      routeChatTurn: mockProvider.routeChatTurn.bind(mockProvider),
+      planSticker: mockProvider.planSticker.bind(mockProvider),
+      generateConceptImage: mockProvider.generateConceptImage.bind(mockProvider),
+      generateStickerImage: mockProvider.generateStickerImage.bind(mockProvider),
+      refineStickerLayout: mockProvider.refineStickerLayout.bind(mockProvider),
+      showSticker: mockProvider.showSticker.bind(mockProvider),
+      summarizeStickerTitle: mockProvider.summarizeStickerTitle.bind(mockProvider),
+      generateStickerVideo: async (input) => {
+        // The provider takes a URL, not bytes, so the frame it would fetch has to be in the store
+        // right now — and flattened, since no video model takes alpha.
+        const key = decodeURIComponent(new URL(input.imageUrl).pathname.slice(1));
+        const stats = await sharp(Buffer.from((await store.get(key)).bytes)).stats();
+        videoRequests.push({
+          motion: input.motion,
+          durationSeconds: input.durationSeconds,
+          keyColor: input.keyColor.name,
+          backdropOpaque: stats.isOpaque,
+        });
+        return mockProvider.generateStickerVideo(input);
+      },
+      editSticker: async (input, session) => {
+        const hero = input.document.layers[0];
+        refusedUnknownLayer = await session
+          .createVideoLayer({ layerId: "no_such_layer", motion: "turn around", durationSeconds: 2 })
+          .then(() => "", (error: Error) => error.message);
+        const landed = await session.createVideoLayer({
+          layerId: hero.id,
+          motion: "slow 360° turntable rotation, one full turn",
+          durationSeconds: 2,
+        });
+        // The budget, from inside the turn that already spent it. A loop that keeps asking is told
+        // to stop rather than billed twice.
+        refusedSecondClip = await session
+          .createVideoLayer({ layerId: hero.id, motion: "and again", durationSeconds: 2 })
+          .then(() => "", (error: Error) => error.message);
+        const finalized = await session.finalizeEdit();
+        return { revision: finalized.revision, finalized: landed.revision > 0 };
+      },
+    });
+
+    const sticker = await createSticker(db, "owner-clip", {
+      title: "Turn", kind: "animated", prompt: "A red mask", referenceAssetIds: [],
+    });
+    const baseTurn = await drawnAnimatedBase(db, "owner-clip", sticker.stickerId, "A red mask");
+    expect((await stickerGenerationWorkflow(baseTurn.jobId)).workflowStatus).toBe("succeeded");
+    await acceptRevision(db, "owner-clip", sticker.stickerId, baseTurn.jobId);
+    const baseRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, baseTurn.jobId)).get();
+    const base = StickerDocumentSchema.parse(baseRevision!.documentJson);
+    const still = base.layers[0];
+    if (still.type !== "image") throw new Error("the drawn base is not a single image layer");
+
+    const editTurn = await createChatTurn(db, "owner-clip", sticker.stickerId, {
+      text: "Make it a full turnaround of the character",
+      intent: "chat",
+      baseRevisionId: baseTurn.jobId,
+      attachments: [],
+      imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(editTurn.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(videoRequests).toEqual([{
+      motion: "slow 360° turntable rotation, one full turn",
+      durationSeconds: 2,
+      // Measured off the artwork rather than guessed from a prompt: the mock draws a pink subject,
+      // which is safe against green.
+      keyColor: "green",
+      backdropOpaque: true,
+    }]);
+    expect(refusedUnknownLayer).toMatch(/Unknown layer no_such_layer/);
+    expect(refusedSecondClip).toMatch(/already made a clip/);
+
+    const clip = (await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId)))
+      .find((asset) => asset.kind === "video");
+    expect(clip).toMatchObject({
+      id: derivedAssetId(editTurn.jobId, "edit-video-0"),
+      state: "ready",
+      mimeType: "video/mp4",
+      frameCount: 24,
+      fps: 24,
+      hasAlpha: false,
+    });
+    // The flattened frame the provider was pointed at is scratch, swept whichever path ordered it.
+    const backdropId = derivedAssetId(editTurn.jobId, "edit-video-backdrop-0");
+    expect([...store.objects.keys()].some((key) => key.includes(backdropId))).toBe(false);
+    expect(await db.select().from(assets).where(eq(assets.id, backdropId)).get()).toBeUndefined();
+
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).get();
+    const document = StickerDocumentSchema.parse(revision!.documentJson);
+    expect(document.layers).toHaveLength(base.layers.length);
+    const hero = document.layers[0];
+    if (hero.type !== "video") throw new Error("the edited document's first layer is not a video");
+    // A swap, not a new layer landing on top: same id, same name, same place, same anchor, and the
+    // artwork it was animated from still standing as the poster.
+    expect(hero).toMatchObject({
+      id: still.id,
+      name: still.name,
+      assetId: clip!.id,
+      posterAssetId: still.assetId,
+      keyColor: "green",
+      frameCount: 24,
+      frameRate: 24,
+      playback: "loop",
+      startSeconds: 0,
+    });
+    expect(hero.anchor).toEqual(still.anchor);
+    // The document already sampled fast enough and ran long enough for this clip, so its timing
+    // was left alone rather than rewritten for the sake of it.
+    expect(document.fps).toBe(base.fps);
+    expect(document.durationSeconds).toBe(base.durationSeconds);
+    // The library card falls back to the poster instead of going blank, now that the only image
+    // layer the sticker had is the one that became a clip.
+    expect(revision).toMatchObject({ masterAssetId: still.assetId, previewAssetId: still.assetId });
+
+    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)))
+      .filter((message) => message.role === "system");
+    expect(toolRows.map((message) => message.content))
+      .toEqual(["edit-sticker", "create_video", "create_video #2", "create_video #3", "finalize_edit", "show-sticker"]);
+    // The refused calls are rows of their own rather than a retry re-marking the one that failed.
+    expect(toolRows.filter((message) => message.status === "failed").map((message) => message.content))
+      .toEqual(["create_video", "create_video #3"]);
+
+    // A step retry after the clip landed must not buy a second one.
+    await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, editTurn.jobId));
+    expect((await executeAiJobStep(editTurn.jobId)).revisionId).toBe(editTurn.jobId);
+    expect(videoRequests).toHaveLength(1);
+
+    await close();
+  }, 30_000);
+
   /**
    * The turn's attachments, as the agents are given them.
    *

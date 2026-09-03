@@ -3,7 +3,7 @@ import { FatalError } from "workflow";
 import { compactTranscript, type TranscriptOptions } from "@/lib/ai/compaction";
 import { withAiApiCostRecorder } from "@/lib/ai/cost";
 import sharp from "sharp";
-import { preferredChromaKey, type ChromaKeyColor } from "@/lib/ai/chroma-key";
+import { chromaKeyForArtwork, preferredChromaKey, type ChromaKeyColor } from "@/lib/ai/chroma-key";
 import {
   assertAnimatedPlanUsesReferenceBackedArtwork,
   assertPlanAllowedForJob,
@@ -202,6 +202,7 @@ type StickerToolName =
   | "edit_layers"
   | "edit_image_layer"
   | "add_image_layer"
+  | "create_video"
   | "finalize_edit"
   | "adjust_layout"
   | "finalize_layout"
@@ -722,13 +723,22 @@ interface GeneratedLayer {
   /** The transparent still: the part itself, or the poster a clip is animated from. */
   assetId: string;
   /** Present for a `video` source: what to animate the still into, and where to store the clip. */
-  video?: {
-    motion: string;
-    durationSeconds: number;
-    keyColor: ChromaKeyColor;
-    assetId: string;
-    backdropAssetId: string;
-  };
+  video?: VideoGeneration;
+}
+
+/**
+ * One clip to buy: what the subject does, which screen it is shot against, and where it lands.
+ *
+ * Named rather than left inline on `GeneratedLayer` because plans are no longer the only thing that
+ * orders a clip — the edit loop's `create_video` builds one of these from a layer the sticker
+ * already has, and the two paths share every step from the flatten onwards.
+ */
+interface VideoGeneration {
+  motion: string;
+  durationSeconds: number;
+  keyColor: ChromaKeyColor;
+  assetId: string;
+  backdropAssetId: string;
 }
 
 /** What `documentFromPlan` needs to know about a clip that has already been stored. */
@@ -750,16 +760,16 @@ interface StoredVideoTiming {
 async function generateAndStoreVideoAsset(
   job: typeof generationJobs.$inferSelect,
   stickerId: string,
-  item: GeneratedLayer & { video: NonNullable<GeneratedLayer["video"]> },
+  input: { stillAssetId: string; video: VideoGeneration },
 ): Promise<StoredVideoTiming> {
   const db = getDatabase();
   const objectStore = getObjectStore();
   const provider = getAiProvider();
-  const { video } = item;
+  const { video } = input;
   const trace = {
     jobId: job.id,
     assetId: video.assetId,
-    stillAssetId: item.assetId,
+    stillAssetId: input.stillAssetId,
     durationSeconds: video.durationSeconds,
     keyColor: video.keyColor.name,
   };
@@ -778,7 +788,7 @@ async function generateAndStoreVideoAsset(
     return { frameCount: stored.frameCount, fps: stored.fps, durationSeconds: stored.durationSeconds };
   }
 
-  const still = await objectStore.get(objectKey(job.ownerId, item.assetId, "image/png"));
+  const still = await objectStore.get(objectKey(job.ownerId, input.stillAssetId, "image/png"));
   const backdropKey = objectKey(job.ownerId, video.backdropAssetId, "image/png");
   const r2Key = objectKey(job.ownerId, video.assetId, "video/mp4");
   try {
@@ -1537,6 +1547,8 @@ async function executeEditTurn(
   /** How many tool calls have changed the document. Zero at the end means the turn is a no-op. */
   let changes = 0;
   let generations = 0;
+  /** Clips bought this turn. One is the whole budget; see `createVideoLayer` below. */
+  let clips = 0;
   let snapshot = 0;
   const nextLabel = toolCallLabeller();
   // Everything the model did not author: a cancelled job, a vanished asset, a failed generation.
@@ -1692,6 +1704,137 @@ async function executeEditTurn(
         throw error;
       }
     },
+    /**
+     * Animates one image layer's own artwork into a clip and swaps the layer over to it.
+     *
+     * The layer keeps its id, its name, its place in the stack, its anchor and its animations: the
+     * only thing that changes is that it plays frames instead of holding one, and its old artwork
+     * becomes the poster everything that cannot decode video draws in its place. Doing it as a swap
+     * rather than as a new layer is what makes this an edit — the composition the user approved is
+     * still standing afterwards, with one part of it moving.
+     *
+     * Deliberately narrower than the plan path in two ways. One clip per turn, because a clip is the
+     * most expensive thing an edit can buy and no sentence asks for two. One clip per sticker,
+     * matching the plan's own rule: the client keys each one out at render time, and stacking two of
+     * them is a cost and a decode budget nothing has asked for.
+     */
+    createVideoLayer: async ({ layerId, motion, durationSeconds }) => {
+      const call = await openCall("create_video");
+      try {
+        if (clips > 0) {
+          throw new Error(
+            "This turn has already made a clip, which is the limit. Finish with finalize_edit.",
+          );
+        }
+        // A clip is frames, and a static document can only ever show the first of them — the
+        // contract says so. The project's kind is fixed when it is created, so this is a dead end
+        // rather than something to work around, and the tool is not offered on a static sticker.
+        if (working.kind !== "animated") {
+          throw new Error(
+            "This is a static sticker, so it cannot play a clip. Say so rather than trying again.",
+          );
+        }
+        const existing = working.layers.find((item) => item.type === "video");
+        if (existing) {
+          throw new Error(
+            `This sticker already plays a clip on layer ${existing.id}. A sticker holds one; retime `
+            + "it with setVideoPlayback, or animate the rest with keyframes.",
+          );
+        }
+        const layer = working.layers.find((item) => item.id === layerId);
+        if (!layer) {
+          throw new Error(
+            `Unknown layer ${layerId}; the sticker has ${working.layers.map((item) => item.id).join(", ")}`,
+          );
+        }
+        if (layer.type !== "image") {
+          throw new Error(
+            `Layer ${layerId} is a ${layer.type} layer, and a clip is animated from drawn artwork. `
+            + "Draw what should move with add_image_layer and make the clip from that layer instead.",
+          );
+        }
+        // Read for the screen colour rather than for the model: the still is flattened onto that
+        // colour and keyed back out on the device, so a subject sharing it comes back as a hole.
+        // The plan path has to guess this from a prompt; here the pixels themselves decide.
+        const artwork = await loadArtwork(layer).catch(abort);
+        const keyColor = await chromaKeyForArtwork(artwork.bytes).catch(abort);
+        // Slotted by clip count for the same reason images are slotted by generation count: a
+        // replayed step re-makes the same call and must find the clip it already paid for.
+        const clipAssetId = derivedAssetId(job.id, `edit-video-${clips}`);
+        const timing = await generateAndStoreVideoAsset(job, sticker.id, {
+          stillAssetId: layer.assetId,
+          video: {
+            motion,
+            durationSeconds,
+            keyColor,
+            assetId: clipAssetId,
+            backdropAssetId: derivedAssetId(job.id, `edit-video-backdrop-${clips}`),
+          },
+        }).catch(abort);
+        clips += 1;
+        // Footage carries a frame rate and a length of its own, and a document that samples slower
+        // than the clip drops frames — the contract refuses it outright. Raising both is the fix and
+        // is what the user meant: they asked for this motion, not for a clipped, stuttering version.
+        const retimed = working.fps < timing.fps || working.durationSeconds < timing.durationSeconds
+          ? [{
+            op: "setTiming" as const,
+            // Both bounded by what `setTiming` accepts, which is also what the clip can need: the
+            // video model runs at 24 fps and this tool caps a clip at four seconds.
+            fps: Math.min(30, Math.max(working.fps, Math.ceil(timing.fps))),
+            durationSeconds: Math.min(4, Math.max(working.durationSeconds, timing.durationSeconds)),
+            loop: working.loop,
+          }]
+          : [];
+        // Removed and re-inserted at the index it already held, because a layer cannot change its
+        // type in place. Everything a `LayerBase` carries comes across verbatim — that is what makes
+        // this a swap rather than a new layer landing on top of the composition.
+        const state = await land([
+          ...retimed,
+          { op: "removeLayer", layerId },
+          {
+            op: "addLayer",
+            index: working.layers.indexOf(layer),
+            layer: {
+              id: layer.id,
+              name: layer.name,
+              hidden: layer.hidden,
+              blendMode: layer.blendMode,
+              anchor: layer.anchor,
+              animations: layer.animations,
+              animation: layer.animation,
+              type: "video",
+              assetId: clipAssetId,
+              // The still it was animated from, kept on: it is what the server, the exports, and
+              // any client too old for v4 draw in place of frames they cannot decode.
+              posterAssetId: layer.assetId,
+              keyColor: keyColor.name,
+              frameCount: timing.frameCount,
+              frameRate: timing.fps,
+              playback: "loop",
+              startSeconds: 0,
+              contentMode: "fit",
+            },
+          },
+          // Declarative motion carries compiled keyframes that a retime has just invalidated, so it
+          // is rebuilt here — the same recompile `setTiming` does for every layer it can. Layers
+          // holding hand-authored keyframes are left exactly alone, for the same reason: nothing
+          // can rebuild those, and passing an empty spec list would erase them.
+          ...(layer.animations.length > 0
+            ? [{
+              op: "setLayerAnimations" as const,
+              layerId: layer.id,
+              animations: layer.animations,
+              anchor: layer.anchor,
+            }]
+            : []),
+        ], { offCanvas: "clamp" });
+        await finishToolCall(job, call);
+        return state;
+      } catch (error) {
+        await finishToolCall(job, call, "failed");
+        throw error;
+      }
+    },
     renderSticker: async () => {
       const call = await openCall("view_sticker");
       try {
@@ -1758,8 +1901,11 @@ async function executeEditTurn(
   const document = clampLayoutOnCanvas(working);
 
   // Whatever artwork the edited sticker ends up carrying. An edit that only rearranged layers drew
-  // nothing, so this is usually the base revision's own master, carried over untouched.
-  const firstImageAssetId = document.layers.find((layer) => layer.type === "image")?.assetId;
+  // nothing, so this is usually the base revision's own master, carried over untouched. A clip's
+  // poster counts: `create_video` turns an image layer into a video one, and a sticker whose only
+  // artwork went that way would otherwise sit in the library as a blank card until it is published.
+  const firstImageAssetId = document.layers.flatMap((layer) =>
+    layer.type === "image" ? [layer.assetId] : layer.type === "video" ? [layer.posterAssetId] : [])[0];
   const revisionId = await createCandidateRevision(db, {
     ownerId: job.ownerId,
     stickerId: sticker.id,
@@ -2080,7 +2226,7 @@ async function executePlanBuildTurn(
     await assertJobStillRunning(job.id);
     const videoToolCallId = await beginToolCall(job, "build-plan", undefined, `compose-video ${item.layer.name}`);
     try {
-      const timing = await generateAndStoreVideoAsset(job, sticker.id, { ...item, video: item.video });
+      const timing = await generateAndStoreVideoAsset(job, sticker.id, { stillAssetId: item.assetId, video: item.video });
       videoTimings.set(item.layer.layerId, timing);
     } catch (error) {
       await finishToolCall(job, videoToolCallId, "failed");

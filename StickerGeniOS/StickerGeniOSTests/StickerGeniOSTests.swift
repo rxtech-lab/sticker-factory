@@ -69,37 +69,37 @@ struct StickerContractTests {
         #expect(try JSONDecoder.api.decode(AnimatedDocument.self, from: reencoded) == validated)
     }
 
-    /// The v3 fixture, which is what the server writes today.
+    /// The v4 fixture, which is what the server writes today.
     ///
     /// The round trip is the load-bearing half: the client sends whole documents back through
-    /// `saveEditedDocument`, so a sequence layer that decoded but re-encoded wrong would be rejected
-    /// by the server on save — or worse, silently saved with the wrong footage layout.
-    @Test("Current server fixture decodes its sequence layer and round-trips")
+    /// `saveEditedDocument`, so a video layer that decoded but re-encoded with the wrong playback
+    /// contract would be rejected by the server on save — or worse, silently saved incorrectly.
+    @Test("Current server fixture decodes its video layer and round-trips")
     func currentDocumentFixture() throws {
-        let data = try fixtureData("sticker-document-v3")
+        let data = try fixtureData("sticker-document-v4")
         let document = try JSONDecoder.api.decode(AnimatedDocument.self, from: data)
         let validated = try document.validated()
 
         #expect(validated.version == AnimatedDocument.currentVersion)
         #expect(validated.kind == .animated)
         #expect(validated.loop == .pingPong)
-        guard case .sequence(let hero) = validated.layers[0] else {
-            #expect(Bool(false), "Fixture must lead with its capture layer")
+        guard case .video(let hero) = validated.layers[0] else {
+            #expect(Bool(false), "Fixture must lead with its video layer")
             return
         }
-        #expect(hero.columns == 4)
-        #expect(hero.rows == 3)
-        #expect(hero.frameCount == 12)
-        #expect(hero.frameRate == 10)
+        #expect(hero.keyColor == .green)
+        #expect(hero.frameCount == 48)
+        #expect(hero.frameRate == 24)
         #expect(hero.playback == .loop)
-        #expect(hero.posterAssetId != nil)
+        #expect(hero.posterAssetId == "66666666-6666-4666-8666-666666666666")
 
         let reencoded = try JSONEncoder.api.encode(validated)
         #expect(try JSONDecoder.api.decode(AnimatedDocument.self, from: reencoded) == validated)
         let wire = try #require(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
         let layers = try #require(wire["layers"] as? [[String: Any]])
-        #expect(layers[0]["type"] as? String == "sequence")
-        #expect(layers[0]["frameCount"] as? Int == 12)
+        #expect(layers[0]["type"] as? String == "video")
+        #expect(layers[0]["frameCount"] as? Int == 48)
+        #expect(layers[0]["keyColor"] as? String == "green")
     }
 
     /// A layer kind from a future version must not take the whole document down with it.

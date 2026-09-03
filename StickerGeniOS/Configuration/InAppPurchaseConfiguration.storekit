@@ -14,7 +14,21 @@
 
   ],
   "products" : [
-
+    {
+      "displayPrice" : "12.99",
+      "familyShareable" : false,
+      "internalID" : "6808148094",
+      "localizations" : [
+        {
+          "description" : "Topup 1000 Points",
+          "displayName" : "Topup 1000 Points",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "topup10",
+      "referenceName" : "topup",
+      "type" : "Consumable"
+    }
   ],
   "settings" : {
     "_applicationInternalID" : "6805825708",
@@ -24,7 +38,7 @@
     "_developerTeamID" : "T7GYB573Y6",
     "_disableDialogs" : false,
     "_failTransactionsEnabled" : false,
-    "_lastSynchronizedDate" : 810043360.74378395,
+    "_lastSynchronizedDate" : 810118032.271438,
     "_locale" : "en_US",
     "_renewalBillingIssuesEnabled" : false,
     "_storefront" : "USA",

@@ -5,6 +5,7 @@ import {
   CHROMA_GREEN,
   alternateChromaKey,
   chromaKeyBackground,
+  chromaKeyForArtwork,
   preferredChromaKey,
 } from "@/lib/ai/chroma-key";
 
@@ -171,5 +172,45 @@ describe("chroma key", () => {
     expect(preferredChromaKey("cat sitting in the GRASS").name).toBe("blue");
     expect(alternateChromaKey(CHROMA_GREEN)).toBe(CHROMA_BLUE);
     expect(alternateChromaKey(CHROMA_BLUE)).toBe(CHROMA_GREEN);
+  });
+
+  /**
+   * A stored sticker part: a transparent frame with one solid subject in the middle of it.
+   *
+   * The transparency is the point. `chromaKeyForArtwork` has to read the subject and ignore the
+   * empty pixels around it, and an all-zero background counts as neither green nor blue — so a
+   * measure that forgot to skip it would answer the same thing for every possible subject.
+   */
+  async function storedArtwork(subject: { r: number; g: number; b: number }): Promise<Uint8Array> {
+    const dimension = 64;
+    const pixels = Buffer.alloc(dimension * dimension * 4);
+    for (let y = 16; y < 48; y += 1) {
+      for (let x = 16; x < 48; x += 1) {
+        const index = (y * dimension + x) * 4;
+        pixels[index] = subject.r;
+        pixels[index + 1] = subject.g;
+        pixels[index + 2] = subject.b;
+        pixels[index + 3] = 255;
+      }
+    }
+    const png = await sharp(pixels, { raw: { width: dimension, height: dimension, channels: 4 } })
+      .png()
+      .toBuffer();
+    return new Uint8Array(png);
+  }
+
+  it("reads the screen off the artwork rather than off a description of it", async () => {
+    // The case the word list cannot serve: a clip is made from a layer nobody wrote a prompt for,
+    // so the only evidence about the subject's colour is the subject.
+    expect((await chromaKeyForArtwork(await storedArtwork({ r: 220, g: 90, b: 70 }))).name).toBe("green");
+    expect((await chromaKeyForArtwork(await storedArtwork({ r: 40, g: 190, b: 60 }))).name).toBe("blue");
+    // Blue subjects stay on green: green keys most cleanly, and blue is far commoner in subjects.
+    expect((await chromaKeyForArtwork(await storedArtwork({ r: 40, g: 60, b: 190 }))).name).toBe("green");
+    // Nothing visible to measure. Answering from an all-zero measurement would be a coin toss
+    // dressed up as a decision, so it falls back to the default the prompt path would have picked.
+    const empty = await sharp({
+      create: { width: 8, height: 8, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).png().toBuffer();
+    expect((await chromaKeyForArtwork(new Uint8Array(empty))).name).toBe("green");
   });
 });

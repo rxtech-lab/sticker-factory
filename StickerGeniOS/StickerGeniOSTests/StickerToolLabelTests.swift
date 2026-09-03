@@ -22,7 +22,7 @@ struct StickerToolLabelTests {
     @Test("The model's own tool calls stay in the transcript", arguments: [
         "create_plan", "update_plan", "show_plan", "finalize_plan",
         "create_animation", "update_animation", "edit_layer_animation", "finalize_animation",
-        "edit_layers", "edit_image_layer", "add_image_layer", "finalize_edit",
+        "edit_layers", "edit_image_layer", "add_image_layer", "create_video", "finalize_edit",
         "view_plan_image", "view_sticker",
     ])
     func toolCallsAreNotPhases(_ toolName: String) {
@@ -43,6 +43,7 @@ struct StickerToolLabelTests {
         #expect(StickerToolLabel.text(for: "create_animation") == "Creating animation")
         #expect(StickerToolLabel.text(for: "view_plan_image") == "Reviewing the plan image")
         #expect(StickerToolLabel.text(for: "view_sticker") == "Reviewing the sticker")
+        #expect(StickerToolLabel.text(for: "create_video") == "Filming a clip")
     }
 
     /// The server distinguishes repeat calls within a turn with a `#N` suffix. Splitting it off

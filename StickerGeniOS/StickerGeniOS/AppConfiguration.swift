@@ -1,5 +1,36 @@
 import Foundation
 
+nonisolated enum SubscriptionEnvironment: String, Sendable {
+    case xcode
+    case sandbox
+    case production
+}
+
+nonisolated struct SubscriptionPublishableKeys: Sendable {
+    let xcode: String?
+    let sandbox: String?
+    let production: String?
+
+    var hasAnyKey: Bool {
+        key(for: .xcode) != nil
+            || key(for: .sandbox) != nil
+            || key(for: .production) != nil
+    }
+
+    func key(for environment: SubscriptionEnvironment) -> String? {
+        let candidate = switch environment {
+        case .xcode: xcode
+        case .sandbox: sandbox
+        case .production: production
+        }
+        guard let candidate,
+              candidate.hasPrefix("rxs_pk_\(environment.rawValue)_") else {
+            return nil
+        }
+        return candidate
+    }
+}
+
 nonisolated struct AppConfiguration: Sendable {
     static let defaultAppName = "Winky Sticker House"
     static let appGroupIdentifier = "group.app.rxlab.stickerfactory"
@@ -16,17 +47,17 @@ nonisolated struct AppConfiguration: Sendable {
     let oauthClientID: String
     let oauthRedirectURI: String
     let subscriptionBaseURL: URL?
-    /// The RxSubscription *publishable* key.
+    /// RxSubscription *publishable* keys, selected from StoreKit's verified environment at runtime.
     ///
     /// Not a secret, and deliberately so: it does nothing without the signed-in user's access
     /// token, only ever acts for that user, and cannot move a balance or record usage. The server
     /// holds the secret key that can. Empty in a build with no billing configured, which turns
     /// every subscription surface off rather than showing an empty paywall.
-    let subscriptionPublishableKey: String?
+    let subscriptionPublishableKeys: SubscriptionPublishableKeys
 
     /// Whether this build has a paywall at all.
     var hasSubscriptions: Bool {
-        subscriptionBaseURL != nil && subscriptionPublishableKey != nil
+        subscriptionBaseURL != nil && subscriptionPublishableKeys.hasAnyKey
     }
 
     static var allowsInsecureSharedStorage: Bool {
@@ -67,7 +98,11 @@ nonisolated struct AppConfiguration: Sendable {
             oauthClientID: configuredValue("StickerFactoryIOSClientID", bundle: bundle, fallback: "client_1ce3e6efd6da4214a61df67949a71622"),
             oauthRedirectURI: configuredValue("StickerFactoryOAuthRedirectURI", bundle: bundle, fallback: "stickerfactory://oauth/callback"),
             subscriptionBaseURL: optionalConfiguredValue("StickerFactorySubscriptionURL", bundle: bundle).flatMap(URL.init(string:)),
-            subscriptionPublishableKey: optionalConfiguredValue("StickerFactorySubscriptionKey", bundle: bundle)
+            subscriptionPublishableKeys: SubscriptionPublishableKeys(
+                xcode: optionalConfiguredValue("StickerFactorySubscriptionXcodeKey", bundle: bundle),
+                sandbox: optionalConfiguredValue("StickerFactorySubscriptionSandboxKey", bundle: bundle),
+                production: optionalConfiguredValue("StickerFactorySubscriptionProductionKey", bundle: bundle)
+            )
         )
     }
 

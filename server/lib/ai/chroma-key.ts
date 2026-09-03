@@ -152,3 +152,41 @@ export async function chromaKeyBackground(
     subject: pixelBoundsAreEmpty(bounds) ? undefined : describeSubject(info, bounds, crop),
   };
 }
+
+/**
+ * Picks the backdrop a still can safely be animated against, by looking at the still itself.
+ *
+ * `preferredChromaKey` has to guess from a prompt because it is called before the image exists. A
+ * clip made from artwork the sticker already carries has the opposite problem and the better data:
+ * the pixels are right there, so the subject's own colour decides instead of a word list. That
+ * matters more here than it does for a quick draw — the still is keyed back out *on the device*
+ * after the video model has flattened the subject onto the screen, and a subject that shares the
+ * screen colour comes back as a hole with no way to recover it.
+ *
+ * The measure is the same dominance the keyer uses, averaged over the visible pixels: how far green
+ * runs ahead of its rivals versus how far blue does. The screen becomes whichever channel the
+ * subject leans on less, with green winning ties because it keys most cleanly.
+ */
+export async function chromaKeyForArtwork(bytes: Uint8Array): Promise<ChromaKeyColor> {
+  const { data, info } = await sharp(bytes, { limitInputPixels: 4096 * 4096 })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const stride = info.channels;
+  let green = 0;
+  let blue = 0;
+  let visible = 0;
+  for (let offset = 0; offset < data.length; offset += stride) {
+    if (data[offset + 3] <= VISIBLE_ALPHA) continue;
+    visible += 1;
+    // Clamped at zero: a pixel where the channel is *not* dominant says nothing about whether that
+    // screen is risky, and letting it go negative would let a large neutral area cancel out the
+    // handful of vividly green pixels that are the whole reason to switch.
+    green += Math.max(0, data[offset + 1] - Math.max(data[offset], data[offset + 2]));
+    blue += Math.max(0, data[offset + 2] - Math.max(data[offset], data[offset + 1]));
+  }
+  // Nothing visible at all: the still is empty or unreadable, so fall back to the usual default
+  // rather than reading a decision out of an all-zero measurement.
+  if (visible === 0) return CHROMA_GREEN;
+  return green > blue ? CHROMA_BLUE : CHROMA_GREEN;
+}

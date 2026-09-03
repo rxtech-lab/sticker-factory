@@ -1,4 +1,7 @@
 #include "Base.xcconfig"
 STICKER_FACTORY_API_BASE_URL = https:/$()/sticker.rxlab.app
-// Injected by Xcode Cloud — see Configuration/StickerFactory.xcconfig.example.
-STICKER_FACTORY_SUBSCRIPTION_KEY = rxs_pk_production_f233fbd09e8a480091610c63c4d0dd084f19c534d73d46afbc3c077d0c3da5ab
+// A single Release binary selects among these only after StoreKit verifies its environment.
+// Replace the empty Sandbox value with an rxs_pk_sandbox_… key from the same RxArgo app.
+STICKER_FACTORY_SUBSCRIPTION_XCODE_KEY = rxs_pk_xcode_c6895429a57349d7924418d3b8ca0c65ce800b187d094d68a962f37541ce8b41
+STICKER_FACTORY_SUBSCRIPTION_SANDBOX_KEY = rxs_sandbox_f21f22ad0910461dbd46502ae42f888dd519f0b830ca42e8bd51082ce9a81fd3
+STICKER_FACTORY_SUBSCRIPTION_PRODUCTION_KEY = rxs_pk_production_f233fbd09e8a480091610c63c4d0dd084f19c534d73d46afbc3c077d0c3da5ab
