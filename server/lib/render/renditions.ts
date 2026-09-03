@@ -170,3 +170,77 @@ export async function renderApng(
   }
   return { bytes: encodeApng(frames, timing.playCount), timing };
 }
+
+/** One transparent square WebP of the document at rest — the static sticker's copy. */
+export async function renderStillWebp(
+  document: StickerDocument,
+  assets: RenderAssets,
+  size: number,
+): Promise<Uint8Array> {
+  const fitted = await prepareRenditionAssets(document, assets, size, [0]);
+  const webp = await sharp(Buffer.from(frameSvg(document, 0, size, fitted)), { density: 72 })
+    .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .ensureAlpha()
+    .webp({ quality: WEBP_QUALITY, alphaQuality: 100 })
+    .toBuffer();
+  return new Uint8Array(webp);
+}
+
+/**
+ * The same cycle as `renderApng`, in WebP.
+ *
+ * Published beside the APNG rather than instead of it — only WinkySticker's `.image` mode reads it,
+ * and everything else on the platform keeps reading the APNG. The frame grid and delays are the
+ * same `RenditionTiming` the APNG is built from, so `validateAnimatedRenditionTiming` holds both
+ * containers to one document.
+ *
+ * libvips animates a WebP from one tall "toilet roll" of frames rather than from a list, which is
+ * why the raster loop concatenates instead of stitching: `pageHeight` is what tells it where each
+ * frame ends. Frames are rasterised sequentially for the same memory reason `renderApng` gives.
+ */
+export async function renderAnimatedWebp(
+  document: Extract<StickerDocument, { kind: "animated" }>,
+  assets: RenderAssets,
+  size: number,
+  fps: number,
+): Promise<{ bytes: Uint8Array; timing: RenditionTiming }> {
+  const timing = animatedRenditionTiming(document, fps);
+  const fitted = await prepareRenditionAssets(document, assets, size, timing.times);
+  const pages: Buffer[] = [];
+  for (const time of timing.times) {
+    const raw = await sharp(Buffer.from(frameSvg(document, time, size, fitted)), { density: 72 })
+      .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
+    pages.push(raw);
+  }
+  // Bound to a variable rather than written inline: libvips takes `pages`/`pageHeight` on raw
+  // input, sharp's `CreateRaw` type does not list them, and an excess-property check is the only
+  // thing in the way.
+  const raw = {
+    width: size,
+    height: size * pages.length,
+    channels: 4 as const,
+    pages: pages.length,
+    pageHeight: size,
+  };
+  const webp = await sharp(Buffer.concat(pages), { raw })
+    // Per frame rather than as a scalar: sharp's scalar `delay` lands on frame 0 alone and leaves
+    // the rest at libwebp's 100 ms default, which silently rewrites the cycle's duration.
+    .webp({
+      quality: WEBP_QUALITY,
+      alphaQuality: 100,
+      delay: timing.delaysMs,
+      loop: timing.playCount,
+    })
+    .toBuffer();
+  return { bytes: new Uint8Array(webp), timing };
+}
+
+/**
+ * Lossy, because a sticker is artwork and the channel that matters is alpha — which is why
+ * `alphaQuality` is pinned at 100 while colour is not. This is the same trade the app's encoder
+ * makes; see `WebPEncoder.defaultQuality`.
+ */
+const WEBP_QUALITY = 90;

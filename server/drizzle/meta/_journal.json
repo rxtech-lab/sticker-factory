@@ -15,6 +15,13 @@
       "when": 1788429564095,
       "tag": "0001_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788451998996,
+      "tag": "0002_webp_rendition",
+      "breakpoints": true
     }
   ]
 }

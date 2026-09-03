@@ -309,6 +309,31 @@ final class StickerExporter {
         byteCeiling: Int = StickerExportMetadataPolicy.uploadByteCeiling,
         note: ((String) -> Void)? = nil
     ) async throws -> RenderedStickerExport {
+        try await exportSharingRenditions(
+            document: document,
+            assets: assets,
+            byteCeiling: byteCeiling,
+            note: note
+        ).apng
+    }
+
+    /// The APNG and its WebP copy, from one pass over the document.
+    ///
+    /// They are produced together rather than by two calls because they are the same frames: the
+    /// ladder renders each one once and hands it to both encoders. A separate WebP export existed
+    /// briefly and was the wrong shape twice over — it rendered a 90-frame 1024² cycle a second
+    /// time, doubling the slowest step of a publish, and it collected the frames before encoding
+    /// them, which is ~370 MB of `CGImage` and a stall the device does not recover from.
+    ///
+    /// `webp` is nil whenever the encode did not produce one. That is not a failure worth
+    /// propagating: the APNG is what the library, the marketplace and every non-Messages surface
+    /// read, and WinkySticker falls back to it. See `StickerPublisher.renderExports`.
+    func exportSharingRenditions(
+        document: AnimatedDocument,
+        assets: StickerRenderAssets,
+        byteCeiling: Int = StickerExportMetadataPolicy.uploadByteCeiling,
+        note: ((String) -> Void)? = nil
+    ) async throws -> (apng: RenderedStickerExport, webp: RenderedStickerExport?) {
         _ = try document.validated()
         let survey = await colorSurvey(document: document, assets: assets)
         try Task.checkCancellation()
@@ -321,7 +346,7 @@ final class StickerExporter {
         )
         let url = try outputURL(extension: "png")
         try rendition.data.write(to: url, options: .atomic)
-        return .init(
+        let apng = RenderedStickerExport(
             url: url,
             metadata: .init(
                 format: .apng, width: rendition.dimension, height: rendition.dimension,
@@ -330,6 +355,23 @@ final class StickerExporter {
                 fps: document.fps, hasAlpha: true
             )
         )
+
+        // An overshooting WebP is dropped rather than walked down a ladder of its own: doing that
+        // would mean the extra render pass this design exists to avoid, and a WebP larger than the
+        // APNG it copies has nothing to offer anyway.
+        guard let webpData = rendition.webp, webpData.count <= byteCeiling else { return (apng, nil) }
+        guard let webpURL = try? outputURL(extension: "webp"),
+              (try? webpData.write(to: webpURL, options: .atomic)) != nil
+        else { return (apng, nil) }
+        return (apng, RenderedStickerExport(
+            url: webpURL,
+            metadata: .init(
+                format: .webp, width: rendition.dimension, height: rendition.dimension,
+                byteCount: webpData.count,
+                durationSeconds: StickerExportMetadataPolicy.renderedDuration(document),
+                fps: document.fps, hasAlpha: true
+            )
+        ))
     }
 
     private func sharingAPNG(
@@ -338,10 +380,17 @@ final class StickerExporter {
         survey: ColorSurvey,
         ceiling: Int,
         note: ((String) -> Void)? = nil
-    ) async throws -> (data: Data, dimension: Int) {
+    ) async throws -> (data: Data, dimension: Int, webp: Data?) {
         let ladder = StickerExportMetadataPolicy.sharingApngDimensions
         for (rung, dimension) in ladder.enumerated() {
             try Task.checkCancellation()
+            // Built per rung and thrown away with the rung: a rundown that overshot its budget has
+            // a WebP of the wrong size, and the next attempt renders the frames again anyway.
+            let webp = WebPEncoder.AnimationStream(
+                width: dimension,
+                height: dimension,
+                loops: document.loop == .once ? 1 : 0
+            )
             // The floor has nowhere to fall to, so it is encoded without a budget rather than being
             // allowed to abandon itself with no rung left to try. That it fits anyway is a property
             // of the format — see `sharingApngDimensions` — not something worth another pass to
@@ -355,11 +404,14 @@ final class StickerExporter {
                 fps: document.fps,
                 palettes: Self.sharingPaletteLadder,
                 byteBudget: isFloor ? .max : ceiling,
+                webp: webp,
                 note: { frame, total in
                     note?(String(localized: "Encoding \(dimension) px · frame \(frame) of \(total)"))
                 }
             )
-            if let attempt { return (attempt.data, dimension) }
+            // `finish()` returning nil is an ordinary outcome, not a failure: the WebP is a size
+            // optimisation for one surface and the APNG beside it is what everything reads.
+            if let attempt { return (attempt.data, dimension, webp?.finish()) }
             // A rung that ran out of budget drops to the next one. A floor that came back empty ran
             // out of something else — a frame that would not render, or a cancelled task — and there
             // is no smaller size that would have helped.
@@ -381,6 +433,32 @@ final class StickerExporter {
         .init(count: 256, dithered: true),
         .init(count: 256, dithered: false),
     ]
+
+    /// A static sticker's WebP: the still twin of the copy `exportSharingRenditions` makes.
+    ///
+    /// 1024 px like the master PNG it copies, and for the same reason: it is the sharing rendition
+    /// for a sticker that does not move, and `SHARING_APNG_DIMENSIONS` admits that size. One frame,
+    /// so there is nothing here to stream.
+    func exportStillWebP(
+        document: AnimatedDocument,
+        assets: StickerRenderAssets,
+        dimension: Int = 1_024
+    ) throws -> RenderedStickerExport {
+        _ = try document.validated()
+        guard let image = renderFrame(document: document, time: 0, dimension: dimension, assets: assets) else {
+            throw StickerExportError.renderFailed
+        }
+        let data = try WebPEncoder.encodeStill(image)
+        let url = try outputURL(extension: "webp")
+        try data.write(to: url, options: .atomic)
+        return .init(
+            url: url,
+            metadata: .init(
+                format: .webp, width: dimension, height: dimension, byteCount: data.count,
+                durationSeconds: nil, fps: nil, hasAlpha: true
+            )
+        )
+    }
 
     /// The sharing rendition as a GIF, for everywhere that will not play an APNG.
     ///
@@ -833,6 +911,7 @@ final class StickerExporter {
         fps: Int,
         palettes: [SystemStickerPreset.PaletteAttempt] = SystemStickerPreset.paletteLadder,
         byteBudget: Int = StickerExportMetadataPolicy.systemStickerByteCeiling - 1,
+        webp: WebPEncoder.AnimationStream? = nil,
         note: ((Int, Int) -> Void)? = nil
     ) async -> (data: Data, paletteCount: Int)? {
         let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: fps)
@@ -866,6 +945,15 @@ final class StickerExporter {
                 // bitmap, and six of them back to back is long enough to be seen as a stall.
                 await Task.yield()
                 stream.append(frame: frame, delaySeconds: delays[index])
+            }
+            // The same frame into the WebP container, so the second rendition costs an encode
+            // rather than a second pass over the document. Rendering a 90-frame cycle twice at
+            // 1024 px is the most expensive thing an export could do, and it would buy nothing:
+            // these are the identical pixels. Delays are the APNG's own, already rounded onto the
+            // 1000-tick grid WebP stores.
+            if let webp {
+                await Task.yield()
+                webp.append(frame: frame, delayMilliseconds: Int((delays[index] * 1_000).rounded()))
             }
             guard streams.contains(where: { !$0.isAbandoned }) else { return nil }
         }

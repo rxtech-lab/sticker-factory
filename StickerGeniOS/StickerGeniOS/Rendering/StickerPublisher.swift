@@ -17,9 +17,16 @@ final class StickerPublisher {
         var gif: RenderedStickerExport?
         var mp4: RenderedStickerExport?
         var system: RenderedStickerExport?
+        /// The WebP copy of the sharing rendition — the sticker's own frames for an animated
+        /// document, its single frame for a static one.
+        ///
+        /// The one rendition in this set that is allowed to be `nil` after a successful render: an
+        /// encode that fails costs WinkySticker its smaller download and nothing else, so it is
+        /// never a reason to fail a publish. See `renderExports`.
+        var webp: RenderedStickerExport?
 
         var all: [RenderedStickerExport] {
-            [png, apng, gif, mp4, system].compactMap { $0 }
+            [png, apng, gif, mp4, system, webp].compactMap { $0 }
         }
 
         /// The files the person who pressed Export actually asked for.
@@ -35,7 +42,13 @@ final class StickerPublisher {
         func files(for selection: StickerExportSelection, sharing: StickerSharingFormat) -> [RenderedStickerExport] {
             var files: [RenderedStickerExport] = []
             if selection.includesSticker {
-                let animated = sharing == .gif ? gif ?? apng : apng
+                // Each format falls back to the APNG, which is the one that always exists: GIF is
+                // rendered only when asked for, and the WebP encode is allowed to fail.
+                let animated = switch sharing {
+                case .gif: gif ?? apng
+                case .webp: webp ?? apng
+                case .apng: apng
+                }
                 files.append(contentsOf: [png, animated, system].compactMap { $0 })
             }
             if selection.includesVideo, let mp4 { files.append(mp4) }
@@ -127,6 +140,16 @@ final class StickerPublisher {
             progress?.report(String(localized: "Sending the video"), for: .upload)
             mp4AssetID = try await upload(mp4, stickerID: stickerID, kind: .mp4)
         }
+        var webpAssetID: String?
+        if let webp = rendered.webp {
+            progress?.report(String(localized: "Sending the compact copy"), for: .upload)
+            // Optional all the way through, so a failure here is swallowed for the same reason the
+            // encode's is: the sticker publishes without it, and the only thing lost is the smaller
+            // file WinkySticker would have attached. Anything that fails the *whole* upload — an
+            // expired session, no network — will fail the required renditions immediately after,
+            // and that is the error the person sees.
+            webpAssetID = try? await upload(webp, stickerID: stickerID, kind: .webp)
+        }
         guard let system = rendered.system else { throw StickerPublishError.systemRenditionUnavailable }
         progress?.report(String(localized: "Sending the sticker"), for: .upload)
         let systemAssetID = try await upload(system, stickerID: stickerID, kind: .system)
@@ -142,6 +165,7 @@ final class StickerPublisher {
                 apngAssetId: apngAssetID,
                 mp4AssetId: mp4AssetID,
                 systemAssetId: systemAssetID,
+                webpAssetId: webpAssetID,
                 // The publish request only speaks the two fills the server accepts. A document
                 // carrying a radial gradient or an image here has no equivalent, so the field is
                 // omitted and the server keeps whatever the revision already stored.
@@ -243,6 +267,7 @@ final class StickerPublisher {
         var gif: RenderedStickerExport?
         var mp4: RenderedStickerExport?
         var system: RenderedStickerExport?
+        var webp: RenderedStickerExport?
 
         if document.kind == .static {
             progress?.begin(.renderImage)
@@ -255,7 +280,10 @@ final class StickerPublisher {
         }
         if document.kind == .animated, rendering.includesSticker {
             progress?.begin(.renderAPNG)
-            apng = try await exporter.exportAPNG(document: document, assets: assets) {
+            // Both containers from one pass: the ladder renders each frame once and encodes it
+            // twice. `webp` is nil when the encode did not produce one, which is not a failure —
+            // WinkySticker falls back to the APNG.
+            (apng, webp) = try await exporter.exportSharingRenditions(document: document, assets: assets) {
                 progress?.report($0, for: .renderAPNG)
             }
             // The APNG above is what gets published either way; this is the share sheet's copy, and
@@ -268,13 +296,19 @@ final class StickerPublisher {
                 }
             }
         }
+        if document.kind == .static, rendering.includesSticker {
+            // The static twin of the same 1024 px frame the master PNG is drawn from. `try?` for
+            // the same reason the animated one is allowed to come back nil: this is a size
+            // optimisation for one surface, and a sticker without it is still a whole sticker.
+            webp = try? exporter.exportStillWebP(document: document, assets: assets)
+        }
         if rendering.includesSticker || document.kind == .static {
             progress?.begin(.renderSticker)
             system = try await exporter.exportSystemSticker(document: document, assets: assets) {
                 progress?.report($0, for: .renderSticker)
             }
         }
-        return .init(png: png, apng: apng, gif: gif, mp4: mp4, system: system)
+        return .init(png: png, apng: apng, gif: gif, mp4: mp4, system: system, webp: webp)
     }
 
     private func validatedDocument(
@@ -300,6 +334,7 @@ final class StickerPublisher {
         case .png, .apng: "image/png"
         case .gif: "image/gif"
         case .mp4: "video/mp4"
+        case .webp: "image/webp"
         }
         return try await api.upload(
             data: data,

@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/http/errors";
 import { describeError, traceEvent } from "@/lib/observability/trace";
 import { referencedAssetIds } from "@/lib/render/sticker-render";
 import type { RenderAssets } from "@/lib/render/document-svg";
-import { renderApng, renderStillPng } from "@/lib/render/renditions";
+import { renderAnimatedWebp, renderApng, renderStillPng, renderStillWebp } from "@/lib/render/renditions";
 import { derivedAssetId, validateImageForKind } from "@/lib/services/assets";
 import { acceptRevision, bindExports } from "@/lib/services/stickers";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
@@ -119,18 +119,28 @@ async function loadDocumentAssets(
  * workflow replay, or a second Publish press, rewrites the same object and re-binds the same ids
  * instead of orphaning a set of renditions in R2 on every attempt.
  */
+/** Which container each rendition kind is written in. */
+const RENDITION_MIME = {
+  master: "image/png",
+  apng: "image/png",
+  system: "image/png",
+  attachment: "image/png",
+  webp: "image/webp",
+} as const;
+
 async function storeRendition(
   db: Database,
   ownerId: string,
   stickerId: string,
   revisionId: string,
   slot: string,
-  kind: "master" | "apng" | "system" | "attachment",
+  kind: keyof typeof RENDITION_MIME,
   bytes: Uint8Array,
 ): Promise<string> {
   const id = derivedAssetId(revisionId, slot);
   const inspection = await inspectImage(bytes);
-  const r2Key = objectKey(ownerId, id, "image/png");
+  const mimeType = RENDITION_MIME[kind];
+  const r2Key = objectKey(ownerId, id, mimeType);
   const row = {
     id,
     ownerId,
@@ -138,7 +148,7 @@ async function storeRendition(
     kind,
     state: "ready" as const,
     r2Key,
-    mimeType: "image/png" as const,
+    mimeType,
     byteSize: inspection.byteSize,
     width: inspection.width,
     height: inspection.height,
@@ -147,7 +157,7 @@ async function storeRendition(
     fps: inspection.fps,
     sha256: inspection.sha256,
     hasAlpha: inspection.hasAlpha,
-    originalFilename: `quick-${slot}.png`,
+    originalFilename: `quick-${slot}.${mimeType === "image/webp" ? "webp" : "png"}`,
     createdAt: new Date(),
     readyAt: new Date(),
   };
@@ -156,7 +166,7 @@ async function storeRendition(
   validateImageForKind(row as unknown as typeof assets.$inferSelect, inspection);
   await getObjectStore().put(r2Key, {
     bytes,
-    contentType: "image/png",
+    contentType: mimeType,
     metadata: { sha256: inspection.sha256 },
   });
   await db.insert(assets).values(row).onConflictDoUpdate({ target: assets.id, set: {
@@ -252,9 +262,15 @@ async function renderStaticExports(
     ([["medium", ATTACHMENT_RENDITION_DIMENSIONS.medium], ["small", ATTACHMENT_RENDITION_DIMENSIONS.small]] as const)
       .map(async ([slot, size]) => [slot, await renderStillPng(document, sourceAssets, size)] as const),
   ));
+  // The same 1024 px frame as the master, in the container WinkySticker prefers to attach. Drawn
+  // rather than converted, because the renderer is right here and a re-raster costs less than
+  // decoding the PNG back out again.
+  const webp = await tracked(report, "render_webp", 0.55, 0.62, () => (
+    renderStillWebp(document, sourceAssets, 1_024)
+  ));
   // Quantised: a still rendition carries one palette, so indexing it is free size and it is what
   // keeps dense artwork under Apple's ceiling at the largest rung.
-  const system = await tracked(report, "render_sizes", 0.55, 0.8, () => (
+  const system = await tracked(report, "render_sizes", 0.62, 0.8, () => (
     ladder(SYSTEM_DIMENSIONS, SYSTEM_BYTE_CEILING, (size) => (
       renderStillPng(document, sourceAssets, size, { palette: true })
     ))
@@ -263,7 +279,7 @@ async function renderStaticExports(
     throw new QuickPublishUnsupportedError("This sticker is too detailed to fit Messages' size limit. Publish it in the main app.");
   }
 
-  const [pngAssetId, systemAssetId, attachmentMediumAssetId, attachmentSmallAssetId] = await tracked(
+  const [pngAssetId, systemAssetId, attachmentMediumAssetId, attachmentSmallAssetId, webpAssetId] = await tracked(
     report,
     "save_renditions",
     0.8,
@@ -273,9 +289,10 @@ async function renderStaticExports(
       storeRendition(db, ownerId, stickerId, revisionId, "system", "system", system.bytes),
       storeRendition(db, ownerId, stickerId, revisionId, "attachment-medium", "attachment", attachments[0][1]),
       storeRendition(db, ownerId, stickerId, revisionId, "attachment-small", "attachment", attachments[1][1]),
+      storeRendition(db, ownerId, stickerId, revisionId, "webp", "webp", webp),
     ]),
   );
-  return { request: { pngAssetId, systemAssetId, attachmentMediumAssetId, attachmentSmallAssetId } };
+  return { request: { pngAssetId, systemAssetId, attachmentMediumAssetId, attachmentSmallAssetId, webpAssetId } };
 }
 
 async function renderAnimatedExports(
@@ -299,10 +316,18 @@ async function renderAnimatedExports(
     await renderApng(document, sourceAssets, ATTACHMENT_RENDITION_DIMENSIONS.medium, document.fps),
     await renderApng(document, sourceAssets, ATTACHMENT_RENDITION_DIMENSIONS.small, document.fps),
   ]);
+  // The same cycle in the container WinkySticker prefers to attach. It walks the sharing ladder for
+  // form's sake rather than need: WebP reaches the upload ceiling only on artwork the APNG above it
+  // could not have fitted either, so in practice this is one render at the top rung.
+  const webp = await tracked(report, "render_webp", 0.55, 0.62, () => (
+    ladder(SHARING_DIMENSIONS, 25 * 1024 * 1024, async (size) => (
+      (await renderAnimatedWebp(document, sourceAssets, size, document.fps)).bytes
+    ))
+  ));
 
   // Size first, then frame rate: dropping pixels costs nothing anyone sees in a 300 px transcript
   // bubble, while dropping frames is the one compromise a viewer notices.
-  const system = await tracked(report, "render_sizes", 0.55, 0.85, async () => {
+  const system = await tracked(report, "render_sizes", 0.62, 0.85, async () => {
     for (const size of SYSTEM_DIMENSIONS) {
       for (const fps of [document.fps, ...SYSTEM_FPS_LADDER.filter((rung) => rung < document.fps)]) {
         const rendered = await renderApng(document, sourceAssets, size, fps);
@@ -319,7 +344,7 @@ async function renderAnimatedExports(
     throw new QuickPublishUnsupportedError("This animation is too detailed to fit Messages' size limit. Publish it in the main app.");
   }
 
-  const [apngAssetId, systemAssetId, attachmentMediumAssetId, attachmentSmallAssetId] = await tracked(
+  const [apngAssetId, systemAssetId, attachmentMediumAssetId, attachmentSmallAssetId, webpAssetId] = await tracked(
     report,
     "save_renditions",
     0.85,
@@ -329,6 +354,7 @@ async function renderAnimatedExports(
       storeRendition(db, ownerId, stickerId, revisionId, "system", "system", system.bytes),
       storeRendition(db, ownerId, stickerId, revisionId, "attachment-medium", "attachment", attachmentMedium.bytes),
       storeRendition(db, ownerId, stickerId, revisionId, "attachment-small", "attachment", attachmentSmall.bytes),
+      storeRendition(db, ownerId, stickerId, revisionId, "webp", "webp", webp.bytes),
     ]),
   );
   return {
@@ -337,6 +363,7 @@ async function renderAnimatedExports(
       systemAssetId,
       attachmentMediumAssetId,
       attachmentSmallAssetId,
+      webpAssetId,
       mp4Background: document.mp4Background,
     },
   };

@@ -1,7 +1,6 @@
 #include "Base.xcconfig"
 STICKER_FACTORY_API_BASE_URL = https:/$()/sticker.rxlab.app
-// A single Release binary selects among these only after StoreKit verifies its environment.
-// Replace the empty Sandbox value with an rxs_pk_sandbox_… key from the same RxArgo app.
-STICKER_FACTORY_SUBSCRIPTION_XCODE_KEY = rxs_pk_xcode_c6895429a57349d7924418d3b8ca0c65ce800b187d094d68a962f37541ce8b41
-STICKER_FACTORY_SUBSCRIPTION_SANDBOX_KEY = rxs_sandbox_f21f22ad0910461dbd46502ae42f888dd519f0b830ca42e8bd51082ce9a81fd3
+// A Release binary selects between TestFlight sandbox and App Store production after StoreKit
+// verifies its environment. Local StoreKit runs use the Xcode key from Debug.xcconfig.
+STICKER_FACTORY_SUBSCRIPTION_SANDBOX_KEY = rxs_pk_sandbox_eda4787d1dbe4c539272dab526710b3057026b62b8764c9986345e4fa20f3308
 STICKER_FACTORY_SUBSCRIPTION_PRODUCTION_KEY = rxs_pk_production_f233fbd09e8a480091610c63c4d0dd084f19c534d73d46afbc3c077d0c3da5ab

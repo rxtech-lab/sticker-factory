@@ -497,7 +497,9 @@ nonisolated enum IndexedPNGEncoder {
         var data = Data()
         data.append(contentsOf: signature)
         data.append(header(width: dimension, height: dimension, bitDepth: palette.bitDepth))
-        for paletteChunk in paletteChunks(palette) { data.append(paletteChunk) }
+        for paletteChunk in paletteChunks(palette) {
+            data.append(paletteChunk)
+        }
         data.append(chunk(
             "IDAT",
             deflate(scanlines(
@@ -582,7 +584,9 @@ nonisolated enum IndexedPNGEncoder {
             var data = Data()
             data.append(contentsOf: IndexedPNGEncoder.signature)
             data.append(IndexedPNGEncoder.header(width: dimension, height: dimension, bitDepth: palette.bitDepth))
-            for paletteChunk in IndexedPNGEncoder.paletteChunks(palette) { data.append(paletteChunk) }
+            for paletteChunk in IndexedPNGEncoder.paletteChunks(palette) {
+                data.append(paletteChunk)
+            }
             var control = Data()
             control.append(bigEndian: UInt32(writtenFrames))
             control.append(bigEndian: UInt32(loopCount))
@@ -609,10 +613,10 @@ nonisolated enum IndexedPNGEncoder {
         payload.append(bigEndian: UInt32(width))
         payload.append(bigEndian: UInt32(height))
         payload.append(UInt8(bitDepth))
-        payload.append(3)  // colour type 3: indexed
-        payload.append(0)  // deflate
-        payload.append(0)  // adaptive filtering
-        payload.append(0)  // no interlacing
+        payload.append(3) // colour type 3: indexed
+        payload.append(0) // deflate
+        payload.append(0) // adaptive filtering
+        payload.append(0) // no interlacing
         return chunk("IHDR", payload)
     }
 
@@ -628,7 +632,9 @@ nonisolated enum IndexedPNGEncoder {
         let transparentCount = palette.transparentEntryCount
         if transparentCount > 0 {
             var trns = Data(capacity: transparentCount)
-            for entry in palette.entries.prefix(transparentCount) { trns.append(entry.alpha) }
+            for entry in palette.entries.prefix(transparentCount) {
+                trns.append(entry.alpha)
+            }
             chunks.append(chunk("tRNS", trns))
         }
         return chunks
@@ -651,8 +657,8 @@ nonisolated enum IndexedPNGEncoder {
         // denominator has to be fine enough that rounding cannot drift the cycle off its grid.
         payload.append(bigEndian: UInt16(min(65535, max(0, (delaySeconds * 1000).rounded()))))
         payload.append(bigEndian: UInt16(1000))
-        payload.append(0)  // dispose_op NONE
-        payload.append(0)  // blend_op SOURCE
+        payload.append(0) // dispose_op NONE
+        payload.append(0) // blend_op SOURCE
         return chunk("fcTL", payload)
     }
 
@@ -716,7 +722,9 @@ nonisolated enum IndexedPNGEncoder {
                     write += 1
                     let read = (rect.y + row) * canvasWidth + rect.x
                     if bitDepth == 8 {
-                        for column in 0..<rect.width { destination[write + column] = source[read + column] }
+                        for column in 0..<rect.width {
+                            destination[write + column] = source[read + column]
+                        }
                     } else {
                         let perByte = 8 / bitDepth
                         for column in 0..<rect.width {
@@ -746,13 +754,13 @@ nonisolated enum IndexedPNGEncoder {
         let success = pixels.withUnsafeMutableBytes { buffer -> Bool in
             guard let base = buffer.baseAddress,
                   let context = CGContext(
-                    data: base,
-                    width: targetWidth,
-                    height: targetHeight,
-                    bitsPerComponent: 8,
-                    bytesPerRow: targetWidth * 4,
-                    space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                      data: base,
+                      width: targetWidth,
+                      height: targetHeight,
+                      bitsPerComponent: 8,
+                      bytesPerRow: targetWidth * 4,
+                      space: CGColorSpaceCreateDeviceRGB(),
+                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
                   )
             else { return false }
             context.draw(image, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
@@ -839,13 +847,17 @@ nonisolated enum IndexedPNGEncoder {
 
     private static let crcTable: [UInt32] = (0..<256).map { index -> UInt32 in
         var value = UInt32(index)
-        for _ in 0..<8 { value = (value & 1) == 1 ? 0xEDB8_8320 ^ (value >> 1) : value >> 1 }
+        for _ in 0..<8 {
+            value = (value & 1) == 1 ? 0xEDB8_8320 ^ (value >> 1) : value >> 1
+        }
         return value
     }
 
     private static func crc32(_ data: Data) -> UInt32 {
         var crc: UInt32 = 0xFFFF_FFFF
-        for byte in data { crc = crcTable[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8) }
+        for byte in data {
+            crc = crcTable[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
+        }
         return crc ^ 0xFFFF_FFFF
     }
 }

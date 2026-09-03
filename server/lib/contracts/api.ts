@@ -40,6 +40,20 @@ export const AssetKindSchema = z.enum([
    * reason they exist.
    */
   "attachment",
+  /**
+   * The WebP copy of the sharing rendition, at one of `SHARING_APNG_DIMENSIONS`.
+   *
+   * A second container for artwork `apng` (or `master`) already holds, and optional everywhere:
+   * it exists so an `.image`-mode send from the Messages extension can attach a file a fraction of
+   * the APNG's size — a published 618 px APNG measured 9.8 MB and a 1024 px one 23.5 MB, where the
+   * same frames as WebP land in hundreds of kilobytes. A sticker without one sends the APNG exactly
+   * as it did before, which is why nothing in a publish requires it.
+   *
+   * Never a `system` rendition. `MSSticker.h` requires a file conforming to `kUTTypePNG`,
+   * `kUTTypeGIF` or `kUTTypeJPEG`, and WebP conforms to none of them — so this can only ever be an
+   * attachment, never the file Messages puts in the sticker drawer.
+   */
+  "webp",
 ]);
 
 /** Sizes an `attachment` rendition may be written at. Large is the sharing rendition itself. */
@@ -171,6 +185,11 @@ export const CreateUploadRequestSchema = z.object({
   if (value.kind === "gif" && value.mimeType !== "image/gif") {
     context.addIssue({ code: "custom", message: "GIF exports must use image/gif" });
   }
+  // Unlike `apng`, the container and the mime agree here: a WebP is a WebP whether or not it
+  // animates, so there is no still/animated ambiguity for `validateImageForKind` to read back.
+  if (value.kind === "webp" && value.mimeType !== "image/webp") {
+    context.addIssue({ code: "custom", message: "WebP sharing renditions must use image/webp" });
+  }
   if (value.kind === "master" && value.mimeType !== "image/png") {
     context.addIssue({ code: "custom", message: "Static masters must use image/png" });
   }
@@ -190,6 +209,14 @@ export const PublishExportsRequestSchema = z.object({
   pngAssetId: z.string().uuid().optional(),
   apngAssetId: z.string().uuid().optional(),
   mp4AssetId: z.string().uuid().optional(),
+  /**
+   * The WebP copy of the sharing rendition, when the client could make one.
+   *
+   * Always optional and never load-bearing: iOS has no system WebP encoder (`ImageIO` reads the
+   * format but does not write it), so a client that cannot link one still publishes a complete
+   * sticker and its `.image` sends fall back to the APNG.
+   */
+  webpAssetId: z.string().uuid().optional(),
   systemAssetId: z.string().uuid(),
   /**
    * The 408 px and 300 px copies of the sharing rendition.
@@ -316,6 +343,13 @@ export const StickerSummaryV1Schema = z.object({
    */
   attachmentMedium: AssetV1Schema.nullable(),
   attachmentSmall: AssetV1Schema.nullable(),
+  /**
+   * The WebP copy of the sharing rendition, when this sticker has one.
+   *
+   * Null for every sticker published before WebP exports existed, and for any client that cannot
+   * encode one — so a reader must treat it as an optimisation and fall back to `previewAsset`.
+   */
+  webpAsset: AssetV1Schema.nullable(),
 }).strict();
 
 export const StickerListResponseV1Schema = z.object({

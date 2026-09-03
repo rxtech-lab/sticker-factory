@@ -88,12 +88,15 @@ async function safelyRecordRun(db: Database, jobId: string, runId: string): Prom
 }
 
 export async function startGenerationWorkflow(db: Database, jobId: string): Promise<string> {
+  const job = await db.select({ quick: generationJobs.quick }).from(generationJobs)
+    .where(eq(generationJobs.id, jobId)).then(firstRow);
+  const quick = job?.quick ?? false;
   if (process.env.NODE_ENV === "test" && process.env.STICKER_FACTORY_INLINE_WORKFLOWS === "true") {
-    void stickerGenerationWorkflow(jobId);
+    void stickerGenerationWorkflow(jobId, quick);
     return `inline_${jobId}`;
   }
   try {
-    const run = await start(stickerGenerationWorkflow, [jobId]);
+    const run = await start(stickerGenerationWorkflow, [jobId, quick]);
     await safelyRecordRun(db, jobId, run.runId);
     return run.runId;
   } catch (error) {

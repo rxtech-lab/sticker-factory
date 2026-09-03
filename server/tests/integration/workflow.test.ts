@@ -2110,7 +2110,7 @@ describe("durable sticker workflow", () => {
       imagePlacement: "replace",
       quick: true,
     });
-    expect((await stickerGenerationWorkflow(fromMessages.jobId)).workflowStatus).toBe("succeeded");
+    expect((await stickerGenerationWorkflow(fromMessages.jobId, true)).workflowStatus).toBe("succeeded");
 
     // One model call for the whole turn: the drawing. Not the reference selector, not the caption,
     // not the renaming — all three deliberate on artwork nobody in Messages is going to read a

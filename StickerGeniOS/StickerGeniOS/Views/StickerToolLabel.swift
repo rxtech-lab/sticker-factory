@@ -92,6 +92,7 @@ nonisolated enum StickerToolLabel {
         "render_artwork": String(localized: "Drawing it full size"),
         "render_frames": String(localized: "Drawing the frames"),
         "render_attachments": String(localized: "Making the send sizes"),
+        "render_webp": String(localized: "Making the compact copy"),
         "render_sizes": String(localized: "Fitting it for Messages"),
         "save_renditions": String(localized: "Saving it"),
     ]

@@ -24,6 +24,7 @@ import {
   attachmentSmallAssets,
   previewAssetIdSql,
   previewAssets,
+  webpAssets,
   systemAssets,
 } from "@/lib/db/columns";
 import {
@@ -176,6 +177,23 @@ export const attachmentSmallSummaryColumns = {
   createdAt: attachmentSmallAssets.createdAt,
 };
 
+export const webpSummaryColumns = {
+  id: webpAssets.id,
+  stickerId: webpAssets.stickerId,
+  kind: webpAssets.kind,
+  state: webpAssets.state,
+  mimeType: webpAssets.mimeType,
+  byteSize: webpAssets.byteSize,
+  width: webpAssets.width,
+  height: webpAssets.height,
+  frameCount: webpAssets.frameCount,
+  durationSeconds: webpAssets.durationSeconds,
+  fps: webpAssets.fps,
+  sha256: webpAssets.sha256,
+  hasAlpha: webpAssets.hasAlpha,
+  createdAt: webpAssets.createdAt,
+};
+
 /**
  * A sticker plus its active revision's system and preview assets, resolved in one statement.
  *
@@ -190,6 +208,7 @@ export function selectStickerSummaries(db: Database) {
     previewAsset: previewAssetSummaryColumns,
     attachmentMedium: attachmentMediumSummaryColumns,
     attachmentSmall: attachmentSmallSummaryColumns,
+    webpAsset: webpSummaryColumns,
   }).from(stickers)
     .leftJoin(stickerRevisions, and(
       eq(stickerRevisions.id, stickers.activeRevisionId),
@@ -198,7 +217,8 @@ export function selectStickerSummaries(db: Database) {
     .leftJoin(systemAssets, eq(systemAssets.id, stickerRevisions.systemAssetId))
     .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql))
     .leftJoin(attachmentMediumAssets, eq(attachmentMediumAssets.id, stickerRevisions.attachmentMediumAssetId))
-    .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId));
+    .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId))
+    .leftJoin(webpAssets, eq(webpAssets.id, stickerRevisions.webpAssetId));
 }
 
 export type AssetSummary = Pick<typeof assets.$inferSelect,
@@ -213,6 +233,8 @@ export type StickerSummaryRow = {
   /** Null on anything published before attachment renditions existed. */
   attachmentMedium: AssetSummary | null;
   attachmentSmall: AssetSummary | null;
+  /** Null on anything published before WebP exports existed, and on any client that cannot encode one. */
+  webpAsset: AssetSummary | null;
 };
 
 export interface ListStickersOptions {
@@ -238,6 +260,7 @@ export function serializeStickerSummary({
   previewAsset,
   attachmentMedium,
   attachmentSmall,
+  webpAsset,
 }: StickerSummaryRow) {
   return {
     id: sticker.id,
@@ -259,6 +282,9 @@ export function serializeStickerSummary({
     } : null,
     attachmentMedium: serializeAttachment(attachmentMedium),
     attachmentSmall: serializeAttachment(attachmentSmall),
+    // Held to the same `ready` gate: an unfinished WebP offered to the extension is a tap spent on
+    // a 404, and the APNG it would have fallen back to was there the whole time.
+    webpAsset: serializeAttachment(webpAsset),
   };
 }
 
@@ -270,6 +296,7 @@ async function serializeSticker(db: Database, sticker: typeof stickers.$inferSel
     previewAsset: null,
     attachmentMedium: null,
     attachmentSmall: null,
+    webpAsset: null,
   });
 }
 
@@ -673,6 +700,7 @@ export async function getSticker(db: Database, ownerId: string, stickerId: strin
       systemAssetId: revision.systemAssetId,
       attachmentMediumAssetId: revision.attachmentMediumAssetId,
       attachmentSmallAssetId: revision.attachmentSmallAssetId,
+      webpAssetId: revision.webpAssetId,
       createdAt: revision.createdAt.toISOString(),
       decidedAt: revision.decidedAt?.toISOString() ?? null,
     })),
@@ -1637,6 +1665,7 @@ export async function bindExports(
     request.systemAssetId,
     request.attachmentMediumAssetId,
     request.attachmentSmallAssetId,
+    request.webpAssetId,
   ].filter((value): value is string => Boolean(value));
   const rows = await getReadyOwnedAssets(db, ownerId, ids);
   const byId = new Map(rows.map((asset) => [asset.id, asset]));
@@ -1683,6 +1712,23 @@ export async function bindExports(
         422,
         "ATTACHMENT_RENDITION_MISMATCH",
         `${field} must be ${revision.kind === "animated" ? "animated" : "a single frame"} to match the sticker`,
+      );
+    }
+  }
+  // Optional by construction — iOS has no system WebP encoder, so a client that cannot link one
+  // publishes without this and its `.image` sends keep resolving to the APNG. What is checked is
+  // that a WebP which *did* arrive is the right file: the kind it claims, and moving (or not) with
+  // the sticker exactly as the attachment renditions must.
+  if (request.webpAssetId) {
+    const webp = byId.get(request.webpAssetId)!;
+    if (webp.kind !== "webp") {
+      throw new ApiError(422, "INVALID_WEBP_EXPORT", "webpAssetId must reference a WebP rendition");
+    }
+    if ((revision.kind === "animated") !== ((webp.frameCount ?? 1) > 1)) {
+      throw new ApiError(
+        422,
+        "WEBP_RENDITION_MISMATCH",
+        `webpAssetId must be ${revision.kind === "animated" ? "animated" : "a single frame"} to match the sticker`,
       );
     }
   }
@@ -1740,6 +1786,8 @@ export async function bindExports(
       // frame rate away and a mismatch really is a bad export.
       request.attachmentMediumAssetId,
       request.attachmentSmallAssetId,
+      // A different container carrying the same cycle. Nothing about WebP loosens the timing.
+      request.webpAssetId,
     ]) {
       if (!assetId) continue;
       // The still fallback has no cycle to match; it is one frame standing in for all of them.
@@ -1772,6 +1820,7 @@ export async function bindExports(
       systemAssetId: request.systemAssetId,
       attachmentMediumAssetId: request.attachmentMediumAssetId,
       attachmentSmallAssetId: request.attachmentSmallAssetId,
+      webpAssetId: request.webpAssetId,
       createdAt: new Date(),
       decidedAt: new Date(),
     });

@@ -49,7 +49,7 @@ const messageStatuses = ["complete", "streaming", "failed"] as const;
 const imagePlacements = ["replace", "add"] as const;
 const assetKinds = [
   "reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment",
-  "sequence", "attachment", "video",
+  "sequence", "attachment", "video", "webp",
 ] as const;
 const assetStates = ["pending", "ready", "failed", "deleted"] as const;
 const candidateStates = ["candidate", "accepted", "rejected", "superseded"] as const;
@@ -249,6 +249,14 @@ export const stickerRevisions = pgTable("sticker_revisions", {
    */
   attachmentMediumAssetId: text("attachment_medium_asset_id").references(() => assets.id, { onDelete: "set null" }),
   attachmentSmallAssetId: text("attachment_small_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  /**
+   * The same artwork as the sharing rendition, in WebP, at one of `SHARING_APNG_DIMENSIONS`.
+   *
+   * Only WinkySticker's `.image` mode reads it, and only as a size optimisation — the APNG stays
+   * the sharing rendition everywhere else. Null is the ordinary state: every revision published
+   * before this column existed has none, and so does any client without a WebP encoder.
+   */
+  webpAssetId: text("webp_asset_id").references(() => assets.id, { onDelete: "set null" }),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   decidedAt: timestampColumn("decided_at"),
 }, (table) => [

@@ -16,6 +16,7 @@
 		DFD465E53048198D007C420E /* RxSubscriptionIOS in Frameworks */ = {isa = PBXBuildFile; productRef = DFD465E43048198D007C420E /* RxSubscriptionIOS */; };
 		DFD465E8304847DD007C420E /* InAppPurchaseConfiguration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = DFD465E7304847DD007C420E /* InAppPurchaseConfiguration.storekit */; };
 		DFD465F730487904007C420E /* RxSubscriptionIOS in Frameworks */ = {isa = PBXBuildFile; productRef = DFD465F630487904007C420E /* RxSubscriptionIOS */; };
+		DFD46C613049D782007C420E /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = C00000000000000000000002 /* libwebp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -154,6 +155,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DFD46C613049D782007C420E /* libwebp in Frameworks */,
 				B00000000000000000000001 /* Kingfisher in Frameworks */,
 				A00000000000000000000001 /* RxAuthSwift in Frameworks */,
 				DF2A4294303DD070006910C8 /* AnimatedView in Frameworks */,
@@ -285,6 +287,7 @@
 			name = StickerGeniOS;
 			packageProductDependencies = (
 				B00000000000000000000002 /* Kingfisher */,
+				C00000000000000000000002 /* libwebp */,
 				A00000000000000000000019 /* RxAuthSwift */,
 				A00000000000000000000020 /* RxAuthSwiftUI */,
 				DF2A4293303DD070006910C8 /* AnimatedView */,
@@ -384,6 +387,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */,
+				C00000000000000000000001 /* XCRemoteSwiftPackageReference "libwebp-Xcode" */,
 				A00000000000000000000018 /* XCRemoteSwiftPackageReference "RxAuthSwift" */,
 				DF2A4292303DD070006910C8 /* XCLocalSwiftPackageReference "packages/AnimatedView" */,
 				DFD465F530487904007C420E /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */,
@@ -989,6 +993,14 @@
 				minimumVersion = 8.0.0;
 			};
 		};
+		C00000000000000000000001 /* XCRemoteSwiftPackageReference "libwebp-Xcode" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SDWebImage/libwebp-Xcode";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.6.0;
+			};
+		};
 		DFD465F530487904007C420E /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/rxtech-lab/RxSubscriptionIOS";
@@ -1014,6 +1026,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */;
 			productName = Kingfisher;
+		};
+		C00000000000000000000002 /* libwebp */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C00000000000000000000001 /* XCRemoteSwiftPackageReference "libwebp-Xcode" */;
+			productName = libwebp;
 		};
 		DF2A4293303DD070006910C8 /* AnimatedView */ = {
 			isa = XCSwiftPackageProductDependency;
