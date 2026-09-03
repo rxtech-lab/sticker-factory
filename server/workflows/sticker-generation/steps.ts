@@ -100,6 +100,10 @@ const MAX_SUMMARIZED_TITLE_LENGTH = 48;
 
 export async function beginJobStep(jobId: string): Promise<void> {
   "use step";
+  return beginJob(jobId);
+}
+
+async function beginJob(jobId: string): Promise<void> {
   const db = await getDatabase();
   const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   traceEvent("beginJobStep", { jobId, kind: job?.kind, state: job?.state, attempts: job?.attempts });
@@ -2298,6 +2302,10 @@ async function executePlanBuildTurn(
 
 export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {
   "use step";
+  return executeAiJob(jobId);
+}
+
+async function executeAiJob(jobId: string): Promise<AiTurnResult> {
   // The step boundary is also the retry boundary, and nothing else prints why an attempt failed: the
   // workflow's catch only runs once the runtime has given up, so a turn that is being replayed —
   // regenerating its image every time — otherwise reports nothing at all. Name the error on the way
@@ -3210,6 +3218,10 @@ async function announceJobEnded(
 
 export async function completeJobStep(jobId: string, result: Record<string, unknown>): Promise<void> {
   "use step";
+  return completeJob(jobId, result);
+}
+
+async function completeJob(jobId: string, result: Record<string, unknown>): Promise<void> {
   const db = await getDatabase();
   const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
   traceEvent("completeJobStep", { jobId, state: job?.state });
@@ -3236,6 +3248,29 @@ export async function completeJobStep(jobId: string, result: Record<string, unkn
 export async function failJobStep(jobId: string, message: string): Promise<void> {
   "use step";
   return failJob(await getDatabase(), jobId, message);
+}
+
+/**
+ * Quick mode's complete generation lifecycle in one durable step.
+ *
+ * The ordinary workflow isolates begin, generation, title summarization, and completion so a long
+ * app turn can resume between them. Quick already skips summarization and normally draws in a few
+ * seconds; splitting its tiny lifecycle across four function invocations costs more wall time than
+ * the image model. One step keeps automatic retries and replay while removing those handoffs.
+ */
+export async function quickGenerationStep(jobId: string): Promise<{
+  workflowStatus: "succeeded";
+  result: AiTurnResult;
+}> {
+  "use step";
+  const queued = await (await getDatabase()).select({ quick: generationJobs.quick }).from(generationJobs)
+    .where(eq(generationJobs.id, jobId)).then(firstRow);
+  if (!queued?.quick) throw new Error("Quick generation step requires a Quick job");
+
+  await beginJob(jobId);
+  const result = await executeAiJob(jobId);
+  await completeJob(jobId, result);
+  return { workflowStatus: "succeeded", result };
 }
 
 /**

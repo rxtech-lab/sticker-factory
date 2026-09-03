@@ -433,6 +433,45 @@ struct StickerExportLadderTests {
         }
     }
 
+    /// The APNG and its WebP copy come out of one pass, at one size, on one frame grid.
+    ///
+    /// The pairing is the whole design: a WebP rendered separately would mean a second full pass
+    /// over the cycle — the slowest step of a publish, run twice, for identical pixels.
+    @MainActor
+    @Test("One pass yields both sharing containers, matched in size and timing")
+    func sharingRenditionsComeFromOnePass() async throws {
+        var document = PreviewFixtures.animatedBaseDocument
+        document.layers = [
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+        ]
+        document.durationSeconds = 1
+        document.fps = 8
+        let exporter = StickerExporter()
+
+        let rendered = try await exporter.exportSharingRenditions(document: document, assets: .init())
+        defer { try? FileManager.default.removeItem(at: rendered.apng.url) }
+        let webp = try #require(rendered.webp)
+        defer { try? FileManager.default.removeItem(at: webp.url) }
+
+        #expect(webp.metadata.format == .webp)
+        #expect(webp.url.pathExtension == "webp")
+        // Same rung of the same ladder — the server admits both only at these sizes.
+        #expect(webp.metadata.width == rendered.apng.metadata.width)
+        #expect(webp.metadata.height == rendered.apng.metadata.height)
+        #expect(StickerExportMetadataPolicy.sharingApngDimensions.contains(webp.metadata.width))
+        #expect(webp.metadata.durationSeconds == rendered.apng.metadata.durationSeconds)
+
+        // Decoded by ImageIO, which is what the recipient's Messages uses, and holding the same
+        // frame grid the server checks the APNG's against.
+        let source = try #require(CGImageSourceCreateWithData(try Data(contentsOf: webp.url) as CFData, nil))
+        #expect(CGImageSourceGetType(source) as String? == UTType.webP.identifier)
+        #expect(CGImageSourceGetCount(source)
+            == StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps))
+
+        // The reason it is published at all.
+        #expect(webp.metadata.byteCount < rendered.apng.metadata.byteCount)
+    }
+
     @MainActor
     @Test("A sharing APNG too big to upload is written smaller rather than not at all")
     func sharingApngFitsTheUploadCeiling() async throws {

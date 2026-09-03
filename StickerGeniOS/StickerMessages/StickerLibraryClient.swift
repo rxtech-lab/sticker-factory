@@ -185,7 +185,7 @@ struct StickerLibraryClient: Sendable {
             .appending(path: "download")
         var request = URLRequest(url: endpoint)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json, image/png, image/apng, image/gif", forHTTPHeaderField: "Accept")
+        request.setValue("application/json, image/png, image/apng, image/gif, image/webp", forHTTPHeaderField: "Accept")
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let result = try await transport.data(for: request)
@@ -203,7 +203,7 @@ struct StickerLibraryClient: Sendable {
                 throw StickerLibraryError.invalidResponse
             }
             var signedRequest = URLRequest(url: signedURL)
-            signedRequest.setValue("image/png, image/apng, image/gif", forHTTPHeaderField: "Accept")
+            signedRequest.setValue("image/png, image/apng, image/gif, image/webp", forHTTPHeaderField: "Accept")
             signedRequest.cachePolicy = .reloadIgnoringLocalCacheData
             let rendition = try await transport.data(for: signedRequest)
             try Self.validate(rendition.response)
@@ -372,6 +372,12 @@ private struct StickerDTO: Decodable {
     /// The server's largest rendition: the 1024² `master` PNG for a static sticker, the 618 APNG
     /// for an animated one. Absent on servers older than this field.
     let previewAsset: AssetDTO?
+    /// The same artwork as `previewAsset`, in WebP, when the publishing client could encode one.
+    ///
+    /// Null far more often than not — iOS has no system WebP encoder, and nothing published before
+    /// the format existed has one — so this is read as an optimisation over `previewAsset` and
+    /// never as a replacement for it.
+    let webpAsset: AssetDTO?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -381,6 +387,7 @@ private struct StickerDTO: Decodable {
         case systemSticker
         case systemStickerAssetID = "systemStickerAssetId"
         case previewAsset
+        case webpAsset
     }
 
     init(from decoder: Decoder) throws {
@@ -393,6 +400,7 @@ private struct StickerDTO: Decodable {
         systemSticker = try container.decodeIfPresent(AssetDTO.self, forKey: .systemSticker)
         systemStickerAssetID = try container.decodeIfPresent(String.self, forKey: .systemStickerAssetID)
         previewAsset = try container.decodeIfPresent(AssetDTO.self, forKey: .previewAsset)
+        webpAsset = try container.decodeIfPresent(AssetDTO.self, forKey: .webpAsset)
     }
 
     var systemDescriptor: SystemStickerDescriptor? {
@@ -415,8 +423,15 @@ private struct StickerDTO: Decodable {
     /// `previewAsset` — the sharing rendition, which every published sticker carries. `nil` when the
     /// asset fails one of `fullSizeRendition`'s gating rules, which the caller resolves by
     /// attaching the cached ≤500 KB file instead.
+    ///
+    /// WebP is preferred when the server offers one, and *only* preferred: it is the same frames in
+    /// a container that costs a fraction of the bytes — a published 618 px APNG measured 9.8 MB —
+    /// so taking it saves a download the person is waiting on. Every reason it might not be there
+    /// is ordinary (an older sticker, a client with no encoder), and a WebP that fails one of the
+    /// gates below falls through to the APNG rather than reducing the sticker to its ≤500 KB file.
     private func fullSize(systemAssetID: String) -> FullSizeRendition? {
-        Self.fullSizeRendition(previewAsset, systemAssetID: systemAssetID)
+        Self.fullSizeRendition(webpAsset, systemAssetID: systemAssetID)
+            ?? Self.fullSizeRendition(previewAsset, systemAssetID: systemAssetID)
     }
 
     /// Every rule here fails closed: an offer that cannot be honoured is worse than no offer,
@@ -447,8 +462,13 @@ private struct StickerDTO: Decodable {
 
         // Filtered here rather than by loosening `validatedFileExtension`, which stays the single
         // magic-byte gate both caches share.
+        //
+        // WebP is admitted for the full-size cache alone. It can only ever be an `.image`-mode
+        // attachment: `MSSticker.h` requires a file conforming to `kUTTypePNG`, `kUTTypeGIF` or
+        // `kUTTypeJPEG`, and `org.webmproject.webp` conforms to none of the three — so the system
+        // cache, whose files become `MSSticker`s, refuses it in `validatedFileExtension`.
         let normalized = preview.mimeType.lowercased().split(separator: ";").first.map(String.init) ?? ""
-        guard ["image/png", "image/apng", "image/gif"].contains(normalized) else { return nil }
+        guard ["image/png", "image/apng", "image/gif", "image/webp"].contains(normalized) else { return nil }
 
         if let byteSize = preview.byteSize, byteSize >= StickerCachePolicy.fullSize.maximumByteCount {
             return nil

@@ -131,6 +131,9 @@
     "Editing sticker" : {
 
     },
+    "Filming a clip" : {
+
+    },
     "Finishing animation" : {
 
     },
@@ -156,6 +159,9 @@
 
     },
     "Making that change…" : {
+
+    },
+    "Making the compact copy" : {
 
     },
     "Making the send sizes" : {
@@ -559,6 +565,7 @@
       }
     },
     "The downloaded rendition is not a supported PNG, APNG, or GIF." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -573,6 +580,9 @@
           }
         }
       }
+    },
+    "The downloaded rendition is not in a format this sticker can be sent as." : {
+
     },
     "The full-size image has unexpected dimensions." : {
 

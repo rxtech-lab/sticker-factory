@@ -64,6 +64,7 @@ export default async function StickerDetailPage({
   const downloads = activeRevision ? [
     activeRevision.pngAssetId ? { label: "PNG export", assetId: activeRevision.pngAssetId } : activeRevision.masterAssetId ? { label: "Source master", assetId: activeRevision.masterAssetId } : null,
     activeRevision.apngAssetId ? { label: "Animated PNG", assetId: activeRevision.apngAssetId } : null,
+    activeRevision.webpAssetId ? { label: "WebP", assetId: activeRevision.webpAssetId } : null,
     activeRevision.mp4AssetId ? { label: "MP4 video", assetId: activeRevision.mp4AssetId } : null,
     activeRevision.systemAssetId ? { label: "System sticker", assetId: activeRevision.systemAssetId } : null,
   ].filter((item): item is { label: string; assetId: string } => Boolean(item)) : [];

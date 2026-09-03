@@ -126,7 +126,7 @@ enum StickerCacheError: Error, LocalizedError, Sendable {
         case .appGroupUnavailable:
             String(localized: "The shared sticker cache is unavailable.")
         case .unsupportedFile:
-            String(localized: "The downloaded rendition is not a supported PNG, APNG, or GIF.")
+            String(localized: "The downloaded rendition is not in a format this sticker can be sent as.")
         case .fileTooLarge:
             String(localized: "The downloaded rendition exceeds the 500 KB Messages limit.")
         case .invalidDimensions:
@@ -155,6 +155,14 @@ struct StickerCachePolicy: Equatable, Sendable {
     let allowedPixelDimensions: Set<Int>?
     let maximumPixelDimension: Int
     let requiresSquare: Bool
+    /// Whether a WebP may be stored here.
+    ///
+    /// False for the sticker cache and true for the full-size one, and the difference is Apple's
+    /// rather than ours: `MSSticker.h` requires a file conforming to `kUTTypePNG`, `kUTTypeGIF` or
+    /// `kUTTypeJPEG`, and WebP (`org.webmproject.webp`) conforms to none of them. A WebP in the
+    /// sticker directory would therefore become an `MSSticker` that fails to initialise at grid
+    /// build time, long after the bytes were fetched — so it is refused where it lands instead.
+    let allowsWebP: Bool
     /// Budget for the whole directory, enforced by `trim()`. `nil` is unbounded — which is what
     /// the system cache has always been, since it is capped implicitly by the library's size.
     let maximumTotalByteCount: Int?
@@ -169,6 +177,7 @@ struct StickerCachePolicy: Equatable, Sendable {
         allowedPixelDimensions: [300, 408, 618],
         maximumPixelDimension: 618,
         requiresSquare: true,
+        allowsWebP: false,
         maximumTotalByteCount: nil,
         tooLargeError: .fileTooLarge,
         invalidDimensionsError: .invalidDimensions
@@ -189,6 +198,9 @@ struct StickerCachePolicy: Equatable, Sendable {
         allowedPixelDimensions: nil,
         maximumPixelDimension: 1024,
         requiresSquare: false,
+        // `insertAttachment` in the expanded context is the only thing that reads these files, and
+        // it has none of `MSSticker`'s format rules.
+        allowsWebP: true,
         maximumTotalByteCount: 150_000_000,
         tooLargeError: .fullSizeTooLarge,
         invalidDimensionsError: .fullSizeInvalidDimensions
@@ -313,7 +325,11 @@ actor SharedStickerCache {
             throw StickerCacheError.checksumMismatch
         }
 
-        let fileExtension = try Self.validatedFileExtension(for: data, declaredMimeType: descriptor.mimeType)
+        let fileExtension = try Self.validatedFileExtension(
+            for: data,
+            declaredMimeType: descriptor.mimeType,
+            policy: policy
+        )
         try Self.validateImage(data, policy: policy)
         let filename = "\(Self.fingerprint(descriptor.assetID)).\(fileExtension)"
         let destination = rootURL.appending(path: filename)
@@ -494,7 +510,14 @@ actor SharedStickerCache {
         }
     }
 
-    static func validatedFileExtension(for data: Data, declaredMimeType: String) throws -> String {
+    /// - Parameter policy: which directory the file is bound for. Only WebP differs between the
+    ///   two, and it defaults to the stricter of them so a caller that does not say gets the
+    ///   sticker cache's rules.
+    static func validatedFileExtension(
+        for data: Data,
+        declaredMimeType: String,
+        policy: StickerCachePolicy = .systemSticker
+    ) throws -> String {
         let normalizedMimeType = declaredMimeType.lowercased().split(separator: ";").first.map(String.init) ?? ""
         if data.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
            normalizedMimeType.isEmpty || normalizedMimeType == "image/png" || normalizedMimeType == "image/apng" {
@@ -505,6 +528,19 @@ actor SharedStickerCache {
                 throw StickerCacheError.unsupportedFile
             }
             return "gif"
+        }
+        // A RIFF container whose form type is `WEBP`, which is the whole of the signature. What
+        // follows says which codec chunk it carries — `VP8 `, `VP8L`, or the `VP8X` that an
+        // animation uses — and neither this gate nor `insertAttachment` needs to know which.
+        let header = Array(data.prefix(12))
+        if header.count == 12,
+           Array(header[0 ..< 4]) == Array("RIFF".utf8),
+           Array(header[8 ..< 12]) == Array("WEBP".utf8) {
+            guard policy.allowsWebP,
+                  normalizedMimeType.isEmpty || normalizedMimeType == "image/webp" else {
+                throw StickerCacheError.unsupportedFile
+            }
+            return "webp"
         }
         throw StickerCacheError.unsupportedFile
     }

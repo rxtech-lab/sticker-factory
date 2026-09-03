@@ -155,6 +155,9 @@ final class StickerExportProgress {
             // A publish always renders the sticker set — the library and the Messages extension are
             // entitled to it — so only the video is optional here.
             if selection.includesVideo { stages.append(.renderVideo) }
+            // No row for the WebP copy: it is encoded from the APNG's own frames inside the step
+            // above rather than in a pass of its own, so a row for it would sit at zero and then
+            // blink. See `StickerExporter.exportSharingRenditions`.
             stages.append(.renderAPNG)
             if sharing == .gif { stages.append(.renderGIF) }
         }

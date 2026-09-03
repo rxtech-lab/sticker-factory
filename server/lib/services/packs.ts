@@ -6,6 +6,7 @@ import {
   previewAssetIdSql,
   previewAssets,
   systemAssets,
+  webpAssets,
 } from "@/lib/db/columns";
 import {
   creatorProfiles,
@@ -28,6 +29,7 @@ import {
   serializeStickerSummary,
   stickerSummaryColumns,
   systemAssetSummaryColumns,
+  webpSummaryColumns,
   type StickerSummaryRow,
 } from "@/lib/services/stickers";
 import { requirePublishEntitlement } from "@/lib/subscription/credits";
@@ -241,6 +243,7 @@ type PackMemberRow = {
   previewAsset: StickerSummaryRow["previewAsset"];
   attachmentMedium: StickerSummaryRow["attachmentMedium"];
   attachmentSmall: StickerSummaryRow["attachmentSmall"];
+  webpAsset: StickerSummaryRow["webpAsset"];
 };
 
 function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | null) {
@@ -259,6 +262,7 @@ function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | nu
     previewAsset: previewAssetSummaryColumns,
     attachmentMedium: attachmentMediumSummaryColumns,
     attachmentSmall: attachmentSmallSummaryColumns,
+    webpAsset: webpSummaryColumns,
   })
     .from(stickerPackItems)
     .innerJoin(stickers, eq(stickers.id, stickerPackItems.stickerId))
@@ -270,6 +274,7 @@ function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | nu
     .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql))
     .leftJoin(attachmentMediumAssets, eq(attachmentMediumAssets.id, stickerRevisions.attachmentMediumAssetId))
     .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId))
+    .leftJoin(webpAssets, eq(webpAssets.id, stickerRevisions.webpAssetId))
     .where(and(...conditions))
     .orderBy(asc(stickerPackItems.packId), asc(stickerPackItems.position), asc(stickerPackItems.stickerId));
 }
@@ -289,6 +294,7 @@ function groupPackMembers(
       previewAsset: row.previewAsset,
       attachmentMedium: row.attachmentMedium,
       attachmentSmall: row.attachmentSmall,
+      webpAsset: row.webpAsset,
     });
     byPack.set(row.packId, bucket);
   }

@@ -279,6 +279,25 @@ export function validateImageForKind(
       throw new ApiError(422, "INVALID_APNG_TIMING", `Animated sharing renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
+  if (asset.kind === "webp") {
+    // Same artwork and same pixel ladder as the sharing rendition it copies, but — unlike `apng` —
+    // a single frame is admitted: a *static* sticker has a WebP too, and it is a still by
+    // definition. WebP needs no `readApngTiming` equivalent to tell the two apart, because libvips
+    // pages the format natively and `inspectImage` reports the real count.
+    if (inspection.mimeType !== "image/webp" || inspection.width !== inspection.height
+      || !SHARING_APNG_DIMENSIONS.includes(inspection.width as typeof SHARING_APNG_DIMENSIONS[number])
+      || !inspection.hasAlpha || !inspection.hasTransparentPixels) {
+      throw new ApiError(
+        422,
+        "INVALID_WEBP_EXPORT",
+        `WebP sharing renditions must be transparent square WebPs at ${SHARING_APNG_DIMENSIONS.join(", ")} pixels`,
+      );
+    }
+    if (inspection.frameCount > 1
+      && (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01)) {
+      throw new ApiError(422, "INVALID_WEBP_TIMING", `Animated WebP renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
+    }
+  }
   if (asset.kind === "attachment") {
     // Unlike `apng` this admits a single frame: a static sticker has Medium and Small renditions
     // too, and they are ordinary still PNGs. What it does not admit is a *size* other than the two
@@ -414,7 +433,13 @@ export type AssetAudience = "owner" | "pack-member";
  * sendable from the Messages extensions, and without it Medium and Small would silently fall back
  * to Large for every sticker the user did not create themselves.
  */
-const PACK_SHARED_ASSET_KINDS = ["system", "preview", "apng", "gif", "master", "attachment"] as const;
+/**
+ * `webp` is here for the same reason `attachment` is, and it is not optional: an installed pack's
+ * stickers are sent from WinkySticker like any other, and that surface now prefers the WebP copy of
+ * the sharing rendition. Leaving it owner-only would turn every `.image` send of a borrowed sticker
+ * into a 404 on a rendition the listing had just offered.
+ */
+const PACK_SHARED_ASSET_KINDS = ["system", "preview", "apng", "gif", "master", "attachment", "webp"] as const;
 
 /**
  * Whether `asset` is artwork the marketplace has already made public.
@@ -444,6 +469,9 @@ async function isPackPublishedAsset(db: Database, asset: typeof assets.$inferSel
       or(
         eq(stickerRevisions.systemAssetId, asset.id),
         eq(previewAssetIdSql, asset.id),
+        // Deliberately outside `previewAssetIdSql`: the WebP must never *replace* the preview a
+        // client resolves, only be readable beside it.
+        eq(stickerRevisions.webpAssetId, asset.id),
       ),
     ))
     .limit(1)

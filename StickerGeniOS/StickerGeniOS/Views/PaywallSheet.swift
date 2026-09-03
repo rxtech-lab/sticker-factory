@@ -31,12 +31,7 @@ struct PaywallSheet: View {
                     // The published server paywall is an acquisition page. Active subscribers and
                     // users who merely ran out of credits need the package's credit controls, not
                     // another Plus purchase button.
-                    PaywallView(
-                        client: client,
-                        paywall: .local,
-                        sections: [.topUps, .balances],
-                        initialSection: .topUps
-                    ) {
+                    StickerCreditsView(client: client) {
                         PaywallHeader(
                             refusal: refusal,
                             activePlanName: subscription.activePlanName

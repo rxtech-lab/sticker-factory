@@ -420,6 +420,12 @@
         }
       }
     },
+    "A one-time purchase that leaves your plan unchanged." : {
+
+    },
+    "A sticker frame could not be read for encoding." : {
+
+    },
     "A sticker frame could not be rendered." : {
       "localizations" : {
         "zh-CN" : {
@@ -584,6 +590,9 @@
           }
         }
       }
+    },
+    "Active plan required" : {
+
     },
     "Add" : {
       "localizations" : {
@@ -898,6 +907,9 @@
         }
       }
     },
+    "Balance" : {
+
+    },
     "Balanced" : {
 
     },
@@ -1077,6 +1089,9 @@
         }
       }
     },
+    "Buy for %@" : {
+
+    },
     "by %@" : {
       "localizations" : {
         "zh-CN" : {
@@ -1243,6 +1258,9 @@
         }
       }
     },
+    "Choose a points pack" : {
+
+    },
     "Choose stickers" : {
       "localizations" : {
         "zh-CN" : {
@@ -1386,6 +1404,9 @@
           }
         }
       }
+    },
+    "Completing purchase…" : {
+
     },
     "Confirm before generation" : {
       "localizations" : {
@@ -1664,6 +1685,9 @@
           }
         }
       }
+    },
+    "Credit section" : {
+
     },
     "Credits" : {
       "localizations" : {
@@ -2408,6 +2432,9 @@
         }
       }
     },
+    "Filming a clip" : {
+
+    },
     "Filter" : {
       "localizations" : {
         "zh-CN" : {
@@ -3089,6 +3116,9 @@
         }
       }
     },
+    "Loading top-ups…" : {
+
+    },
     "Loading your library…" : {
       "localizations" : {
         "zh-CN" : {
@@ -3155,6 +3185,9 @@
           }
         }
       }
+    },
+    "Making the compact copy" : {
+
     },
     "Making the send sizes" : {
 
@@ -3244,6 +3277,9 @@
           }
         }
       }
+    },
+    "Membership required" : {
+
     },
     "Message %@" : {
       "localizations" : {
@@ -3579,6 +3615,12 @@
 
     },
     "No subject found here. Close to keep the whole photo." : {
+
+    },
+    "No top-ups available" : {
+
+    },
+    "Not currently available" : {
 
     },
     "Not now" : {
@@ -4056,6 +4098,15 @@
     "PNG" : {
 
     },
+    "points" : {
+
+    },
+    "Points added to your balance." : {
+
+    },
+    "Points packs will appear here when they are available." : {
+
+    },
     "Popular" : {
       "localizations" : {
         "zh-CN" : {
@@ -4363,6 +4414,9 @@
         }
       }
     },
+    "Purchase limit reached" : {
+
+    },
     "Purchases restored." : {
       "localizations" : {
         "zh-CN" : {
@@ -4378,6 +4432,9 @@
           }
         }
       }
+    },
+    "Purchasing…" : {
+
     },
     "Re-export" : {
       "localizations" : {
@@ -5104,6 +5161,9 @@
     "Sending the animation" : {
 
     },
+    "Sending the compact copy" : {
+
+    },
     "Sending the GIF" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5419,6 +5479,9 @@
     "Smaller, with soft transparent edges. Animates in Messages and other Apple apps." : {
 
     },
+    "Smallest, with soft transparent edges. Animates in Messages, WhatsApp, and modern browsers." : {
+
+    },
     "Sort" : {
       "localizations" : {
         "zh-CN" : {
@@ -5434,6 +5497,9 @@
           }
         }
       }
+    },
+    "Specific plan required" : {
+
     },
     "Start with a prompt and optional photos. The assistant will propose a plan before it generates anything." : {
       "localizations" : {
@@ -5949,6 +6015,12 @@
         }
       }
     },
+    "The animation had no frames to encode." : {
+
+    },
+    "The animation's frames are not all the same size." : {
+
+    },
     "The authentication service is temporarily unavailable." : {
       "localizations" : {
         "zh-CN" : {
@@ -6114,6 +6186,9 @@
         }
       }
     },
+    "The purchase is pending approval." : {
+
+    },
     "The request failed (HTTP %lld)." : {
       "localizations" : {
         "zh-CN" : {
@@ -6273,6 +6348,12 @@
           }
         }
       }
+    },
+    "The WebP encoder is unavailable." : {
+
+    },
+    "The WebP export could not be encoded." : {
+
     },
     "This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the sticker is a still frame. The animated GIF and MP4 exports are unaffected. Shortening the animation, or switching a ping-pong loop to a plain loop, brings the motion back." : {
       "extractionState" : "stale",
@@ -6508,6 +6589,9 @@
         }
       }
     },
+    "Top Up" : {
+
+    },
     "Top up to finish this sticker, or upgrade for a monthly allowance." : {
       "localizations" : {
         "zh-CN" : {
@@ -6523,6 +6607,9 @@
           }
         }
       }
+    },
+    "Top-ups" : {
+
     },
     "Total time" : {
       "localizations" : {
@@ -6663,6 +6750,9 @@
           }
         }
       }
+    },
+    "Unavailable" : {
+
     },
     "Unknown" : {
       "localizations" : {
@@ -6918,6 +7008,9 @@
           }
         }
       }
+    },
+    "WebP" : {
+
     },
     "Welcome to %@" : {
       "localizations" : {

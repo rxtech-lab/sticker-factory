@@ -142,6 +142,13 @@ nonisolated enum AssetKind: String, Codable, CaseIterable, Hashable, Sendable {
     /// still PNGs, and not `system` because nothing here is under Apple's 500 KB ceiling — that is
     /// the point of them.
     case attachment
+    /// The WebP copy of the sharing rendition.
+    ///
+    /// Its own kind rather than `apng`, because the container is what distinguishes it and a
+    /// static sticker has one too. Never a `system` rendition: `MSSticker.h` requires a file
+    /// conforming to `kUTTypePNG`, `kUTTypeGIF` or `kUTTypeJPEG`, and WebP conforms to none of
+    /// them — so this can only ever be an `.image`-mode attachment.
+    case webp
 }
 
 /// How a frame atlas is packed, sent with the upload intent.
@@ -714,6 +721,12 @@ nonisolated struct PublishExportsRequest: Codable, Sendable {
     /// server refuses one without the other rather than half-populating a sticker's size set.
     var attachmentMediumAssetId: String?
     var attachmentSmallAssetId: String?
+    /// The WebP copy of the sharing rendition, when the encode succeeded.
+    ///
+    /// Optional on both ends and never load-bearing: the server publishes a complete sticker
+    /// without it, and WinkySticker falls back to the APNG. Sent as `nil` rather than failing the
+    /// publish when the encoder could not produce one.
+    var webpAssetId: String?
     var mp4Background: StickerMP4BackgroundV1?
     /// Sent only as `.still`, and only for an animated sticker whose motion could not be squeezed
     /// under Apple's 500 KB ceiling at any rung of the export ladder. Omitting it means the ordinary
@@ -840,7 +853,7 @@ nonisolated struct AssetDownload: Codable, Sendable {
     var asset: AssetRecord
 }
 
-nonisolated enum StickerExportFormat: String, Codable, CaseIterable, Hashable, Sendable { case png, gif, apng, mp4 }
+nonisolated enum StickerExportFormat: String, Codable, CaseIterable, Hashable, Sendable { case png, gif, apng, mp4, webp }
 
 nonisolated struct LocalExportMetadata: Codable, Hashable, Sendable {
     var format: StickerExportFormat

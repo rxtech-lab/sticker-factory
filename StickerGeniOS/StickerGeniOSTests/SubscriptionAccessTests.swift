@@ -98,4 +98,55 @@ final class SubscriptionAccessTests: XCTestCase {
             .plans
         )
     }
+
+    func testTopUpTitleUsesGrantedAmountInsteadOfCatalogPriceCopy() throws {
+        let topUp = try decodeTopUp(
+            name: "1,000 Points — $9.99",
+            amount: 1_000,
+            eligible: true
+        )
+
+        let title = TopUpPresentation.title(for: topUp)
+
+        XCTAssertTrue(title.contains("1,000"))
+        XCTAssertTrue(title.localizedCaseInsensitiveContains("points"))
+        XCTAssertFalse(title.contains("$9.99"))
+    }
+
+    func testTopUpEligibilityExplainsPurchaseLimit() throws {
+        let topUp = try decodeTopUp(
+            name: "Points",
+            amount: 1_000,
+            eligible: false,
+            blockedBy: #"[{"ruleType":"purchase_limit","planId":null,"roleId":null}]"#
+        )
+
+        XCTAssertEqual(TopUpPresentation.eligibilityText(for: topUp), "Purchase limit reached")
+    }
+
+    private func decodeTopUp(
+        name: String,
+        amount: Int,
+        eligible: Bool,
+        blockedBy: String = "null"
+    ) throws -> TopUpProduct {
+        let data = Data(
+            """
+            {
+              "id": "topup-1",
+              "key": "points-1000",
+              "name": "\(name)",
+              "description": "Add points to your balance.",
+              "unit": "points",
+              "amount": \(amount),
+              "priceAmountCents": 999,
+              "currency": "usd",
+              "eligible": \(eligible),
+              "blockedBy": \(blockedBy),
+              "purchaseOptions": []
+            }
+            """.utf8
+        )
+        return try JSONDecoder().decode(TopUpProduct.self, from: data)
+    }
 }

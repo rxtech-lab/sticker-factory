@@ -63,6 +63,55 @@ async function animatedApng(dimension: number): Promise<Buffer> {
   return spliceApngControlChunks(await transparentPng(dimension), [150, 150, 150, 150], 4, dimension);
 }
 
+/** The same corner block as raw RGBA, slid `offset` pixels right so frames can differ. */
+function transparentPage(dimension: number, offset = 0): Buffer {
+  const pixels = Buffer.alloc(dimension * dimension * 4, 0);
+  for (let y = 8; y < 88; y += 1) {
+    for (let x = 8 + offset; x < 48 + offset; x += 1) {
+      const index = (y * dimension + x) * 4;
+      pixels[index] = 200;
+      pixels[index + 1] = 40;
+      pixels[index + 2] = 90;
+      pixels[index + 3] = 255;
+    }
+  }
+  return pixels;
+}
+
+/**
+ * The same four frames as an animated WebP, and written for real rather than spliced.
+ *
+ * libvips pages WebP natively in both directions, which is the reason this kind needs no
+ * `readApngTiming` equivalent: sharp writes the frame delays into the file and `inspectImage` reads
+ * them straight back out of `metadata.delay`.
+ *
+ * The block moves between frames because libwebp's animation encoder folds identical consecutive
+ * frames into one — four copies of a still arrive as a single-frame file, which is a property of
+ * the format rather than of anything under test.
+ */
+async function animatedWebp(dimension: number, frames = 4, delayMs = 150): Promise<Buffer> {
+  const pages = Array.from({ length: frames }, (_, index) => transparentPage(dimension, index * 16));
+  // Delays per frame rather than as a scalar: sharp's scalar `delay` lands on frame 0 alone and
+  // leaves the rest at libwebp's 100 ms default, which quietly shortens the cycle being checked.
+  const delays = Array.from({ length: frames }, () => delayMs);
+  // `pages` and `pageHeight` are what make one tall buffer an animation. libvips takes both on raw
+  // input; sharp's `CreateRaw` type does not list them, so this is bound to a variable rather than
+  // written inline — an excess-property check on a fresh literal is the only thing in the way.
+  const raw = {
+    width: dimension,
+    height: dimension * frames,
+    channels: 4 as const,
+    pages: frames,
+    pageHeight: dimension,
+  };
+  return sharp(Buffer.concat(pages), { raw }).webp({ loop: 0, delay: delays }).toBuffer();
+}
+
+/** The static sticker's WebP: one frame, same rules minus the timing. */
+async function stillWebp(dimension: number): Promise<Buffer> {
+  return sharp(await transparentPng(dimension)).webp().toBuffer();
+}
+
 describe("Sticker Factory services", () => {
   let db: Database;
   let close: () => Promise<void>;
@@ -510,6 +559,68 @@ describe("Sticker Factory services", () => {
     await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_ATTACHMENT_EXPORT" });
   });
 
+  /**
+   * The WebP copy of the sharing rendition. It admits a still — a static sticker has one too — and
+   * it is held to the sharing rendition's pixel ladder rather than the attachment sizes, because it
+   * is a copy of Large rather than of the two smaller sends.
+   */
+  it("accepts animated and still WebP sharing renditions across the sharing ladder", async () => {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    for (const [dimension, bytes, frameCount] of [
+      [618, await animatedWebp(618), 4],
+      [1024, await stillWebp(1024), 1],
+    ] as const) {
+      const created = await createUpload(db, "owner-a", {
+        kind: "webp",
+        mimeType: "image/webp",
+        byteSize: bytes.byteLength,
+        filename: `sharing-${dimension}.webp`,
+      });
+      const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
+      await store.put(row!.r2Key, { bytes, contentType: "image/webp" });
+      expect(await completeUpload(db, "owner-a", row!.id))
+        .toMatchObject({ state: "ready", width: dimension, height: dimension, frameCount });
+    }
+  });
+
+  it("rejects a WebP rendition at a size the sharing ladder never produces", async () => {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    expect(SHARING_APNG_DIMENSIONS).not.toContain(640);
+    const bytes = await animatedWebp(640);
+    const created = await createUpload(db, "owner-a", {
+      kind: "webp",
+      mimeType: "image/webp",
+      byteSize: bytes.byteLength,
+      filename: "sharing-640.webp",
+    });
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
+    await store.put(row!.r2Key, { bytes, contentType: "image/webp" });
+    await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_WEBP_EXPORT" });
+  });
+
+  /**
+   * A sticker is artwork cut out of its background, so an opaque rendition is one that was
+   * flattened somewhere in the encode — it would arrive in the transcript on a white square.
+   */
+  it("rejects an opaque WebP rendition", async () => {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    const bytes = await sharp({
+      create: { width: 618, height: 618, channels: 4, background: { r: 12, g: 34, b: 56, alpha: 1 } },
+    }).webp().toBuffer();
+    const created = await createUpload(db, "owner-a", {
+      kind: "webp",
+      mimeType: "image/webp",
+      byteSize: bytes.byteLength,
+      filename: "opaque.webp",
+    });
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
+    await store.put(row!.r2Key, { bytes, contentType: "image/webp" });
+    await expect(completeUpload(db, "owner-a", row!.id)).rejects.toMatchObject({ code: "INVALID_WEBP_EXPORT" });
+  });
+
   it("rejects a fully transparent empty mask", async () => {
     const store = new MemoryObjectStore();
     setObjectStoreForTests(store);
@@ -552,12 +663,17 @@ describe("Sticker Factory services", () => {
       system: crypto.randomUUID(),
       medium: crypto.randomUUID(),
       small: crypto.randomUUID(),
+      webp: crypto.randomUUID(),
+      stillWebp: crypto.randomUUID(),
     };
     await db.insert(assets).values([
       { id: renditionIds.apng, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "apng", state: "ready", r2Key: objectKey("owner-a", renditionIds.apng, "image/png"), mimeType: "image/png", byteSize: 120_000, width: 618, height: 618, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "a".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
       { id: renditionIds.system, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "system", state: "ready", r2Key: objectKey("owner-a", renditionIds.system, "image/png"), mimeType: "image/png", byteSize: 400_000, width: 408, height: 408, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "b".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
       { id: renditionIds.medium, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "attachment", state: "ready", r2Key: objectKey("owner-a", renditionIds.medium, "image/png"), mimeType: "image/png", byteSize: 90_000, width: 408, height: 408, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "c".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
       { id: renditionIds.small, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "attachment", state: "ready", r2Key: objectKey("owner-a", renditionIds.small, "image/png"), mimeType: "image/png", byteSize: 50_000, width: 300, height: 300, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "d".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      // A twentieth of the APNG at the same size and grid, which is the entire reason it exists.
+      { id: renditionIds.webp, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "webp", state: "ready", r2Key: objectKey("owner-a", renditionIds.webp, "image/webp"), mimeType: "image/webp", byteSize: 6_000, width: 618, height: 618, frameCount: 10, durationSeconds: 1.6, fps: 10 / 1.6, sha256: "e".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
+      { id: renditionIds.stillWebp, ownerId: "owner-a", stickerId: sticker.stickerId, kind: "webp", state: "ready", r2Key: objectKey("owner-a", renditionIds.stillWebp, "image/webp"), mimeType: "image/webp", byteSize: 3_000, width: 618, height: 618, frameCount: 1, durationSeconds: 0, fps: 0, sha256: "f".repeat(64), hasAlpha: true, createdAt: new Date(), readyAt: new Date() },
     ]);
 
     const publishRequest = {
@@ -585,14 +701,33 @@ describe("Sticker Factory services", () => {
       attachmentMediumAssetId: renditionIds.apng,
     }, crypto.randomUUID())).rejects.toMatchObject({ code: "INVALID_ATTACHMENT_EXPORT" });
 
+    // Optional, but not unchecked. A still WebP under an animated sticker is the shape of a client
+    // whose encoder dropped the animation, and publishing it would make `.image` mode the one
+    // surface where this sticker does not move.
+    await expect(bindExports(db, "owner-a", sticker.stickerId, {
+      ...publishRequest,
+      webpAssetId: renditionIds.stillWebp,
+    }, crypto.randomUUID())).rejects.toMatchObject({ code: "WEBP_RENDITION_MISMATCH" });
+    // The right container under the wrong kind. `apng` is a rendition of the same frames, so
+    // nothing but the kind separates it from the file this column is for.
+    await expect(bindExports(db, "owner-a", sticker.stickerId, {
+      ...publishRequest,
+      webpAssetId: renditionIds.apng,
+    }, crypto.randomUUID())).rejects.toMatchObject({ code: "INVALID_WEBP_EXPORT" });
+
     const publishedRevisionId = crypto.randomUUID();
-    const published = await bindExports(db, "owner-a", sticker.stickerId, publishRequest, publishedRevisionId);
+    const published = await bindExports(db, "owner-a", sticker.stickerId, { ...publishRequest, webpAssetId: renditionIds.webp }, publishedRevisionId);
     expect(published.status).toBe("published");
     const publishedRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, publishedRevisionId)).then(firstRow);
     expect(publishedRevision?.mp4AssetId).toBeNull();
     expect(publishedRevision?.apngAssetId).toBe(renditionIds.apng);
     expect(publishedRevision?.attachmentMediumAssetId).toBe(renditionIds.medium);
     expect(publishedRevision?.attachmentSmallAssetId).toBe(renditionIds.small);
+    expect(publishedRevision?.webpAssetId).toBe(renditionIds.webp);
+    // The extension reads it off the summary, beside — never instead of — the APNG it falls back to.
+    const summary = await getSticker(db, "owner-a", sticker.stickerId);
+    expect(summary.webpAsset?.id).toBe(renditionIds.webp);
+    expect(summary.previewAsset?.id).toBe(renditionIds.apng);
     expect((await db.select().from(stickers).where(eq(stickers.id, sticker.stickerId)).then(firstRow))?.status).toBe("published");
   });
 

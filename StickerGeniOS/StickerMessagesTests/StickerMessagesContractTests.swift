@@ -72,6 +72,42 @@ struct StickerMessagesContractTests {
         }
     }
 
+    /// The one format the two caches disagree about, and the disagreement is Apple's:
+    /// `MSSticker.h` takes a file conforming to `kUTTypePNG`, `kUTTypeGIF` or `kUTTypeJPEG`, and
+    /// `org.webmproject.webp` conforms to none of them. So a WebP is a legitimate `.image`
+    /// attachment and never a sticker, and the gate has to say so where the bytes land rather than
+    /// leaving an `MSSticker` to fail to initialise later.
+    @Test("WebP is cacheable for full-size sends and refused for Messages stickers")
+    func webPIsFullSizeOnly() throws {
+        var header = Data("RIFF".utf8)
+        header.append(contentsOf: [0x24, 0x00, 0x00, 0x00])
+        header.append(Data("WEBPVP8 ".utf8))
+
+        #expect(try SharedStickerCache.validatedFileExtension(
+            for: header, declaredMimeType: "image/webp", policy: .fullSize
+        ) == "webp")
+
+        #expect(throws: StickerCacheError.self) {
+            try SharedStickerCache.validatedFileExtension(
+                for: header, declaredMimeType: "image/webp", policy: .systemSticker
+            )
+        }
+        // The default is the stricter policy, so a caller that forgets to say gets the sticker
+        // cache's rules rather than the permissive ones.
+        #expect(throws: StickerCacheError.self) {
+            try SharedStickerCache.validatedFileExtension(for: header, declaredMimeType: "image/webp")
+        }
+        // A RIFF container that is not WebP is not a WebP.
+        var riffOnly = Data("RIFF".utf8)
+        riffOnly.append(contentsOf: [0x24, 0x00, 0x00, 0x00])
+        riffOnly.append(Data("WAVEfmt ".utf8))
+        #expect(throws: StickerCacheError.self) {
+            try SharedStickerCache.validatedFileExtension(
+                for: riffOnly, declaredMimeType: "image/webp", policy: .fullSize
+            )
+        }
+    }
+
     @Test("System cache rejects non-preset and non-square local images")
     func strictSystemStickerDimensions() throws {
         let valid = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 300)).pngData { context in
@@ -500,11 +536,39 @@ struct StickerMessagesContractTests {
             uniqueKeysWithValues: try await client.fetchSections(accessToken: "access").map { ($0.stickerID, $0) }
         )
 
-        // WebP and JPEG have no magic-byte branch in `validatedFileExtension`, so offering them
-        // would download bytes the cache then refuses.
-        #expect(byID["webp"]?.fullSize == nil)
+        // JPEG has no magic-byte branch in `validatedFileExtension`, so offering it would download
+        // bytes the full-size cache then refuses.
+        #expect(byID["jpeg"]?.fullSize == nil)
+        // WebP does have one, on the full-size side. The cache the file is bound for can store it,
+        // so the offer is honourable.
+        #expect(byID["webp"]?.fullSize?.mimeType == "image/webp")
         // GIF is a real animated sharing rendition and must survive.
         #expect(byID["gif"]?.fullSize?.mimeType == "image/gif")
+    }
+
+    /// The point of publishing a second container: a 9.8 MB APNG and a 410 KB WebP hold the same
+    /// frames, and the one the person is waiting on should be the small one.
+    @Test("A WebP rendition is preferred over the APNG, and falls back to it when unusable")
+    func webPRenditionIsPreferredWhenOffered() async throws {
+        let transport = PreviewAssetTransport()
+        let client = StickerLibraryClient(baseURL: URL(string: "https://api.example/")!, transport: transport)
+        let byID = Dictionary(
+            uniqueKeysWithValues: try await client.fetchSections(accessToken: "access").map { ($0.stickerID, $0) }
+        )
+
+        let preferred = try #require(byID["prefers-webp"]?.fullSize)
+        #expect(preferred.assetID == "webp-11")
+        #expect(preferred.mimeType == "image/webp")
+        #expect(preferred.byteSize == 410_000)
+
+        // Every gate fails closed *to the APNG* rather than to the ≤500 KB sticker file: the larger
+        // download is still the right one when the smaller is not there to be had.
+        let fallback = try #require(byID["webp-pending"]?.fullSize)
+        #expect(fallback.assetID == "apng-12")
+        #expect(fallback.mimeType == "image/png")
+
+        // A sticker with no WebP at all is untouched by any of this.
+        #expect(byID["sizes"]?.fullSize?.assetID == "apng-9")
     }
 
     @Test("The full-size descriptor swaps asset identity but keeps the sticker's placement")
@@ -687,13 +751,15 @@ private actor PreviewAssetTransport: StickerHTTPTransport {
             system: String,
             preview: String?,
             medium: String? = nil,
-            small: String? = nil
+            small: String? = nil,
+            webp: String? = nil
         ) -> String {
             let previewField = preview.map { "\"previewAsset\":\($0)," } ?? ""
             let mediumField = medium.map { "\"attachmentMedium\":\($0)," } ?? ""
             let smallField = small.map { "\"attachmentSmall\":\($0)," } ?? ""
+            let webpField = webp.map { "\"webpAsset\":\($0)," } ?? ""
             return """
-            {"id":"\(id)","title":"\(id)","updatedAt":"2026-08-24T12:00:00Z",\(previewField)\(mediumField)\(smallField)
+            {"id":"\(id)","title":"\(id)","updatedAt":"2026-08-24T12:00:00Z",\(previewField)\(mediumField)\(smallField)\(webpField)
              "systemSticker":{"assetId":"\(system)","mimeType":"image/png","byteSize":100,"sha256":"s"}}
             """
         }
@@ -719,6 +785,33 @@ private actor PreviewAssetTransport: StickerHTTPTransport {
             sticker("webp", system: "sys-7", preview: """
             {"id":"master-7","kind":"master","state":"ready","mimeType":"image/webp","byteSize":900000,"width":1024,"height":1024,"sha256":"w"}
             """),
+            sticker("jpeg", system: "sys-7b", preview: """
+            {"id":"master-7b","kind":"master","state":"ready","mimeType":"image/jpeg","byteSize":900000,"width":1024,"height":1024,"sha256":"j"}
+            """),
+            // The ordinary published-since-WebP animated sticker: a 9.8 MB APNG and the WebP copy
+            // of the same frames, which is what an `.image` send should reach for.
+            sticker(
+                "prefers-webp",
+                system: "sys-11",
+                preview: """
+                {"id":"apng-11","kind":"apng","state":"ready","mimeType":"image/png","byteSize":9800000,"width":618,"height":618,"sha256":"l11"}
+                """,
+                webp: """
+                {"id":"webp-11","kind":"webp","state":"ready","mimeType":"image/webp","byteSize":410000,"width":618,"height":618,"sha256":"w11"}
+                """
+            ),
+            // A WebP that has not finished uploading. Offering it would spend a tap on a 404, and
+            // the APNG that was always there is the right answer instead.
+            sticker(
+                "webp-pending",
+                system: "sys-12",
+                preview: """
+                {"id":"apng-12","kind":"apng","state":"ready","mimeType":"image/png","byteSize":9800000,"width":618,"height":618,"sha256":"l12"}
+                """,
+                webp: """
+                {"id":"webp-12","kind":"webp","state":"pending","mimeType":"image/webp","byteSize":410000,"width":618,"height":618,"sha256":"w12"}
+                """
+            ),
             sticker("gif", system: "sys-8", preview: """
             {"id":"share-8","kind":"gif","state":"ready","mimeType":"image/gif","byteSize":900000,"width":512,"height":512,"sha256":"g"}
             """),

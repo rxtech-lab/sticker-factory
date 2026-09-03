@@ -17,6 +17,13 @@ export const previewAssets = alias(assets, "preview_assets");
  */
 export const attachmentMediumAssets = alias(assets, "attachment_medium_assets");
 export const attachmentSmallAssets = alias(assets, "attachment_small_assets");
+/**
+ * The WebP copy of the sharing rendition. Joined rather than folded into `previewAssetIdSql`,
+ * because it must never *replace* the preview: a client that cannot decode WebP has to keep
+ * resolving through to the APNG, and a chain that coalesced the two would hand it a file it cannot
+ * open.
+ */
+export const webpAssets = alias(assets, "webp_assets");
 
 /**
  * The asset a client shows for a revision, as SQL so a summary join can resolve it in the same

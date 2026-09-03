@@ -152,6 +152,8 @@ describe("quick mode's server-rendered publish", () => {
       "render_artwork:complete",
       "render_attachments:streaming",
       "render_attachments:complete",
+      "render_webp:streaming",
+      "render_webp:complete",
       "render_sizes:streaming",
       "render_sizes:complete",
       "save_renditions:streaming",

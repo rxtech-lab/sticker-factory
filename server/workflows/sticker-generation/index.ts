@@ -10,14 +10,32 @@ import {
   finalizeStickerPurgeStep,
   publishExportsStep,
   purgeStickerStep,
+  quickGenerationStep,
   quickPublishStep,
   summarizeStickerTitleStep,
   sweepStickerObjectsStep,
+  type AiTurnResult,
   type RevisionDecisionInput,
 } from "@/workflows/sticker-generation/steps";
 
-export async function stickerGenerationWorkflow(jobId: string) {
+type StickerGenerationWorkflowResult =
+  | { workflowStatus: "succeeded"; result: AiTurnResult }
+  | { workflowStatus?: undefined; status: "failed" };
+
+export async function stickerGenerationWorkflow(
+  jobId: string,
+  quick = false,
+): Promise<StickerGenerationWorkflowResult> {
   "use workflow";
+  if (quick) {
+    try {
+      return await quickGenerationStep(jobId);
+    } catch (error) {
+      console.error("[gen] stickerGenerationWorkflow:quickFailed", { jobId, error: describeError(error) });
+      await failJobStep(jobId, error instanceof Error ? error.message : String(error));
+      return { status: "failed" as const };
+    }
+  }
   await beginJobStep(jobId);
   try {
     const result = await executeAiJobStep(jobId);
