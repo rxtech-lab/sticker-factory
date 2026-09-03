@@ -14,11 +14,11 @@ struct AnimatedEditorKeyframeInspector: View {
                selection.index < layer.animation.count(of: selection.channel) {
                 content(selection, layer)
             } else {
-                ContentUnavailableView(
-                    "No Keyframe Selected",
-                    systemImage: "diamond",
-                    description: Text("Tap a keyframe in the timeline to edit it.")
-                )
+                ContentUnavailableView {
+                    AnimatedCartoonLabel("No Keyframe Selected", icon: "diamond")
+                } description: {
+                    Text("Tap a keyframe in the timeline to edit it.")
+                }
             }
         }
         .formStyle(.grouped)
@@ -31,7 +31,7 @@ struct AnimatedEditorKeyframeInspector: View {
 
         Section {
             LabeledContent("Channel") {
-                Label(selection.channel.label, systemImage: selection.channel.symbolName)
+                AnimatedCartoonLabel(verbatim: selection.channel.label, icon: selection.channel.symbolName)
                     .foregroundStyle(.secondary)
             }
             AnimatedNumberField(
@@ -76,8 +76,10 @@ struct AnimatedEditorKeyframeInspector: View {
         valueSection(selection, layer)
 
         Section {
-            Button("Delete Keyframe", systemImage: "trash", role: .destructive) {
+            Button(role: .destructive) {
                 editor.removeKeyframe(on: selection.channel, forLayer: selection.layerID, index: selection.index)
+            } label: {
+                Label("Delete Keyframe", systemImage: "trash")
             }
         }
     }

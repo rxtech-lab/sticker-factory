@@ -57,8 +57,16 @@ export const generationJobs = sqliteTable("generation_jobs", {
   /**
    * Started from the Messages extension's quick mode, so its images are drawn by
    * `AI_QUICK_IMAGE_MODEL` against a chroma backdrop instead of by `AI_IMAGE_MODEL`.
+   *
+   * The default is written as `0` rather than `false` so that `drizzle-kit push` converges against
+   * Turso. Turso uppercases keyword defaults when it parses DDL — `DEFAULT false` comes back as
+   * `DEFAULT FALSE` — and drizzle-kit compares default text literally, so a boolean default never
+   * matches and every push plans an `ALTER COLUMN` here. On libSQL that rewrite drops every index
+   * on the table, which then collides with drizzle's own drop of the partial unique index below
+   * and fails the batch. A numeric literal is stored verbatim, so the diff stays empty. The column
+   * still reads and writes as a boolean; only the DDL text changes.
    */
-  quick: integer("quick", { mode: "boolean" }).notNull().default(false),
+  quick: integer("quick", { mode: "boolean" }).notNull().default(0 as unknown as boolean),
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
   state: text("state", { enum: ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] }).notNull().default("queued"),
   workflowRunId: text("workflow_run_id"),
@@ -74,6 +82,9 @@ export const generationJobs = sqliteTable("generation_jobs", {
   apiTextCostNanodollars: integer("api_text_cost_nanodollars").notNull().default(0),
   apiImageCostNanodollars: integer("api_image_cost_nanodollars").notNull().default(0),
   apiImagePoints: integer("api_image_points").notNull().default(0),
+  /** Video clips keep the image shape: an exact USD audit total, and points rounded up per clip. */
+  apiVideoCostNanodollars: integer("api_video_cost_nanodollars").notNull().default(0),
+  apiVideoPoints: integer("api_video_points").notNull().default(0),
   attempts: integer("attempts").notNull().default(0),
   errorCode: text("error_code"),
   errorMessage: text("error_message"),
@@ -122,11 +133,14 @@ export const assets = sqliteTable("assets", {
    * `sequence` is a frame atlas: one transparent PNG holding a grid of frames lifted from a Live
    * Photo. Unlike every other kind, its `frame_count`/`fps`/`duration_seconds` are declared by the
    * client at upload time rather than read out of the file — the file itself is a single still.
+   *
+   * `video` is a generated clip: an opaque 1:1 MP4 on a chroma backdrop, keyed out on device. Its
+   * `frame_count`/`fps`/`duration_seconds` are read out of the container by `inspectMp4`.
    */
   kind: text("kind", {
     enum: [
       "reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment",
-      "sequence", "attachment",
+      "sequence", "attachment", "video",
     ],
   }).notNull(),
   state: text("state", { enum: ["pending", "ready", "failed", "deleted"] }).notNull().default("pending"),

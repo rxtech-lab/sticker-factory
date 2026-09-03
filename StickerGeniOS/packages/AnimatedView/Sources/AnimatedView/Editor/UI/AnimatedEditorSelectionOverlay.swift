@@ -89,7 +89,7 @@ struct AnimatedEditTargetCaption: View {
                     total: layer.animation.count(of: channel)
                 ))
             } icon: {
-                Image(systemName: symbol(for: target))
+                AnimatedCartoonSymbol(symbol(for: target))
             }
             .font(.caption)
             .foregroundStyle(target.isEditable ? .secondary : Color.orange)

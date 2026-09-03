@@ -1143,7 +1143,7 @@ struct StoreAndPublisherTests {
         )))
         let publisher = StickerPublisher(api: MockStickerAPIClient())
         do {
-            _ = try await publisher.publish(stickerID: PreviewFixtures.sticker.id, revision: revision, assets: [:], verifiedAssetIDs: [])
+            _ = try await publisher.publish(stickerID: PreviewFixtures.sticker.id, revision: revision, assets: .init(), verifiedAssetIDs: [])
             #expect(Bool(false), "Publishing with a placeholder must fail")
         } catch let error as StickerPublishError {
             guard case .missingVerifiedAssets(let missing) = error else {
@@ -1172,7 +1172,7 @@ struct StoreAndPublisherTests {
             _ = try await publisher.publish(
                 stickerID: PreviewFixtures.sticker.id,
                 revision: base,
-                assets: [:],
+                assets: .init(),
                 verifiedAssetIDs: []
             )
             #expect(Bool(false), "Publishing an animation-free base must fail before upload")
@@ -1199,7 +1199,7 @@ struct StoreAndPublisherTests {
         ]
         let exports = try await StickerPublisher(api: MockStickerAPIClient()).export(
             revision: revision,
-            assets: [:],
+            assets: .init(),
             verifiedAssetIDs: []
         )
         defer { exports.forEach { try? FileManager.default.removeItem(at: $0.url) } }

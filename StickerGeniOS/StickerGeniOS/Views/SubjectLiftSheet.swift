@@ -103,10 +103,15 @@ struct SubjectLiftSheet: View {
                     Haptics.tap(.medium)
                     Task { await use() }
                 } label: {
-                    Label(
-                        capture.hasMotion ? "Use Live Subject" : "Use Subject",
-                        systemImage: capture.hasMotion ? "livephoto" : "sparkles"
-                    )
+                    Label {
+                        Text(
+                            capture.hasMotion
+                                ? String(localized: "Use Live Subject")
+                                : String(localized: "Use Subject")
+                        )
+                    } icon: {
+                        Image(systemName: capture.hasMotion ? "livephoto" : "sparkles")
+                    }
                     .font(.callout.weight(.semibold))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -138,10 +143,7 @@ struct SubjectLiftSheet: View {
             Haptics.tap(.light)
             isOutlined.toggle()
         } label: {
-            Label(
-                "White outline",
-                systemImage: isOutlined ? "checkmark.circle.fill" : "circle"
-            )
+            Label("White outline", systemImage: isOutlined ? "checkmark.circle.fill" : "circle")
             .font(.footnote.weight(.medium))
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -166,7 +168,7 @@ struct SubjectLiftSheet: View {
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
             }
-            Label(hint, systemImage: hintSymbol)
+            PosterSymbolLabel(verbatim: hint, posterSymbol: hintSymbol)
                 .font(.footnote)
                 .foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)

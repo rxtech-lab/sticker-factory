@@ -29,9 +29,12 @@ struct CreateStickerView: View {
         StickerBackground {
             ScrollView {
                 VStack(spacing: 18) {
-                    GlassCard {
+                    PosterCard {
                         VStack(alignment: .leading, spacing: 14) {
-                            Text("What are we making?").font(.title2.bold())
+                            PosterEyebrow(text: String(localized: "New sticker"))
+                            Text("What are we making?")
+                                .font(.posterDisplay(24, weight: .heavy))
+                                .foregroundStyle(AppColors.ink)
                             Picker("Sticker type", selection: $kind) {
                                 ForEach(StickerKind.allCases) { value in
                                     Label(value.label, systemImage: value.symbol).tag(value)
@@ -41,20 +44,22 @@ struct CreateStickerView: View {
                             .accessibilityIdentifier("sticker-kind-picker")
 
                             if kind == .animated {
-                                Label(
+                                PosterSymbolLabel(
                                     "You’ll review a static visual reference, confirm it, then we’ll separate the artwork into parts and animate them.",
-                                    systemImage: "list.number"
+                                    posterSymbol: "list.number"
                                 )
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 14, design: .rounded))
+                                .foregroundStyle(AppColors.muted)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    GlassCard {
+                    PosterCard {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Describe your sticker").font(.headline)
+                            Text("Describe your sticker")
+                                .font(.posterDisplay(18, weight: .bold))
+                                .foregroundStyle(AppColors.ink)
                             TextField(
                                 "A joyful corgi in a raincoat, thick white sticker outline…",
                                 text: $prompt,
@@ -62,23 +67,33 @@ struct CreateStickerView: View {
                             )
                             .lineLimit(4...8)
                             .textFieldStyle(.plain)
+                            .font(.system(size: 15, design: .rounded))
                             .padding(14)
+                            // The field is a surface of its own inside the card — paper rather
+                            // than cream, so it reads as somewhere to write.
+                            .posterSurface(
+                                cornerRadius: Poster.tileRadius,
+                                fill: AppColors.paper,
+                                lineWidth: Poster.hairline,
+                                offset: .zero
+                            )
                             .accessibilityIdentifier("sticker-prompt")
                             Text("\(prompt.count)/4,000")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(prompt.count > 4_000 ? .red : .secondary)
+                                .font(.posterLabel(10))
+                                .foregroundStyle(prompt.count > 4_000 ? AppColors.coral : AppColors.faint)
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                     }
 
-                    GlassCard {
+                    PosterCard {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Reference images").font(.headline)
+                                    Text("Reference images")
+                                        .font(.posterDisplay(18, weight: .bold))
+                                        .foregroundStyle(AppColors.ink)
                                     Text("Optional · up to 8")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .posterLabelStyle(9, color: AppColors.faint)
                                 }
                                 Spacer()
                                 PhotosPicker(
@@ -94,16 +109,16 @@ struct CreateStickerView: View {
                                 ) {
                                     Label("Add", systemImage: "photo.badge.plus")
                                 }
-                                .buttonStyle(.glass)
+                                .buttonStyle(.posterSecondaryCompact)
                                 .accessibilityIdentifier("add-reference-images")
                             }
 
-                            Label(
+                            PosterSymbolLabel(
                                 "Personal photos are uploaded privately to create or edit this sticker. Sources, chat, and revisions remain until you delete the project.",
-                                systemImage: "hand.raised.fill"
+                                posterSymbol: "hand.raised.fill"
                             )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(AppColors.muted)
 
                             if !references.isEmpty {
                                 ScrollView(.horizontal) {
@@ -140,15 +155,21 @@ struct CreateStickerView: View {
                         Haptics.tap(.medium)
                         Task { await generate() }
                     } label: {
-                        HStack {
-                            if isGenerating { ProgressView().controlSize(.small) }
-                            Label(isGenerating ? "Starting securely…" : "Generate one candidate", systemImage: "wand.and.stars")
+                        HStack(spacing: 8) {
+                            if isGenerating { ProgressView().controlSize(.small).tint(AppColors.card) }
+                            Label {
+                                Text(
+                                    isGenerating
+                                        ? String(localized: "Starting securely…")
+                                        : String(localized: "Generate one candidate")
+                                )
+                            } icon: {
+                                Image(systemName: "wand.and.stars")
+                            }
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(AppColors.accent)
-                    .controlSize(.large)
+                    .buttonStyle(.poster)
                     .disabled(isGenerating || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || prompt.count > 4_000)
                     .accessibilityIdentifier("generate-sticker-button")
                 }
@@ -232,17 +253,25 @@ private struct ReferenceThumbnail: View {
                             .resizable()
                             .scaledToFill()
                             .frame(width: 84, height: 84)
-                            .clipShape(.rect(cornerRadius: 16))
+                            .clipShape(.rect(cornerRadius: 16, style: .continuous))
+                            .posterSurface(
+                                cornerRadius: 16,
+                                fill: AppColors.paper,
+                                lineWidth: Poster.hairline,
+                                offset: CGSize(width: 2, height: 2)
+                            )
                     }
                     // Two jobs. A capture is already cut out, so its thumbnail is mostly transparent
                     // and reads as a failed load without a badge saying otherwise. And a plain
                     // reference gives no sign that tapping it does anything at all — which is
                     // precisely why the lift went unnoticed — so it advertises the action instead.
                     if lift != nil {
-                        Image(systemName: isCapture ? "livephoto" : "person.and.background.dotted")
+                        PosterSymbol(isCapture ? "livephoto" : "person.and.background.dotted")
                             .font(.caption2.bold())
+                            .foregroundStyle(AppColors.ink)
                             .padding(4)
-                            .background(.thinMaterial, in: Circle())
+                            .background(AppColors.lime, in: Circle())
+                            .overlay(Circle().strokeBorder(AppColors.ink, lineWidth: 1))
                             .padding(5)
                     }
                 }
@@ -253,9 +282,8 @@ private struct ReferenceThumbnail: View {
             .accessibilityLabel(isCapture ? "Lifted subject. Tap to choose a different one." : "Reference photo. Tap to lift a subject out of it.")
 
             Button(action: remove) {
-                Image(systemName: "xmark.circle.fill")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, .black.opacity(0.65))
+                PosterSymbol("xmark.circle.fill")
+                    .foregroundStyle(AppColors.card, AppColors.ink)
             }
             .accessibilityLabel("Remove reference")
             .offset(x: 5, y: -5)

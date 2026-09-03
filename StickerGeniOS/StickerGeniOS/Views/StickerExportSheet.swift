@@ -21,6 +21,7 @@ struct StickerExportSheet: View {
     private let useTip = UseStickerTip()
 
     private var assets: [String: UIImage] { assetStore.images }
+    private var renderAssets: StickerRenderAssets { assetStore.renderAssets }
     private var verifiedAssetIDs: Set<String> { assetStore.verifiedAssetIDs }
 
     private var publishJob: StickerJobState? {
@@ -62,9 +63,9 @@ struct StickerExportSheet: View {
                     }
 
                     if !revision.canPublishExports {
-                        Label(
+                        PosterSymbolLabel(
                             "Animated stickers need motion before they can be published. Describe how it should move in chat first.",
-                            systemImage: "waveform.path"
+                            posterSymbol: "waveform.path"
                         )
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -122,6 +123,7 @@ struct StickerExportSheet: View {
             FullScreenStickerPlayer(
                 document: revision.document,
                 assets: assets,
+                videos: assetStore.videos,
                 editing: canEdit
                     ? .init(
                         store: store,
@@ -186,26 +188,27 @@ struct StickerExportSheet: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(.background.opacity(0.7))
-                    StickerPlayer(document: revision.document, assets: assets, repeats: true)
+                    StickerPlayer(document: revision.document, assets: assets, videos: assetStore.videos, repeats: true)
                         .padding(16)
                 }
                 .frame(height: 190)
                 .frame(maxWidth: .infinity)
                 .overlay(alignment: .topTrailing) {
-                    Label(
+                    PosterSymbolLabel(
                         revision.document.kind == .animated ? "Animated" : "Static",
-                        systemImage: revision.document.kind == .animated ? "waveform.path" : "photo"
+                        posterSymbol: revision.document.kind == .animated ? "waveform.path" : "photo"
                     )
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(10)
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: canEdit ? "slider.horizontal.3" : "arrow.up.left.and.arrow.down.right")
+                    PosterSymbol(canEdit ? "slider.horizontal.3" : "arrow.up.left.and.arrow.down.right")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                         .padding(7)
-                        .background(.thinMaterial, in: Circle())
+                        .background(AppColors.card, in: Circle())
+                        .overlay(Circle().strokeBorder(AppColors.ink, lineWidth: 1))
                         .padding(8)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -232,7 +235,7 @@ struct StickerExportSheet: View {
 
     private var statusHeader: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: publishFailed ? "exclamationmark" : "checkmark")
+            PosterSymbol(publishFailed ? "exclamationmark" : "checkmark")
                 .font(.subheadline.bold())
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
@@ -360,13 +363,13 @@ struct StickerExportSheet: View {
                     }
 
                     Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
+                    PosterSymbol("chevron.up.chevron.down")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .background(.primary.opacity(0.045), in: .rect(cornerRadius: 14))
+                .posterSurface(cornerRadius: 14, fill: AppColors.paper, lineWidth: Poster.hairline, offset: .zero)
             }
             .accessibilityIdentifier("mp4-background-picker")
             .disabled(publishIsPending || model.isPublishing)
@@ -389,7 +392,7 @@ struct StickerExportSheet: View {
                 Label("Share", systemImage: "square.and.arrow.up")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.posterSecondary)
             .controlSize(.large)
             .accessibilityIdentifier("share-exports")
         } else if isPublished {
@@ -401,7 +404,7 @@ struct StickerExportSheet: View {
                     if await model.prepareShareFiles(
                         store: store,
                         revision: revision,
-                        assets: assets,
+                        assets: renderAssets,
                         verifiedAssetIDs: verifiedAssetIDs
                     ) {
                         isPresentingShareSheet = true
@@ -422,7 +425,7 @@ struct StickerExportSheet: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.posterSecondary)
             .controlSize(.large)
             .disabled(model.isPreparingShare)
             .accessibilityIdentifier("share-exports")
@@ -453,13 +456,12 @@ struct StickerExportSheet: View {
             // same claim, and running it again has to be reachable without editing the sticker
             // first. Secondary styling, because Share is the point of this state.
             Button(action: runExport) { actionLabel }
-                .buttonStyle(.glass)
+                .buttonStyle(.posterSecondary)
                 .controlSize(.large)
                 .accessibilityIdentifier("re-export-files")
         } else {
             Button(action: runExport) { actionLabel }
-                .buttonStyle(.glassProminent)
-                .tint(AppColors.accent)
+                .buttonStyle(.poster)
                 .controlSize(.large)
                 .popoverTip(revision.canPublishExports ? publishTip : nil, arrowEdge: .bottom)
                 .accessibilityIdentifier(revision.canPublishExports ? "publish-exports" : "export-files")
@@ -469,14 +471,19 @@ struct StickerExportSheet: View {
     /// Renamed once files exist, so the same button reads as "run it again" rather than as an
     /// action already taken.
     private var actionLabel: some View {
-        Label(
-            actionIsComplete
-                ? (revision.canPublishExports ? "Re-export & Publish" : "Re-export")
-                : (revision.canPublishExports ? "Export & Publish" : "Export"),
-            systemImage: actionIsComplete
-                ? "arrow.clockwise"
-                : (revision.canPublishExports ? "shippingbox.fill" : "square.and.arrow.down.fill")
-        )
+        Label {
+            Text(
+                actionIsComplete
+                    ? (revision.canPublishExports ? "Re-export & Publish" : "Re-export")
+                    : (revision.canPublishExports ? "Export & Publish" : "Export")
+            )
+        } icon: {
+            Image(
+                systemName: actionIsComplete
+                    ? "arrow.clockwise"
+                    : (revision.canPublishExports ? "shippingbox.fill" : "square.and.arrow.down.fill")
+            )
+        }
         .fontWeight(.semibold)
         .frame(maxWidth: .infinity)
     }
@@ -492,7 +499,7 @@ struct StickerExportSheet: View {
             store: store,
             stickerID: stickerID,
             revision: revision,
-            assets: assets,
+            assets: renderAssets,
             verifiedAssetIDs: verifiedAssetIDs
         ) {
             if model.errorMessage != nil {

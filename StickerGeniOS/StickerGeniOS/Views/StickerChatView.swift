@@ -250,6 +250,7 @@ struct StickerChatView: View {
                 CandidateReadySheet(
                     revision: candidate,
                     assets: assetStore.images,
+                    videos: assetStore.videos,
                     // `isBusy` covers a decision started from the toolbar menu; the sheet spins its
                     // own buttons for the ones started inside it.
                     isBusy: isDeciding,
@@ -304,9 +305,9 @@ struct StickerChatView: View {
                     )
                 } else {
                     EmptyStateView(
-                        symbol: "shippingbox",
                         title: String(localized: "Nothing to export yet"),
-                        message: String(localized: "Accept a candidate first, then export and publish it.")
+                        message: String(localized: "Accept a candidate first, then export and publish it."),
+                        icon: PosterIcon.publish
                     )
                 }
             }
@@ -315,6 +316,7 @@ struct StickerChatView: View {
             FullScreenStickerPlayer(
                 document: presented.document,
                 assets: assetStore.images,
+                videos: assetStore.videos,
                 // Editing needs a revision to parent the save onto. A bubble whose document came
                 // from a live generation stream has none yet, so that one opens view-only.
                 editing: presented.revisionID.map {
@@ -362,20 +364,22 @@ struct StickerChatView: View {
                 // Replaces the button rather than sitting beside it: leaving a tappable control
                 // above a page that is already on its way just invites a second request.
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().controlSize(.small).tint(AppColors.coral)
                     Text("Loading earlier messages…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .posterLabelStyle(10, color: AppColors.muted)
                 }
                 .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("loading-older-chat-messages")
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
             } else if store.nextMessageBeforeSequence[stickerID] != nil {
-                Button("Load earlier messages", systemImage: "clock.arrow.circlepath") {
+                Button {
                     Task { await store.loadOlderMessages(stickerID: stickerID) }
+                } label: {
+                    Label("Load earlier messages", systemImage: "clock.arrow.circlepath")
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.posterSecondaryCompact)
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("load-older-chat-messages")
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
@@ -401,19 +405,19 @@ struct StickerChatView: View {
 
         if let job = store.jobs[stickerID], job.isFailed, job.sourceMessageID != nil {
             HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                PosterSymbol("exclamationmark.triangle.fill")
+                    .foregroundStyle(AppColors.coral)
                 Text(job.message)
-                    .font(.callout)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(AppColors.ink)
                 Spacer()
                 // The retry request itself takes a moment, and until the new job's stream opens
                 // nothing else on screen moves — so the button becomes the progress it started.
                 if isRetrying {
                     HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
+                        ProgressView().controlSize(.small).tint(AppColors.coral)
                         Text("Retrying…")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .posterLabelStyle(10, color: AppColors.muted)
                     }
                     .accessibilityIdentifier("retrying-failed-generation")
                     .transition(.opacity)
@@ -422,14 +426,14 @@ struct StickerChatView: View {
                         Haptics.tap(.light)
                         Task { await retryFailedTurn() }
                     }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.posterCompact)
                         .accessibilityIdentifier("retry-failed-generation")
                         .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: isRetrying)
             .padding(12)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .posterSurface(cornerRadius: Poster.tileRadius, offset: Poster.smallShadow)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
         }
@@ -452,7 +456,7 @@ struct StickerChatView: View {
                             // Sized outright rather than left to `aspectRatio` inside a full-width
                             // row: an unbounded height proposal there resolves to the row's width,
                             // which reserves a screenful of empty space under the sticker.
-                            StickerAttachment(document: document, assets: assetStore.images)
+                            StickerAttachment(document: document, assets: assetStore.images, videos: assetStore.videos)
                                 .frame(width: 200, height: 200)
                         }
                         .buttonStyle(.plain)
@@ -482,6 +486,7 @@ struct StickerChatView: View {
                 message: message,
                 sticker: revisionDocument(for: message),
                 assets: assetStore.images,
+                videos: assetStore.videos,
                 onOpenSticker: {
                     Haptics.tap(.light)
                     presentedDocument = .init(document: $0, revisionID: message.revisionId)
@@ -523,31 +528,32 @@ struct StickerChatView: View {
     private var streamErrorBanner: some View {
         if let message = store.jobs[stickerID]?.streamErrorMessage {
             HStack(spacing: 10) {
-                Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                    .foregroundStyle(.orange)
+                PosterSymbol("antenna.radiowaves.left.and.right.slash")
+                    .foregroundStyle(AppColors.coral)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Lost the live connection")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.posterDisplay(14, weight: .bold))
+                        .foregroundStyle(AppColors.ink)
                     Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(AppColors.muted)
                         .lineLimit(2)
                 }
                 Spacer(minLength: 8)
                 Button("Reconnect") { store.reattach(stickerID: stickerID) }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.posterCompact)
                     .accessibilityIdentifier("reconnect-stream")
                 Button {
                     store.dismissStreamError(stickerID: stickerID)
                 } label: {
-                    Image(systemName: "xmark")
+                    PosterSymbol("xmark")
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.muted)
                 .accessibilityLabel("Dismiss connection warning")
             }
             .padding(12)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .posterSurface(cornerRadius: Poster.tileRadius, offset: Poster.smallShadow)
             .accessibilityIdentifier("stream-error-banner")
         }
     }
@@ -603,18 +609,24 @@ struct StickerChatView: View {
                                 : .images,
                             preferredItemEncoding: .compatible
                         ) {
-                            Label("Photo Library", systemImage: "photo.on.rectangle")
+                            PosterMenuLabel("Photo Library", icon: .photo)
                         }
                     } else {
                         Button("Add photos") { showingPrivacy = true }
                     }
                 } label: {
-                    Image(systemName: "plus")
-                        .font(.title3.weight(.medium))
-                        .frame(width: 30, height: 30)
+                    PosterSymbol("plus")
+                        .font(.system(size: 17, weight: .black))
+                        .frame(width: 32, height: 32)
+                        .posterSurface(
+                            cornerRadius: 16,
+                            fill: AppColors.lime,
+                            lineWidth: Poster.hairline,
+                            offset: .zero
+                        )
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(AppColors.accent)
+                .foregroundStyle(AppColors.ink)
                 .accessibilityLabel("Add photos")
                 .accessibilityIdentifier("add-chat-attachment")
 
@@ -647,9 +659,19 @@ struct StickerChatView: View {
                     // Stop is drawn larger than send. It is the only control here with a clock on
                     // it — the turn is already spending — and at send's size it was a small target
                     // to find in a hurry, next to a text field that wants the same thumb.
-                    Image(systemName: isComputing ? "stop.circle.fill" : "arrow.up.circle.fill")
-                        .font(isComputing ? .system(size: 30) : .title2)
-                        .foregroundStyle(isComputing ? Color.red : AppColors.accent)
+                    PosterSymbol(isComputing ? "stop.fill" : "arrow.up")
+                        .font(.system(size: isComputing ? 15 : 17, weight: .black))
+                        .foregroundStyle(canSend || isComputing ? AppColors.card : AppColors.faint)
+                        .frame(width: 34, height: 34)
+                        .posterSurface(
+                            cornerRadius: 17,
+                            fill: isComputing
+                                ? AppColors.coral
+                                : (canSend ? AppColors.ink : AppColors.paper),
+                            stroke: canSend || isComputing ? AppColors.ink : AppColors.faint,
+                            lineWidth: Poster.hairline,
+                            offset: .zero
+                        )
                         // Fixed so the composer does not resize as the glyph swaps, and so the
                         // smaller send state still gets a target the size of the larger one.
                         .frame(width: 34, height: 34)
@@ -661,8 +683,10 @@ struct StickerChatView: View {
                 .accessibilityIdentifier(isComputing ? "stop-streaming" : "send-chat-message")
             }
             .padding(12)
-            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+            .posterSurface(cornerRadius: Poster.cardRadius, offset: CGSize(width: 4, height: 4))
         }
+        // The composer floats over the transcript, so it keeps its shadow clear of the screen edge.
+        .padding(.trailing, 4)
     }
 
     /// The sticker-pack publish, reported over the top of the transcript.
@@ -675,18 +699,18 @@ struct StickerChatView: View {
         if let notice = packNotice {
             HStack(spacing: 10) {
                 if notice.isWorking {
-                    ProgressView().controlSize(.small)
+                    ProgressView().controlSize(.small).tint(AppColors.ink)
                 } else {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(AppColors.accent)
+                    PosterSymbol("checkmark.circle.fill")
+                        .foregroundStyle(AppColors.ink)
                 }
                 Text(notice.message)
-                    .font(.footnote)
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppColors.ink)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .glassEffect(.regular, in: .capsule)
+            .posterCapsule(fill: notice.isWorking ? AppColors.card : AppColors.mint)
             .padding(.top, 8)
             .padding(.horizontal, 16)
             .transition(.move(edge: .top).combined(with: .opacity))
@@ -1047,6 +1071,7 @@ private struct ChatBubble: View {
     let message: ChatMessage
     let sticker: AnimatedDocument?
     let assets: [String: UIImage]
+    var videos: [String: KeyedVideoFrames] = [:]
     let onOpenSticker: (AnimatedDocument) -> Void
 
     @ViewBuilder
@@ -1059,8 +1084,17 @@ private struct ChatBubble: View {
             HStack {
                 Spacer(minLength: 44)
                 messageContent
+                    .foregroundStyle(AppColors.ink)
                     .padding(12)
-                    .background(AppColors.accentSoft.opacity(0.65), in: .rect(cornerRadius: 18))
+                    .posterSurface(
+                        cornerRadius: Poster.tileRadius,
+                        fill: AppColors.accentSoft,
+                        lineWidth: Poster.hairline,
+                        offset: Poster.smallShadow
+                    )
+                    // Room for the bubble's own shadow, which is drawn outside its box.
+                    .padding(.trailing, Poster.smallShadow.width)
+                    .padding(.bottom, Poster.smallShadow.height)
             }
             .accessibilityLabel("user: \(message.content)")
         } else {
@@ -1100,7 +1134,7 @@ private struct ChatBubble: View {
 
             if let sticker {
                 Button { onOpenSticker(sticker) } label: {
-                    StickerAttachment(document: sticker, assets: assets)
+                    StickerAttachment(document: sticker, assets: assets, videos: videos)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("show-sticker-attachment")
@@ -1137,8 +1171,8 @@ private struct TranscriptSkeleton: View {
             ForEach(Self.rows) { row in
                 HStack(spacing: 0) {
                     if row.isUser { Spacer(minLength: 44) }
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.secondary.opacity(animate ? 0.22 : 0.07))
+                    RoundedRectangle(cornerRadius: Poster.tileRadius, style: .continuous)
+                        .fill(AppColors.ink.opacity(animate ? 0.14 : 0.05))
                         .frame(height: row.height)
                         .containerRelativeFrame(.horizontal) { width, _ in width * row.widthFraction }
                         .animation(
@@ -1168,11 +1202,13 @@ private struct TranscriptDivider: View {
     var body: some View {
         HStack(spacing: 10) {
             rule
-            Label(text, systemImage: "pencil.and.outline")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+            PosterSymbolLabel(verbatim: text, posterSymbol: "pencil.and.outline")
+                .posterLabelStyle(9, color: AppColors.ink)
                 .lineLimit(1)
                 .layoutPriority(1)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .posterCapsule(fill: AppColors.highlight, lineWidth: 1, offset: .zero)
             rule
         }
         .padding(.vertical, 4)
@@ -1183,8 +1219,8 @@ private struct TranscriptDivider: View {
 
     private var rule: some View {
         Rectangle()
-            .fill(Color.secondary.opacity(0.25))
-            .frame(height: 1)
+            .fill(AppColors.line)
+            .frame(height: 1.5)
     }
 }
 
@@ -1193,37 +1229,44 @@ private struct ToolCallRow: View {
 
     private var color: Color {
         switch message.status {
-        case .streaming: .secondary
-        case .complete: .green
-        case .failed: .red
+        case .streaming: AppColors.sky
+        case .complete: AppColors.mint
+        case .failed: AppColors.coral
         }
     }
 
     var body: some View {
         HStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(color)
-                .frame(width: 3)
-                .padding(.vertical, 6)
+            UnevenRoundedRectangle(
+                topLeadingRadius: Poster.chipRadius - 2,
+                bottomLeadingRadius: Poster.chipRadius - 2,
+                style: .continuous
+            )
+            .fill(color)
+            .frame(width: 8)
 
             HStack(spacing: 10) {
                 ZStack {
-                    Circle().fill(color.opacity(0.12)).frame(width: 26, height: 26)
+                    Circle()
+                        .fill(color)
+                        .overlay(Circle().strokeBorder(AppColors.ink, lineWidth: 1.5))
+                        .frame(width: 26, height: 26)
                     switch message.status {
                     case .streaming:
-                        ProgressView().controlSize(.small).scaleEffect(0.75)
+                        ProgressView().controlSize(.small).scaleEffect(0.7).tint(AppColors.ink)
                     case .complete:
-                        Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(color)
+                        PosterSymbol("checkmark").font(.caption.weight(.black)).foregroundStyle(AppColors.ink)
                     case .failed:
-                        Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(color)
+                        PosterSymbol("xmark").font(.caption.weight(.black)).foregroundStyle(AppColors.card)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(message.content)
-                        .font(.caption.weight(.semibold).monospaced())
+                        .font(.caption.weight(.bold).monospaced())
+                        .foregroundStyle(AppColors.ink)
                     if message.status == .streaming {
-                        Text("Running…").font(.caption2).foregroundStyle(.secondary)
+                        Text("Running…").posterLabelStyle(9, color: AppColors.muted)
                     }
                 }
                 Spacer(minLength: 0)
@@ -1232,8 +1275,7 @@ private struct ToolCallRow: View {
             .padding(.vertical, 9)
         }
         .frame(maxWidth: 460, alignment: .leading)
-        .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(color.opacity(0.25), lineWidth: 0.5))
+        .posterSurface(cornerRadius: Poster.chipRadius, lineWidth: Poster.hairline, offset: CGSize(width: 2, height: 2))
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityLabel("Tool \(message.content), \(message.status.label)")
     }
@@ -1246,8 +1288,8 @@ private struct AssistantTypingIndicator: View {
         HStack(spacing: 5) {
             ForEach(0..<3, id: \.self) { index in
                 Circle()
-                    .fill(Color.secondary.opacity(0.6))
-                    .frame(width: 7, height: 7)
+                    .fill(AppColors.coral)
+                    .frame(width: 8, height: 8)
                     .scaleEffect(animate ? 1 : 0.5)
                     .animation(
                         .easeInOut(duration: 0.45)
@@ -1257,9 +1299,9 @@ private struct AssistantTypingIndicator: View {
                     )
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 16))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .posterCapsule(offset: Poster.smallShadow)
         .onAppear { animate = true }
         .accessibilityLabel(
             String(localized: "\(AppConfiguration.defaultAppName) is responding")
@@ -1278,14 +1320,19 @@ private struct ChatAttachmentThumbnail: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                Image(systemName: attachment.kind == .mask ? "circle.lefthalf.filled" : "photo")
+                PosterSymbol(attachment.kind == .mask ? "circle.lefthalf.filled" : "photo")
                     .font(.title2)
                     .foregroundStyle(.secondary)
             }
         }
         .frame(width: 82, height: 82)
-        .background(.black.opacity(0.05))
-        .clipShape(.rect(cornerRadius: 14))
+        .clipShape(.rect(cornerRadius: 14, style: .continuous))
+        .posterSurface(
+            cornerRadius: 14,
+            fill: AppColors.paper,
+            lineWidth: Poster.hairline,
+            offset: CGSize(width: 2, height: 2)
+        )
         .accessibilityLabel(attachment.kind == .mask ? "Mask attachment" : "Reference image attachment")
     }
 }
@@ -1293,29 +1340,33 @@ private struct ChatAttachmentThumbnail: View {
 private struct StickerAttachment: View {
     let document: AnimatedDocument
     let assets: [String: UIImage]
+    var videos: [String: KeyedVideoFrames] = [:]
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.black.opacity(0.04))
+            // A checkerboard says "this artwork is transparent". Drawn in paper and ink so it
+            // belongs to the same printed surface as everything around it.
             Canvas { context, size in
                 let cell = size.width / 12
                 for row in 0..<12 {
                     for column in 0..<12 where (row + column).isMultiple(of: 2) {
                         context.fill(
                             Path(CGRect(x: Double(column) * cell, y: Double(row) * cell, width: cell, height: cell)),
-                            with: .color(.secondary.opacity(0.055))
+                            with: .color(AppColors.ink.opacity(0.05))
                         )
                     }
                 }
             }
-            .clipShape(.rect(cornerRadius: 16))
+            .clipShape(.rect(cornerRadius: Poster.tileRadius, style: .continuous))
 
-            StickerPlayer(document: document, assets: assets, repeats: true)
+            StickerPlayer(document: document, assets: assets, videos: videos, repeats: true)
                 .padding(10)
         }
         .frame(maxWidth: 240)
         .aspectRatio(1, contentMode: .fit)
+        .posterSurface(cornerRadius: Poster.tileRadius, fill: AppColors.paper, offset: Poster.smallShadow)
+        .padding(.trailing, Poster.smallShadow.width)
+        .padding(.bottom, Poster.smallShadow.height)
         .accessibilityLabel(document.kind == .animated ? "Animated sticker attachment" : "Sticker attachment")
     }
 }
@@ -1344,10 +1395,11 @@ private struct ComposerMediaChip: View {
                             // and reads as a failed load without a badge. A plain reference gets one
                             // too, because nothing else says that tapping it lifts a subject.
                             if lift != nil {
-                                Image(systemName: media.sequence != nil ? "livephoto" : "person.and.background.dotted")
+                                PosterSymbol(media.sequence != nil ? "livephoto" : "person.and.background.dotted")
                                     .font(.system(size: 9, weight: .bold))
                                     .padding(2)
-                                    .background(.thinMaterial, in: Circle())
+                                    .background(AppColors.card, in: Circle())
+                                    .overlay(Circle().strokeBorder(AppColors.ink, lineWidth: 1))
                             }
                         }
                 }
@@ -1361,14 +1413,17 @@ private struct ComposerMediaChip: View {
                 : "Reference photo. Tap to lift a subject out of it.")
 
             Text(media.filename)
-                .font(.caption)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppColors.ink)
                 .lineLimit(1)
             Button(action: remove) {
-                Image(systemName: "xmark.circle.fill")
+                PosterSymbol("xmark.circle.fill")
+                    .foregroundStyle(AppColors.ink)
             }
             .accessibilityLabel("Remove \(media.filename)")
         }
         .padding(6)
-        .glassEffect(.regular, in: .capsule)
+        .padding(.trailing, 4)
+        .posterCapsule(offset: CGSize(width: 2, height: 2))
     }
 }

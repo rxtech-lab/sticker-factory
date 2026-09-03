@@ -26,6 +26,11 @@ export const AssetKindSchema = z.enum([
   /** A frame atlas: one transparent PNG holding a grid of frames lifted from a Live Photo. */
   "sequence",
   /**
+   * A short generated clip: an opaque 1:1 MP4 shot against a chroma backdrop that the client keys
+   * out at render time. Never marketplace-visible; the layer's poster still is what other users see.
+   */
+  "video",
+  /**
    * A smaller copy of the sharing rendition, at 408 or 300 px.
    *
    * What WinkySticker attaches when someone picks Medium or Small. Distinct from `apng` because an

@@ -132,6 +132,10 @@ nonisolated enum AssetKind: String, Codable, CaseIterable, Hashable, Sendable {
     case chatAttachment = "chat_attachment"
     /// A frame atlas: one transparent PNG holding a grid of frames lifted from a Live Photo.
     case sequence
+    /// A generated clip for a video layer: an opaque 1:1 MP4 on a chroma backdrop that the app keys
+    /// out at render time. Never shared into a pack on its own; the layer's poster is what the
+    /// marketplace sees.
+    case video
     /// A smaller copy of the sharing rendition, at 408 or 300 px, for WinkySticker's size control.
     ///
     /// Its own kind rather than `apng` because a static sticker has these too and they are ordinary
@@ -262,11 +266,14 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
     /// Frames the user captured, played back in place. Costs no generation and needs no concept
     /// render — the footage is its own reference, which is what makes such a plan capture-led.
     case sequence(assetId: String, frameCount: Int)
+    /// A short generated clip of the whole subject, for motion keyframes cannot express — a
+    /// turnaround, a change of angle, physics. Costs a still *and* a video generation.
+    case video(prompt: String, motion: String, durationSeconds: Int)
     /// A layer kind this build does not know about, kept so the card still renders.
     case unknown(kind: String)
 
     private enum CodingKeys: String, CodingKey {
-        case kind, prompt, assetId, text, color, shape, fill, preset, frameCount
+        case kind, prompt, assetId, text, color, shape, fill, preset, frameCount, motion, durationSeconds
     }
 
     init(from decoder: any Decoder) throws {
@@ -296,6 +303,12 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
             self = .sequence(
                 assetId: (try? container.decode(String.self, forKey: .assetId)) ?? "",
                 frameCount: (try? container.decode(Int.self, forKey: .frameCount)) ?? 1
+            )
+        case "video":
+            self = .video(
+                prompt: (try? container.decode(String.self, forKey: .prompt)) ?? "",
+                motion: (try? container.decode(String.self, forKey: .motion)) ?? "",
+                durationSeconds: (try? container.decode(Int.self, forKey: .durationSeconds)) ?? 3
             )
         default:
             self = .unknown(kind: kind)
@@ -327,6 +340,11 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
             try container.encode("sequence", forKey: .kind)
             try container.encode(assetId, forKey: .assetId)
             try container.encode(frameCount, forKey: .frameCount)
+        case .video(let prompt, let motion, let durationSeconds):
+            try container.encode("video", forKey: .kind)
+            try container.encode(prompt, forKey: .prompt)
+            try container.encode(motion, forKey: .motion)
+            try container.encode(durationSeconds, forKey: .durationSeconds)
         case .unknown(let kind):
             try container.encode(kind, forKey: .kind)
         }
@@ -343,9 +361,27 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
             frameCount == 1
                 ? String(localized: "Capture")
                 : String(localized: "Capture · \(frameCount) frames")
+        case .video(_, _, let durationSeconds): String(localized: "Video · \(durationSeconds)s")
         case .unknown(let kind): Self.humanized(kind)
         }
     }
+
+    /// The generated prompt, for the card. A video layer's prompt describes the whole subject the
+    /// same way a generate prompt describes a part.
+    var prompt: String? {
+        switch self {
+        case .generate(let prompt), .video(let prompt, _, _): prompt.isEmpty ? nil : prompt
+        default: nil
+        }
+    }
+
+    /// What the subject or camera does, for a video layer. Nil for everything else.
+    var motion: String? {
+        if case .video(_, let motion, _) = self, !motion.isEmpty { return motion }
+        return nil
+    }
+
+    var isVideo: Bool { if case .video = self { true } else { false } }
 
     /// The server's identifiers are camelCase, and `capitalized` alone flattens `roundedRectangle`
     /// into "Roundedrectangle". Split on the humps first.
@@ -364,13 +400,32 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
         return words.map(\.localizedCapitalized).joined(separator: " ")
     }
 
-    var isGenerated: Bool { if case .generate = self { true } else { false } }
+    /// Whether the layer pays for an image generation. A video layer does — its clip is animated
+    /// from a still that has to be drawn first — and then pays for the clip on top.
+    var isGenerated: Bool {
+        switch self {
+        case .generate, .video: true
+        default: false
+        }
+    }
 
     /// Whether the layer is drawn artwork rather than something the app renders. Reused artwork
     /// counts: it costs nothing, but on the canvas it is a picture, not a glyph or a primitive.
     var isArtwork: Bool {
         switch self {
-        case .generate, .existing: true
+        case .generate, .existing, .video: true
+        default: false
+        }
+    }
+
+    /// Whether the built layer keeps its aspect: content fitted inside its box, never stretched.
+    ///
+    /// Mirrors the server's `layerScaleIsAspectLocked`. Pixels are square frames and glyphs are
+    /// fitted, so the build squares an unequal `scaleX`/`scaleY` off to the smaller of the two;
+    /// the schematic has to draw that box, or the user approves a footprint that never appears.
+    var isAspectLocked: Bool {
+        switch self {
+        case .generate, .existing, .sequence, .video, .text: true
         default: false
         }
     }

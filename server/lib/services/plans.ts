@@ -4,6 +4,7 @@ import {
   isEditablePlanState,
   planGenerationCount,
   planRequiresConcept,
+  planVideoCount,
   PlanV1Schema,
   type PlanState,
   type PlanV1,
@@ -13,7 +14,7 @@ import { assets, chatMessages, chatThreads, generationEvents, generationJobs, pl
 import { ApiError } from "@/lib/http/errors";
 import { isActiveJobConstraint } from "@/lib/services/stickers";
 import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
-import { jobCreditHold } from "@/lib/subscription/pricing";
+import { composeCreditHold, jobCreditHold } from "@/lib/subscription/pricing";
 
 export type SerializedPlan = {
   id: string;
@@ -268,13 +269,14 @@ export async function confirmPlan(
   const messageId = crypto.randomUUID();
   const now = new Date();
   const generations = planGenerationCount(plan);
-  const creditHold = jobCreditHold("compose");
+  const videos = planVideoCount(plan);
+  const creditHold = composeCreditHold(plan);
   const reservationId = await holdCreditsForJob({
     ownerId,
     amount: creditHold,
     idempotencyKey: `reserve:${jobId}`,
     description: "Sticker plan build",
-    metadata: { jobId, stickerId, kind: "compose", planId, generations },
+    metadata: { jobId, stickerId, kind: "compose", planId, generations, videos },
   });
   try {
     await db.transaction(async (tx) => {

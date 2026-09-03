@@ -79,7 +79,7 @@ struct AnimatedSequenceLayerInspector: View {
                 .fill(.purple.gradient)
                 .frame(width: 88, height: 88)
                 .overlay {
-                    Image(systemName: "livephoto")
+                    AnimatedCartoonSymbol("livephoto")
                         .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(.white)
                 }
@@ -110,13 +110,108 @@ extension AnimatedSequencePlayback {
     }
 }
 
+/// A generated clip: what is playing right now, how it fits, and how it repeats.
+///
+/// The key colour is shown but not editable. It was chosen when the clip was shot and is baked
+/// into its pixels; changing the label here would only make the renderer key the wrong channel.
+struct AnimatedVideoLayerInspector: View {
+    @Bindable var editor: AnimatedDocumentEditor
+    let layer: AnimatedVideoLayer
+    let assets: any AnimatedAssetProvider
+
+    var body: some View {
+        Section {
+            HStack {
+                Spacer()
+                thumbnail
+                Spacer()
+            }
+
+            LabeledContent("Frames", value: "\(layer.frameCount)")
+            LabeledContent("Generated at", value: "\(Int(layer.frameRate.rounded())) fps")
+            LabeledContent("Keyed from", value: layer.keyColor == .green ? "Green screen" : "Blue screen")
+
+            Picker("Fit", selection: binding(\.contentMode)) {
+                ForEach(AnimatedContentMode.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Video clip")
+        } footer: {
+            Text("Generated from the approved still. The backdrop is keyed out on this device.")
+        }
+
+        Section {
+            Picker("Repeat", selection: binding(\.playback)) {
+                ForEach(AnimatedSequencePlayback.allCases, id: \.self) { Text($0.inspectorLabel).tag($0) }
+            }
+            .pickerStyle(.segmented)
+
+            AnimatedValueSlider(
+                title: "Start",
+                value: binding(\.startSeconds),
+                range: 0...max(editor.document.durationSeconds, 0.1),
+                step: 0.05,
+                format: "%.2fs"
+            )
+        } header: {
+            Text("Playback")
+        } footer: {
+            Text("The sticker's own speed and loop apply on top of this.")
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnail: some View {
+        let index = AnimationInterpolator.videoFrameIndex(layer, atDocumentTime: editor.scrubDocumentTime)
+        if let frame = VideoFrameCache.shared.frame(for: layer, index: index, assets: assets)
+            ?? assets.image(for: layer.posterAssetId) {
+            Image(platformImage: frame)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 88, height: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Text("\(index + 1)/\(layer.frameCount)")
+                        .font(.caption2.monospacedDigit())
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding(4)
+                }
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.purple.gradient)
+                .frame(width: 88, height: 88)
+                .overlay {
+                    AnimatedCartoonSymbol("video")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+        }
+    }
+
+    private func binding<Value>(_ keyPath: WritableKeyPath<AnimatedVideoLayer, Value>) -> Binding<Value> {
+        Binding(
+            get: { layer[keyPath: keyPath] },
+            set: { newValue in
+                editor.updateLayer(id: layer.base.id, name: "Edit Clip") {
+                    guard case .video(var value) = $0 else { return }
+                    value[keyPath: keyPath] = newValue
+                    $0 = .video(value)
+                }
+            }
+        )
+    }
+}
+
 /// A layer written by a newer build. Nothing to edit; the point is to say so plainly.
 struct AnimatedUnsupportedLayerInspector: View {
     var body: some View {
         Section {
-            Label(
+            AnimatedCartoonLabel(
                 "This layer was made with a newer version of Sticker Factory.",
-                systemImage: "questionmark.square.dashed"
+                icon: "questionmark.square.dashed"
             )
         } footer: {
             Text("It is kept exactly as it was and will not be lost, but it cannot be shown or edited here. Update the app to work with it.")
@@ -141,7 +236,11 @@ struct AnimatedImageLayerInspector: View {
             }
 
             if let onRequestImageAsset {
-                Button("Replace Image", systemImage: "photo") { onRequestImageAsset(layer.base.id) }
+                Button {
+                    onRequestImageAsset(layer.base.id)
+                } label: {
+                    Label("Replace Image", systemImage: "photo")
+                }
             }
 
             Picker("Fit", selection: binding(\.contentMode)) {
@@ -152,15 +251,21 @@ struct AnimatedImageLayerInspector: View {
 
         Section {
             if layer.maskAssetId != nil {
-                Button("Remove Mask", systemImage: "minus.circle", role: .destructive) {
+                Button(role: .destructive) {
                     editor.updateLayer(id: layer.base.id, name: "Remove Mask") {
                         guard case .image(var value) = $0 else { return }
                         value.maskAssetId = nil
                         $0 = .image(value)
                     }
+                } label: {
+                    Label("Remove Mask", systemImage: "minus.circle")
                 }
             } else if let onRequestMaskAsset {
-                Button("Add Mask", systemImage: "theatermasks") { onRequestMaskAsset(layer.base.id) }
+                Button {
+                    onRequestMaskAsset(layer.base.id)
+                } label: {
+                    Label("Add Mask", systemImage: "theatermasks")
+                }
             }
         } header: {
             Text("Mask")
@@ -184,7 +289,7 @@ struct AnimatedImageLayerInspector: View {
                 .fill(.purple.gradient)
                 .frame(width: 88, height: 88)
                 .overlay {
-                    Image(systemName: "wand.and.stars")
+                    AnimatedCartoonSymbol("wand.and.stars")
                         .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(.white)
                 }
@@ -396,9 +501,11 @@ struct AnimatedSVGLayerInspector: View {
                     .onAppear { markupDraft = inlineMarkup ?? "" }
 
                 HStack {
-                    Button("Paste", systemImage: "doc.on.clipboard") {
+                    Button {
                         markupDraft = UIPasteboard.general.string ?? markupDraft
                         commitMarkup()
+                    } label: {
+                        Label("Paste", systemImage: "doc.on.clipboard")
                     }
                     Spacer()
                     Button("Apply") { commitMarkup() }
@@ -508,8 +615,10 @@ struct AnimatedParticleLayerInspector: View {
             // The seed is what makes a particle field identical on screen and in every exported
             // frame, so it is offered as a shuffle rather than a number to reason about.
             LabeledContent("Seed", value: "\(layer.seed)")
-            Button("Shuffle", systemImage: "shuffle") {
+            Button {
                 write(\.seed, Int.random(in: 0...Int(Int32.max)))
+            } label: {
+                Label("Shuffle", systemImage: "shuffle")
             }
         } footer: {
             Text("The seed keeps this particle field identical every time it renders, including in exports.")

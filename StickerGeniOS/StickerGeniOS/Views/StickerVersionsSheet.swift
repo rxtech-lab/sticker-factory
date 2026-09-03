@@ -22,16 +22,15 @@ struct StickerVersionsSheet: View {
                 VStack(spacing: 16) {
                     if historicalRevisions.isEmpty {
                         EmptyStateView(
-                            symbol: "clock.arrow.circlepath",
                             title: "No earlier versions",
                             message: "Accepted revisions appear here so you can revert to any of them."
                         )
                     } else {
-                        GlassCard {
+                        PosterCard {
                             VStack(alignment: .leading, spacing: 12) {
                                 ForEach(historicalRevisions) { revision in
                                     HStack {
-                                        Image(systemName: icon(for: revision))
+                                        PosterSymbol(icon(for: revision))
                                         VStack(alignment: .leading) {
                                             Text(revision.state.label)
                                             Text(revision.createdAt, format: .relative(presentation: .named))
@@ -44,7 +43,7 @@ struct StickerVersionsSheet: View {
                                                 .foregroundStyle(.secondary)
                                         } else if revision.state != .candidate {
                                             Button("Revert") { Task { await revert(to: revision) } }
-                                                .buttonStyle(.glass)
+                                                .buttonStyle(.posterSecondary)
                                         }
                                     }
                                 }
@@ -58,7 +57,7 @@ struct StickerVersionsSheet: View {
                             Label("Compare side by side", systemImage: "rectangle.on.rectangle")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.posterSecondary)
                         .controlSize(.large)
                         .accessibilityIdentifier("compare-revisions")
                     }

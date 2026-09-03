@@ -9,7 +9,8 @@ import {
   requirePermission,
 } from "@/lib/subscription/credits";
 import { subscriptionEnabled } from "@/lib/subscription/config";
-import { exportCreditCost, jobCreditHold } from "@/lib/subscription/pricing";
+import { composeCreditHold, exportCreditCost, jobCreditHold } from "@/lib/subscription/pricing";
+import { PlanV1Schema } from "@/lib/contracts/plan";
 import type { GenerationJobRow } from "@/lib/db/schema";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 
@@ -64,6 +65,8 @@ function job(overrides: Partial<GenerationJobRow> = {}): GenerationJobRow {
     apiTextCostNanodollars: 100_000_000,
     apiImageCostNanodollars: 20_000_000,
     apiImagePoints: 2,
+    apiVideoCostNanodollars: 0,
+    apiVideoPoints: 0,
     attempts: 1,
     errorCode: null,
     errorMessage: null,
@@ -228,10 +231,21 @@ describe("settling and releasing", () => {
         textCostNanodollars: 100_000_000,
         imageCostNanodollars: 20_000_000,
         imagePoints: 2,
+        videoCostNanodollars: 0,
+        videoPoints: 0,
         chargedPoints: 9,
       },
     });
     expect(cleared).toHaveLength(1);
+  });
+
+  it("charges a clip's points on top of the text and image ones", async () => {
+    const { db } = fakeDb();
+    await chargeJobCredits(db, job({ kind: "compose", apiVideoCostNanodollars: 29_100_000, apiVideoPoints: 3 }));
+    expect(calls[0].body).toMatchObject({
+      amount: 12,
+      metadata: { videoCostNanodollars: 29_100_000, videoPoints: 3, chargedPoints: 12 },
+    });
   });
 
   it("keeps fixed-price non-AI export charging", async () => {
@@ -345,6 +359,20 @@ describe("pricing", () => {
 
   it("never charges anyone to delete their own work", () => {
     expect(jobCreditHold("cleanup")).toBe(0);
+  });
+
+  it("holds more for a plan that will generate a clip", () => {
+    const layer = { layerId: "part_0", name: "Hero", x: 0.5, y: 0.5, scaleX: 0.8, scaleY: 0.8 };
+    const drawn = PlanV1Schema.parse({
+      version: 1, title: "T", summary: "Drawn.", kind: "animated",
+      layers: [{ ...layer, source: { kind: "generate", prompt: "A corgi" } }],
+    });
+    const clipped = PlanV1Schema.parse({
+      version: 1, title: "T", summary: "The corgi is a video so it can turn.", kind: "animated",
+      layers: [{ ...layer, source: { kind: "video", prompt: "A corgi", motion: "turns around" } }],
+    });
+    expect(composeCreditHold(drawn)).toBe(jobCreditHold("compose"));
+    expect(composeCreditHold(clipped)).toBeGreaterThan(jobCreditHold("compose"));
   });
 
   it("charges for an animated export and not for a still one", () => {

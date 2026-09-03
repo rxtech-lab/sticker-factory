@@ -49,7 +49,7 @@ public enum AnimatedEditorDefaults {
             return .svg(.init(base: base, source: .inline(markup: starterSVGMarkup)))
         case .particle:
             return .particle(.init(base: base, preset: .sparkles))
-        case .sequence, .unsupported:
+        case .sequence, .video, .unsupported:
             return nil
         }
     }
@@ -62,6 +62,7 @@ public enum AnimatedEditorDefaults {
         case .svg: "Artwork"
         case .particle: "Sparkles"
         case .sequence: "Live capture"
+        case .video: "Video clip"
         case .unsupported: "Unsupported layer"
         }
     }
@@ -74,6 +75,7 @@ public enum AnimatedEditorDefaults {
         case .svg: "scribble.variable"
         case .particle: "sparkles"
         case .sequence: "livephoto"
+        case .video: "video"
         case .unsupported: "questionmark.square.dashed"
         }
     }

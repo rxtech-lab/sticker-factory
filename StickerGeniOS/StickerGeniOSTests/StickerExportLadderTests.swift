@@ -407,7 +407,7 @@ struct StickerExportLadderTests {
         ]
         document.durationSeconds = 1
         document.fps = 12
-        let rendition = try await StickerExporter().exportSystemSticker(document: document, assets: [:], size: .small)
+        let rendition = try await StickerExporter().exportSystemSticker(document: document, assets: .init(), size: .small)
         defer { try? FileManager.default.removeItem(at: rendition.url) }
         let written = try Data(contentsOf: rendition.url)
 
@@ -445,7 +445,7 @@ struct StickerExportLadderTests {
         document.fps = 8
         let exporter = StickerExporter()
 
-        let full = try await exporter.exportAPNG(document: document, assets: [:])
+        let full = try await exporter.exportAPNG(document: document, assets: .init())
         defer { try? FileManager.default.removeItem(at: full.url) }
         #expect(full.metadata.width == StickerExportMetadataPolicy.sharingApngDimensions[0])
 
@@ -454,7 +454,7 @@ struct StickerExportLadderTests {
         // with the sticker left in draft. A ceiling this file cannot meet at full size stands in for
         // that animation without spending 240 frames to reproduce it.
         let squeezed = try await exporter.exportAPNG(
-            document: document, assets: [:], byteCeiling: full.metadata.byteCount / 2
+            document: document, assets: .init(), byteCeiling: full.metadata.byteCount / 2
         )
         defer { try? FileManager.default.removeItem(at: squeezed.url) }
         #expect(squeezed.metadata.byteCount <= full.metadata.byteCount / 2)
@@ -494,7 +494,7 @@ struct StickerExportLadderTests {
         let exporter = StickerExporter()
         let expectedFrames = StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps)
 
-        let rendition = try await exporter.exportAPNG(document: document, assets: [:])
+        let rendition = try await exporter.exportAPNG(document: document, assets: .init())
         defer { try? FileManager.default.removeItem(at: rendition.url) }
         // The top rung, not a rung it fell to: this fixture is two flat shapes and cannot overshoot
         // the upload ceiling.
@@ -516,7 +516,7 @@ struct StickerExportLadderTests {
         let document = PreviewFixtures.staticDocument
         let exporter = StickerExporter()
 
-        let master = try exporter.exportStaticPNG(document: document, assets: [:])
+        let master = try exporter.exportStaticPNG(document: document, assets: .init())
         defer { try? FileManager.default.removeItem(at: master.url) }
         #expect(master.metadata.width == 1024)
         #expect(master.metadata.height == 1024)
@@ -536,13 +536,13 @@ struct StickerExportLadderTests {
         let publisher = StickerPublisher(api: MockStickerAPIClient())
 
         let video = try await publisher.export(
-            revision: revision, assets: [:], verifiedAssetIDs: [], selection: .video
+            revision: revision, assets: .init(), verifiedAssetIDs: [], selection: .video
         )
         defer { video.forEach { try? FileManager.default.removeItem(at: $0.url) } }
         #expect(video.map(\.metadata.format) == [.mp4])
 
         let sticker = try await publisher.export(
-            revision: revision, assets: [:], verifiedAssetIDs: [], selection: .sticker
+            revision: revision, assets: .init(), verifiedAssetIDs: [], selection: .sticker
         )
         defer { sticker.forEach { try? FileManager.default.removeItem(at: $0.url) } }
         // The sharing rendition and the Messages rendition, both APNG, and no video encode at all.
@@ -559,7 +559,7 @@ struct StickerExportLadderTests {
         let publisher = StickerPublisher(api: api)
 
         let result = try await publisher.publish(
-            stickerID: "sticker-demo", revision: revision, assets: [:], verifiedAssetIDs: [],
+            stickerID: "sticker-demo", revision: revision, assets: .init(), verifiedAssetIDs: [],
             selection: .sticker, sharing: .gif
         )
         defer { result.localExports.forEach { try? FileManager.default.removeItem(at: $0.url) } }
@@ -610,7 +610,7 @@ struct StickerExportLadderTests {
         let publisher = StickerPublisher(api: api)
 
         let result = try await publisher.publish(
-            stickerID: "sticker-demo", revision: revision, assets: [:], verifiedAssetIDs: [],
+            stickerID: "sticker-demo", revision: revision, assets: .init(), verifiedAssetIDs: [],
             selection: .sticker
         )
         defer { result.localExports.forEach { try? FileManager.default.removeItem(at: $0.url) } }
@@ -627,7 +627,7 @@ struct StickerExportLadderTests {
         #expect(published.hasPublishedExports)
         #expect(!published.hasPublishedVideo)
         let shared = try await publisher.publishedExports(
-            for: published, assets: [:], verifiedAssetIDs: [], selection: .video
+            for: published, assets: .init(), verifiedAssetIDs: [], selection: .video
         )
         defer { shared.forEach { try? FileManager.default.removeItem(at: $0) } }
         // Rendered here rather than downloaded — the mock refuses every asset download.
@@ -645,7 +645,7 @@ struct StickerExportLadderTests {
         document.fps = 8
         document.loop = .loop
 
-        let rendition = try await StickerExporter().exportMP4(document: document, assets: [:])
+        let rendition = try await StickerExporter().exportMP4(document: document, assets: .init())
         defer { try? FileManager.default.removeItem(at: rendition.url) }
 
         // 1 s of motion at 8 FPS is 8 frames, and the 0.6 s hold is 5 more of the last one.
@@ -672,7 +672,7 @@ struct StickerExportLadderTests {
         document.layers = [
             .shape(.init(base: .init(id: "base", name: "Base"), shape: .roundedRectangle, fill: .solid("#A88BFF"))),
         ]
-        let rendition = try await StickerExporter().exportSystemSticker(document: document, assets: [:], size: .large)
+        let rendition = try await StickerExporter().exportSystemSticker(document: document, assets: .init(), size: .large)
         defer { try? FileManager.default.removeItem(at: rendition.url) }
 
         #expect(rendition.metadata.format == .png)

@@ -66,8 +66,7 @@ struct PlanCard: View {
                 if plan.kind == .animated { timingNote }
                 if !record.actionable {
                     Text(statusNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .posterLabelStyle(9, color: AppColors.muted)
                 }
             }
             .padding(14)
@@ -75,8 +74,12 @@ struct PlanCard: View {
             if record.actionable { actions }
         }
         .frame(maxWidth: 460, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(AppColors.accent.opacity(0.2), lineWidth: 0.5))
+        // The plan is the one thing in the transcript the user has to answer, so it gets the
+        // sky band rather than plain cream — the same colour the web gives its "what happens
+        // next" section.
+        .posterSurface(cornerRadius: Poster.cardRadius, fill: AppColors.secondaryAccentSoft)
+        .padding(.trailing, Poster.mediumShadow.width)
+        .padding(.bottom, Poster.mediumShadow.height)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("composition-plan-card")
         .confirmationDialog("Build this plan?", isPresented: $confirming, titleVisibility: .visible) {
@@ -110,20 +113,22 @@ struct PlanCard: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 Text("PLAN")
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.8)
-                    .foregroundStyle(AppColors.accent)
+                    .posterLabelStyle(9)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .posterCapsule(fill: AppColors.lime, lineWidth: 1, offset: .zero)
                 if record.revision > 1 {
                     Text("v\(record.revision)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .font(.posterLabel(9))
+                        .foregroundStyle(AppColors.ink.opacity(0.7))
                 }
             }
             Text(plan.title)
-                .font(.headline)
+                .font(.posterDisplay(19, weight: .bold))
+                .foregroundStyle(AppColors.ink)
             Text(plan.summary)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 14, design: .rounded))
+                .foregroundStyle(AppColors.ink.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -131,32 +136,46 @@ struct PlanCard: View {
     private var layerList: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(layerHeading)
-                .font(.caption2.weight(.semibold))
-                .tracking(0.7)
-                .foregroundStyle(.secondary)
+                .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
             ForEach(Array(plan.layers.enumerated()), id: \.element.id) { index, layer in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("\(index + 1)")
-                        .font(.caption2.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 14, alignment: .trailing)
+                        .font(.posterLabel(9))
+                        .foregroundStyle(AppColors.ink)
+                        .frame(width: 18, height: 18)
+                        .posterSurface(cornerRadius: 9, lineWidth: 1, offset: .zero)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Text(layer.name)
-                                .font(.subheadline.weight(.medium))
-                            if !layer.source.isGenerated {
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(AppColors.ink)
+                            if layer.source.isVideo {
+                                // The one layer that is a clip rather than a picture. Worth a chip
+                                // of its own: it is the part of the plan that costs a video
+                                // generation, and the reason the plan takes longer to build.
                                 Text(layer.source.label)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1)
-                                    .background(Color.secondary.opacity(0.12), in: .rect(cornerRadius: 4))
+                                    .posterLabelStyle(8)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .posterCapsule(fill: AppColors.sky, lineWidth: 1, offset: .zero)
+                            } else if !layer.source.isGenerated {
+                                Text(layer.source.label)
+                                    .posterLabelStyle(8)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .posterCapsule(fill: AppColors.card, lineWidth: 1, offset: .zero)
                             }
                         }
-                        if case .generate(let prompt) = layer.source, !prompt.isEmpty {
+                        if let prompt = layer.source.prompt {
                             Text(prompt)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 12, design: .rounded))
+                                .foregroundStyle(AppColors.ink.opacity(0.7))
+                                .lineLimit(2)
+                        }
+                        if let motion = layer.source.motion {
+                            Text(motion)
+                                .font(.system(size: 12, design: .rounded).italic())
+                                .foregroundStyle(AppColors.muted)
                                 .lineLimit(2)
                         }
                         if !layer.animations.isEmpty {
@@ -174,67 +193,62 @@ struct PlanCard: View {
         HStack(spacing: 4) {
             ForEach(Array(animations.enumerated()), id: \.offset) { _, animation in
                 Text(animation.label)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(AppColors.accent)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(AppColors.accentSoft.opacity(0.55), in: .capsule)
+                    .posterLabelStyle(8)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .posterCapsule(fill: AppColors.highlight, lineWidth: 1, offset: .zero)
             }
         }
     }
 
     private var timingNote: some View {
-        Label(
-            "\(formatted(plan.timing.durationSeconds))s · \(plan.timing.fps) fps · \(plan.timing.loop.label)",
-            systemImage: "waveform.path"
+        PosterSymbolLabel(
+            verbatim: "\(formatted(plan.timing.durationSeconds))s · \(plan.timing.fps) fps · \(plan.timing.loop.label)",
+            posterSymbol: "waveform.path"
         )
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
     }
 
     private var actions: some View {
-        VStack(spacing: 0) {
-            Divider().overlay(Color.secondary.opacity(0.2))
-            HStack(spacing: 0) {
-                Button {
-                    confirming = true
-                } label: {
-                    HStack(spacing: 6) {
-                        if isBusy || isWaitingForReference { ProgressView().controlSize(.small) }
-                        Text(isWaitingForReference ? "Loading reference…" : confirmLabel)
-                            .font(.subheadline.weight(.semibold))
+        HStack(spacing: 10) {
+            Button {
+                confirming = true
+            } label: {
+                HStack(spacing: 6) {
+                    if isBusy || isWaitingForReference {
+                        ProgressView().controlSize(.small).tint(AppColors.card)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
+                    Text(isWaitingForReference ? "Loading reference…" : confirmLabel)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(AppColors.accent)
-                .disabled(isBusy || isWaitingForReference)
-                .popoverTip(confirmTip, arrowEdge: .top)
-                .accessibilityIdentifier("composition-plan-generate")
-
-                Divider().frame(height: 24).overlay(Color.secondary.opacity(0.2))
-
-                Button { rejecting = true } label: {
-                    Text("Reject")
-                        .font(.subheadline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .disabled(isBusy)
-                .accessibilityIdentifier("composition-plan-dismiss")
+                .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.poster)
+            .disabled(isBusy || isWaitingForReference)
+            .popoverTip(confirmTip, arrowEdge: .top)
+            .accessibilityIdentifier("composition-plan-generate")
+
+            Button { rejecting = true } label: {
+                Text("Reject")
+            }
+            .buttonStyle(.posterSecondary)
+            .disabled(isBusy)
+            .accessibilityIdentifier("composition-plan-dismiss")
         }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 14)
     }
+
+    private var videoCount: Int { plan.layers.filter(\.source.isVideo).count }
 
     private var layerHeading: String {
         let layers = plan.layers.count == 1
             ? String(localized: "1 LAYER")
             : String(localized: "\(plan.layers.count) LAYERS")
-        guard generationCount < plan.layers.count else { return layers }
-        return String(localized: "\(layers) · \(generationCount) GENERATED")
+        let video = videoCount == 0
+            ? ""
+            : videoCount == 1 ? String(localized: " · 1 VIDEO") : String(localized: " · \(videoCount) VIDEOS")
+        guard generationCount < plan.layers.count else { return layers + video }
+        return String(localized: "\(layers) · \(generationCount) GENERATED") + video
     }
 
     private var confirmLabel: String {
@@ -253,6 +267,13 @@ struct PlanCard: View {
     }
 
     private var confirmationMessage: String {
+        let video = videoCount == 0
+            ? ""
+            : " " + String(localized: "One part is then animated as a short video clip, which takes a few extra minutes.")
+        return baseConfirmationMessage + video
+    }
+
+    private var baseConfirmationMessage: String {
         if plan.kind == .animated {
             return generationCount == 0
                 ? String(localized: "This uses the approved static reference to assemble \(plan.layers.count) existing layers and add motion.")
@@ -312,19 +333,23 @@ private struct PlanReferencePreview: View {
                         .contextMenu {
                             // "Sticker" here is the Messages pack, not this project: the action
                             // publishes the picture as a sticker of its own, ready to send.
-                            Button(
-                                isAddingToStickerPack
-                                    ? String(localized: "Adding to Stickers…")
-                                    : String(localized: "Add to Stickers"),
-                                systemImage: "plus"
-                            ) {
+                            Button {
                                 onAddToStickerPack(image)
+                            } label: {
+                                PosterMenuLabel(
+                                    verbatim: isAddingToStickerPack
+                                        ? String(localized: "Adding to Stickers…")
+                                        : String(localized: "Add to Stickers"),
+                                    icon: .add
+                                )
                             }
                             .disabled(isAddingToStickerPack)
                             .accessibilityIdentifier("add-plan-image-to-sticker")
 
-                            Button("Save to Photo Library", systemImage: "square.and.arrow.down") {
+                            Button {
                                 onSaveToPhotoLibrary(image)
+                            } label: {
+                                PosterMenuLabel("Save to Photo Library", icon: .save)
                             }
                             .accessibilityIdentifier("save-plan-image-to-photo-library")
                         }
@@ -339,8 +364,13 @@ private struct PlanReferencePreview: View {
             }
             .frame(maxWidth: .infinity)
             .aspectRatio(1, contentMode: .fit)
-            .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 14))
-            .clipShape(.rect(cornerRadius: 14))
+            .clipShape(.rect(cornerRadius: 14, style: .continuous))
+            .posterSurface(
+                cornerRadius: 14,
+                fill: AppColors.card,
+                lineWidth: Poster.hairline,
+                offset: .zero
+            )
             .accessibilityIdentifier("plan-static-reference")
 
             Text(isCapture
@@ -372,14 +402,20 @@ private struct PlanLayoutPreview: View {
             let side = min(size.width, size.height)
             let origin = CGPoint(x: (size.width - side) / 2, y: (size.height - side) / 2)
             let board = CGRect(origin: origin, size: CGSize(width: side, height: side))
-            context.fill(Path(roundedRect: board, cornerRadius: 10), with: .color(.secondary.opacity(0.08)))
+            context.fill(Path(roundedRect: board, cornerRadius: 10), with: .color(AppColors.card))
 
             // The renderer fits each layer into a box of 86% of the canvas before scaling, so the
             // schematic applies the same factor to stay faithful to the real composition.
             let fit = 0.86
             for (index, layer) in layers.enumerated() {
-                let width = side * fit * layer.scaleX
-                let height = side * fit * layer.scaleY
+                // Aspect-locked sources are built as the smaller of the pair, so that is the box
+                // the sticker will actually have; drawing the wider one would promise a caption
+                // the build shrinks to a square.
+                let uniform = min(layer.scaleX, layer.scaleY)
+                let scaleX = layer.source.isAspectLocked ? uniform : layer.scaleX
+                let scaleY = layer.source.isAspectLocked ? uniform : layer.scaleY
+                let width = side * fit * scaleX
+                let height = side * fit * scaleY
                 let rect = CGRect(
                     x: board.minX + side * layer.x - width / 2,
                     y: board.minY + side * layer.y - height / 2,
@@ -391,11 +427,11 @@ private struct PlanLayoutPreview: View {
                 // artwork the plan keeps from the current sticker is drawn but not paid for.
                 let filled = layer.source.isArtwork
                 let shape = Path(roundedRect: rect, cornerRadius: 4)
-                context.fill(shape, with: .color(AppColors.accent.opacity(filled ? 0.16 : 0.06)))
+                context.fill(shape, with: .color(filled ? AppColors.peach : AppColors.card))
                 context.stroke(
                     shape,
-                    with: .color(AppColors.accent.opacity(filled ? 0.5 : 0.35)),
-                    style: StrokeStyle(lineWidth: 1, dash: filled ? [] : [3, 2])
+                    with: .color(AppColors.ink),
+                    style: StrokeStyle(lineWidth: 1.5, dash: filled ? [] : [3, 2])
                 )
                 // Anchored to the box's top-left corner, not its centre. An accent layer that spans
                 // the elements it decorates shares their centre almost exactly, so centred numerals
@@ -406,20 +442,20 @@ private struct PlanLayoutPreview: View {
                     y: min(max(rect.minY + 9, board.minY + 9), board.maxY - 9)
                 )
                 let chip = Path(ellipseIn: CGRect(x: corner.x - 8, y: corner.y - 8, width: 16, height: 16))
-                context.fill(chip, with: .color(.white.opacity(0.85)))
-                context.stroke(chip, with: .color(AppColors.accent.opacity(0.45)), lineWidth: 1)
+                context.fill(chip, with: .color(AppColors.lime))
+                context.stroke(chip, with: .color(AppColors.ink), lineWidth: 1.5)
                 context.draw(
                     Text("\(index + 1)")
-                        .font(.caption2.monospacedDigit().weight(.bold))
-                        .foregroundStyle(AppColors.accent),
+                        .font(.posterLabel(10))
+                        .foregroundStyle(AppColors.ink),
                     at: corner
                 )
             }
 
             context.stroke(
                 Path(roundedRect: board, cornerRadius: 10),
-                with: .color(.secondary.opacity(0.25)),
-                lineWidth: 1
+                with: .color(AppColors.ink),
+                lineWidth: 2
             )
         }
         .frame(height: Self.boardSide)

@@ -1,29 +1,9 @@
 import { sampleLayerState, sequenceFrameIndex, type LayerState } from "@/lib/animation/sample";
 import type { PaintV2, StrokeV2 } from "@/lib/contracts/paint";
-import type { StickerDocument, StickerLayerV1 } from "@/lib/contracts/sticker";
+import { effectiveLayerScale, type StickerDocument, type StickerLayerV1 } from "@/lib/contracts/sticker";
+import { LAYER_FIT } from "@/lib/layout/composition";
 import { particleGlyph, particlePosition, shapeGeometry } from "@/lib/render/shapes";
 
-/**
- * Draws a `StickerDocument` as an SVG string.
- *
- * This exists so the agent can *look* at what it has built. Nothing else on the server has ever
- * needed to turn a document into pixels — the iOS client renders every export — so this is a second
- * renderer, and it is an approximation on purpose:
- *
- *   - shape geometry is re-derived here (see `shapes.ts`); the authoritative curves are Swift's
- *   - text is laid out by librsvg with whatever fonts the deploy image has, not by SwiftUI, so
- *     wrapping and metrics differ
- *   - particles are scattered by the browser preview's formula, not the Swift field's simulation
- *   - `sheen` is drawn as a plain band and `blendMode` is mapped only where SVG has an equivalent
- *
- * It is faithful enough for the things an agent actually needs to catch — a layer off-canvas, two
- * layers colliding, an entrance that has not started yet, a colour that reads wrong — and the tool
- * description says as much, so the model does not file bug reports about kerning.
- *
- * The layer box matches the native renderer's `AnimatedIconFrame.layerFit`. That constant has to
- * agree or every layer would be drawn at the wrong size relative to its own motion.
- */
-const LAYER_FIT = 0.86;
 
 /** Assets the document references, already fetched. Keyed by asset id. */
 export type RenderAssets = Map<string, { bytes: Uint8Array; mimeType: string }>;
@@ -218,6 +198,22 @@ function layerBody(
     return `<image x="${-half}" y="${-half}" width="${box}" height="${box}" `
       + `preserveAspectRatio="${fit}" href="${href}"/>`;
   }
+  case "video": {
+    // The server never opens the clip: `sharp` has no video decoder, and the layout review needs a
+    // still it can reason about anyway. The poster is the transparent frame the clip was animated
+    // from, so what the agent reviews here is the resting pose the user will see between turns.
+    const poster = assets.get(layer.posterAssetId);
+    if (!poster) {
+      return `<rect x="${-half}" y="${-half}" width="${box}" height="${box}" rx="${round(box * 0.12)}" `
+        + `fill="#B39DDB" opacity="0.5"/>`
+        + `<text x="0" y="0" font-size="${round(box * 0.1)}" fill="#311B92" text-anchor="middle" `
+        + `dominant-baseline="middle" font-family="${FONT_STACKS.system}">video</text>`;
+    }
+    const href = `data:${poster.mimeType};base64,${Buffer.from(poster.bytes).toString("base64")}`;
+    const fit = layer.contentMode === "fill" ? "xMidYMid slice" : "xMidYMid meet";
+    return `<image x="${-half}" y="${-half}" width="${box}" height="${box}" `
+      + `preserveAspectRatio="${fit}" href="${href}"/>`;
+  }
   case "sequence": {
     // `sequenceFrameIndex` is the same function the Swift renderer uses, so the frame the agent
     // reviews here is the frame the user will actually see.
@@ -385,8 +381,9 @@ function renderLayer(
   // native renderer applies them in, which is what keeps a rotated layer's motion looking the same.
   const x = round(state.position.x * size);
   const y = round(state.position.y * size);
+  const scale = effectiveLayerScale(layer.type, state.scale);
   const transform = `translate(${x},${y}) rotate(${round(state.rotationDegrees)}) `
-    + `scale(${round(state.scale.x)},${round(state.scale.y)})`;
+    + `scale(${round(scale.x)},${round(scale.y)})`;
 
   const sheen = renderSheen(state, box, ids, defs);
   return `<g transform="${transform}" ${attributes.join(" ")}>${body}${sheen}</g>`;

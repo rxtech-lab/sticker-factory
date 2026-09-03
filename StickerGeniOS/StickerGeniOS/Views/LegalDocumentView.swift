@@ -12,7 +12,7 @@ nonisolated enum LegalDocument: String, Hashable, Sendable {
         }
     }
 
-    var systemImage: String {
+    var posterSymbol: String {
         switch self {
         case .privacy: "hand.raised.fill"
         case .terms: "doc.text.fill"
@@ -93,7 +93,7 @@ struct LegalDocumentView: View {
         Group {
             switch state {
             case .loading:
-                ProgressView("Loading \(document.title)…")
+                PosterProgress(message: String(localized: "Loading \(document.title)…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .loaded(let markdown):
                 ScrollView {
@@ -106,12 +106,12 @@ struct LegalDocumentView: View {
                 .refreshable { await load(showingPlaceholder: false) }
             case .failed(let message):
                 ContentUnavailableView {
-                    Label("Unable to Load", systemImage: "wifi.exclamationmark")
+                    PosterSymbolLabel("Unable to Load", posterSymbol: "wifi.exclamationmark")
                 } description: {
                     Text(message)
                 } actions: {
                     Button("Try Again") { Task { await load() } }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.poster)
                 }
             }
         }

@@ -1,5 +1,6 @@
 import { gateway } from "@ai-sdk/gateway";
 import {
+  experimental_generateVideo as generateVideo,
   generateImage,
   generateText,
   hasToolCall,
@@ -7,10 +8,12 @@ import {
   tool,
   type ModelMessage,
 } from "ai";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import sharp from "sharp";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
-import { recordImageApiCost, recordTextApiCost } from "@/lib/ai/cost";
+import { recordImageApiCost, recordTextApiCost, recordVideoApiCost } from "@/lib/ai/cost";
 import {
   alternateChromaKey,
   chromaKeyBackground,
@@ -22,6 +25,7 @@ import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { countKeyframes } from "@/lib/animation/compile";
 import { PlanV1Schema, reusableAssetIds, type PlanV1 } from "@/lib/contracts/plan";
 import {
+  MAX_LAYER_INDEX,
   StickerOperationV1Schema,
   type StickerDocument,
   type StickerOperationV1,
@@ -33,6 +37,7 @@ import {
   type LayoutAdjustment,
 } from "@/lib/layout/composition";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
+import type { SubjectBounds } from "@/lib/images/subject-bounds";
 import {
   downscaleForModelInput,
   inspectImage,
@@ -68,6 +73,14 @@ export interface AiImageInput {
    * matte than a model-native alpha channel, which is why the main app never takes this path.
    */
   quick?: boolean;
+  /**
+   * Store the frame as drawn instead of cropping it to its visible subject.
+   *
+   * The crop is what makes a layer's box describe its pixels, so nearly everything wants it. The
+   * exceptions are images whose frame *is* the point: a concept reference, whose coordinates the
+   * parts separated from it are later measured against.
+   */
+  keepFrame?: boolean;
 }
 
 export interface AiImageReferenceCandidate {
@@ -89,6 +102,34 @@ export interface AiImageOutput {
   bytes: Uint8Array;
   mimeType: "image/png";
   revisedPrompt?: string;
+  /**
+   * Where the artwork sat in the frame the model returned, when it was cropped to it. Absent for
+   * masked inpaints and kept frames, and for a provider that does not measure.
+   */
+  subject?: SubjectBounds;
+}
+
+/**
+ * One clip to animate from a still.
+ *
+ * The still arrives as a URL rather than as bytes because the default video model accepts image
+ * input by URL only; the caller flattens the transparent part onto the key colour, stores that as
+ * a scratch object, and presigns it for longer than a download would need, since the provider
+ * queues before it fetches.
+ */
+export interface AiVideoInput {
+  /** Presigned URL of the subject already flattened onto `keyColor`. */
+  imageUrl: string;
+  /** What the subject or camera does over the clip. */
+  motion: string;
+  durationSeconds: number;
+  keyColor: ChromaKeyColor;
+}
+
+export interface AiVideoOutput {
+  bytes: Uint8Array;
+  mimeType: string;
+  modelId: string;
 }
 
 export type AiChatAction =
@@ -373,6 +414,8 @@ function describeLayer(layer: StickerDocument["layers"][number]): string {
     return `${layer.count} ${layer.preset}`;
   case "sequence":
     return `${layer.frameCount}-frame live capture ${layer.assetId}`;
+  case "video":
+    return `${layer.frameCount}-frame generated clip ${layer.assetId}`;
   }
 }
 
@@ -562,6 +605,13 @@ export interface AiProvider {
     prompt: string;
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
   }): Promise<AiImageOutput>;
+  /**
+   * Animates a still into a short 1:1 clip on a chroma backdrop, for a plan's `video` layer.
+   *
+   * Low resolution on purpose: the clip is composited into a sticker that is looked at at
+   * thumbnail size, and every second of it is metered.
+   */
+  generateStickerVideo(input: AiVideoInput): Promise<AiVideoOutput>;
   /** Reviews a built multi-layer sticker and corrects composition without regenerating artwork. */
   refineStickerLayout(
     input: AiLayoutContext,
@@ -854,6 +904,51 @@ const IMAGE_TIMEOUT_MS = (() => {
 })();
 
 /**
+ * The video model and its budget.
+ *
+ * Seedance 1.0 Pro Fast is the default because it is the cheapest model on the Gateway that takes
+ * an image, renders 1:1 at 480p, and returns H.264 — which `inspectMp4` insists on. The timeout is
+ * shorter than the image one deliberately: a clip and the still it is animated from are produced
+ * in the same workflow step, and the two budgets together have to stay under the function's own
+ * ceiling, or a slow pair fails at the runtime instead of at the provider with a message the user
+ * can act on.
+ */
+const VIDEO_MODEL = process.env.AI_VIDEO_MODEL ?? "bytedance/seedance-v1.0-pro-fast";
+/**
+ * Sent to the Gateway verbatim. The AI SDK types this as `{width}x{height}`, but the Gateway's
+ * own model cards name tiers (`480p`) and it forwards whatever it is given; a form the model
+ * rejects comes back as a warning, which `generateStickerVideo` logs. The cast is what lets the
+ * deployment choose either spelling without a code change.
+ */
+const VIDEO_RESOLUTION = (process.env.AI_VIDEO_RESOLUTION ?? "480p") as `${number}x${number}`;
+const VIDEO_FPS = 24;
+const VIDEO_TIMEOUT_MS = (() => {
+  const configured = Number(process.env.AI_VIDEO_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 300_000;
+})();
+
+/**
+ * What the video model is told, beyond the motion the planner wrote.
+ *
+ * The backdrop paragraph is the image one's argument made again for a moving picture: a video
+ * model's instinct is to light the scene, and a lit scene casts a shadow onto the floor, which
+ * survives the key as a grey smudge under the subject in every frame. The design paragraph exists
+ * because a model animating a still will happily redraw it along the way — the sticker the user
+ * approved has to be the sticker that turns.
+ */
+function videoInstruction(input: AiVideoInput): string {
+  return [
+    input.motion,
+    "The subject is a sticker illustration: keep its exact design, colours, proportions, and outline",
+    "throughout, and do not redraw, restyle, or add to it.",
+    `Keep the flat, solid, pure ${input.keyColor.name} background (${input.keyColor.hex}) perfectly`,
+    "uniform in every frame: no shadows, reflections, gradients, vignette, floor, scenery, or props.",
+    "Nothing else enters the frame. Keep the whole subject inside the frame for the entire clip.",
+    "No camera cuts, no text, no captions, no watermark.",
+  ].join(" ");
+}
+
+/**
  * How the quick model is asked for a background it is incapable of leaving empty.
  *
  * `AI_QUICK_IMAGE_MODEL` has no transparency mode, so the alternative to a keyed backdrop is a
@@ -1040,7 +1135,8 @@ async function generateKeyedStickerImage(input: AiImageInput): Promise<AiImageOu
       && keyed.keyedFraction >= MINIMUM_KEYED_FRACTION
       && keyed.keyedFraction <= MAXIMUM_KEYED_FRACTION
     ) {
-      return { bytes: normalized.bytes, mimeType: "image/png" };
+      // Already cropped by the keyer, so the measurement is the keyer's too.
+      return { bytes: normalized.bytes, mimeType: "image/png", subject: keyed.subject };
     }
     traceEvent("gateway.chromaKey:unusable", {
       key: keyColor.name,
@@ -1175,10 +1271,13 @@ class GatewayAiProvider implements AiProvider {
     // trim, and a re-encode of a 1024x1024 PNG — CPU work, off the network, that the Gateway
     // dashboard cannot see. If the process dies in here the request looks complete and billed
     // while the turn never advances, so both normalize passes are timed separately.
+    // A masked inpaint is never cropped: the result has to stay pixel-aligned with the target it
+    // replaces, and a mask is drawn against that frame, not against the subject inside it.
+    const subjectCrop = !input.mask && !input.keepFrame;
     let normalized = await traceSpan(
       "gateway.normalize",
-      { bytes: first.byteLength },
-      () => normalizeTransparentPng(first),
+      { bytes: first.byteLength, subjectCrop },
+      () => normalizeTransparentPng(first, { subjectCrop }),
     );
 
     if (!normalized.inspection.hasTransparentPixels) {
@@ -1198,8 +1297,8 @@ class GatewayAiProvider implements AiProvider {
       );
       normalized = await traceSpan(
         "gateway.normalize",
-        { bytes: retry.byteLength, retry: true },
-        () => normalizeTransparentPng(retry),
+        { bytes: retry.byteLength, retry: true, subjectCrop },
+        () => normalizeTransparentPng(retry, { subjectCrop }),
       );
     }
     if (!normalized.inspection.hasTransparentPixels) {
@@ -1209,7 +1308,7 @@ class GatewayAiProvider implements AiProvider {
         "Image generation did not produce a transparent sticker after retry",
       );
     }
-    return { bytes: normalized.bytes, mimeType: "image/png" };
+    return { bytes: normalized.bytes, mimeType: "image/png", subject: normalized.subject };
   }
 
   async refineStickerLayout(
@@ -1670,7 +1769,11 @@ class GatewayAiProvider implements AiProvider {
       try {
         const landed = await run();
         state = { revision: landed.revision, finalized: false };
-        return { revision: landed.revision, sticker: summarizeDocument(landed.document) };
+        return {
+          revision: landed.revision,
+          sticker: summarizeDocument(landed.document),
+          diagnostics: layoutDiagnostics(landed.document),
+        };
       } catch (error) {
         if (isTurnAbort(error)) {
           fatal = error.reason ?? error;
@@ -1692,8 +1795,10 @@ class GatewayAiProvider implements AiProvider {
           "moved. It draws nothing and costs nothing, so it is the right tool for every request that",
           "does not need new artwork.",
           "addLayer adds a text, shape, or particle layer — send the whole layer object.",
-          "removeLayer deletes a layer outright. reorderLayer changes what sits in front of what;",
-          "later layers are drawn on top. renameLayer changes only the label.",
+          "removeLayer deletes a layer outright. reorderLayer changes what sits in front of what:",
+          "layers are drawn in array order, index 0 at the back and the last layer on top, and",
+          "reorderLayer removes the layer then re-inserts it at index in the remaining list, so the",
+          "last index puts it in front. renameLayer changes only the label.",
           "To change what a text layer says, or how any layer is styled, remove it and add the",
           "replacement in the same call at the same index, keeping the id, name, anchor, and",
           "animations you want it to carry over.",
@@ -1730,7 +1835,10 @@ class GatewayAiProvider implements AiProvider {
       add_image_layer: tool({
         description: [
           "Draw one new element on a transparent background and add it to the top of the stack as its",
-          "own image layer, leaving every existing layer untouched.",
+          "own image layer, leaving every existing layer untouched. Give it x, y, scaleX and scaleY",
+          "for where it should sit, or omit them to have it placed in the largest free area of the",
+          "canvas. The artwork is square and fitted inside its box, so send equal scaleX and scaleY;",
+          "an unequal pair is applied as the smaller of the two.",
           "The prompt must describe a single element filling its frame edge to edge on a transparent",
           "background, with no other elements and no text unless that layer IS the text.",
           "Use it for artwork the sticker does not have yet, including artwork that is replacing an",
@@ -1746,13 +1854,13 @@ class GatewayAiProvider implements AiProvider {
               .number()
               .int()
               .min(0)
-              .max(7)
+              .max(MAX_LAYER_INDEX)
               .optional()
               .describe("Where in the stack to insert it. Omit to put it on top."),
             x: z.number().min(0).max(1).optional(),
             y: z.number().min(0).max(1).optional(),
-            scaleX: z.number().min(0.05).max(2).optional(),
-            scaleY: z.number().min(0.05).max(2).optional(),
+            scaleX: z.number().min(0.05).max(1).optional(),
+            scaleY: z.number().min(0.05).max(1).optional(),
           })
           .strict(),
         execute: async (value) => guard(() => session.addImageLayer(value)),
@@ -1793,7 +1901,15 @@ class GatewayAiProvider implements AiProvider {
         "Layout. A layer's anchor is where it rests: position x and y are its normalized centre",
         "(0,0 is top-left, 1,1 is bottom-right) and scale is relative to a box covering 86% of the",
         "canvas. Keep layers on canvas and keep their boxes from overlapping unless the user wants",
-        "them stacked.",
+        "them stacked. image, sequence, video, and text layers are fitted inside a square box, so",
+        "give them equal scaleX and scaleY; an unequal pair is applied as the smaller of the two.",
+        "Stacking. Layers are drawn in array order: index 0 is at the back and the last layer is on",
+        "top. Put a new element behind or in front of what it belongs with, not just on top.",
+        "Every tool result carries diagnostics: offCanvasLayerIds must be empty before finalize_edit,",
+        "and an operation that leaves a layer off canvas is rejected with the layers to fix.",
+        "substantialOverlaps lists boxes that cover most of a smaller layer — separate them, unless",
+        "the user asked for one thing on top of another. Call view_sticker after a change that moves",
+        "or adds something, and fix what you see before finishing.",
         "Motion. Animations are named effects with a delay and a duration in seconds; two on the same",
         "layer must not overlap in time if they drive the same property, and every one must finish",
         "within the sticker's duration. Static stickers cannot carry any animations at all.",
@@ -2240,7 +2356,7 @@ class GatewayAiProvider implements AiProvider {
         "than the first turn's did: the user's face is the one thing in this sticker that has a",
         "correct answer.",
         "",
-        "Layers. At most 8. Every layer picks its own source. The six options are:",
+        "Layers. At most 8. Every layer picks its own source. The seven options are:",
         "  generate — artwork drawn from a prompt by an image model onto a transparent background.",
         "    This is the only source that can draw a subject: a character, creature, face, animal,",
         "    object, food, prop, scene element, or any illustration at all. Use one generate layer",
@@ -2266,10 +2382,27 @@ class GatewayAiProvider implements AiProvider {
         "    text, change a colour, or adjust the motion is not a request to redraw the person, and",
         "    replacing their footage with a generate layer that describes their face is the single",
         "    worst thing you can do to this sticker. Only drop it if the user asks you to.",
+        "  video — a short generated clip of the WHOLE subject, animated from the approved still by a",
+        "    video model. Use it ONLY for motion that keyframe animations cannot express: a 3D",
+        "    turnaround or spin, showing the subject from a different angle, a perspective or camera",
+        "    move, cloth, hair, or liquid physics, a morph between forms. Everything else — bounce,",
+        "    float, wiggle, fade, slide, pulse, pop, typewriter — stays generate + animations, which",
+        "    is cheaper, sharper, and transparent by construction. Rules: at most one video layer per",
+        "    plan; only in animated plans; the prompt describes the complete subject exactly like a",
+        "    generate prompt, and `motion` says what the subject or camera does in durationSeconds",
+        "    (2 to 4) seconds, phrased so the clip loops cleanly — a full turn, a to-and-fro. The clip",
+        "    is low resolution and keyed off a green screen on the device, so keep captions, sparkles,",
+        "    and accents as separate layers on top rather than inside the clip. A video layer cannot",
+        "    be reused with `existing` on a later plan; keep one only by planning it as video again.",
+        "    The summary the user reads must say which layer is generated as a video and why its",
+        "    motion needs one — it costs more than a drawn layer and looks different, and they are",
+        "    confirming that.",
         "Animated visual fidelity. In an animated plan, every new visible element must use generate,",
         "including styled lettering, bursts, stars, underlines, badges, and decorative accents. The",
         "approved static image is later separated into these generated layers, which is how the final",
         "sticker keeps its exact silhouettes, outlines, bevels, shadows, highlights, and texture.",
+        "A video layer is separated from the approved image the same way and then animated, so it",
+        "counts as generated artwork here.",
         "Never use text, shape, or particle in an animated plan: those are generic app-rendered",
         "primitives and will not match the approved image.",
         // Words are the case the planner reaches for a primitive on hardest, because a `text` layer
@@ -2340,6 +2473,11 @@ class GatewayAiProvider implements AiProvider {
         "visible gap between neighbouring chunks or the words run together into one string.",
         "",
         "Layout. x and y are the layer's normalized centre (0,0 is top-left, 1,1 is bottom-right).",
+        // Nothing else in this prompt says what the order of `layers` means, and a planner that
+        // lists the hero first and its glow second has, without knowing it, hidden the hero.
+        "Layer order is stacking order: the first layer in layers is drawn at the back and the last",
+        "on top. List backgrounds, glows and bursts first, the main subject next, and anything that",
+        "must read over it — badges, lettering, sparkles — last.",
         // The renderer fits every layer into a box of 0.86 * canvas before applying scale, so the
         // planner's numbers are not a direct fraction of the canvas. Say so or layouts overlap.
         "scaleX and scaleY are relative to a box covering 86% of the canvas, so 0.4 is roughly a third",
@@ -2460,6 +2598,44 @@ class GatewayAiProvider implements AiProvider {
     return state;
   }
 
+  async generateStickerVideo(input: AiVideoInput): Promise<AiVideoOutput> {
+    const trace = {
+      model: VIDEO_MODEL,
+      resolution: VIDEO_RESOLUTION,
+      durationSeconds: input.durationSeconds,
+      keyColor: input.keyColor.name,
+    };
+    const result = await traceSpan("gateway.video", trace, () => generateVideo({
+      model: gateway.videoModel(VIDEO_MODEL),
+      prompt: { image: input.imageUrl, text: videoInstruction(input) },
+      aspectRatio: "1:1",
+      resolution: VIDEO_RESOLUTION,
+      duration: input.durationSeconds,
+      fps: VIDEO_FPS,
+      // One retry, not two: a clip is minutes of wall clock and every attempt is metered.
+      maxRetries: 1,
+      abortSignal: AbortSignal.timeout(VIDEO_TIMEOUT_MS),
+      poll: { intervalMs: 5_000, timeoutMs: VIDEO_TIMEOUT_MS },
+    }));
+    if (result.warnings.length > 0) {
+      // A rejected `resolution` or `aspectRatio` string comes back here rather than as an error,
+      // and the clip arrives at whatever the model chose instead. Worth a line: it is the one
+      // signal that the model card and this code have drifted apart.
+      traceEvent("gateway.video:warnings", { ...trace, warnings: result.warnings });
+    }
+    const priced = await recordVideoApiCost(result, {
+      modelId: VIDEO_MODEL,
+      resolution: VIDEO_RESOLUTION,
+      durationSeconds: input.durationSeconds,
+    });
+    if (priced === "estimate") traceEvent("gateway.video:estimatedCost", trace);
+    return {
+      bytes: result.video.uint8Array,
+      mimeType: result.video.mediaType || "video/mp4",
+      modelId: VIDEO_MODEL,
+    };
+  }
+
   async generateConceptImage(input: {
     prompt: string;
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
@@ -2473,6 +2649,8 @@ class GatewayAiProvider implements AiProvider {
         ].join(" "),
         references: input.references,
         mode: "generate",
+        // A reference is the frame the separated parts are measured against, so it keeps its own.
+        keepFrame: true,
       });
     }
     // Opaque on purpose. The reference is a picture *of* the complete sticker, not one of the
@@ -2618,6 +2796,16 @@ export function validateEditOperation(
       "Captured footage can only be added by the user; it cannot be introduced by an edit",
     );
   }
+  // A clip is only ever made by building a plan: it costs a video generation and needs a still to
+  // animate from, neither of which the edit loop has. An `addLayer` naming one would point at an
+  // asset this turn did not produce.
+  if (operation.op === "addLayer" && operation.layer.type === "video") {
+    throw new ApiError(
+      422,
+      "UNSAFE_EDIT_OPERATION",
+      "A video layer can only be produced by a plan; plan the sticker again to add one",
+    );
+  }
   return operation;
 }
 
@@ -2640,7 +2828,9 @@ export function validatePlannedAnimationOperation(
   if (
     operation.op === "replaceAsset" ||
     operation.op === "removeLayer" ||
-    (operation.op === "addLayer" && (operation.layer.type === "image" || operation.layer.type === "sequence"))
+    (operation.op === "addLayer" && (
+      operation.layer.type === "image" || operation.layer.type === "sequence" || operation.layer.type === "video"
+    ))
   ) {
     throw new ApiError(
       422,
@@ -2671,8 +2861,10 @@ class MockAiProvider implements AiProvider {
     )
       .png()
       .toBuffer();
-    const normalized = await normalizeTransparentPng(bytes);
-    return { bytes: normalized.bytes, mimeType: "image/png" };
+    const normalized = await normalizeTransparentPng(bytes, {
+      subjectCrop: !input.mask && !input.keepFrame,
+    });
+    return { bytes: normalized.bytes, mimeType: "image/png", subject: normalized.subject };
   }
 
   async refineStickerLayout(
@@ -2812,8 +3004,23 @@ class MockAiProvider implements AiProvider {
   }
 
   /**
+   * A checked-in one-second clip: 480x480, 24 fps, H.264, a red square sliding across pure green.
+   *
+   * Real bytes rather than a stub, because everything downstream of the provider is the part worth
+   * testing — `inspectMp4` has to accept the container, the asset row has to carry its timing, and
+   * the document's fps has to be raised to match.
+   */
+  async generateStickerVideo(): Promise<AiVideoOutput> {
+    const bytes = await readFile(path.join(process.cwd(), "fixtures", "video-480.mp4"));
+    return { bytes: new Uint8Array(bytes), mimeType: "video/mp4", modelId: "mock/video" };
+  }
+
+  /**
    * Scripts the same create -> update -> show -> finalize shape the real loop produces, so the
    * integration tests exercise the session callbacks and the transcript rows they write.
+   *
+   * An instruction that asks for a turnaround plans its first layer as a `video` source, so the
+   * build path's clip branch is exercised end to end.
    */
   async planSticker(
     input: AiPlanContext,
@@ -2825,6 +3032,7 @@ class MockAiProvider implements AiProvider {
     ).slice(0, 8);
     const characters = tokens.length >= 2 ? tokens : ["A", "B"];
     const animated = input.stickerKind === "animated";
+    const wantsClip = animated && /\b(rotat(?:e|es|ing)|spin(?:s|ning)?|turn(?:s|around|table)?)\b/i.test(input.instruction);
     // Mirrors the instruction the real planner is given: revising a sticker keeps the artwork it
     // already has, so the leading layers reuse it and only the surplus is drawn.
     const reusable = reusableAssetIds(input.document);
@@ -2832,7 +3040,9 @@ class MockAiProvider implements AiProvider {
       PlanV1Schema.parse({
         version: 1,
         title: "Planned sticker",
-        summary: `Here is a plan with ${characters.length} layers. Confirm to build it.`,
+        summary: wantsClip
+          ? `Here is a plan with ${characters.length} layers; the first is generated as a video so it can turn around. Confirm to build it.`
+          : `Here is a plan with ${characters.length} layers. Confirm to build it.`,
         kind: input.stickerKind,
         conceptPrompt: animated
           ? `A polished sticker spelling ${characters.join("").toUpperCase()}, with every character arranged left to right in one coherent bold style.`
@@ -2841,12 +3051,19 @@ class MockAiProvider implements AiProvider {
         layers: characters.map((token, index, all) => ({
           layerId: `part_${index}`,
           name: token.toUpperCase(),
-          source: reusable[index]
-            ? { kind: "existing", assetId: reusable[index] }
-            : {
-                kind: "generate",
+          source: wantsClip && index === 0
+            ? {
+                kind: "video",
                 prompt: `The single character "${token}" as a bold sticker letter filling the frame on a transparent background.`,
-              },
+                motion: "A slow full turnaround, one complete rotation.",
+                durationSeconds: 2,
+              }
+            : reusable[index]
+              ? { kind: "existing", assetId: reusable[index] }
+              : {
+                  kind: "generate",
+                  prompt: `The single character "${token}" as a bold sticker letter filling the frame on a transparent background.`,
+                },
           x: (index + 0.5) / all.length,
           y: 0.5,
           scaleX: Math.min(0.9, 1 / all.length),

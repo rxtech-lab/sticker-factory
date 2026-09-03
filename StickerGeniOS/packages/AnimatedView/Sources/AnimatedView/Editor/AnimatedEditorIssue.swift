@@ -173,6 +173,27 @@ extension AnimatedDocument {
                         + "renders at \(fps), so some frames will be dropped."
                 )
             }
+        case .video(let video):
+            if !video.assetId.isAnimatedUUID {
+                add("asset", .blocking, "\(trimmedName) has no valid clip.")
+            }
+            if !video.posterAssetId.isAnimatedUUID {
+                add("poster", .blocking, "\(trimmedName)'s still frame is not a valid image.")
+            }
+            if !(1...600).contains(video.frameCount) {
+                add("frames", .blocking, "\(trimmedName) must have between 1 and 600 frames.")
+            }
+            if !(1...60).contains(video.frameRate) {
+                add("rate", .blocking, "\(trimmedName) must play between 1 and 60 frames per second.")
+            }
+            if kind == .animated, Double(fps) < video.frameRate {
+                add(
+                    "rate-mismatch",
+                    .warning,
+                    "\(trimmedName) was generated at \(Int(video.frameRate)) fps but this sticker "
+                        + "renders at \(fps), so some frames will be dropped."
+                )
+            }
         case .unsupported:
             add(
                 "unsupported",

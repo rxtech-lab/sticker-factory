@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   assertAnimatedPlanUsesReferenceBackedArtwork,
+  assertPlanAllowedForJob,
   compilePlanAnimations,
   planGenerationCount,
   planLayerAnchor,
+  planVideoCount,
   PlanV1Schema,
 } from "@/lib/contracts/plan";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
@@ -123,6 +125,74 @@ describe("PlanV1Schema", () => {
   });
 });
 
+describe("video layer sources", () => {
+  const clip = { kind: "video", prompt: "A corgi sticker", motion: "A slow full turnaround", durationSeconds: 3 };
+  const withClip = (overrides: Record<string, unknown> = {}) => plan({
+    summary: "The corgi is generated as a video so it can turn all the way round.",
+    layers: [{ ...plan().layers[0], source: clip }, plan().layers[1]],
+    ...overrides,
+  });
+
+  it("accepts one clip in an animated plan and defaults its length", () => {
+    const parsed = PlanV1Schema.parse(withClip({
+      layers: [{ ...plan().layers[0], source: { kind: "video", prompt: "A corgi", motion: "spins" } }],
+    }));
+    expect(parsed.layers[0].source).toMatchObject({ kind: "video", durationSeconds: 3 });
+  });
+
+  it("counts the clip's still as a generation and the clip as a video", () => {
+    const parsed = PlanV1Schema.parse(withClip());
+    expect(planGenerationCount(parsed)).toBe(2);
+    expect(planVideoCount(parsed)).toBe(1);
+    expect(planVideoCount(PlanV1Schema.parse(plan()))).toBe(0);
+  });
+
+  it("refuses a clip in a static plan", () => {
+    const result = PlanV1Schema.safeParse(withClip({ kind: "static", timing: undefined }));
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toMatch(/needs an animated plan/);
+  });
+
+  it("refuses more than one clip", () => {
+    const result = PlanV1Schema.safeParse(withClip({
+      layers: [{ ...plan().layers[0], source: clip }, { ...plan().layers[1], source: clip }],
+    }));
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toMatch(/At most one video layer/);
+  });
+
+  it("keeps the clip inside the video model's and the plan timing's bounds", () => {
+    expect(PlanV1Schema.safeParse(withClip({
+      layers: [{ ...plan().layers[0], source: { ...clip, durationSeconds: 5 } }],
+    })).success).toBe(false);
+    expect(PlanV1Schema.safeParse(withClip({
+      layers: [{ ...plan().layers[0], source: { ...clip, durationSeconds: 1 } }],
+    })).success).toBe(false);
+  });
+
+  it("makes the summary tell the user which layer is a video", () => {
+    const result = PlanV1Schema.safeParse(withClip({ summary: "The corgi turns around. Confirm to build it." }));
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toMatch(/Say in the summary which layer/);
+  });
+
+  it("is reference-backed, so the animated fidelity rule leaves it alone", () => {
+    expect(() => assertAnimatedPlanUsesReferenceBackedArtwork(PlanV1Schema.parse(withClip()))).not.toThrow();
+  });
+
+  it("is refused for a quick turn, which is rendered where a clip cannot play", () => {
+    const parsed = PlanV1Schema.parse(withClip());
+    expect(() => assertPlanAllowedForJob(parsed, { quick: true })).toThrow(/not available in quick mode.*part_0/);
+    expect(() => assertPlanAllowedForJob(parsed, { quick: false })).not.toThrow();
+    expect(() => assertPlanAllowedForJob(PlanV1Schema.parse(plan()), { quick: true })).not.toThrow();
+  });
+
+  it("is aspect-locked like every other pixel-backed layer", () => {
+    const parsed = PlanV1Schema.parse(withClip());
+    expect(planLayerAnchor(parsed.layers[0]).scale).toEqual({ x: 0.4, y: 0.4 });
+  });
+});
+
 describe("plan animations", () => {
   it("rejects a plan whose motion runs past the sticker duration", () => {
     const result = PlanV1Schema.safeParse(plan({
@@ -192,6 +262,16 @@ describe("plan animations", () => {
   // that passed the overlap and off-canvas checks still passes.
   it("squares off the scale of a layer whose artwork is pixels", () => {
     const parsed = PlanV1Schema.parse(plan());
+    expect(planLayerAnchor(parsed.layers[0]).scale).toEqual({ x: 0.4, y: 0.4 });
+  });
+
+  // Glyphs are fitted inside their box by the renderer, so a wide text box is a small square of
+  // letters; squaring it here keeps the plan's footprint honest about that.
+  it("squares a text layer off like pixel artwork", () => {
+    const parsed = PlanV1Schema.parse(plan({
+      kind: "static",
+      layers: [{ ...plan().layers[0], animations: [], source: { kind: "text", text: "HI", color: "#FF0055" } }],
+    }));
     expect(planLayerAnchor(parsed.layers[0]).scale).toEqual({ x: 0.4, y: 0.4 });
   });
 

@@ -16,6 +16,9 @@ nonisolated enum StickerKind: String, Codable, CaseIterable, Hashable, Sendable,
         self == .static ? String(localized: "Static") : String(localized: "Animated")
     }
     var symbol: String { self == .static ? "photo" : "sparkles.rectangle.stack" }
+    /// The larger poster face of the same idea; `symbol` is now only a semantic lookup key for the
+    /// compact cartoon renderer.
+    var icon: String { self == .static ? PosterIcon.staticSticker : PosterIcon.animatedSticker }
 
     /// The document's own spelling of the same distinction.
     var animatedKind: AnimatedKind { self == .static ? .static : .animated }

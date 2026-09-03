@@ -43,11 +43,11 @@ struct StickerExportProgressSheet: View {
                             // On the sheet rather than in the toolbar: "Cancel" beside a title bar
                             // reads as a way out of the screen, and this stops the export.
                             Button(role: .cancel, action: onCancel) {
-                                Label("Cancel Export", systemImage: "stop.circle")
+                                Text("Cancel Export")
                                     .fontWeight(.semibold)
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.posterSecondary)
                             .controlSize(.large)
                             .tint(.red)
                             .accessibilityIdentifier("cancel-export")
@@ -133,7 +133,7 @@ struct StickerExportProgressSheet: View {
     }
 
     private func mark(_ symbol: String, tint: Color) -> some View {
-        Image(systemName: symbol)
+        PosterSymbol(symbol)
             .font(.subheadline.bold())
             .foregroundStyle(.white)
             .frame(width: 32, height: 32)
@@ -224,7 +224,7 @@ struct StickerExportProgressSheet: View {
                 .frame(width: 22, height: 22)
             switch step.state {
             case .pending:
-                Image(systemName: step.stage.symbol)
+                PosterSymbol(step.stage.symbol)
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.secondary)
             case .running:
@@ -233,11 +233,11 @@ struct StickerExportProgressSheet: View {
                     .scaleEffect(0.7)
                     .tint(AppColors.accent)
             case .done:
-                Image(systemName: "checkmark")
+                PosterSymbol("checkmark")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)
             case .failed, .cancelled:
-                Image(systemName: "xmark")
+                PosterSymbol("xmark")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)
             }

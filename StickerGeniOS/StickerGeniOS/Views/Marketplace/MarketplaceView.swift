@@ -46,13 +46,12 @@ struct MarketplaceView: View {
         StickerBackground {
             Group {
                 if store.isLoading && visible.isEmpty {
-                    ProgressView("Loading packs…")
+                    PosterProgress(message: String(localized: "Loading packs…"))
                 } else if visible.isEmpty {
                     // Keyed on `appliedQuery`, never the live search text: the two disagree while a
                     // search is being typed or has just been dismissed, and the results on screen
                     // belong to the applied one.
                     EmptyStateView(
-                        symbol: store.appliedQuery.isEmpty ? "square.stack.3d.up" : "magnifyingglass",
                         title: store.appliedQuery.isEmpty
                             ? (tab == .mine
                                 ? String(localized: "No packs yet")
@@ -79,7 +78,7 @@ struct MarketplaceView: View {
                         .padding()
 
                         if nextCursor != nil {
-                            ProgressView("Loading more packs…")
+                            PosterProgress(message: String(localized: "Loading more packs…"))
                                 .frame(maxWidth: .infinity)
                                 .padding(.bottom, 24)
                                 .accessibilityIdentifier("marketplace-pagination-progress")
@@ -110,7 +109,12 @@ struct MarketplaceView: View {
         .onSubmit(of: .search) { Task { await store.refresh() } }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("New pack", systemImage: "plus") { showingComposer = true }
+                Button {
+                    showingComposer = true
+                } label: {
+                    PosterToolbarIcon(glyph: .add)
+                }
+                    .accessibilityLabel("New pack")
                     .accessibilityIdentifier("create-pack-button")
             }
             ToolbarItem(placement: .principal) {
@@ -124,12 +128,15 @@ struct MarketplaceView: View {
         .toolbar {
             if tab == .browse {
                 ToolbarItem(placement: .topBarLeading) {
-                    Menu("Sort", systemImage: "arrow.up.arrow.down") {
+                    Menu {
                         Picker("Sort", selection: $store.sort) {
                             Text("Newest").tag(PackSort.recent)
                             Text("Popular").tag(PackSort.popular)
                         }
+                    } label: {
+                        PosterToolbarIcon(glyph: .sort)
                     }
+                    .accessibilityLabel("Sort")
                     .accessibilityIdentifier("marketplace-sort-menu")
                 }
             }

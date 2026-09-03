@@ -10,6 +10,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import sharp, { type Metadata, type Stats } from "sharp";
 import { MAX_RENDITION_SECONDS } from "@/lib/contracts/sticker";
 import { ApiError } from "@/lib/http/errors";
+import { cropPngToSubject, type SubjectBounds } from "@/lib/images/subject-bounds";
 
 export interface StoredObject {
   bytes: Uint8Array;
@@ -19,7 +20,11 @@ export interface StoredObject {
 
 export interface ObjectStore {
   signedPut(key: string, contentType: string, byteSize: number): Promise<{ url: string; expiresAt: Date; headers: Record<string, string> }>;
-  signedGet(key: string, filename?: string): Promise<{ url: string; expiresAt: Date }>;
+  /**
+   * A presigned read. Five minutes by default, which is a download's worth; a caller handing the
+   * URL to a third party that queues before it fetches — a video model — may ask for longer.
+   */
+  signedGet(key: string, filename?: string, expiresInSeconds?: number): Promise<{ url: string; expiresAt: Date }>;
   put(key: string, object: StoredObject): Promise<void>;
   get(key: string): Promise<StoredObject>;
   head(key: string): Promise<{ contentType?: string; byteSize?: number; metadata?: Record<string, string> }>;
@@ -61,15 +66,15 @@ class R2ObjectStore implements ObjectStore {
     };
   }
 
-  async signedGet(key: string, filename?: string) {
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  async signedGet(key: string, filename?: string, expiresInSeconds = 300) {
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
     const safeFilename = filename?.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120) || "sticker";
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
       ...(filename ? { ResponseContentDisposition: `attachment; filename="${safeFilename}"` } : {}),
     });
-    return { url: await getSignedUrl(this.client, command, { expiresIn: 300 }), expiresAt };
+    return { url: await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds }), expiresAt };
   }
 
   async put(key: string, object: StoredObject): Promise<void> {
@@ -112,7 +117,7 @@ export class MemoryObjectStore implements ObjectStore {
       headers: { "content-type": contentType },
     };
   }
-  async signedGet(key: string, filename?: string) {
+  async signedGet(key: string, filename?: string, expiresInSeconds = 300) {
     if (!this.objects.has(key) && process.env.STICKER_FACTORY_E2E !== "true") {
       throw new ApiError(404, "ASSET_OBJECT_MISSING", "The media object does not exist");
     }
@@ -120,7 +125,7 @@ export class MemoryObjectStore implements ObjectStore {
       url: filename
         ? `https://downloads.invalid/${encodeURIComponent(key)}?disposition=${encodeURIComponent(`attachment; filename="${filename}"`)}`
         : `https://downloads.invalid/${encodeURIComponent(key)}?mode=inline`,
-      expiresAt: new Date(Date.now() + 300_000),
+      expiresAt: new Date(Date.now() + expiresInSeconds * 1000),
     };
   }
   async put(key: string, object: StoredObject) { this.objects.set(key, object); }
@@ -402,13 +407,25 @@ export async function inspectImage(bytes: Uint8Array): Promise<ImageInspection> 
   };
 }
 
-export async function normalizeTransparentPng(bytes: Uint8Array): Promise<{ bytes: Uint8Array; inspection: ImageInspection }> {
-  const png = await sharp(bytes, { limitInputPixels: 4096 * 4096 })
+/**
+ * Squares a generated image up to the 1024x1024 frame every layer is drawn from.
+ *
+ * With `subjectCrop` the frame is first cut down to its visible artwork, so the layer box a
+ * document places it in describes the pixels rather than whatever margin the model left around
+ * them. `subject` is measured in the *source* frame, before the crop, which is what lets a part
+ * separated from a reference say where in that reference it was.
+ */
+export async function normalizeTransparentPng(
+  bytes: Uint8Array,
+  options: { subjectCrop?: boolean } = {},
+): Promise<{ bytes: Uint8Array; inspection: ImageInspection; subject?: SubjectBounds }> {
+  const cropped = options.subjectCrop ? await cropPngToSubject(bytes) : { bytes };
+  const png = await sharp(cropped.bytes, { limitInputPixels: 4096 * 4096 })
     .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .ensureAlpha()
     .png({ compressionLevel: 9, adaptiveFiltering: true })
     .toBuffer();
-  return { bytes: png, inspection: await inspectImage(png) };
+  return { bytes: png, inspection: await inspectImage(png), subject: cropped.subject };
 }
 
 /**

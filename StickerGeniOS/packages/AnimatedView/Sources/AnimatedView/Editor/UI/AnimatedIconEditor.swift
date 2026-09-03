@@ -224,7 +224,7 @@ public struct AnimatedIconEditor: View {
             Button {
                 editor.isPlaying.toggle()
             } label: {
-                Image(systemName: editor.isPlaying ? "pause.fill" : "play.fill")
+                AnimatedCartoonSymbol(editor.isPlaying ? "pause.fill" : "play.fill")
             }
             .disabled(editor.document.kind == .static)
             .accessibilityLabel(editor.isPlaying ? "Pause" : "Play")
@@ -247,7 +247,9 @@ public struct AnimatedIconEditor: View {
             }
 
             Picker("Backdrop", selection: $backdrop) {
-                ForEach(AnimatedEditorBackdrop.allCases) { Image(systemName: symbol(for: $0)).tag($0) }
+                ForEach(AnimatedEditorBackdrop.allCases) {
+                    AnimatedCartoonSymbol(symbol(for: $0)).tag($0)
+                }
             }
             .pickerStyle(.segmented)
             .frame(width: 130)
@@ -270,9 +272,17 @@ public struct AnimatedIconEditor: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarLeading) {
-            Button("Undo", systemImage: "arrow.uturn.backward") { editor.undo() }
+            Button {
+                editor.undo()
+            } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
                 .disabled(!editor.canUndo)
-            Button("Redo", systemImage: "arrow.uturn.forward") { editor.redo() }
+            Button {
+                editor.redo()
+            } label: {
+                Label("Redo", systemImage: "arrow.uturn.forward")
+            }
                 .disabled(!editor.canRedo)
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
@@ -282,7 +292,11 @@ public struct AnimatedIconEditor: View {
                 canAddImageLayers: onPickImageAsset != nil,
                 onRequestImageAsset: { pickImageAsset() }
             )
-            Button("Sticker Settings", systemImage: "slider.horizontal.3") { showsSettings = true }
+            Button {
+                showsSettings = true
+            } label: {
+                Label("Sticker Settings", systemImage: "slider.horizontal.3")
+            }
         }
     }
 
@@ -291,7 +305,10 @@ public struct AnimatedIconEditor: View {
     @ViewBuilder
     private var issueBanner: some View {
         if let issue = editor.issues.first {
-            Label(issue.message, systemImage: issue.severity == .blocking ? "exclamationmark.triangle.fill" : "info.circle")
+            AnimatedCartoonLabel(
+                verbatim: issue.message,
+                icon: issue.severity == .blocking ? "exclamationmark.triangle.fill" : "info.circle"
+            )
                 .font(.caption)
                 .foregroundStyle(issue.severity == .blocking ? Color.red : Color.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -302,7 +319,10 @@ public struct AnimatedIconEditor: View {
                     if let layerID = issue.layerID { editor.selectedLayerID = layerID }
                 }
         } else if let error = editor.lastError {
-            Label(error.errorDescription ?? "That edit was not possible.", systemImage: "exclamationmark.circle")
+            AnimatedCartoonLabel(
+                verbatim: error.errorDescription ?? "That edit was not possible.",
+                icon: "exclamationmark.circle"
+            )
                 .font(.caption)
                 .foregroundStyle(.orange)
                 .frame(maxWidth: .infinity, alignment: .leading)

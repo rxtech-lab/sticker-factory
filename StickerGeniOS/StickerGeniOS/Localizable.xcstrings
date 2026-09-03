@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    " · %lld VIDEOS" : {
+
+    },
+    " · 1 VIDEO" : {
+
+    },
     "—" : {
 
     },
@@ -108,6 +114,7 @@
       }
     },
     "%@s · %lld fps · %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -466,6 +473,7 @@
       }
     },
     "About" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -1526,6 +1534,9 @@
         }
       }
     },
+    "Couldn't download the asset." : {
+
+    },
     "Couldn't fetch the published files. Check your connection and try again." : {
       "localizations" : {
         "zh-CN" : {
@@ -2518,6 +2529,9 @@
         }
       }
     },
+    "Fresh off the press" : {
+
+    },
     "Generate %lld images" : {
       "localizations" : {
         "zh-CN" : {
@@ -2666,6 +2680,7 @@
       }
     },
     "Help" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -2851,6 +2866,7 @@
       }
     },
     "Legal" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -3364,6 +3380,9 @@
         }
       }
     },
+    "New sticker" : {
+
+    },
     "Newest" : {
       "localizations" : {
         "zh-CN" : {
@@ -3749,6 +3768,9 @@
           }
         }
       }
+    },
+    "One part is then animated as a short video clip, which takes a few extra minutes." : {
+
     },
     "Only the subject you lift is uploaded. The rest of the photo stays on your device." : {
 
@@ -5308,6 +5330,7 @@
       }
     },
     "Signed In" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -5728,6 +5751,7 @@
       }
     },
     "Subscription" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -5956,6 +5980,9 @@
           }
         }
       }
+    },
+    "The downloaded asset didn't match what was published." : {
+
     },
     "The export file could not be created." : {
       "localizations" : {
@@ -6866,6 +6893,9 @@
           }
         }
       }
+    },
+    "Video · %llds" : {
+
     },
     "View Plans" : {
 

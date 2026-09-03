@@ -54,7 +54,7 @@ struct AboutPageView: View {
                     }
                 }
                 .padding(16)
-                .background(.thinMaterial, in: .rect(cornerRadius: 16))
+                .posterSurface(cornerRadius: Poster.tileRadius, offset: Poster.smallShadow)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("app-version")
 
@@ -64,11 +64,12 @@ struct AboutPageView: View {
                             Label("Contact support", systemImage: "envelope")
                             Spacer(minLength: 8)
                             Text(AboutPage.supportEmail)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppColors.muted)
                         }
                     }
+                    .foregroundStyle(AppColors.ink)
                     .padding(16)
-                    .background(.thinMaterial, in: .rect(cornerRadius: 16))
+                    .posterSurface(cornerRadius: Poster.tileRadius, fill: AppColors.highlight, offset: Poster.smallShadow)
                     .accessibilityIdentifier("support-email")
                 }
             }
@@ -77,6 +78,7 @@ struct AboutPageView: View {
             .frame(maxWidth: 720, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .background { PosterPaper() }
         .refreshable { await load(showingPlaceholder: false) }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -95,12 +97,12 @@ struct AboutPageView: View {
             MarkdownText(markdown: markdown, style: .document)
         case .failed(let message):
             ContentUnavailableView {
-                Label("Unable to Load", systemImage: "wifi.exclamationmark")
+                PosterSymbolLabel("Unable to Load", posterSymbol: "wifi.exclamationmark")
             } description: {
                 Text(message)
             } actions: {
                 Button("Try Again") { Task { await load() } }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.poster)
             }
             .frame(maxWidth: .infinity, minHeight: 280)
         }

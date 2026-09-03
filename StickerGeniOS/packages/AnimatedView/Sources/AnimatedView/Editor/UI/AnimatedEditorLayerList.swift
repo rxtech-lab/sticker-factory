@@ -104,7 +104,7 @@ struct AnimatedEditorLayerList: View {
 
     private func row(_ layer: AnimatedLayer) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: layer.type.editorSymbol)
+            AnimatedCartoonSymbol(layer.type.editorSymbol)
                 .frame(width: 22)
                 .foregroundStyle(layer.hidden ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.tint))
 
@@ -117,9 +117,9 @@ struct AnimatedEditorLayerList: View {
                     if !layer.animations.isEmpty {
                         // Worth surfacing in the list, not just the timeline: it changes what the
                         // timeline will let you do to this layer.
-                        Label("Preset", systemImage: "wand.and.stars")
+                        AnimatedCartoonLabel("Preset", icon: "wand.and.stars")
                     } else if !layer.animation.isEmpty {
-                        Label("\(layer.animation.keyframeCount)", systemImage: "diamond.fill")
+                        AnimatedCartoonLabel(verbatim: "\(layer.animation.keyframeCount)", icon: "diamond.fill")
                     }
                 }
                 .font(.caption2)
@@ -131,7 +131,7 @@ struct AnimatedEditorLayerList: View {
             Button {
                 editor.setHidden(!layer.hidden, forLayer: layer.id)
             } label: {
-                Image(systemName: layer.hidden ? "eye.slash" : "eye")
+                AnimatedCartoonSymbol(layer.hidden ? "eye.slash" : "eye")
                     .foregroundStyle(layer.hidden ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
             }
             .buttonStyle(.plain)
@@ -147,8 +147,16 @@ struct AnimatedEditorLayerList: View {
             // Asks rather than deleting outright. Undo would cover it, but the swipe is a single
             // gesture with no visible control, so it is easy to reach by accident — and a layer can
             // carry motion that took a while to build.
-            Button("Delete", systemImage: "trash", role: .destructive) { pendingDeletion = layer.id }
-            Button("Duplicate", systemImage: "plus.square.on.square") { editor.duplicateLayer(id: layer.id) }
+            Button(role: .destructive) {
+                pendingDeletion = layer.id
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                editor.duplicateLayer(id: layer.id)
+            } label: {
+                Label("Duplicate", systemImage: "plus.square.on.square")
+            }
                 .tint(.indigo)
         }
     }

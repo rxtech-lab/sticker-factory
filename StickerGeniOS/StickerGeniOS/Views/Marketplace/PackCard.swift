@@ -9,34 +9,36 @@ struct PackCard: View {
     let api: StickerAPIClientProtocol
 
     var body: some View {
-        GlassCard(padding: 10) {
+        PosterCard(padding: 10) {
             VStack(alignment: .leading, spacing: 10) {
                 PackCover(stickers: pack.coverStickers, api: api)
 
                 Text(pack.title)
-                    .font(.headline)
+                    .font(.posterDisplay(16, weight: .bold))
+                    .foregroundStyle(AppColors.ink)
                     .lineLimit(1)
                 Text("by \(pack.creator.byline)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(AppColors.muted)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     Text(pack.installCountLabel)
+                        .posterLabelStyle(9, color: AppColors.faint)
                     if pack.installed {
                         Text("Added")
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AppColors.accentSoft.opacity(0.65), in: Capsule())
+                            .posterLabelStyle(9)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .posterCapsule(fill: AppColors.mint, lineWidth: 1, offset: .zero)
                     }
                     if pack.state != .published {
                         Text(pack.state.label)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.secondary.opacity(0.18), in: Capsule())
+                            .posterLabelStyle(9)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .posterCapsule(fill: AppColors.peach, lineWidth: 1, offset: .zero)
                     }
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
 
                 // Grid rows are as tall as their tallest card. Without this the shorter card's
                 // content floats in the middle of its tile instead of sitting under its cover.
@@ -75,14 +77,8 @@ struct PackCover: View {
     @ViewBuilder
     private var content: some View {
         if stickers.isEmpty {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AppColors.accentSoft.opacity(0.55).gradient)
+            StickerBlobIcon(icon: PosterIcon.mark, fill: AppColors.peach, tilt: -5)
                 .frame(width: height, height: height)
-                .overlay {
-                    Image(systemName: "square.stack.3d.up")
-                        .font(.system(size: height * 0.4, weight: .medium))
-                        .foregroundStyle(AppColors.accent)
-                }
         } else {
             let members = Array(stickers.prefix(4))
             VStack(alignment: .leading, spacing: Self.spacing) {
@@ -91,7 +87,16 @@ struct PackCover: View {
                         ForEach(members[row..<min(row + 2, members.count)]) { sticker in
                             Color.clear
                                 .frame(width: cell, height: cell)
-                                .overlay { artwork(sticker) }
+                                .overlay { artwork(sticker).padding(3) }
+                                // Each member sits on its own outlined tile, so a mosaic of one
+                                // or two still reads as a stack of stickers rather than as a
+                                // stray glyph floating above the title.
+                                .posterSurface(
+                                    cornerRadius: 10,
+                                    fill: AppColors.paper,
+                                    lineWidth: 1,
+                                    offset: .zero
+                                )
                         }
                     }
                 }
@@ -108,7 +113,9 @@ struct PackCover: View {
                 api: api
             )
         } else {
-            Image(systemName: sticker.kind.symbol).foregroundStyle(AppColors.accent)
+            PosterSymbol(sticker.kind.symbol)
+                .font(.system(size: cell * 0.34, weight: .semibold))
+                .foregroundStyle(AppColors.faint)
         }
     }
 }

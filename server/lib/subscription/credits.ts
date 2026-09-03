@@ -91,6 +91,7 @@ export async function chargeJobCredits(db: Database, job: GenerationJobRow): Pro
     : totalApiCostPoints({
       textCostNanodollars: job.apiTextCostNanodollars,
       imagePoints: job.apiImagePoints,
+      videoPoints: job.apiVideoPoints,
     });
   try {
     const settlement = await settleReservation({
@@ -106,6 +107,8 @@ export async function chargeJobCredits(db: Database, job: GenerationJobRow): Pro
           textCostNanodollars: job.apiTextCostNanodollars,
           imageCostNanodollars: job.apiImageCostNanodollars,
           imagePoints: job.apiImagePoints,
+          videoCostNanodollars: job.apiVideoCostNanodollars,
+          videoPoints: job.apiVideoPoints,
           chargedPoints: amount,
         },
     });
@@ -149,6 +152,13 @@ export async function recordJobApiCost(
   }
 
   if (event.costNanodollars <= 0 && event.points <= 0) return;
+  if (event.kind === "video") {
+    await db.update(generationJobs).set({
+      apiVideoCostNanodollars: sql`${generationJobs.apiVideoCostNanodollars} + ${event.costNanodollars}`,
+      apiVideoPoints: sql`${generationJobs.apiVideoPoints} + ${event.points}`,
+    }).where(eq(generationJobs.id, jobId));
+    return;
+  }
   await db.update(generationJobs).set({
     apiImageCostNanodollars: sql`${generationJobs.apiImageCostNanodollars} + ${event.costNanodollars}`,
     apiImagePoints: sql`${generationJobs.apiImagePoints} + ${event.points}`,

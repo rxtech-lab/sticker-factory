@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   apiCostNanodollars,
   apiCostPoints,
+  estimatedVideoCostUsd,
   gatewayCostUsd,
   recordImageApiCost,
   recordTextApiCost,
+  recordVideoApiCost,
   totalApiCostPoints,
+  videoPricingTier,
   withAiApiCostRecorder,
   type AiApiCostEvent,
 } from "@/lib/ai/cost";
@@ -59,5 +62,55 @@ describe("AI API point pricing", () => {
     await expect(withAiApiCostRecorder(async () => {}, () =>
       recordTextApiCost({ steps: [{ providerMetadata: {} }] }),
     )).rejects.toThrow("did not return API pricing");
+  });
+});
+
+describe("video pricing", () => {
+  const seedance = { modelId: "bytedance/seedance-v1.0-pro-fast", resolution: "480p", durationSeconds: 3 };
+
+  it("adds per-clip points to the turn total without re-rounding them", () => {
+    expect(totalApiCostPoints({ textCostNanodollars: 8_000_000, imagePoints: 2, videoPoints: 3 })).toBe(6);
+    expect(totalApiCostPoints({ textCostNanodollars: 0, imagePoints: 0 })).toBe(0);
+  });
+
+  it("prices a clip by its shorter side whichever way the resolution is spelled", () => {
+    expect(videoPricingTier("480p")).toBe("480p");
+    expect(videoPricingTier("480x480")).toBe("480p");
+    expect(videoPricingTier("1280x720")).toBe("720p");
+    expect(estimatedVideoCostUsd(seedance)).toBeCloseTo(0.0291, 6);
+    expect(estimatedVideoCostUsd({ ...seedance, resolution: "480x480" })).toBeCloseTo(0.0291, 6);
+    expect(estimatedVideoCostUsd({ ...seedance, modelId: "nobody/unknown-video" })).toBeUndefined();
+    expect(estimatedVideoCostUsd({ ...seedance, durationSeconds: 0 })).toBeUndefined();
+  });
+
+  it("takes the Gateway's charge when it sends one", async () => {
+    const events: AiApiCostEvent[] = [];
+    let priced: string | undefined;
+    await withAiApiCostRecorder(async (event) => { events.push(event); }, async () => {
+      priced = await recordVideoApiCost({ providerMetadata: { gateway: { cost: "0.05" } } }, seedance);
+    });
+    expect(priced).toBe("gateway");
+    expect(events).toEqual([{ kind: "video", costNanodollars: 50_000_000, points: 4 }]);
+  });
+
+  it("falls back to the list price rather than handing out a free clip", async () => {
+    const events: AiApiCostEvent[] = [];
+    let priced: string | undefined;
+    await withAiApiCostRecorder(async (event) => { events.push(event); }, async () => {
+      priced = await recordVideoApiCost({ providerMetadata: {} }, seedance);
+    });
+    expect(priced).toBe("estimate");
+    // 3 s at $0.0097/s is $0.0291, which rounds up to a whole point, as an image would.
+    expect(events).toEqual([{ kind: "video", costNanodollars: 29_100_000, points: 3 }]);
+  });
+
+  it("refuses a clip whose price is known neither way", async () => {
+    await expect(withAiApiCostRecorder(async () => {}, () =>
+      recordVideoApiCost({ providerMetadata: {} }, { ...seedance, modelId: "nobody/unknown-video" }),
+    )).rejects.toThrow("no list price");
+  });
+
+  it("records nothing outside a turn, like the other recorders", async () => {
+    await expect(recordVideoApiCost({ providerMetadata: {} }, seedance)).resolves.toBe("unrecorded");
   });
 });

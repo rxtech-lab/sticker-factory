@@ -9,37 +9,37 @@ enum StickerOnboarding {
     static let slides: [StickerWelcomeSlide] = [
         .init(
             id: "welcome",
-            icon: "face.smiling.inverse",
+            icon: PosterIcon.welcome,
             title: String(localized: "Welcome to \(appName)"),
             message: String(localized: "Turn an idea or a favorite photo into an expressive sticker you can keep, share, and use in Messages.")
         ),
         .init(
             id: "generate",
-            icon: "wand.and.stars",
+            icon: PosterIcon.write,
             title: String(localized: "1. Generate"),
             message: String(localized: "Describe one sticker, choose static or animated, and add reference photos when they help.")
         ),
         .init(
             id: "confirm",
-            icon: "checkmark.seal.fill",
+            icon: PosterIcon.review,
             title: String(localized: "2. Confirm"),
             message: String(localized: "Review the assistant’s plan before generation, then accept or reject the finished candidate.")
         ),
         .init(
             id: "versions",
-            icon: "clock.arrow.circlepath",
+            icon: PosterIcon.versions,
             title: String(localized: "3. Keep every version"),
             message: String(localized: "Accepted changes stay in version history, where you can compare results and restore an earlier sticker.")
         ),
         .init(
             id: "publish",
-            icon: "shippingbox.fill",
+            icon: PosterIcon.publish,
             title: String(localized: "4. Publish"),
             message: String(localized: "Choose the export settings and publish an accepted version as Apple-compatible sticker files.")
         ),
         .init(
             id: "use",
-            icon: "message.fill",
+            icon: PosterIcon.chat,
             title: String(localized: "5. Use it"),
             message: String(localized: "Open \(appName) from the Messages app drawer to send published stickers, or share the exported files anywhere.")
         ),
@@ -75,6 +75,16 @@ struct StickerWelcomeSlide: Identifiable, Equatable {
 struct StickerWelcomeSheet: View {
     var onContinue: () -> Void
 
+    /// One per slide, cycled if the tour ever grows past them.
+    private static let slideColors: [Color] = [
+        AppColors.lime,
+        AppColors.sky,
+        AppColors.peach,
+        AppColors.mint,
+        AppColors.highlight,
+        AppColors.sky,
+    ]
+
     @State private var index = 0
 
     private var isLastSlide: Bool { index >= StickerOnboarding.slides.count - 1 }
@@ -84,20 +94,24 @@ struct StickerWelcomeSheet: View {
             VStack(spacing: 24) {
                 TabView(selection: $index) {
                     ForEach(Array(StickerOnboarding.slides.enumerated()), id: \.element.id) { offset, slide in
-                        VStack(spacing: 20) {
-                            Image(systemName: slide.icon)
-                                .font(.system(size: 72, weight: .semibold))
-                                .foregroundStyle(AppColors.accent)
-                                .symbolEffect(.breathe, options: .repeat(.periodic(delay: 1.5)))
-                                .accessibilityHidden(true)
+                        VStack(spacing: 22) {
+                            // Each slide gets its own crayon, so paging through the tour walks
+                            // through the palette rather than repeating one accent five times.
+                            StickerBlobIcon(
+                                icon: slide.icon,
+                                fill: Self.slideColors[offset % Self.slideColors.count],
+                                tilt: offset.isMultiple(of: 2) ? -7 : 6
+                            )
+                            .frame(width: 132, height: 132)
 
                             Text(slide.title)
-                                .font(.title.bold())
+                                .font(.posterDisplay(30, weight: .heavy))
+                                .foregroundStyle(AppColors.ink)
                                 .multilineTextAlignment(.center)
 
                             Text(slide.message)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 16, design: .rounded))
+                                .foregroundStyle(AppColors.muted)
                                 .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -117,12 +131,9 @@ struct StickerWelcomeSheet: View {
                     }
                 } label: {
                     Text(isLastSlide ? "Get started" : "Next")
-                        .font(.headline)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(AppColors.accent)
+                .buttonStyle(isLastSlide ? .posterLime : .poster)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 24)
                 .accessibilityIdentifier("welcome-next-button")
@@ -157,7 +168,7 @@ struct GenerateStickerTip: Tip {
     var id: String { "sticker-factory.onboarding.generate.v1" }
     var title: Text { Text("Generate your first sticker") }
     var message: Text? { Text("Start with a prompt and optional photos. The assistant will propose a plan before it generates anything.") }
-    var image: Image? { Image(systemName: "wand.and.stars") }
+    var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
     }
@@ -170,7 +181,7 @@ struct LiftSubjectTip: Tip {
     var id: String { "sticker-factory.onboarding.lift-subject.v1" }
     var title: Text { Text("Lift the subject out") }
     var message: Text? { Text("Tap a photo you attached to cut its subject away from the background, so only the part you want reaches the sticker.") }
-    var image: Image? { Image(systemName: "person.and.background.dotted") }
+    var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
     }
@@ -181,7 +192,7 @@ struct ConfirmPlanTip: Tip {
     var id: String { "sticker-factory.onboarding.confirm-plan.v1" }
     var title: Text { Text("Confirm before generation") }
     var message: Text? { Text("Check the layers, layout, and image count. Build only when the plan matches what you want.") }
-    var image: Image? { Image(systemName: "checkmark.seal") }
+    var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
     }
@@ -192,7 +203,7 @@ struct ReviewCandidateTip: Tip {
     var id: String { "sticker-factory.onboarding.review-candidate.v1" }
     var title: Text { Text("Choose the next version") }
     var message: Text? { Text("Review the candidate, compare it with the current sticker, then accept or reject it.") }
-    var image: Image? { Image(systemName: "rectangle.on.rectangle") }
+    var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
     }
@@ -203,7 +214,7 @@ struct VersionHistoryTip: Tip {
     var id: String { "sticker-factory.onboarding.version-history.v1" }
     var title: Text { Text("Your versions are safe") }
     var message: Text? { Text("Open Sticker actions to compare versions, restore an earlier one, or publish the current version.") }
-    var image: Image? { Image(systemName: "clock.arrow.circlepath") }
+    var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
         #Rule(StickerOnboardingTips.acceptedRevisionAvailable) { $0.donations.count > 0 }
@@ -215,7 +226,7 @@ struct PublishStickerTip: Tip {
     var id: String { "sticker-factory.onboarding.publish.v1" }
     var title: Text { Text("Publish for Messages") }
     var message: Text? { Text("Pick the sticker size and formats, then export and publish this accepted version to your Library.") }
-    var image: Image? { Image(systemName: "shippingbox.fill") }
+    var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
     }
@@ -228,7 +239,7 @@ struct UseStickerTip: Tip {
     var message: Text? {
         Text(String(localized: "Open \(AppConfiguration.defaultAppName) in the Messages app drawer to send this sticker. You can also share the exported files below."))
     }
-    var image: Image? { Image(systemName: "message.fill") }
+    var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
     }

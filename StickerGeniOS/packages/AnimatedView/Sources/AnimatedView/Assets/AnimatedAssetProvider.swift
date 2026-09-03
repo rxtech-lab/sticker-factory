@@ -13,10 +13,14 @@ public protocol AnimatedAssetProvider {
     func image(for assetId: String) -> PlatformImage?
     /// The markup for an `AnimatedSVGSource.asset` layer. `nil` renders nothing for that layer.
     func svgMarkup(for assetId: String) -> String?
+    /// The decoded, keyed frames of a video layer's clip. `nil` while it downloads or decodes,
+    /// during which the renderer draws the layer's poster instead.
+    func videoFrames(for assetId: String) -> KeyedVideoFrames?
 }
 
 extension AnimatedAssetProvider {
     public func svgMarkup(for assetId: String) -> String? { nil }
+    public func videoFrames(for assetId: String) -> KeyedVideoFrames? { nil }
 }
 
 /// An empty provider, for documents that reference nothing.
@@ -24,6 +28,7 @@ public struct EmptyAnimatedAssets: AnimatedAssetProvider {
     public init() {}
     public func image(for assetId: String) -> PlatformImage? { nil }
     public func svgMarkup(for assetId: String) -> String? { nil }
+    public func videoFrames(for assetId: String) -> KeyedVideoFrames? { nil }
 }
 
 /// An in-memory provider backed by two dictionaries.
@@ -33,14 +38,21 @@ public struct EmptyAnimatedAssets: AnimatedAssetProvider {
 public struct AnimatedAssetDictionary: AnimatedAssetProvider {
     public var images: [String: PlatformImage]
     public var svgMarkup: [String: String]
+    public var videos: [String: KeyedVideoFrames]
 
-    public init(images: [String: PlatformImage] = [:], svgMarkup: [String: String] = [:]) {
+    public init(
+        images: [String: PlatformImage] = [:],
+        svgMarkup: [String: String] = [:],
+        videos: [String: KeyedVideoFrames] = [:]
+    ) {
         self.images = images
         self.svgMarkup = svgMarkup
+        self.videos = videos
     }
 
     public func image(for assetId: String) -> PlatformImage? { images[assetId] }
     public func svgMarkup(for assetId: String) -> String? { svgMarkup[assetId] }
+    public func videoFrames(for assetId: String) -> KeyedVideoFrames? { videos[assetId] }
 }
 
 extension AnimatedAssetProvider where Self == EmptyAnimatedAssets {

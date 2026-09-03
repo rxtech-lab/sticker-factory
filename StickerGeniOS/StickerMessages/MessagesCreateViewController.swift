@@ -631,7 +631,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
             let button = UIButton(type: .custom)
             button.tag = index
             button.setBackgroundImage(image, for: .normal)
-            button.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+            button.setImage(.stickerCartoonIcon(named: "xmark.circle.fill"), for: .normal)
             button.tintColor = .white
             button.contentHorizontalAlignment = .right
             button.contentVerticalAlignment = .top
@@ -939,11 +939,11 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         let glyph: UIView
         switch step.status {
         case "complete":
-            let image = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
+            let image = UIImageView(image: .stickerCartoonIcon(named: "checkmark.circle.fill"))
             image.tintColor = .systemGreen
             glyph = image
         case "failed":
-            let image = UIImageView(image: UIImage(systemName: "xmark.circle.fill"))
+            let image = UIImageView(image: .stickerCartoonIcon(named: "xmark.circle.fill"))
             image.tintColor = .systemRed
             glyph = image
         default:
@@ -977,6 +977,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         case "preparing_context": String(localized: "Reading your request…")
         case "planning_edit", "planning_animation": String(localized: "Planning it…")
         case "generating_image", "composing", "composing_part": String(localized: "Drawing it…")
+        case "composing_video": String(localized: "Animating it…")
         case "validating_candidate": String(localized: "Checking it over…")
         case "rendering_exports": String(localized: "Adding it to your stickers…")
         case "verifying_exports": String(localized: "Almost there…")

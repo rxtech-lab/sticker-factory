@@ -139,11 +139,13 @@ struct AnimatedPaintEditor: View {
             }
         }
 
-        Button("Add Stop", systemImage: "plus") {
+        Button {
             var next = stops
             let location = min(1, (stops.last?.location ?? 0.5) + 0.25)
             next.append(.init(color: stops.last?.color ?? "#FFFFFF", location: location))
             write(next.sorted { $0.location < $1.location })
+        } label: {
+            Label("Add Stop", systemImage: "plus")
         }
         .disabled(stops.count >= 8)
     }
