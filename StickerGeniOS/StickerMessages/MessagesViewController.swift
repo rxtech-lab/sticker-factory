@@ -822,14 +822,25 @@ final class MessagesViewController: MSMessagesAppViewController {
     }
 
     private func showError(_ error: Error, offersOpenApp: Bool) {
+        let message = (error as? LocalizedError)?.errorDescription
+            ?? String(localized: "Your sticker library is unavailable.")
         statusContainer.isHidden = false
         setModeControlVisible(false)
-        statusLabel.text = (error as? LocalizedError)?.errorDescription
-            ?? String(localized: "Your sticker library is unavailable.")
+        statusLabel.text = message
         activityIndicator.stopAnimating()
         openAppButton.isHidden = !offersOpenApp
         setCreateButtonVisible(false)
         offlineLabel.isHidden = true
+
+        if let libraryError = error as? StickerLibraryError, libraryError.isServerResponse {
+            let alert = UIAlertController(
+                title: String(localized: "Couldn’t Complete Action"),
+                message: message,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
+            if presentedViewController == nil { present(alert, animated: true) }
+        }
     }
 
     @objc
@@ -856,6 +867,15 @@ final class MessagesViewController: MSMessagesAppViewController {
                     self.statusLabel.text = String(localized: "Open Sticker Factory from the Home Screen and sign in.")
                 }
             }
+        }
+    }
+}
+
+private extension StickerLibraryError {
+    var isServerResponse: Bool {
+        switch self {
+        case .updateRequired, .server: true
+        default: false
         }
     }
 }

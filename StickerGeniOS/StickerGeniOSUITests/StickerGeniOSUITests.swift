@@ -64,6 +64,27 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testLibraryServerErrorShowsAnAlertWithItsMessage() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = [
+            "--ui-testing",
+            "--reduce-motion",
+            "--ui-library-list-failure",
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Update Winky Sticker House to version 1.2 or later to view your stickers."].exists)
+        XCTAssertFalse(element("error-banner").exists)
+
+        app.buttons["OK"].tap()
+        XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
+    }
+
+    @MainActor
     func testLibraryStickerContextMenuOffersRenameAndConfirmedDelete() {
         let card = element("library-sticker-sticker-demo")
         XCTAssertTrue(card.waitForExistence(timeout: 5))

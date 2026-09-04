@@ -26,6 +26,19 @@ func waitUntil(
 
 @Suite("Sticker document and API contracts")
 struct StickerContractTests {
+    @Test("Authenticated requests carry iOS app version and language metadata")
+    func clientMetadataHeaders() throws {
+        var request = URLRequest(url: try #require(URL(string: "https://api.example/stickers")))
+        StickerAPIClient.addClientMetadataHeaders(
+            to: &request,
+            appVersion: "1.2.3",
+            acceptLanguage: "zh-Hans-CN"
+        )
+
+        #expect(request.value(forHTTPHeaderField: "X-iOS-App-Version") == "1.2.3")
+        #expect(request.value(forHTTPHeaderField: "Accept-Language") == "zh-Hans-CN")
+    }
+
     @Test("Sticker image cache processor rejects checksum mismatches")
     func cachedStickerVerification() throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { context in
@@ -37,6 +50,43 @@ struct StickerContractTests {
 
         #expect(VerifiedStickerImageProcessor(expectedSHA256: digest).accepts(data))
         #expect(!VerifiedStickerImageProcessor(expectedSHA256: String(repeating: "0", count: 64)).accepts(data))
+    }
+
+    @MainActor
+    @Test("Video layers reuse decoded keyed frames across asset stores")
+    func videoLayerFrameCache() async throws {
+        let context = try #require(CGContext(
+            data: nil,
+            width: 2,
+            height: 2,
+            bitsPerComponent: 8,
+            bytesPerRow: 8,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        let image = try #require(context.makeImage())
+        let frames = KeyedVideoFrames(
+            frames: [image],
+            frameRate: 24,
+            size: CGSize(width: 2, height: 2)
+        )
+        let probe = VideoFrameLoadProbe()
+        let loader = StickerVideoFrameLoader(totalCostLimit: 1024) { _, _, _, _ in
+            await probe.recordLoad()
+            return .init(frames: frames, isVerified: true)
+        }
+        let api = VideoFrameCacheAPI()
+        let firstStore = StickerAssetStore(videoFrameLoader: loader)
+        let secondStore = StickerAssetStore(videoFrameLoader: loader)
+
+        await firstStore.loadVideo(assetID: "video-asset", keyColor: .green, api: api)
+        await secondStore.loadVideo(assetID: "video-asset", keyColor: .green, api: api)
+
+        #expect(await probe.loadCount == 1)
+        #expect(firstStore.videos["video-asset"]?.frameCount == 1)
+        #expect(secondStore.videos["video-asset"]?.frameCount == 1)
+        #expect(firstStore.verifiedAssetIDs.contains("video-asset"))
+        #expect(secondStore.verifiedAssetIDs.contains("video-asset"))
     }
 
     /// The v2 fixture, which is what every already-stored revision looks like.
@@ -1329,6 +1379,16 @@ private final class NotificationProbe: @unchecked Sendable {
     func mark() { lock.lock(); count += 1; lock.unlock() }
     var value: Int { lock.lock(); defer { lock.unlock() }; return count }
 }
+
+private actor VideoFrameLoadProbe {
+    private(set) var loadCount = 0
+
+    func recordLoad() {
+        loadCount += 1
+    }
+}
+
+private actor VideoFrameCacheAPI: StickerAPIClientProtocol {}
 
 private extension StickerAPIClientProtocol {
     func listStickers(cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }

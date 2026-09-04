@@ -76,6 +76,13 @@ struct LibraryView: View {
         )
     }
 
+    private var isShowingError: Binding<Bool> {
+        Binding(
+            get: { store.errorMessage != nil },
+            set: { if !$0 { store.errorMessage = nil } }
+        )
+    }
+
     private var normalizedSearchQuery: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -349,8 +356,10 @@ struct LibraryView: View {
         } message: { _ in
             Text("Deletion starts a durable purge of the private source images, transcript, revisions, and exports.")
         }
-        .safeAreaInset(edge: .top) {
-            if let error = store.errorMessage { ErrorBanner(message: error).padding(.horizontal) }
+        .alert("Couldn’t Complete Action", isPresented: isShowingError) {
+            Button("OK") { store.errorMessage = nil }
+        } message: {
+            Text(store.errorMessage ?? "")
         }
         .task {
             if store.stickers.isEmpty { await store.refresh() } else { await store.refreshSections() }

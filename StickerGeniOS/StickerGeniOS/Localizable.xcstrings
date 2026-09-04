@@ -3227,6 +3227,9 @@
         }
       }
     },
+    "Manage Subscription opens Apple's own sheet, where a plan can be changed or cancelled. Changes can take a moment to reach this screen." : {
+
+    },
     "Marketplace" : {
       "localizations" : {
         "zh-CN" : {

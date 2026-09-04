@@ -252,7 +252,12 @@ struct StickerMessagesContractTests {
     @Test("Sectioned library fetch groups stickers and stamps their pack byline")
     func fetchSectionsGroupsByPack() async throws {
         let transport = SectionedStickerTransport()
-        let client = StickerLibraryClient(baseURL: URL(string: "https://api.example/")!, transport: transport)
+        let client = StickerLibraryClient(
+            baseURL: URL(string: "https://api.example/")!,
+            transport: transport,
+            appVersion: "1.2.3",
+            acceptLanguage: "zh-Hans-CN"
+        )
         let descriptors = try await client.fetchSections(accessToken: "access")
 
         #expect(descriptors.map(\.stickerID) == ["mine-1", "borrowed-1", "borrowed-2"])
@@ -264,6 +269,8 @@ struct StickerMessagesContractTests {
         // Section and item order come from the response, not from updatedAt.
         #expect(descriptors[1].sectionPosition == 1)
         #expect(descriptors[2].position == 1)
+        #expect(await transport.requestedAppVersions() == ["1.2.3"])
+        #expect(await transport.requestedLanguages() == ["zh-Hans-CN"])
     }
 
     @Test("A server with no sections endpoint falls back to the flat library")
@@ -276,6 +283,25 @@ struct StickerMessagesContractTests {
         #expect(descriptors.map(\.stickerID) == ["sticker-1"])
         #expect(descriptors[0].sectionID == "mine")
         #expect(await transport.paths() == ["/api/v1/library/sections", "/api/v1/stickers"])
+    }
+
+    @Test("A listing rejection preserves the server message")
+    func listingRejectionPreservesServerMessage() async {
+        let client = StickerLibraryClient(
+            baseURL: URL(string: "https://api.example/")!,
+            transport: RejectedListingTransport(),
+            appVersion: "1.0",
+            acceptLanguage: "en-US"
+        )
+
+        do {
+            _ = try await client.fetchSections(accessToken: "access")
+            #expect(Bool(false), "The rejected listing must throw")
+        } catch let error as StickerLibraryError {
+            #expect(error.localizedDescription == "Update Winky Sticker House to version 1.2 or later to view your stickers.")
+        } catch {
+            #expect(Bool(false), "Unexpected error: \(error)")
+        }
     }
 
     @MainActor
@@ -720,7 +746,12 @@ private actor MessagesCountingRefreshTransport: SharedOAuthRefreshTransport {
 }
 
 private actor SectionedStickerTransport: StickerHTTPTransport {
+    private var appVersions: [String?] = []
+    private var languages: [String?] = []
+
     func data(for request: URLRequest) async throws -> StickerHTTPResult {
+        appVersions.append(request.value(forHTTPHeaderField: "X-iOS-App-Version"))
+        languages.append(request.value(forHTTPHeaderField: "Accept-Language"))
         let url = try #require(request.url)
         let body = Data("""
         {"sections":[
@@ -739,6 +770,9 @@ private actor SectionedStickerTransport: StickerHTTPTransport {
         ))
         return .init(data: body, response: response)
     }
+
+    func requestedAppVersions() -> [String?] { appVersions }
+    func requestedLanguages() -> [String?] { languages }
 }
 
 /// One section covering every shape `previewAsset` arrives in, so the gating rules are exercised
@@ -901,6 +935,22 @@ private actor SectionsMissingTransport: StickerHTTPTransport {
     }
 
     func paths() -> [String] { requestedPaths }
+}
+
+private actor RejectedListingTransport: StickerHTTPTransport {
+    func data(for request: URLRequest) async throws -> StickerHTTPResult {
+        let url = try #require(request.url)
+        let body = Data("""
+        {"error":{"code":"IOS_APP_UPDATE_REQUIRED","message":"Update Winky Sticker House to version 1.2 or later to view your stickers.","requestId":"request-version"}}
+        """.utf8)
+        let response = try #require(HTTPURLResponse(
+            url: url,
+            statusCode: 426,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        ))
+        return .init(data: body, response: response)
+    }
 }
 
 private actor PaginatedStickerTransport: StickerHTTPTransport {

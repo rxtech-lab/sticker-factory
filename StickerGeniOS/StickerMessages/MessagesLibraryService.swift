@@ -96,12 +96,16 @@ actor MessagesLibraryService {
             } catch SharedAuthenticationError.refreshRejected {
                 try? await cache.purge()
                 throw SharedAuthenticationError.refreshRejected
+            } catch let error as StickerLibraryError where error.isUpdateRequired {
+                throw error
             } catch {
                 if !existing.isEmpty {
                     return MessagesLibrarySnapshot(sections: Self.allowed(existing), isOffline: true)
                 }
                 throw error
             }
+        } catch let error as StickerLibraryError where error.isUpdateRequired {
+            throw error
         } catch {
             if !existing.isEmpty {
                 return MessagesLibrarySnapshot(sections: Self.allowed(existing), isOffline: true)
@@ -152,5 +156,12 @@ actor MessagesLibraryService {
             sections: try await cache.cachedSections(for: session.subject),
             isOffline: false
         )
+    }
+}
+
+private extension StickerLibraryError {
+    var isUpdateRequired: Bool {
+        if case .updateRequired = self { return true }
+        return false
     }
 }

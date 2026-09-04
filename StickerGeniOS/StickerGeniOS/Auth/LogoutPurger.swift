@@ -6,6 +6,8 @@ nonisolated enum SharedLogoutPurger {
         // of animated artwork so a sticker only downloads once, and those bytes are the outgoing
         // account's private art.
         StickerAssetData.purge(fileManager: fileManager)
+        try? fileManager.removeItem(at: StickerVideoFrameLoader.directory)
+        Task { await StickerVideoFrameLoader.shared.removeAll() }
 
         guard let container = fileManager.containerURL(forSecurityApplicationGroupIdentifier: AppConfiguration.appGroupIdentifier) else { return }
         for directory in ["StickerCache", "Exports", "Uploads"] {

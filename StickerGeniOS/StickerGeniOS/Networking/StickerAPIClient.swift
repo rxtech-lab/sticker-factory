@@ -70,6 +70,8 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     private let baseURL: URL
     private let tokenBroker: SharedTokenBroker
     private let session: URLSession
+    private let appVersion: String?
+    private let acceptLanguage: String?
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     /// Called when the server declines a request for want of credits or a plan.
@@ -82,10 +84,18 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     /// them.
     private var onSubscriptionRefusal: (@Sendable (SubscriptionRefusal) -> Void)?
 
-    init(baseURL: URL, tokenBroker: SharedTokenBroker, session: URLSession = .shared) {
+    init(
+        baseURL: URL,
+        tokenBroker: SharedTokenBroker,
+        session: URLSession = .shared,
+        appVersion: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+        acceptLanguage: String? = Locale.preferredLanguages.first
+    ) {
         self.baseURL = baseURL
         self.tokenBroker = tokenBroker
         self.session = session
+        self.appVersion = appVersion
+        self.acceptLanguage = acceptLanguage
         encoder = JSONEncoder.api
         decoder = JSONDecoder.api
     }
@@ -584,6 +594,11 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(try await tokenBroker.validAccessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        Self.addClientMetadataHeaders(
+            to: &request,
+            appVersion: appVersion,
+            acceptLanguage: acceptLanguage
+        )
         // Announces which document contract this build can decode. Without it the server assumes the
         // oldest shipped one and degrades any newer layer kind to something this client can draw —
         // which is what keeps a version bump from bricking builds already in the field. Sent on
@@ -591,6 +606,19 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         // starts returning one cannot forget.
         request.setValue(String(AnimatedDocument.currentVersion), forHTTPHeaderField: "X-Sticker-Contract")
         return request
+    }
+
+    static func addClientMetadataHeaders(
+        to request: inout URLRequest,
+        appVersion: String?,
+        acceptLanguage: String?
+    ) {
+        if let appVersion, !appVersion.isEmpty, !appVersion.contains("$(") {
+            request.setValue(appVersion, forHTTPHeaderField: "X-iOS-App-Version")
+        }
+        if let acceptLanguage, !acceptLanguage.isEmpty {
+            request.setValue(acceptLanguage, forHTTPHeaderField: "Accept-Language")
+        }
     }
 
     private func decode<Response: Decodable>(_ data: Data, response: URLResponse, context: String) throws -> Response {
