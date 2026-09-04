@@ -1,4 +1,5 @@
 import RxAuthSwift
+import StoreKit
 import SwiftUI
 
 struct AccountView: View {
@@ -148,9 +149,17 @@ struct AccountView: View {
 /// and a way to restore purchases.
 private struct SubscriptionSection: View {
     @Bindable var subscription: SubscriptionStore
-    @Environment(\.openURL) private var openURL
     @State private var isRestoring = false
     @State private var restoreMessage: String?
+    /// Presents StoreKit's own manage-subscriptions sheet.
+    ///
+    /// Deliberately the native sheet rather than a link to
+    /// `apps.apple.com/account/subscriptions`: the web page only ever lists *production*
+    /// subscriptions, so a TestFlight or sandbox subscriber following it finds nothing there and
+    /// has no way to cancel. The sheet reads whichever environment the build is running in, which
+    /// is the only in-app path to cancelling a sandbox subscription before its six automatic
+    /// renewals run out.
+    @State private var isManagingSubscription = false
 
     var body: some View {
         Section {
@@ -174,24 +183,24 @@ private struct SubscriptionSection: View {
             .accessibilityIdentifier("subscription-credits")
 
             Button {
-                if subscription.hasActiveSubscription,
-                   let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                    openURL(url)
-                } else {
-                    subscription.presentPaywall()
-                }
+                subscription.presentPaywall()
             } label: {
-                Label {
-                    Text(
-                        subscription.hasActiveSubscription
-                            ? String(localized: "Manage Subscription")
-                            : String(localized: "View Plans")
-                    )
-                } icon: {
-                    Image(systemName: "creditcard")
-                }
+                Label("View Plans", systemImage: "creditcard")
+            }
+            .accessibilityIdentifier("view-plans-button")
+
+            // Offered whether or not the cache says there is a plan. `hasActiveSubscription` is
+            // the *server's* answer, and the two disagree exactly when it matters: a purchase
+            // StoreKit completed but the backend refused still leaves a live App Store
+            // subscription the user is being charged for and must be able to cancel. Gating this
+            // on the server's view would hide the only control that can end it.
+            Button {
+                isManagingSubscription = true
+            } label: {
+                Label("Manage Subscription", systemImage: "arrow.triangle.2.circlepath")
             }
             .accessibilityIdentifier("manage-subscription-button")
+            .manageSubscriptionsSheet(isPresented: $isManagingSubscription)
 
             Button {
                 restore()
@@ -214,6 +223,17 @@ private struct SubscriptionSection: View {
             }
         } header: {
             PosterListHeader("Subscription")
+        } footer: {
+            Text("Manage Subscription opens Apple's own sheet, where a plan can be changed or cancelled. Changes can take a moment to reach this screen.")
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(AppColors.faint)
+        }
+        .onChange(of: isManagingSubscription) { _, isPresented in
+            // The sheet reports no result, so a cancellation is only visible once StoreKit and the
+            // server have caught up. Refreshing on dismissal keeps the plan row from advertising a
+            // subscription the user just turned off.
+            guard !isPresented else { return }
+            subscription.refresh()
         }
     }
 

@@ -35,6 +35,11 @@ Production needs separate RxLab OAuth clients:
 
 - confidential web client for `@rxtech-lab/authjs-rxlab@1.6.1`, including the registered Auth.js callback;
 - public iOS PKCE client `client_1ce3e6efd6da4214a61df67949a71622`, configured as `IOS_OAUTH_CLIENT_ID` (no client secret), plus any staged clients in `RXLAB_ALLOWED_CLIENT_IDS`.
+- optional `IOS_MINIMUM_APP_VERSION`, a dotted iOS marketing version such as `1.2`. Once set, the
+  sticker-list endpoints require `X-iOS-App-Version` from the iOS OAuth client and return `426` with
+  `IOS_APP_UPDATE_REQUIRED` when the app is older. Leave it empty until the header-bearing app has
+  shipped so an existing production build is not cut off during rollout. iOS requests also send
+  the device's preferred language through the standard `Accept-Language` header.
 
 Configure a Neon Postgres database (`DATABASE_URL`, the pooled connection string), a private R2 bucket, Vercel AI Gateway (API key or Vercel OIDC), and Vercel Workflow. Run `bun run db:migrate` before serving traffic.
 

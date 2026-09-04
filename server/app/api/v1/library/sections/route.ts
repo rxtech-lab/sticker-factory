@@ -1,5 +1,6 @@
 import { noStoreJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
+import { requireSupportedIOSAppVersion } from "@/lib/http/ios-app-version";
 import { textQuery } from "@/lib/http/query";
 import { listLibrarySections } from "@/lib/services/packs";
 
@@ -12,6 +13,7 @@ import { listLibrarySections } from "@/lib/services/packs";
  */
 export async function GET(request: Request) {
   return withApiAuth(request, async (principal, db) => {
+    requireSupportedIOSAppVersion(request, principal.clientId);
     const searchParams = new URL(request.url).searchParams;
     const status = searchParams.get("status");
     return noStoreJson(await listLibrarySections(db, principal.sub, {

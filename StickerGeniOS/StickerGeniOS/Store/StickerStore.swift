@@ -270,14 +270,14 @@ final class StickerStore {
     /// Reloads the installed-pack sections.
     ///
     /// Kept separate from the paged own-sticker reload so a marketplace outage can never blank the
-    /// user's own library: a failure here leaves the previous sections in place and says nothing.
+    /// user's own library: a failure here leaves the previous sections in place and surfaces the
+    /// server's message through the Library alert.
     func refreshSections() async {
         do {
             sections = try await api.librarySections(status: .all).packSections
         } catch {
             guard !Self.isCancellation(error) else { return }
-            // Intentionally silent: the user's own stickers loaded fine, and an error banner over
-            // a working library would be worse than showing yesterday's pack list.
+            errorMessage = error.localizedDescription
         }
     }
 

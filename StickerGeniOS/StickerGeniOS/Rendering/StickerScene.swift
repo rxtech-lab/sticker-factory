@@ -48,6 +48,118 @@ nonisolated struct StickerRenderAssets: Sendable {
     }
 }
 
+/// Downloads and keys a video asset once, then shares those decoded frames between every screen
+/// that opens the sticker.
+///
+/// `VerifiedAssetDownload` already keeps the MP4 on disk, but decoding and chroma keying it is the
+/// expensive part. A `StickerAssetStore` is owned by a screen, so keeping the only copy there made
+/// reopening a sticker repeat all of that CPU work. The cache is cost-bounded because decoded
+/// frames are uncompressed and a short clip can occupy tens of megabytes.
+actor StickerVideoFrameLoader {
+    static let shared = StickerVideoFrameLoader()
+
+    struct Result: Sendable {
+        var frames: KeyedVideoFrames
+        var isVerified: Bool
+    }
+
+    typealias Load = @Sendable (
+        _ assetID: String,
+        _ keyColor: AnimatedVideoKeyColor,
+        _ maxEdge: Int,
+        _ api: any StickerAPIClientProtocol
+    ) async throws -> Result
+
+    private final class CachedFrames: NSObject, @unchecked Sendable {
+        let result: Result
+        init(_ result: Result) { self.result = result }
+    }
+
+    private let cache: NSCache<NSString, CachedFrames>
+    private let loadFrames: Load
+    private var inFlight: [String: Task<Result, Error>] = [:]
+
+    init(
+        totalCostLimit: Int = 96 * 1024 * 1024,
+        loadFrames: @escaping Load = StickerVideoFrameLoader.load
+    ) {
+        let cache = NSCache<NSString, CachedFrames>()
+        cache.totalCostLimit = totalCostLimit
+        self.cache = cache
+        self.loadFrames = loadFrames
+    }
+
+    /// Returns a decoded clip, coalescing simultaneous requests for the same representation.
+    func frames(
+        assetID: String,
+        keyColor: AnimatedVideoKeyColor,
+        maxEdge: Int,
+        api: any StickerAPIClientProtocol
+    ) async throws -> Result {
+        let key = "\(assetID)@\(keyColor.rawValue)@\(maxEdge)"
+        if let cached = cache.object(forKey: key as NSString) { return cached.result }
+        if let running = inFlight[key] { return try await running.value }
+
+        let loadFrames = self.loadFrames
+        let task = Task {
+            try await loadFrames(assetID, keyColor, maxEdge, api)
+        }
+        inFlight[key] = task
+        do {
+            let result = try await task.value
+            inFlight[key] = nil
+            cache.setObject(
+                CachedFrames(result),
+                forKey: key as NSString,
+                cost: result.frames.byteCost
+            )
+            return result
+        } catch {
+            inFlight[key] = nil
+            throw error
+        }
+    }
+
+    func removeAll() {
+        inFlight.values.forEach { $0.cancel() }
+        inFlight.removeAll()
+        cache.removeAllObjects()
+    }
+
+    nonisolated static var directory: URL {
+        URL.cachesDirectory.appending(path: "sticker-videos", directoryHint: .isDirectory)
+    }
+
+    private static func load(
+        assetID: String,
+        keyColor: AnimatedVideoKeyColor,
+        maxEdge: Int,
+        api: any StickerAPIClientProtocol
+    ) async throws -> Result {
+        let download = try await VerifiedAssetDownload.fetch(
+            assetID: assetID,
+            into: directory,
+            api: api
+        )
+        let frames = try await VideoFrameDecoder.decode(
+            url: download.url,
+            keyColor: keyColor,
+            maxEdge: maxEdge
+        )
+        return Result(frames: frames, isVerified: download.isVerified)
+    }
+}
+
+private extension KeyedVideoFrames {
+    /// The decoded bitmap allocation, used as `NSCache` cost rather than treating every clip as
+    /// equal. `bytesPerRow` includes Core Graphics' actual row padding.
+    nonisolated var byteCost: Int {
+        frames.reduce(into: 0) { cost, frame in
+            cost += frame.bytesPerRow * frame.height
+        }
+    }
+}
+
 /// Loads and caches the bitmaps a document's layers reference.
 ///
 /// Conforms to `AnimatedAssetProvider`, which is the seam the renderer uses to turn an `assetId`
@@ -67,11 +179,16 @@ final class StickerAssetStore: AnimatedAssetProvider {
     private(set) var videos: [String: KeyedVideoFrames] = [:]
     private(set) var verifiedAssetIDs: Set<String> = []
     private var loading: Set<String> = []
+    private let videoFrameLoader: StickerVideoFrameLoader
 
     /// Frames are decoded at this edge. The clip is generated at 480p and the largest rendition is
     /// 618px with the layer occupying part of it, so nothing larger would ever be drawn — and a
     /// few seconds at 24 fps is already tens of megabytes at this size.
     static let videoDecodeEdge = 384
+
+    init(videoFrameLoader: StickerVideoFrameLoader = .shared) {
+        self.videoFrameLoader = videoFrameLoader
+    }
 
     /// The images and clips together, for the exporter and the publisher's pre-flight.
     var renderAssets: StickerRenderAssets { .init(images: images, videos: videos) }
@@ -112,25 +229,21 @@ final class StickerAssetStore: AnimatedAssetProvider {
         loading.insert(assetID)
         defer { loading.remove(assetID) }
         do {
-            let download = try await VerifiedAssetDownload.fetch(
+            let result = try await videoFrameLoader.frames(
                 assetID: assetID,
-                into: Self.videoDirectory,
+                keyColor: keyColor,
+                maxEdge: Self.videoDecodeEdge,
                 api: api
             )
-            let clip = try await VideoFrameDecoder.decode(
-                url: download.url,
-                keyColor: keyColor,
-                maxEdge: Self.videoDecodeEdge
-            )
-            if download.isVerified { verifiedAssetIDs.insert(assetID) }
-            videos[assetID] = clip
+            if result.isVerified { verifiedAssetIDs.insert(assetID) }
+            videos[assetID] = result.frames
         } catch {
             Self.log.error("video: load failed id=\(assetID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
     }
 
     nonisolated static var videoDirectory: URL {
-        URL.cachesDirectory.appending(path: "sticker-videos", directoryHint: .isDirectory)
+        StickerVideoFrameLoader.directory
     }
 
     func load(assetID: String, api: StickerAPIClientProtocol) async {

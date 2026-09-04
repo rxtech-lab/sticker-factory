@@ -83,12 +83,18 @@ final class AppEnvironment {
         let simulatesExpiredAuthentication = arguments.contains("--ui-auth-expired")
         let simulatesUploadFailure = arguments.contains("--ui-upload-failure")
         let simulatesInsufficientCredits = arguments.contains("--ui-insufficient-credits")
+        let simulatesLibraryListingFailure = arguments.contains("--ui-library-list-failure")
         let api: StickerAPIClientProtocol = isUITesting
             ? MockStickerAPIClient(
                 failCreationAsUpload: simulatesUploadFailure,
-                failChatSendAsInsufficientCredits: simulatesInsufficientCredits
+                failChatSendAsInsufficientCredits: simulatesInsufficientCredits,
+                failLibraryListing: simulatesLibraryListingFailure
             )
-            : StickerAPIClient(baseURL: configuration.apiBaseURL, tokenBroker: broker)
+            : StickerAPIClient(
+                baseURL: configuration.apiBaseURL,
+                tokenBroker: broker,
+                appVersion: configuration.appVersion
+            )
         // UI tests run with no notifier at all: a system permission alert over the app would fail
         // every test that follows it, and the mock generations are watched, never walked away from.
         let notifier = isUITesting ? nil : GenerationNotifier.live()

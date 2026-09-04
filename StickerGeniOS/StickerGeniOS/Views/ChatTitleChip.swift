@@ -15,11 +15,12 @@ struct ChatTitleChip: View {
         VStack(spacing: 2) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppColors.ink)
                 .lineLimit(1)
             if let status {
                 Text(status)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppColors.muted)
                     .lineLimit(1)
                     // Keyed on the text so a phase change cross-fades rather than snapping, which
                     // matters when a turn walks through three of them in a few seconds.

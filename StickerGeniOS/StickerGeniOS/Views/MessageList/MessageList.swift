@@ -41,14 +41,17 @@ nonisolated extension MessageListItem {
 /// stays where the reader put it: no scroll-to-bottom on new content, no
 /// re-anchoring while streaming, no throttled catch-up scrolls. A reply that
 /// outgrows the viewport simply continues below the fold until the reader
-/// scrolls. The only programmatic moves are placing a newly sent turn, holding
+/// scrolls. The only programmatic moves are placing a newly sent turn, keeping a
+/// held pin where placement left it when the geometry under it shifts, holding
 /// the reader's place when an older page is prepended, and — if
 /// `placesLatestTurnOnAppear` is set — one initial placement when the transcript
 /// first has content.
 ///
-/// **The reservation belongs to the live session.** It starts when the user sends
-/// a message. Reopening an already-answered chat scrolls to its real end without
-/// rebuilding the reservation, so loaded history does not gain an empty tail.
+/// **The reservation belongs to the live turn.** It starts when the user sends a
+/// message and comes back with the reader if they leave and return while the
+/// reply is still arriving. Reopening an already-answered chat scrolls to its
+/// real end without rebuilding the reservation, so loaded history does not gain
+/// an empty tail.
 ///
 /// The bottom spacing is therefore *computed*, never a fixed padding: it is
 /// `viewport - turnHeight`, remeasured whenever the viewport changes (rotation,
@@ -160,7 +163,13 @@ struct MessageList<
             .task {
                 guard placesLatestTurnOnAppear, !hasPlacedInitialContent, !messages.isEmpty else { return }
                 hasPlacedInitialContent = true
-                scroll(to: .transcriptEnd, proxy: proxy, animated: false)
+                placeInitialContent(proxy: proxy)
+            }
+            .onChange(of: pinTailSpacerHeight) { _, _ in
+                // The room under the turn was just re-measured — the keyboard came or went, the
+                // composer grew a banner, the turn itself changed size. Any of those can leave
+                // the scroll offset clamped somewhere other than where the pin put it.
+                holdPinnedUserMessage(proxy: proxy)
             }
             .onChange(of: isStreaming) { oldValue, newValue in
                 applyPinningAction(
@@ -346,11 +355,10 @@ struct MessageList<
 
         // The first transcript to arrive is placed without animation: the reader is
         // arriving too, so there is nothing to preserve.
-        let isInitialPlacement = placesLatestTurnOnAppear
-            && !hasPlacedInitialContent
-            && !messages.isEmpty
-        if isInitialPlacement {
+        if placesLatestTurnOnAppear, !hasPlacedInitialContent, !messages.isEmpty {
             hasPlacedInitialContent = true
+            placeInitialContent(proxy: proxy)
+            return
         }
 
         let latestContentItem = latestContentItem
@@ -363,11 +371,6 @@ struct MessageList<
                 isUserMessage: true,
                 isStreaming: isStreaming
             )
-        } else if isInitialPlacement {
-            // Loaded history should land at its real end. Rebuilding the newest
-            // turn's reservation here would add a viewport-sized empty tail.
-            scroll(to: .transcriptEnd, proxy: proxy, animated: false)
-            return
         } else {
             action = pinning.handleLastMessageChange(
                 id: latestContentItem?.messageID,
@@ -378,14 +381,39 @@ struct MessageList<
 
         if case .pinUserMessageToTop(let pinnedID) = action {
             canReleasePinnedUserMessageByScroll = false
-            scroll(to: .messageTop(pinnedID), proxy: proxy, animated: !isInitialPlacement)
+            scroll(to: .messageTop(pinnedID), proxy: proxy, animated: true)
             return
         }
 
-        applyPinningAction(action)
-        if isInitialPlacement {
-            scroll(to: .transcriptEnd, proxy: proxy, animated: false)
+        applyPinningAction(action, proxy: proxy)
+    }
+
+    /// Where the reader lands when the transcript is first on screen.
+    ///
+    /// Two cases, and they land differently. A turn still being answered gets its
+    /// reservation back: the message being waited on goes to the top with the room
+    /// its reply is filling under it, exactly as it was when the reader left — the
+    /// spacer is keyed off the pin, so without this the transcript comes back
+    /// scrolled to its end with no room under the turn at all. An answered chat
+    /// lands at its real end; rebuilding a finished turn's reservation would only
+    /// add a viewport-sized empty tail to loaded history.
+    ///
+    /// Runs from both places a first transcript can come from — already in memory
+    /// when the view appears, or arriving after it — so the two agree.
+    private func placeInitialContent(proxy: ScrollViewProxy) {
+        if isStreaming, let latestUserMessageID {
+            let action = pinning.handleLastMessageChange(
+                id: latestUserMessageID,
+                isUserMessage: true,
+                isStreaming: true
+            )
+            if case .pinUserMessageToTop(let pinnedID) = action {
+                canReleasePinnedUserMessageByScroll = false
+                scroll(to: .messageTop(pinnedID), proxy: proxy, animated: false)
+                return
+            }
         }
+        scroll(to: .transcriptEnd, proxy: proxy, animated: false)
     }
 
     // MARK: - Placement
@@ -447,6 +475,34 @@ struct MessageList<
         }
     }
 
+    /// Puts a held pin back where placement left it, without animation.
+    ///
+    /// Placement settles over a few frames and then stops; this is what keeps it
+    /// true afterwards. Anything that changes the geometry under the turn — the
+    /// keyboard, a banner joining the composer, content arriving or being replaced
+    /// above or below — can leave the scroll offset clamped a little way from
+    /// where the pin put it, and a message that is meant to be held at the top
+    /// drifts up under the navigation bar or down into the middle of the screen.
+    /// Re-asserting the message's own top is a no-op when nothing moved, so it
+    /// never reads as the list following the reply.
+    ///
+    /// Only while the pin is held and settled: never during placement (which is
+    /// re-asserting on its own), never once the pin is released, and never under
+    /// the reader's finger — a user scroll is what releases the pin, and it must
+    /// not have to fight for it.
+    private func holdPinnedUserMessage(proxy: ScrollViewProxy) {
+        guard pinning.isPinningUserMessage,
+              canReleasePinnedUserMessageByScroll,
+              !isUserDrivenScroll,
+              let pinnedID = pinning.pinnedUserMessageID
+        else { return }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            apply(.messageTop(pinnedID), proxy: proxy)
+        }
+    }
+
     private func releasePinnedUserMessage() {
         pinTask?.cancel()
         canReleasePinnedUserMessageByScroll = false
@@ -459,21 +515,26 @@ struct MessageList<
         canReleasePinnedUserMessageByScroll = false
     }
 
-    private func applyPinningAction(_ action: MessageListPinningAction<Message.MessageID>) {
+    private func applyPinningAction(
+        _ action: MessageListPinningAction<Message.MessageID>,
+        proxy: ScrollViewProxy? = nil
+    ) {
         switch action {
         case .none:
             break
         case .clearPin:
             clearPinnedUserMessage()
         case .pinUserMessageToTop:
-            // Handled by `handleMessageListChange`, which knows whether this is the
-            // first placement and so whether to animate.
+            // Handled by `handleMessageListChange` and `placeInitialContent`, which
+            // know whether this is the first placement and so whether to animate.
             break
         case .repinUserMessageToTop:
             // New content arrived under a held pin. The reserved spacing absorbs it,
-            // and the reader keeps the position they had — the list never chases a
-            // reply that has outgrown the viewport.
-            break
+            // so the message's own position is unchanged and holding it is a no-op —
+            // the list never chases a reply that has outgrown the viewport. What it
+            // does correct is a transcript replaced wholesale (a reload after the
+            // server accepted the turn), where rows above the pin can change height.
+            if let proxy { holdPinnedUserMessage(proxy: proxy) }
         case .releasePin:
             releasePinnedUserMessage()
         }

@@ -1,6 +1,7 @@
 import { CreateStickerRequestSchema } from "@/lib/contracts/api";
 import { noStoreJson, readJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
+import { requireSupportedIOSAppVersion } from "@/lib/http/ios-app-version";
 import { integerQuery, textQuery } from "@/lib/http/query";
 import { executeIdempotent, requireIdempotencyKey } from "@/lib/services/idempotency";
 import { purgeStickerMediaImmediately } from "@/lib/services/assets";
@@ -9,6 +10,7 @@ import { startGenerationWorkflow } from "@/lib/services/workflows";
 
 export async function GET(request: Request) {
   return withApiAuth(request, async (principal, db) => {
+    requireSupportedIOSAppVersion(request, principal.clientId);
     const url = new URL(request.url);
     const kind = url.searchParams.get("kind");
     const status = url.searchParams.get("status");

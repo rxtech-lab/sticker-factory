@@ -3,7 +3,8 @@ import Foundation
 enum StickerLibraryError: Error, LocalizedError, Sendable {
     case invalidConfiguration
     case unauthorized
-    case server(statusCode: Int)
+    case updateRequired(message: String)
+    case server(statusCode: Int, message: String?)
     case invalidResponse
     case renditionTooLarge
 
@@ -13,8 +14,10 @@ enum StickerLibraryError: Error, LocalizedError, Sendable {
             String(localized: "Sticker Factory's API address is not configured.")
         case .unauthorized:
             String(localized: "Your Sticker Factory sign-in has expired.")
-        case .server(let statusCode):
-            String(localized: "Sticker Factory could not refresh the library (HTTP \(statusCode)).")
+        case .updateRequired(let message):
+            message
+        case .server(let statusCode, let message):
+            message ?? String(localized: "Sticker Factory could not refresh the library (HTTP \(statusCode)).")
         case .invalidResponse:
             String(localized: "Sticker Factory returned an invalid library response.")
         case .renditionTooLarge:
@@ -54,6 +57,8 @@ struct StickerLibraryClient: Sendable {
 
     private let baseURL: URL
     private let transport: any StickerHTTPTransport
+    private let appVersion: String?
+    private let acceptLanguage: String?
 
     init(bundle: Bundle = .main, session: URLSession = .shared) throws {
         guard let value = bundle.object(forInfoDictionaryKey: "StickerFactoryAPIBaseURL") as? String,
@@ -65,6 +70,8 @@ struct StickerLibraryClient: Sendable {
         }
         baseURL = url
         transport = URLSessionStickerHTTPTransport(session: session)
+        appVersion = Self.appVersion(in: bundle)
+        acceptLanguage = Locale.preferredLanguages.first
     }
 
     private static func isAllowedBaseURL(_ url: URL) -> Bool {
@@ -76,9 +83,16 @@ struct StickerLibraryClient: Sendable {
         #endif
     }
 
-    init(baseURL: URL, transport: any StickerHTTPTransport) {
+    init(
+        baseURL: URL,
+        transport: any StickerHTTPTransport,
+        appVersion: String? = nil,
+        acceptLanguage: String? = Locale.preferredLanguages.first
+    ) {
         self.baseURL = baseURL
         self.transport = transport
+        self.appVersion = appVersion
+        self.acceptLanguage = acceptLanguage
     }
 
     /// The sectioned library: the user's own published stickers, then each installed pack.
@@ -101,13 +115,14 @@ struct StickerLibraryClient: Sendable {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        addClientHeaders(to: &request)
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let result = try await transport.data(for: request)
         if result.response.statusCode == 404 {
             return try await fetchLibrary(accessToken: accessToken)
         }
-        try Self.validate(result.response)
+        try Self.validate(result)
         guard let payload = try? JSONDecoder().decode(LibrarySectionsDTO.self, from: result.data) else {
             throw StickerLibraryError.invalidResponse
         }
@@ -153,10 +168,11 @@ struct StickerLibraryClient: Sendable {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        addClientHeaders(to: &request)
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let result = try await transport.data(for: request)
-        try Self.validate(result.response)
+        try Self.validate(result)
         guard let page = try? JSONDecoder().decode(StickerPageDTO.self, from: result.data) else {
             throw StickerLibraryError.invalidResponse
         }
@@ -189,7 +205,7 @@ struct StickerLibraryClient: Sendable {
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let result = try await transport.data(for: request)
-        try Self.validate(result.response)
+        try Self.validate(result)
         if result.data.count >= maximumByteCount {
             throw StickerLibraryError.renditionTooLarge
         }
@@ -206,7 +222,7 @@ struct StickerLibraryClient: Sendable {
             signedRequest.setValue("image/png, image/apng, image/gif, image/webp", forHTTPHeaderField: "Accept")
             signedRequest.cachePolicy = .reloadIgnoringLocalCacheData
             let rendition = try await transport.data(for: signedRequest)
-            try Self.validate(rendition.response)
+            try Self.validate(rendition)
             guard rendition.data.count < maximumByteCount else {
                 throw StickerLibraryError.renditionTooLarge
             }
@@ -218,14 +234,48 @@ struct StickerLibraryClient: Sendable {
         return DownloadedRendition(data: result.data, mimeType: contentType)
     }
 
-    private static func validate(_ response: HTTPURLResponse) throws {
+    private func addClientHeaders(to request: inout URLRequest) {
+        if let appVersion, !appVersion.isEmpty, !appVersion.contains("$(") {
+            request.setValue(appVersion, forHTTPHeaderField: "X-iOS-App-Version")
+        }
+        if let acceptLanguage, !acceptLanguage.isEmpty {
+            request.setValue(acceptLanguage, forHTTPHeaderField: "Accept-Language")
+        }
+    }
+
+    private static func appVersion(in bundle: Bundle) -> String? {
+        let value = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        guard let value, !value.isEmpty, !value.contains("$(") else { return nil }
+        return value
+    }
+
+    private static func validate(_ result: StickerHTTPResult) throws {
+        let response = result.response
         if response.statusCode == 401 || response.statusCode == 403 {
             throw StickerLibraryError.unauthorized
         }
         guard (200 ..< 300).contains(response.statusCode) else {
-            throw StickerLibraryError.server(statusCode: response.statusCode)
+            let envelope = try? JSONDecoder().decode(StickerLibraryErrorEnvelope.self, from: result.data)
+            if response.statusCode == 426,
+               envelope?.error.code == "IOS_APP_UPDATE_REQUIRED",
+               let message = envelope?.error.message {
+                throw StickerLibraryError.updateRequired(message: message)
+            }
+            throw StickerLibraryError.server(
+                statusCode: response.statusCode,
+                message: envelope?.error.message
+            )
         }
     }
+}
+
+private struct StickerLibraryErrorEnvelope: Decodable {
+    struct Body: Decodable {
+        let code: String
+        let message: String
+    }
+
+    let error: Body
 }
 
 /// Permissive decoding for the sectioned library.

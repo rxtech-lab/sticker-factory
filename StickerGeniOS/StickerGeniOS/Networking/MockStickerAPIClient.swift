@@ -15,13 +15,22 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     private(set) var publishedExportRequests: [PublishExportsRequest] = []
     private let failCreationAsUpload: Bool
     private let failChatSendAsInsufficientCredits: Bool
+    private let failLibraryListing: Bool
 
-    init(failCreationAsUpload: Bool = false, failChatSendAsInsufficientCredits: Bool = false) {
+    init(
+        failCreationAsUpload: Bool = false,
+        failChatSendAsInsufficientCredits: Bool = false,
+        failLibraryListing: Bool = false
+    ) {
         self.failCreationAsUpload = failCreationAsUpload
         self.failChatSendAsInsufficientCredits = failChatSendAsInsufficientCredits
+        self.failLibraryListing = failLibraryListing
     }
 
-    func listStickers(cursor: String?) async throws -> Page<Sticker> { .init(data: stickers, nextCursor: nil) }
+    func listStickers(cursor: String?) async throws -> Page<Sticker> {
+        if failLibraryListing { throw Self.libraryListingError }
+        return .init(data: stickers, nextCursor: nil)
+    }
 
     func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> {
         .init(
@@ -369,6 +378,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     }
 
     func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        if failLibraryListing { throw Self.libraryListingError }
         let mine = LibrarySection(
             id: "mine",
             kind: .mine,
@@ -394,6 +404,15 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             )
         }
         return .init(sections: [mine] + installed, generatedAt: Date())
+    }
+
+    private static var libraryListingError: APIErrorEnvelope {
+        APIErrorEnvelope(error: .init(
+            code: "IOS_APP_UPDATE_REQUIRED",
+            message: "Update Winky Sticker House to version 1.2 or later to view your stickers.",
+            requestId: "ui-test-app-version",
+            details: nil
+        ))
     }
 
     func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
