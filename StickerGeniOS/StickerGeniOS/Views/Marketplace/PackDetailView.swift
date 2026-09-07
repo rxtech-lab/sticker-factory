@@ -241,7 +241,9 @@ struct PackDetailView: View {
             } else {
                 Image(systemName: detail.installed ? "trash" : "plus")
             }
-            Text(detail.installed ? "Remove from library" : "Add to library")
+            Text(detail.installed
+                ? LocalizedStringKey("Remove from library")
+                : LocalizedStringKey("Add to library"))
         }
         .font(.headline)
         .frame(maxWidth: .infinity)

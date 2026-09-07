@@ -226,7 +226,7 @@ struct StickerExportSheet: View {
             HStack {
                 Text(revision.createdAt, format: .relative(presentation: .named))
                 Spacer(minLength: 8)
-                Text(canEdit ? "Tap to view or edit" : "Tap to view")
+                Text(canEdit ? LocalizedStringKey("Tap to view or edit") : LocalizedStringKey("Tap to view"))
             }
             .font(.caption)
             .foregroundStyle(.secondary)

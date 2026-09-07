@@ -193,10 +193,16 @@ private struct StickerTopUpCard: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
 
-                        Text(isEligible ? "One-time purchase" : TopUpPresentation.eligibilityText(for: topUp))
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(AppColors.muted)
-                            .lineLimit(2)
+                        Group {
+                            if isEligible {
+                                Text("One-time purchase")
+                            } else {
+                                Text(TopUpPresentation.eligibilityText(for: topUp))
+                            }
+                        }
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppColors.muted)
+                        .lineLimit(2)
                     }
 
                     Spacer(minLength: 0)

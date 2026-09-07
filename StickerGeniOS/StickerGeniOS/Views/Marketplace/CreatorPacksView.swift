@@ -13,7 +13,13 @@ struct CreatorPacksView: View {
                 if let response {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(response.creator.isSelf ? "Your packs" : response.creator.displayName)
+                            Group {
+                                if response.creator.isSelf {
+                                    Text("Your packs")
+                                } else {
+                                    Text(response.creator.displayName)
+                                }
+                            }
                                 .font(.title2.weight(.bold))
                             Text("@\(response.creator.handle)")
                                 .font(.subheadline)

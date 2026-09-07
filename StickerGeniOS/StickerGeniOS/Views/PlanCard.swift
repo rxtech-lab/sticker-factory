@@ -218,7 +218,11 @@ struct PlanCard: View {
                     if isBusy || isWaitingForReference {
                         ProgressView().controlSize(.small).tint(AppColors.card)
                     }
-                    Text(isWaitingForReference ? "Loading reference…" : confirmLabel)
+                    if isWaitingForReference {
+                        Text("Loading reference…")
+                    } else {
+                        Text(confirmLabel)
+                    }
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -320,7 +324,7 @@ private struct PlanReferencePreview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(isCapture ? "YOUR CAPTURE" : "STATIC REFERENCE")
+            Text(isCapture ? LocalizedStringKey("YOUR CAPTURE") : LocalizedStringKey("STATIC REFERENCE"))
                 .font(.caption2.weight(.semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)

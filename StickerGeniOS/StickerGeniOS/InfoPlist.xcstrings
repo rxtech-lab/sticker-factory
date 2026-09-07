@@ -10,6 +10,18 @@
             "state" : "new",
             "value" : "Winky"
           }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Winky"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Winky"
+          }
         }
       }
     },
@@ -20,6 +32,18 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
+            "value" : "StickerGeniOS"
+          }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "StickerGeniOS"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
             "value" : "StickerGeniOS"
           }
         }

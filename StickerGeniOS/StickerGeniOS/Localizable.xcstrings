@@ -2,13 +2,52 @@
   "sourceLanguage" : "en",
   "strings" : {
     " · %lld VIDEOS" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · %lld 个视频"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · %lld 段影片"
+          }
+        }
+      }
     },
     " · 1 VIDEO" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · 1 个视频"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " · 1 段影片"
+          }
+        }
+      }
     },
     "—" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "—"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "—"
+          }
+        }
+      }
     },
     "@%@" : {
       "localizations" : {
@@ -207,7 +246,20 @@
       }
     },
     "%lld stickers in this pack are hidden from people who added it." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此贴纸包中有 %lld 张贴纸对添加者不可见。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此貼圖包中有 %lld 張貼圖對加入者不可見。"
+          }
+        }
+      }
     },
     "%lld." : {
       "localizations" : {
@@ -322,7 +374,20 @@
       }
     },
     "1 sticker in this pack is hidden from people who added it." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此贴纸包中有 1 张贴纸对添加者不可见。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此貼圖包中有 1 張貼圖對加入者不可見。"
+          }
+        }
+      }
     },
     "1. Generate" : {
       "localizations" : {
@@ -421,10 +486,36 @@
       }
     },
     "A one-time purchase that leaves your plan unchanged." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次性购买，不会改变你的方案。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次性購買，不會改變你的方案。"
+          }
+        }
+      }
     },
     "A sticker frame could not be read for encoding." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取贴纸画面以进行编码。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取貼圖畫面以進行編碼。"
+          }
+        }
+      }
     },
     "A sticker frame could not be rendered." : {
       "localizations" : {
@@ -459,7 +550,20 @@
       }
     },
     "A transparent sticker and %@, sized for Messages." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "适用于“信息”的透明贴纸和 %@。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "適用於「訊息」的透明貼圖和 %@。"
+          }
+        }
+      }
     },
     "A transparent sticker and GIF, sized for Messages." : {
       "extractionState" : "stale",
@@ -592,10 +696,36 @@
       }
     },
     "Active plan required" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要有效方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要有效方案"
+          }
+        }
+      }
     },
     "Activity" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活动"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活動"
+          }
+        }
+      }
     },
     "Add" : {
       "localizations" : {
@@ -806,7 +936,20 @@
       }
     },
     "Allow photo-library access in Settings to save this image." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“设置”中允许访问照片图库，以保存此图像。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在「設定」中允許存取相片圖庫，以儲存此影像。"
+          }
+        }
+      }
     },
     "An MP4 with a solid background, for video-only apps." : {
       "localizations" : {
@@ -889,10 +1032,36 @@
       }
     },
     "Animation format" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "动画格式"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動畫格式"
+          }
+        }
+      }
     },
     "Anyone can find this pack. Edits reach everyone who added it." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何人都能找到此贴纸包。编辑会对所有添加者生效。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何人都能找到此貼圖包。編輯會對所有加入者生效。"
+          }
+        }
+      }
     },
     "assistant: %@" : {
       "localizations" : {
@@ -911,10 +1080,36 @@
       }
     },
     "Balance" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "余额"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "餘額"
+          }
+        }
+      }
     },
     "Balanced" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "均衡"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平衡"
+          }
+        }
+      }
     },
     "Be the first to publish a sticker pack." : {
       "localizations" : {
@@ -1093,7 +1288,20 @@
       }
     },
     "Buy for %@" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "购买 %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "購買 %@"
+          }
+        }
+      }
     },
     "by %@" : {
       "localizations" : {
@@ -1208,10 +1416,36 @@
       }
     },
     "Capture" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捕捉"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "擷取"
+          }
+        }
+      }
     },
     "Capture · %lld frames" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捕捉 · %lld 帧"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "擷取 · %lld 格"
+          }
+        }
+      }
     },
     "Check the layers, layout, and image count. Build only when the plan matches what you want." : {
       "localizations" : {
@@ -1262,7 +1496,20 @@
       }
     },
     "Choose a points pack" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择积分包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇點數包"
+          }
+        }
+      }
     },
     "Choose stickers" : {
       "localizations" : {
@@ -1409,7 +1656,20 @@
       }
     },
     "Completing purchase…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成购买…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成購買…"
+          }
+        }
+      }
     },
     "Confirm before generation" : {
       "localizations" : {
@@ -1524,7 +1784,20 @@
       }
     },
     "Could not read this photo. Close to keep it as it is." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取这张照片。关闭即可保持现状。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取這張相片。關閉即可保持現狀。"
+          }
+        }
+      }
     },
     "Could not start" : {
       "localizations" : {
@@ -1559,7 +1832,20 @@
       }
     },
     "Couldn't download the asset." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法下载资源。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法下載資源。"
+          }
+        }
+      }
     },
     "Couldn't fetch the published files. Check your connection and try again." : {
       "localizations" : {
@@ -1690,7 +1976,20 @@
       }
     },
     "Credit section" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "积分部分"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點數部分"
+          }
+        }
+      }
     },
     "Credits" : {
       "localizations" : {
@@ -1838,7 +2137,20 @@
       }
     },
     "Delete pack" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除貼圖包"
+          }
+        }
+      }
     },
     "Delete project" : {
       "localizations" : {
@@ -1857,7 +2169,20 @@
       }
     },
     "Delete this pack?" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要删除此贴纸包吗？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要刪除此貼圖包嗎？"
+          }
+        }
+      }
     },
     "Delete this sticker project?" : {
       "localizations" : {
@@ -1876,7 +2201,20 @@
       }
     },
     "Deleting pack…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在删除贴纸包…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在刪除貼圖包…"
+          }
+        }
+      }
     },
     "Deleting…" : {
       "localizations" : {
@@ -2071,10 +2409,36 @@
       }
     },
     "Drawing it full size" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在绘制完整尺寸…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在繪製完整尺寸…"
+          }
+        }
+      }
     },
     "Drawing the frames" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在绘制画面…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在繪製畫面…"
+          }
+        }
+      }
     },
     "Edit" : {
       "localizations" : {
@@ -2093,7 +2457,20 @@
       }
     },
     "Edit pack" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編輯貼圖包"
+          }
+        }
+      }
     },
     "Edit Sticker" : {
       "localizations" : {
@@ -2112,7 +2489,20 @@
       }
     },
     "Editing a sticker on device returns it to draft, and a draft cannot appear in a pack. Publish it again to bring it back — but saving the sticker list here drops it from the pack for good." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在设备上编辑贴纸会将其变回草稿，草稿无法出现在贴纸包中。请再次发布以恢复它——但在此保存贴纸列表会永久将它从贴纸包中移除。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在裝置上編輯貼圖會將其變回草稿，草稿無法出現在貼圖包中。請再次發佈以恢復它——但在此儲存貼圖列表會永久將它從貼圖包中移除。"
+          }
+        }
+      }
     },
     "Editing layers" : {
       "localizations" : {
@@ -2153,11 +2543,36 @@
             "state" : "new",
             "value" : "Encoding %1$lld px · frame %2$lld of %3$lld"
           }
+        },
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编码 %1$lld px · 第 %2$lld 帧，共 %3$lld 帧"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編碼 %1$lld px · 第 %2$lld 格，共 %3$lld 格"
+          }
         }
       }
     },
     "Encoding animation" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在编码动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在編碼動畫"
+          }
+        }
+      }
     },
     "Encoding at %lld px" : {
       "extractionState" : "stale",
@@ -2193,7 +2608,20 @@
       }
     },
     "Encoding GIF at %lld px" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在以 %lld px 编码 GIF"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在以 %lld px 編碼 GIF"
+          }
+        }
+      }
     },
     "Encoding video" : {
       "localizations" : {
@@ -2436,7 +2864,20 @@
       }
     },
     "Filming a clip" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在拍摄片段"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在拍攝片段"
+          }
+        }
+      }
     },
     "Filter" : {
       "localizations" : {
@@ -2503,7 +2944,20 @@
       }
     },
     "Fitting it for Messages" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在调整为适用于“信息”的尺寸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在調整為適用於「訊息」的尺寸"
+          }
+        }
+      }
     },
     "Fitting Messages sticker" : {
       "localizations" : {
@@ -2560,7 +3014,20 @@
       }
     },
     "Fresh off the press" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刚刚发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剛剛發佈"
+          }
+        }
+      }
     },
     "Generate %lld images" : {
       "localizations" : {
@@ -2691,7 +3158,20 @@
       }
     },
     "GIF" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GIF"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GIF"
+          }
+        }
+      }
     },
     "Go Pro" : {
       "localizations" : {
@@ -2791,7 +3271,20 @@
       }
     },
     "It disappears from the marketplace and from everyone who added it. Your stickers themselves are untouched." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它会从市场以及所有添加者那里消失。你的贴纸本身不会受到影响。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它會從市集以及所有加入者那裡消失。你的貼圖本身不會受到影響。"
+          }
+        }
+      }
     },
     "Keep creating" : {
       "localizations" : {
@@ -2842,7 +3335,20 @@
       }
     },
     "Keep pack" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留貼圖包"
+          }
+        }
+      }
     },
     "Kept" : {
       "localizations" : {
@@ -2877,7 +3383,20 @@
       }
     },
     "Larger, with hard-cut edges. Animates anywhere — WhatsApp, Discord, the web." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更大，边缘利落。可在 WhatsApp、Discord 和网页上播放动画。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更大，邊緣俐落。可在 WhatsApp、Discord 和網頁上播放動畫。"
+          }
+        }
+      }
     },
     "Layout preview with %lld layers" : {
       "localizations" : {
@@ -2929,19 +3448,84 @@
       }
     },
     "Lift subject" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提取主体"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提取主體"
+          }
+        }
+      }
     },
     "Lift the subject out" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提取主体"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提取主體"
+          }
+        }
+      }
     },
     "Lifted subject. Tap to choose a different one." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主体已提取。轻点以选择其他主体。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主體已提取。輕點以選擇其他主體。"
+          }
+        }
+      }
     },
     "Lifting the subject from every frame…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从每一帧中提取主体…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在從每一格中提取主體…"
+          }
+        }
+      }
     },
     "Lifting the subject…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在提取主体…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在提取主體…"
+          }
+        }
+      }
     },
     "Load earlier messages" : {
       "localizations" : {
@@ -2960,7 +3544,20 @@
       }
     },
     "Load more" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "载入更多"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "載入更多"
+          }
+        }
+      }
     },
     "Loading %@…" : {
       "localizations" : {
@@ -2979,7 +3576,20 @@
       }
     },
     "Loading balances…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入余额…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入餘額…"
+          }
+        }
+      }
     },
     "Loading conversation" : {
       "localizations" : {
@@ -3030,7 +3640,20 @@
       }
     },
     "Loading history…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入历史记录…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入歷史記錄…"
+          }
+        }
+      }
     },
     "Loading more packs…" : {
       "localizations" : {
@@ -3129,7 +3752,20 @@
       }
     },
     "Loading top-ups…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入充值记录…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入增值記錄…"
+          }
+        }
+      }
     },
     "Loading your library…" : {
       "localizations" : {
@@ -3148,7 +3784,20 @@
       }
     },
     "Looking for subjects…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在寻找主体…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在尋找主體…"
+          }
+        }
+      }
     },
     "Loop" : {
       "localizations" : {
@@ -3199,10 +3848,36 @@
       }
     },
     "Making the compact copy" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在制作紧凑副本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在製作精簡副本"
+          }
+        }
+      }
     },
     "Making the send sizes" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在制作发送尺寸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在製作傳送尺寸"
+          }
+        }
+      }
     },
     "Making your sticker" : {
       "localizations" : {
@@ -3221,7 +3896,20 @@
       }
     },
     "Manage credits" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理积分"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理點數"
+          }
+        }
+      }
     },
     "Manage Subscription" : {
       "localizations" : {
@@ -3240,7 +3928,20 @@
       }
     },
     "Manage Subscription opens Apple's own sheet, where a plan can be changed or cancelled. Changes can take a moment to reach this screen." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“管理订阅”会打开 Apple 的页面，你可以在那里更改或取消方案。更改可能需要一点时间才会显示在此页面。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「管理訂閱」會開啟 Apple 的頁面，你可以在那裡更改或取消方案。更改可能需要一點時間才會顯示在此頁面。"
+          }
+        }
+      }
     },
     "Marketplace" : {
       "localizations" : {
@@ -3275,7 +3976,20 @@
       }
     },
     "Maximum" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最高"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最高"
+          }
+        }
+      }
     },
     "Medium" : {
       "localizations" : {
@@ -3294,7 +4008,20 @@
       }
     },
     "Membership required" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要会员资格"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要會員資格"
+          }
+        }
+      }
     },
     "Message %@" : {
       "localizations" : {
@@ -3329,7 +4056,20 @@
       }
     },
     "Move to draft" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至草稿"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至草稿"
+          }
+        }
+      }
     },
     "MP4 background" : {
       "localizations" : {
@@ -3365,7 +4105,20 @@
       }
     },
     "MP4 uses this background. The animated PNG and system sticker exports remain transparent." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MP4 会使用此背景。动态 PNG 和系统贴纸导出文件仍保持透明。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MP4 會使用此背景。動態 PNG 和系統貼圖匯出檔案仍保持透明。"
+          }
+        }
+      }
     },
     "My packs" : {
       "localizations" : {
@@ -3432,7 +4185,20 @@
       }
     },
     "New sticker" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新貼圖"
+          }
+        }
+      }
     },
     "Newest" : {
       "localizations" : {
@@ -3483,10 +4249,36 @@
       }
     },
     "No balance history" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有余额历史记录"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有餘額歷史記錄"
+          }
+        }
+      }
     },
     "No balances" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有余额"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有餘額"
+          }
+        }
+      }
     },
     "No installs yet" : {
       "localizations" : {
@@ -3633,16 +4425,68 @@
       }
     },
     "No subject could be lifted out of that photo. Try one with a clearer foreground." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法从那张照片中提取主体。请尝试前景更清晰的照片。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法從那張相片中提取主體。請嘗試前景更清晰的相片。"
+          }
+        }
+      }
     },
     "No subject found here. Close to keep the whole photo." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这里没有找到主体。关闭即可保留整张照片。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡沒有找到主體。關閉即可保留整張相片。"
+          }
+        }
+      }
     },
     "No top-ups available" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可用的充值"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可用的增值"
+          }
+        }
+      }
     },
     "Not currently available" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前不可用"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前不可用"
+          }
+        }
+      }
     },
     "Not now" : {
       "localizations" : {
@@ -3709,7 +4553,20 @@
       }
     },
     "Nothing in this pack yet — add the stickers it should contain." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此贴纸包目前为空——添加它应包含的贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此貼圖包目前為空——加入它應包含的貼圖。"
+          }
+        }
+      }
     },
     "Nothing of yours matches this filter." : {
       "localizations" : {
@@ -3808,13 +4665,52 @@
       }
     },
     "Off" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉"
+          }
+        }
+      }
     },
     "OK" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "好"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "好"
+          }
+        }
+      }
     },
     "On" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟"
+          }
+        }
+      }
     },
     "Once" : {
       "localizations" : {
@@ -3833,13 +4729,52 @@
       }
     },
     "One part is then animated as a short video clip, which takes a few extra minutes." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其中一个部分随后会制作成短视频片段，需要额外几分钟。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其中一個部分隨後會製作成短片段，需要額外幾分鐘。"
+          }
+        }
+      }
     },
     "Only the subject you lift is uploaded. The rest of the photo stays on your device." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只会上传你提取的主体。照片的其余部分会保留在你的设备上。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只會上載你提取的主體。相片的其餘部分會保留在你的裝置上。"
+          }
+        }
+      }
     },
     "Only you can see this pack until you publish it." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在发布之前，只有你能看到此贴纸包。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在發佈之前，只有你能看到此貼圖包。"
+          }
+        }
+      }
     },
     "Open %@ from the Messages app drawer to send published stickers, or share the exported files anywhere." : {
       "localizations" : {
@@ -4018,7 +4953,20 @@
       }
     },
     "Photo. Touch and hold a subject to lift it out." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片。触碰并按住主体以将其提取。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相片。觸碰並按住主體以將其提取。"
+          }
+        }
+      }
     },
     "Pick the sticker size and formats, then export and publish this accepted version to your Library." : {
       "localizations" : {
@@ -4117,16 +5065,68 @@
       }
     },
     "PNG" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PNG"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PNG"
+          }
+        }
+      }
     },
     "points" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "积分"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點數"
+          }
+        }
+      }
     },
     "Points added to your balance." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "积分已添加到你的余额。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點數已加入你的餘額。"
+          }
+        }
+      }
     },
     "Points packs will appear here when they are available." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "积分包可用时会显示在这里。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點數包可用時會顯示在這裡。"
+          }
+        }
+      }
     },
     "Popular" : {
       "localizations" : {
@@ -4305,7 +5305,20 @@
       }
     },
     "Publish pack" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈貼圖包"
+          }
+        }
+      }
     },
     "Published" : {
       "localizations" : {
@@ -4436,7 +5449,20 @@
       }
     },
     "Purchase limit reached" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已达到购买上限"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已達到購買上限"
+          }
+        }
+      }
     },
     "Purchases restored." : {
       "localizations" : {
@@ -4455,7 +5481,20 @@
       }
     },
     "Purchasing…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在购买…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在購買…"
+          }
+        }
+      }
     },
     "Re-export" : {
       "localizations" : {
@@ -4586,7 +5625,20 @@
       }
     },
     "Reference photo. Tap to lift a subject out of it." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考照片。轻点以从中提取主体。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "參考相片。輕點以從中提取主體。"
+          }
+        }
+      }
     },
     "Reject" : {
       "localizations" : {
@@ -4845,7 +5897,20 @@
       }
     },
     "Returning to draft…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在返回草稿…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在返回草稿…"
+          }
+        }
+      }
     },
     "Revert" : {
       "localizations" : {
@@ -5040,7 +6105,20 @@
       }
     },
     "Save to Photo Library" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存到照片图库"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存到相片圖庫"
+          }
+        }
+      }
     },
     "Saved to your Library" : {
       "localizations" : {
@@ -5059,10 +6137,36 @@
       }
     },
     "Saving details…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在保存详细信息…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在儲存詳細資料…"
+          }
+        }
+      }
     },
     "Saving it" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在保存"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在儲存"
+          }
+        }
+      }
     },
     "Saving replaces it with an unpublished draft. Export again to put it back in Messages." : {
       "localizations" : {
@@ -5081,10 +6185,36 @@
       }
     },
     "Saving sticker decision" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在保存贴纸决定"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在儲存貼圖決定"
+          }
+        }
+      }
     },
     "Saving stickers…" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在保存贴纸…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在儲存貼圖…"
+          }
+        }
+      }
     },
     "Say what is wrong and the assistant will draft a new plan right away. Leave it blank to just dismiss this one." : {
       "localizations" : {
@@ -5183,10 +6313,36 @@
       }
     },
     "Sending the animation" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在发送动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在傳送動畫"
+          }
+        }
+      }
     },
     "Sending the compact copy" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在发送紧凑副本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在傳送精簡副本"
+          }
+        }
+      }
     },
     "Sending the GIF" : {
       "extractionState" : "stale",
@@ -5366,7 +6522,20 @@
       }
     },
     "Shows the tool result or error" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示工具结果或错误"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示工具結果或錯誤"
+          }
+        }
+      }
     },
     "Sign in with RxLab" : {
       "localizations" : {
@@ -5504,10 +6673,36 @@
       }
     },
     "Smaller, with soft transparent edges. Animates in Messages and other Apple apps." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更小，边缘柔和透明。可在“信息”和其他 Apple App 中播放动画。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更小，邊緣柔和透明。可在「訊息」和其他 Apple App 中播放動畫。"
+          }
+        }
+      }
     },
     "Smallest, with soft transparent edges. Animates in Messages, WhatsApp, and modern browsers." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最小，边缘柔和透明。可在“信息”、WhatsApp 和现代浏览器中播放动画。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最小，邊緣柔和透明。可在「訊息」、WhatsApp 和現代瀏覽器中播放動畫。"
+          }
+        }
+      }
     },
     "Sort" : {
       "localizations" : {
@@ -5526,7 +6721,20 @@
       }
     },
     "Specific plan required" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要指定方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要指定方案"
+          }
+        }
+      }
     },
     "Start with a prompt and optional photos. The assistant will propose a plan before it generates anything." : {
       "localizations" : {
@@ -5609,7 +6817,20 @@
       }
     },
     "Status" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "狀態"
+          }
+        }
+      }
     },
     "Sticker" : {
       "localizations" : {
@@ -5725,7 +6946,20 @@
       }
     },
     "Sticker, %@, and MP4 — everything this sticker can be." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸、%@ 和 MP4——这张贴纸支持的所有格式。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖、%@ 和 MP4——這張貼圖支援的所有格式。"
+          }
+        }
+      }
     },
     "Sticker, GIF, and MP4 — everything this sticker can be." : {
       "extractionState" : "stale",
@@ -5761,7 +6995,20 @@
       }
     },
     "Stickers (%lld)" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸（%lld）"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖（%lld）"
+          }
+        }
+      }
     },
     "Still being drafted." : {
       "localizations" : {
@@ -5941,7 +7188,20 @@
       }
     },
     "Tap a photo you attached to cut its subject away from the background, so only the part you want reaches the sticker." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点你附加的照片，从背景中剪出主体，让你想要的部分进入贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輕點你附加的相片，從背景中剪出主體，讓你想要的部分進入貼圖。"
+          }
+        }
+      }
     },
     "Tap to view" : {
       "localizations" : {
@@ -6024,7 +7284,20 @@
       }
     },
     "That photo could not be read." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取那张照片。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取那張相片。"
+          }
+        }
+      }
     },
     "The animation document is invalid." : {
       "localizations" : {
@@ -6043,10 +7316,36 @@
       }
     },
     "The animation had no frames to encode." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "动画没有可编码的画面。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動畫沒有可編碼的畫面。"
+          }
+        }
+      }
     },
     "The animation's frames are not all the same size." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "动画的画面尺寸不一致。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動畫的畫面尺寸不一致。"
+          }
+        }
+      }
     },
     "The authentication service is temporarily unavailable." : {
       "localizations" : {
@@ -6081,7 +7380,20 @@
       }
     },
     "The downloaded asset didn't match what was published." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载的资源与已发布版本不匹配。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下載的資源與已發佈版本不相符。"
+          }
+        }
+      }
     },
     "The export file could not be created." : {
       "localizations" : {
@@ -6150,16 +7462,68 @@
       }
     },
     "The first frame of your capture. It animates in place, with the other layers built around it." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你捕捉内容的第一帧。它会在原地播放动画，其他图层围绕它构建。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你擷取內容的第一格。它會在原地播放動畫，其他圖層圍繞它建立。"
+          }
+        }
+      }
     },
     "The first sticker is the pack's cover. Drag to reorder." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一张贴纸是贴纸包的封面。拖动即可重新排序。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第一張貼圖是貼圖包的封面。拖動即可重新排序。"
+          }
+        }
+      }
     },
     "The link stays /marketplace/%@ even if you rename this pack." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即使你重命名此贴纸包，链接仍会保持为 /marketplace/%@。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即使你重新命名此貼圖包，連結仍會保持為 /marketplace/%@。"
+          }
+        }
+      }
     },
     "The media upload could not be completed (HTTP %lld)." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法完成媒体上传（HTTP %lld）。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法完成媒體上載（HTTP %lld）。"
+          }
+        }
+      }
     },
     "The media upload could not be completed." : {
       "extractionState" : "stale",
@@ -6179,7 +7543,20 @@
       }
     },
     "The motion from that Live Photo could not be read." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取那张 Live Photo 的动态内容。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取那張 Live Photo 的動態內容。"
+          }
+        }
+      }
     },
     "The MP4 export failed: %@" : {
       "localizations" : {
@@ -6214,7 +7591,20 @@
       }
     },
     "The purchase is pending approval." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "购买正在等待批准。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "購買正在等待批准。"
+          }
+        }
+      }
     },
     "The request failed (HTTP %lld)." : {
       "localizations" : {
@@ -6377,10 +7767,36 @@
       }
     },
     "The WebP encoder is unavailable." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WebP 编码器不可用。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WebP 編碼器不可用。"
+          }
+        }
+      }
     },
     "The WebP export could not be encoded." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法编码 WebP 导出文件。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法編碼 WebP 匯出檔案。"
+          }
+        }
+      }
     },
     "This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the sticker is a still frame. The animated GIF and MP4 exports are unaffected. Shortening the animation, or switching a ping-pong loop to a plain loop, brings the motion back." : {
       "extractionState" : "stale",
@@ -6400,7 +7816,20 @@
       }
     },
     "This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the sticker is a still frame. The animated PNG and MP4 exports are unaffected. Shortening the animation, or switching a ping-pong loop to a plain loop, brings the motion back." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此动画在任何帧率下都无法符合 Apple 的 500 KB 贴纸限制，因此贴纸会变为静态帧。动态 PNG 和 MP4 导出不受影响。缩短动画，或将往返循环改为普通循环，即可恢复动态效果。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此動畫在任何格率下都無法符合 Apple 的 500 KB 貼圖限制，因此貼圖會變為靜態格。動態 PNG 和 MP4 匯出不受影響。縮短動畫，或將往返循環改為普通循環，即可恢復動態效果。"
+          }
+        }
+      }
     },
     "This assembles %lld layers. No images need to be generated." : {
       "localizations" : {
@@ -6531,13 +7960,52 @@
       }
     },
     "This tool completed. No result details were recorded." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此工具已完成。没有记录结果详情。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此工具已完成。沒有記錄結果詳情。"
+          }
+        }
+      }
     },
     "This tool failed. No error details were recorded." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此工具失败。没有记录错误详情。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此工具失敗。沒有記錄錯誤詳情。"
+          }
+        }
+      }
     },
     "This tool is still running. Its result will appear here when available." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此工具仍在运行。结果可用时会显示在这里。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此工具仍在執行。結果可用時會顯示在這裡。"
+          }
+        }
+      }
     },
     "This uses the approved static reference to assemble %lld existing layers and add motion." : {
       "localizations" : {
@@ -6626,13 +8094,52 @@
       }
     },
     "Tool Error" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具错误"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具錯誤"
+          }
+        }
+      }
     },
     "Tool Result" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具结果"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具結果"
+          }
+        }
+      }
     },
     "Top Up" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "充值"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "增值"
+          }
+        }
+      }
     },
     "Top up to finish this sticker, or upgrade for a monthly allowance." : {
       "localizations" : {
@@ -6651,7 +8158,20 @@
       }
     },
     "Top-ups" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "充值记录"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "增值記錄"
+          }
+        }
+      }
     },
     "Total time" : {
       "localizations" : {
@@ -6670,10 +8190,36 @@
       }
     },
     "Touch and hold another subject to switch" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "触碰并按住其他主体以切换"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "觸碰並按住其他主體以切換"
+          }
+        }
+      }
     },
     "Touch and hold the subject" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "触碰并按住主体"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "觸碰並按住主體"
+          }
+        }
+      }
     },
     "Try a different search or filter." : {
       "localizations" : {
@@ -6794,7 +8340,20 @@
       }
     },
     "Unavailable" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用"
+          }
+        }
+      }
     },
     "Unknown" : {
       "localizations" : {
@@ -6909,10 +8468,36 @@
       }
     },
     "Use Live Subject" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用实时主体"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用即時主體"
+          }
+        }
+      }
     },
     "Use Subject" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用主体"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用主體"
+          }
+        }
+      }
     },
     "Use these reference images for the sticker." : {
       "localizations" : {
@@ -7027,13 +8612,52 @@
       }
     },
     "Video · %llds" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频 · %lld 秒"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影片 · %lld 秒"
+          }
+        }
+      }
     },
     "View Plans" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看方案"
+          }
+        }
+      }
     },
     "Visibility" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可见性"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可見性"
+          }
+        }
+      }
     },
     "Wait for the current AI edit to finish before sending another." : {
       "localizations" : {
@@ -7052,7 +8676,20 @@
       }
     },
     "WebP" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WebP"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WebP"
+          }
+        }
+      }
     },
     "Welcome to %@" : {
       "localizations" : {
@@ -7119,7 +8756,20 @@
       }
     },
     "White outline" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "白色描边"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "白色描邊"
+          }
+        }
+      }
     },
     "Working" : {
       "localizations" : {
@@ -7235,7 +8885,20 @@
       }
     },
     "Your %@ plan is active. Top up whenever you need more credits." : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 %@ 方案已生效。需要更多积分时即可充值。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 %@ 方案已生效。需要更多點數時即可增值。"
+          }
+        }
+      }
     },
     "Your accepted revision is ready" : {
       "localizations" : {
@@ -7254,7 +8917,20 @@
       }
     },
     "YOUR CAPTURE" : {
-
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的捕捉内容"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的擷取內容"
+          }
+        }
+      }
     },
     "Your files are ready to share" : {
       "localizations" : {
@@ -7303,7 +8979,55 @@
           }
         }
       }
+    },
+  "This tool failed. No result details were recorded." : {
+    "localizations" : {
+      "zh-CN" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "此工具失败。没有记录结果详情。"
+        }
+      },
+      "zh-HK" : {
+        "stringUnit" : {
+          "state" : "translated",
+          "value" : "此工具失敗。沒有記錄結果詳情。"
+        }
+      }
     }
+  },
+    "One-time purchase" : {
+        "localizations" : {
+          "zh-CN" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "一次性购买"
+            }
+          },
+          "zh-HK" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "一次性購買"
+            }
+          }
+        }
+      },
+    "Your packs" : {
+        "localizations" : {
+          "zh-CN" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "你的贴纸包"
+            }
+          },
+          "zh-HK" : {
+            "stringUnit" : {
+              "state" : "translated",
+              "value" : "你的貼圖包"
+            }
+          }
+        }
+      }
   },
   "version" : "1.0"
 }
