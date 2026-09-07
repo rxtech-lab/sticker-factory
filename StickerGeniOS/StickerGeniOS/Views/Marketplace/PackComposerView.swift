@@ -4,9 +4,16 @@ import SwiftUI
 ///
 /// Only *published* stickers are offered: an unpublished one has no system rendition, so it would
 /// be invisible in every surface a pack feeds — the server refuses it for the same reason.
+///
+/// Creating the pack is not the end of the sheet. A member without its WhatsApp and Telegram
+/// copies has to be encoded before the pack can be sent anywhere, and that happens on this phone
+/// — so a save that leaves such members pushes `MessengerPreparationView` and hands the pack over
+/// only once that screen is done with it.
 struct PackComposerView: View {
     @Bindable var store: MarketplaceStore
-    var onCreated: () -> Void
+    /// Handed the pack that was made, so the caller can land on it — where sending it to
+    /// WhatsApp or Telegram lives.
+    var onCreated: (StickerPackDetail) -> Void
 
     @State private var title = ""
     @State private var summary = ""
@@ -18,6 +25,8 @@ struct PackComposerView: View {
     /// Which round trip of the submission is running, or `nil` when nothing is in flight.
     @State private var submissionStatus: String?
     @State private var errorMessage: String?
+    /// The pack just made, while its members are being prepared on the pushed screen.
+    @State private var preparing: PackPreparationRoute?
 
     private var canSubmit: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !selected.isEmpty && !isSubmitting
@@ -35,41 +44,8 @@ struct PackComposerView: View {
                 PosterListHeader("Pack")
             }
 
-            Section {
-                if selected.isEmpty {
-                    Text("Nothing chosen yet — add the stickers this pack should contain.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 12)], spacing: 12) {
-                        ForEach(selected) { sticker in
-                            Button {
-                                Haptics.selection()
-                                selected.removeAll { $0.id == sticker.id }
-                            } label: {
-                                StickerThumbnail(sticker: sticker, api: store.api)
-                                    .aspectRatio(1, contentMode: .fit)
-                                    .overlay(alignment: .topTrailing) {
-                                        PosterSymbol("minus.circle.fill")
-                                            .foregroundStyle(.white, .red)
-                                            .padding(6)
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(String(localized: "Remove \(sticker.title)"))
-                            .accessibilityIdentifier("pack-remove-\(sticker.id)")
-                        }
-                    }
-                }
-
-                Button {
-                    showingPicker = true
-                } label: {
-                    Label("Choose stickers", systemImage: "plus.circle")
-                }
-                .accessibilityIdentifier("pack-choose-stickers-button")
-            } header: {
-                Text("Stickers (\(selected.count) selected)")
+            PackMembersSection(members: $selected, api: store.api, identifierPrefix: "pack") {
+                showingPicker = true
             }
 
             if let errorMessage {
@@ -113,6 +89,14 @@ struct PackComposerView: View {
         .sheet(isPresented: $showingPicker) {
             StickerPickerSheet(api: store.api, selection: $selected)
         }
+        .navigationDestination(item: $preparing) { route in
+            MessengerPreparationView(
+                preparer: store.messengerPreparer,
+                api: store.api,
+                stickers: route.stickers,
+                onFinished: { onCreated(route.detail) }
+            )
+        }
     }
 
     private func submit(publish: Bool) async {
@@ -138,7 +122,15 @@ struct PackComposerView: View {
             submissionStatus = String(localized: "Updating your packs…")
             await store.refresh()
             Haptics.success()
-            onCreated()
+            // The pack exists either way. What differs is whether it can be sent yet: a member
+            // short of a rendition keeps the sheet up for the encode, and the hand-off to the
+            // caller waits for that screen's Done.
+            let pending = MessengerRenditionPreparer.pending(in: detail.stickers)
+            if pending.isEmpty {
+                onCreated(detail)
+            } else {
+                preparing = PackPreparationRoute(detail: detail, stickers: pending)
+            }
         } catch {
             errorMessage = error.localizedDescription
             Haptics.failure()
@@ -146,11 +138,23 @@ struct PackComposerView: View {
     }
 }
 
+/// A pack whose members are about to be encoded for the messengers, as a navigation value.
+///
+/// Hashed by the pack alone: the route exists to push one screen for one save, and two saves of
+/// the same pack in a row are the same destination with a fresher member list.
+struct PackPreparationRoute: Hashable {
+    let detail: StickerPackDetail
+    let stickers: [Sticker]
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.detail.id == rhs.detail.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(detail.id) }
+}
+
 #Preview {
     NavigationStack {
         PackComposerView(
             store: MarketplaceStore(api: MockStickerAPIClient()),
-            onCreated: {}
+            onCreated: { _ in }
         )
     }
 }

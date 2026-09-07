@@ -24,6 +24,14 @@ export const attachmentSmallAssets = alias(assets, "attachment_small_assets");
  * open.
  */
 export const webpAssets = alias(assets, "webp_assets");
+/**
+ * The two messenger renditions, joined for the same reason the WebP is and with the same rule: they
+ * sit beside the preview chain and never inside it. A Telegram rendition can be a VP9 WebM, which
+ * no surface in this app can draw — resolving a preview through to one would leave the library
+ * showing nothing.
+ */
+export const whatsappAssets = alias(assets, "whatsapp_assets");
+export const telegramAssets = alias(assets, "telegram_assets");
 
 /**
  * The asset a client shows for a revision, as SQL so a summary join can resolve it in the same

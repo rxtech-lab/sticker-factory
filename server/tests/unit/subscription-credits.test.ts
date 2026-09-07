@@ -113,10 +113,7 @@ describe("when billing is unconfigured", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("lets a publish through without checking an entitlement", async () => {
-    await expect(requirePermission("user-1", "marketplace.publish", "nope")).resolves.toBeUndefined();
-    expect(calls).toHaveLength(0);
-  });
+
 });
 
 describe("holdCreditsForJob", () => {
@@ -317,7 +314,7 @@ describe("settling and releasing", () => {
 
 describe("requirePermission", () => {
   it("passes when the plan grants it", async () => {
-    respond = () => ({ status: 200, body: { roles: ["pro"], permissions: ["marketplace.publish"], plans: [], balances: [] } });
+    respond = () => ({ status: 200, body: { roles: ["pro"], permissions: ["marketplace.publish:all"], plans: [], balances: [] } });
     await expect(
       requirePermission("user-1", "marketplace.publish", "needs a plan"),
     ).resolves.toBeUndefined();

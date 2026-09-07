@@ -1,0 +1,7 @@
+WASticker adapts source from WhatsApp's third-party sticker sample
+(https://github.com/WhatsApp/stickers, iOS/WAStickersThirdParty):
+Interoperability.swift, Limits.swift, StickerPack.swift and Sticker.swift.
+Copyright (c) Meta Platforms, Inc. and affiliates. Licensed under the BSD license in LICENSE.
+
+Changes: repackaged as a Swift package; validation reads WebP through ImageIO instead of the
+sample's bundled YYImage decoder; the sample app's view controllers and assets are not included.

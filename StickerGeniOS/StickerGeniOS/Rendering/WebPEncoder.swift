@@ -49,23 +49,44 @@ nonisolated enum WebPEncoder {
     /// sees in a transcript bubble.
     static let defaultQuality: Float = 90
 
-    static func encodeStill(_ image: CGImage, quality: Float = defaultQuality) throws -> Data {
+    /// - Parameter alphaQuality: 0…100, where 100 compresses the alpha plane losslessly. The
+    ///   default keeps every cutout edge exact; a caller with a hard byte ceiling — a WhatsApp
+    ///   sticker has 100 KB — can spend some of it, since a soft-edged alpha plane at 100 is often
+    ///   the largest part of the file.
+    static func encodeStill(
+        _ image: CGImage,
+        quality: Float = defaultQuality,
+        alphaQuality: Int = 100
+    ) throws -> Data {
         guard let raster = IndexedPNGEncoder.rgbaBytes(from: image) else { throw Failure.unreadableFrame }
-        var output: UnsafeMutablePointer<UInt8>?
-        let written = raster.pixels.withUnsafeBufferPointer { input -> Int in
+        var config = WebPConfig()
+        guard WebPConfigInit(&config) != 0 else { throw Failure.encoderUnavailable }
+        config.quality = quality
+        config.alpha_quality = Int32(min(100, max(0, alphaQuality)))
+        guard WebPValidateConfig(&config) != 0 else { throw Failure.encoderUnavailable }
+
+        var picture = WebPPicture()
+        guard WebPPictureInit(&picture) != 0 else { throw Failure.encoderUnavailable }
+        defer { WebPPictureFree(&picture) }
+        picture.use_argb = 1
+        picture.width = Int32(raster.width)
+        picture.height = Int32(raster.height)
+        let imported = raster.pixels.withUnsafeBufferPointer { input -> Int32 in
             guard let base = input.baseAddress else { return 0 }
-            return WebPEncodeRGBA(
-                base,
-                Int32(raster.width),
-                Int32(raster.height),
-                Int32(raster.width * 4),
-                quality,
-                &output
-            )
+            return WebPPictureImportRGBA(&picture, base, Int32(raster.width * 4))
         }
-        guard written > 0, let output else { throw Failure.encodeFailed }
-        defer { WebPFree(output) }
-        return Data(bytes: output, count: written)
+        guard imported != 0 else { throw Failure.unreadableFrame }
+
+        var writer = WebPMemoryWriter()
+        WebPMemoryWriterInit(&writer)
+        defer { WebPMemoryWriterClear(&writer) }
+        picture.writer = WebPMemoryWrite
+        let encoded = withUnsafeMutablePointer(to: &writer) { pointer -> Int32 in
+            picture.custom_ptr = UnsafeMutableRawPointer(pointer)
+            return WebPEncode(&config, &picture)
+        }
+        guard encoded != 0, let bytes = writer.mem, writer.size > 0 else { throw Failure.encodeFailed }
+        return Data(bytes: bytes, count: writer.size)
     }
 
     /// An animation encoded a frame at a time, so a long cycle is never held in memory at once.
@@ -91,7 +112,9 @@ nonisolated enum WebPEncoder {
         /// a file with a hole in it, and `finish` returns nil.
         private var isAbandoned = false
 
-        init?(width: Int, height: Int, loops: Int, quality: Float = WebPEncoder.defaultQuality) {
+        /// - Parameter alphaQuality: see `encodeStill`. 100, the default, is lossless alpha; the
+        ///   sharing rendition keeps it there, and a messenger export walks it down.
+        init?(width: Int, height: Int, loops: Int, quality: Float = WebPEncoder.defaultQuality, alphaQuality: Int = 100) {
             self.width = width
             self.height = height
             guard width > 0, height > 0 else { return nil }
@@ -104,7 +127,7 @@ nonisolated enum WebPEncoder {
             config.quality = quality
             // The cutout's edge is the one thing a sticker cannot afford to lose, and alpha is
             // cheap to keep: it compresses separately from colour and is mostly flat 0 or 255.
-            config.alpha_quality = 100
+            config.alpha_quality = Int32(min(100, max(0, alphaQuality)))
             guard WebPValidateConfig(&config) != 0 else { return nil }
         }
 

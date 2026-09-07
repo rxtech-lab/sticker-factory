@@ -101,6 +101,61 @@ describe("cross-owner pack asset access", () => {
     }
   });
 
+  /**
+   * The seam the whole messenger feature rests on. Since the export sheet stopped encoding, these
+   * two files are the *only* thing it can send — there is no preview to fall back to and re-render
+   * — so an installer who cannot read them is offered two hand-off buttons that 404 on every
+   * sticker. Nothing else in the app would catch that.
+   */
+  it("shares the messenger renditions with everyone who can see the pack", async () => {
+    const sticker = await seedPublishedSticker(db, "creator", { messengerRenditions: true });
+    const pack = await createPack(db, "creator", {
+      title: "Messengers",
+      stickerIds: [sticker.stickerId],
+      state: "published",
+    });
+    expect(pack.state).toBe("published");
+
+    await expect(createAssetDownload(db, "stranger", sticker.whatsappAssetId)).resolves.toBeDefined();
+    await expect(createAssetDownload(db, "stranger", sticker.telegramAssetId)).resolves.toBeDefined();
+
+    // And they close again with the pack, exactly like every other shared kind.
+    await unpublishPack(db, "creator", pack.id, "draft");
+    for (const assetId of [sticker.whatsappAssetId, sticker.telegramAssetId]) {
+      await expect(createAssetDownload(db, "stranger", assetId))
+        .rejects.toMatchObject({ status: 404, code: "ASSET_NOT_FOUND" });
+      await expect(createAssetDownload(db, "creator", assetId)).resolves.toBeDefined();
+    }
+  });
+
+  /**
+   * Being the right *kind* is not enough on its own: a rendition the revision does not point at is
+   * a file that was uploaded and never bound, and it stays private.
+   */
+  it("keeps an unbound messenger rendition private even inside a published pack", async () => {
+    const sticker = await seedPublishedSticker(db, "creator");
+    await createPack(db, "creator", { title: "Unbound", stickerIds: [sticker.stickerId], state: "published" });
+
+    const id = crypto.randomUUID();
+    const r2Key = objectKey("creator", id, "image/webp");
+    await getObjectStore().put(r2Key, { bytes: Buffer.from("orphan"), contentType: "image/webp" });
+    await db.insert(assets).values({
+      id,
+      ownerId: "creator",
+      stickerId: sticker.stickerId,
+      kind: "messenger_whatsapp",
+      state: "ready",
+      r2Key,
+      mimeType: "image/webp",
+      byteSize: 128,
+      createdAt: new Date(),
+      readyAt: new Date(),
+    });
+
+    await expect(createAssetDownload(db, "stranger", id)).rejects.toMatchObject({ status: 404 });
+    await expect(createAssetDownload(db, "creator", id)).resolves.toBeDefined();
+  });
+
   it("never echoes the creator's own filename to a borrower", async () => {
     const sticker = await seedPublishedSticker(db, "creator");
     await createPack(db, "creator", { title: "Names", stickerIds: [sticker.stickerId], state: "published" });

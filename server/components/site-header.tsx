@@ -7,8 +7,8 @@ export async function SiteHeader() {
   const session = await getHealthyWebSession();
   return (
     <header className="site-header">
-      <Link className="brand" href="/" aria-label="Sticker Factory home">
-        <span className="brand-mark" aria-hidden="true">✦</span><span>Sticker Factory</span>
+      <Link className="brand" href="/" aria-label="Winky - The sticker factory home">
+        <span className="brand-mark" aria-hidden="true">✦</span><span>Winky<span className="brand-tagline"> - The sticker factory</span></span>
       </Link>
       <nav aria-label="Primary navigation">
         <Link href="/about">About</Link>

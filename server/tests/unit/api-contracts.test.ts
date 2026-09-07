@@ -5,6 +5,7 @@ import {
   ChatMessagesResponseV1Schema,
   CreatePackRequestSchema,
   CreateUploadRequestSchema,
+  MessengerRenditionsRequestSchema,
   LibrarySectionsResponseV1Schema,
   PackDetailV1Schema,
   PackListResponseV1Schema,
@@ -76,5 +77,72 @@ describe("shared API fixtures", () => {
       byteSize: 40_000,
       filename: "bad.png",
     })).toThrow(/video\/mp4/);
+  });
+
+  it("enforces each messenger's container and ceiling", () => {
+    const upload = (fields: Record<string, unknown>) => CreateUploadRequestSchema.parse({
+      byteSize: 40_000,
+      filename: "sticker.bin",
+      ...fields,
+    });
+
+    expect(upload({ kind: "messenger_whatsapp", mimeType: "image/webp" }).kind).toBe("messenger_whatsapp");
+    // Telegram takes two containers, because a static sticker goes as a still and an animated one
+    // as a video. Which is correct for a given sticker is settled at bind time, not here.
+    expect(upload({ kind: "messenger_telegram", mimeType: "image/png" }).kind).toBe("messenger_telegram");
+    expect(upload({ kind: "messenger_telegram", mimeType: "video/webm" }).kind).toBe("messenger_telegram");
+
+    expect(() => upload({ kind: "messenger_whatsapp", mimeType: "image/png" })).toThrow(/image\/webp/);
+    expect(() => upload({ kind: "messenger_telegram", mimeType: "image/webp" })).toThrow(/image\/png or video\/webm/);
+
+    // WebM exists in this API for exactly one purpose; nothing else may claim it.
+    expect(() => upload({ kind: "master", mimeType: "video/webm" })).toThrow(/Only Telegram renditions/);
+    expect(() => upload({ kind: "webp", mimeType: "video/webm" })).toThrow(/Only Telegram renditions/);
+
+    // The ceilings are the messengers' own, and they are KiB — a decimal 500_000 would let the
+    // client's last ladder rung through by 2.4 KB and be refused after the hand-off.
+    expect(() => upload({ kind: "messenger_whatsapp", mimeType: "image/webp", byteSize: 500 * 1024 + 1 }))
+      .toThrow(/500 KB/);
+    expect(upload({ kind: "messenger_whatsapp", mimeType: "image/webp", byteSize: 500 * 1024 }).byteSize)
+      .toBe(500 * 1024);
+    expect(() => upload({ kind: "messenger_telegram", mimeType: "video/webm", byteSize: 256 * 1024 + 1 }))
+      .toThrow(/256 KB/);
+    expect(() => upload({ kind: "messenger_telegram", mimeType: "image/png", byteSize: 512 * 1024 + 1 }))
+      .toThrow(/512 KB/);
+  });
+
+  it("validates the messenger rendition bind request", () => {
+    const revisionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const assetId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const other = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+    expect(MessengerRenditionsRequestSchema.parse({ revisionId, whatsappAssetId: assetId }).whatsappAssetId)
+      .toBe(assetId);
+    // Each destination binds on its own: fitting WhatsApp says nothing about fitting Telegram.
+    expect(MessengerRenditionsRequestSchema.parse({ revisionId, telegramAssetId: assetId }).telegramAssetId)
+      .toBe(assetId);
+    expect(MessengerRenditionsRequestSchema.parse({ revisionId, emoji: "🐱" }).emoji).toBe("🐱");
+
+    // Nothing to write at all is a client bug worth surfacing, not a no-op to absorb.
+    expect(() => MessengerRenditionsRequestSchema.parse({ revisionId })).toThrow(/at least one/);
+    // The two messengers take different containers, so one file can never be both.
+    expect(() => MessengerRenditionsRequestSchema.parse({
+      revisionId,
+      whatsappAssetId: assetId,
+      telegramAssetId: assetId,
+    })).toThrow(/cannot share one asset/);
+    expect(MessengerRenditionsRequestSchema.parse({
+      revisionId,
+      whatsappAssetId: assetId,
+      telegramAssetId: other,
+    }).telegramAssetId).toBe(other);
+
+    // One grapheme that is an emoji — counted, not measured, so a flag or a family still passes.
+    expect(MessengerRenditionsRequestSchema.parse({ revisionId, emoji: "🇯🇵" }).emoji).toBe("🇯🇵");
+    expect(MessengerRenditionsRequestSchema.parse({ revisionId, emoji: "👩‍👩‍👧" }).emoji).toBe("👩‍👩‍👧");
+    expect(MessengerRenditionsRequestSchema.parse({ revisionId, emoji: "1️⃣" }).emoji).toBe("1️⃣");
+    expect(() => MessengerRenditionsRequestSchema.parse({ revisionId, emoji: "🐱🐶" })).toThrow(/one emoji/);
+    expect(() => MessengerRenditionsRequestSchema.parse({ revisionId, emoji: "cat" })).toThrow(/one emoji/);
+    expect(() => MessengerRenditionsRequestSchema.parse({ revisionId, emoji: "" })).toThrow();
   });
 });

@@ -1443,6 +1443,7 @@ private extension StickerAPIClientProtocol {
     func cancelGeneration(jobID: String, idempotencyKey: String) async throws -> CancelGenerationResponse { throw TestFixtureError.stub }
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse { throw TestFixtureError.stub }
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse { throw TestFixtureError.stub }
+    func bindMessengerRenditions(stickerID: String, request: MessengerRenditionsRequest, idempotencyKey: String) async throws -> Sticker { throw TestFixtureError.stub }
     func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse { throw TestFixtureError.stub }
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String { throw TestFixtureError.stub }
     func assetDownload(assetID: String) async throws -> AssetDownload { throw TestFixtureError.stub }

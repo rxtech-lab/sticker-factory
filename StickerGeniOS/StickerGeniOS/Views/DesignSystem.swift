@@ -38,6 +38,14 @@ nonisolated enum Poster {
 // MARK: - Type
 
 extension Font {
+    /// Friendly hand-lettered copy for the illustrated welcome and feature cards.
+    static var cartoonBody: Font {
+        if UIFont(name: "ChalkboardSE-Bold", size: 17) != nil {
+            return .custom("ChalkboardSE-Bold", size: 17, relativeTo: .body)
+        }
+        return .system(.body, design: .rounded, weight: .bold)
+    }
+
     /// The poster headline: rounded, heavy, and tight.
     static func posterDisplay(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
         .system(size: size, weight: weight, design: .rounded)

@@ -54,10 +54,46 @@ export const AssetKindSchema = z.enum([
    * attachment, never the file Messages puts in the sticker drawer.
    */
   "webp",
+  /**
+   * The copy WhatsApp accepts: a transparent 512 px WebP, still or animated.
+   *
+   * Encoded on the phone when the sticker is added to a pack, not at publish time, because that is
+   * the first moment a sticker is destined for a messenger at all. The server cannot make one — it
+   * has sharp and no VP9 encoder — so this kind only ever arrives from a client.
+   */
+  "messenger_whatsapp",
+  /**
+   * The copy Telegram accepts: a transparent 512 px still PNG for a static sticker, or a VP9 WebM
+   * with an alpha side-stream for an animated one.
+   *
+   * One kind rather than two because a sticker has exactly one Telegram rendition and its own
+   * `kind` already says which container that is — the same reason `attachment` covers both a still
+   * and an animated PNG.
+   */
+  "messenger_telegram",
 ]);
 
 /** Sizes an `attachment` rendition may be written at. Large is the sharing rendition itself. */
 export const ATTACHMENT_RENDITION_DIMENSIONS = { medium: 408, small: 300 } as const;
+
+/**
+ * What the two messengers enforce on a sticker they are handed.
+ *
+ * WhatsApp: https://github.com/WhatsApp/stickers/blob/main/iOS/README.md
+ * Telegram: https://core.telegram.org/import-stickers
+ *
+ * Kept here rather than derived from the iOS client's `MessengerPackLimits` because they are a
+ * contract, not a preference: a file over one of these is refused by the messenger after the
+ * hand-off, where nothing in this app can explain the failure. The client walks a quality ladder
+ * down to them; the server refuses anything that still missed.
+ */
+export const MESSENGER_RENDITION_DIMENSION = 512;
+export const WHATSAPP_STATIC_BYTE_LIMIT = 100 * 1024;
+export const WHATSAPP_ANIMATED_BYTE_LIMIT = 500 * 1024;
+export const WHATSAPP_MAX_SECONDS = 10;
+export const TELEGRAM_STATIC_BYTE_LIMIT = 512 * 1024;
+export const TELEGRAM_ANIMATED_BYTE_LIMIT = 256 * 1024;
+export const TELEGRAM_MAX_SECONDS = 3;
 
 /**
  * How a frame atlas is packed, declared by the client because the file cannot say.
@@ -139,7 +175,7 @@ export const PostChatMessageRequestSchema = z.object({
 export const CreateUploadRequestSchema = z.object({
   stickerId: z.string().uuid().optional(),
   kind: AssetKindSchema,
-  mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4"]),
+  mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm"]),
   byteSize: z.number().int().positive().max(25 * 1024 * 1024),
   filename: z.string().trim().min(1).max(180),
   sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
@@ -200,6 +236,38 @@ export const CreateUploadRequestSchema = z.object({
   if (value.kind === "attachment" && value.mimeType !== "image/png") {
     context.addIssue({ code: "custom", message: "Attachment renditions must use image/png" });
   }
+  // The messenger renditions. Their ceilings are the messengers' own, checked here so a file that
+  // could never be handed over is refused before it is uploaded rather than after; `completeUpload`
+  // checks them again against the measured bytes, which is the number that actually counts.
+  if (value.kind === "messenger_whatsapp") {
+    if (value.mimeType !== "image/webp") {
+      context.addIssue({ code: "custom", message: "WhatsApp renditions must use image/webp" });
+    } else if (value.byteSize > WHATSAPP_ANIMATED_BYTE_LIMIT) {
+      context.addIssue({ code: "custom", message: "WhatsApp renditions must be 500 KB or smaller" });
+    }
+  }
+  // One kind, two containers: Telegram takes a still PNG for a static sticker and a transparent VP9
+  // WebM for an animated one, and the two have different ceilings. Which one is correct for *this*
+  // sticker is not knowable here — the upload does not name a sticker kind — so both are admitted
+  // and `bindMessengerRenditions` is what refuses a WebM bound to a static sticker.
+  if (value.kind === "messenger_telegram") {
+    if (value.mimeType === "image/png") {
+      if (value.byteSize > TELEGRAM_STATIC_BYTE_LIMIT) {
+        context.addIssue({ code: "custom", message: "Telegram still renditions must be 512 KB or smaller" });
+      }
+    } else if (value.mimeType === "video/webm") {
+      if (value.byteSize > TELEGRAM_ANIMATED_BYTE_LIMIT) {
+        context.addIssue({ code: "custom", message: "Telegram video renditions must be 256 KB or smaller" });
+      }
+    } else {
+      context.addIssue({ code: "custom", message: "Telegram renditions must use image/png or video/webm" });
+    }
+  }
+  // WebM exists in this API for exactly one purpose. Saying so here keeps `inspectWebM` off every
+  // other kind's path, where nothing would know what to do with a video.
+  if (value.mimeType === "video/webm" && value.kind !== "messenger_telegram") {
+    context.addIssue({ code: "custom", path: ["mimeType"], message: "Only Telegram renditions may be WebM" });
+  }
 });
 
 export const CompleteUploadRequestSchema = z.object({
@@ -252,6 +320,54 @@ export const PublishExportsRequestSchema = z.object({
     });
   }
 });
+
+/**
+ * The single emoji a messenger files a sticker under.
+ *
+ * Both messengers want exactly one, and neither can be told later, so "one grapheme that is an
+ * emoji" is the whole rule. Counted with `Intl.Segmenter` rather than by length: a flag, a keycap
+ * and a family are each one emoji made of several code points, and every length-based check gets
+ * at least one of them wrong.
+ */
+export const MessengerEmojiSchema = z.string().min(1).max(64).refine((value) => {
+  const graphemes = [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(value)];
+  if (graphemes.length !== 1) return false;
+  // Three families, because no single Unicode property covers them. Most emoji are
+  // `Extended_Pictographic`; a flag is a pair of regional indicators, which are not pictographic at
+  // all; and a keycap is an ASCII digit wearing a combining enclosure. Testing only the first
+  // rejects 🇯🇵 and 1️⃣, both of which the messengers accept.
+  return /\p{Extended_Pictographic}/u.test(value)
+    || /^[\u{1F1E6}-\u{1F1FF}]{2}$/u.test(value)
+    || /^[0-9#*]\uFE0F?\u20E3$/u.test(value);
+}, { message: "A messenger emoji must be exactly one emoji" });
+
+/**
+ * The messenger renditions for one already-published revision.
+ *
+ * Separate from `PublishExportsRequestSchema` because it is sent at a different moment: a publish
+ * uploads the full export set at once and is refused without a system rendition, while these arrive
+ * when the sticker is added to a pack, singly, against a revision that is already active. Both
+ * asset ids are optional and independent — artwork that fits WhatsApp's ceiling can still overshoot
+ * Telegram's, and binding the one that worked beats refusing both.
+ */
+export const MessengerRenditionsRequestSchema = z.object({
+  revisionId: z.string().uuid(),
+  whatsappAssetId: z.string().uuid().optional(),
+  telegramAssetId: z.string().uuid().optional(),
+  emoji: MessengerEmojiSchema.optional(),
+}).strict().superRefine((value, context) => {
+  if (!value.whatsappAssetId && !value.telegramAssetId && !value.emoji) {
+    context.addIssue({ code: "custom", message: "Send at least one rendition or an emoji" });
+  }
+  if (value.whatsappAssetId && value.whatsappAssetId === value.telegramAssetId) {
+    context.addIssue({
+      code: "custom",
+      path: ["telegramAssetId"],
+      message: "The two messengers take different files and cannot share one asset",
+    });
+  }
+});
+export type MessengerRenditionsRequest = z.infer<typeof MessengerRenditionsRequestSchema>;
 
 /**
  * A document edited on the client, saved as a new revision.
@@ -352,6 +468,21 @@ export const StickerSummaryV1Schema = z.object({
    * encode one — so a reader must treat it as an optimisation and fall back to `previewAsset`.
    */
   webpAsset: AssetV1Schema.nullable(),
+  /**
+   * The 512 px copies WhatsApp and Telegram accept, when this sticker has them.
+   *
+   * Written when the sticker is added to a pack, not when it is published, so both are null for
+   * every sticker that has never been in one and for every sticker added to a pack before this
+   * field existed. Unlike `webpAsset`, these have no fallback: the export sheet sends these bytes
+   * or it sends nothing, which is why a member without them is shown grayed rather than offered.
+   *
+   * Independently null, too — WhatsApp gives an animation 500 KB and Telegram gives it 256 KB, so
+   * artwork routinely clears one ceiling and misses the other.
+   */
+  whatsappAsset: AssetV1Schema.nullable(),
+  telegramAsset: AssetV1Schema.nullable(),
+  /** The single emoji both messengers file this sticker under, as the creator chose it. */
+  messengerEmoji: z.string().nullable(),
 }).strict();
 
 export const StickerListResponseV1Schema = z.object({

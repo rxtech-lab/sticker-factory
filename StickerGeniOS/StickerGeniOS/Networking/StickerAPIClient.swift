@@ -24,6 +24,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func cancelGeneration(jobID: String, idempotencyKey: String) async throws -> CancelGenerationResponse
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse
+    func bindMessengerRenditions(stickerID: String, request: MessengerRenditionsRequest, idempotencyKey: String) async throws -> Sticker
     func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String
     func assetDownload(assetID: String) async throws -> AssetDownload
@@ -238,6 +239,21 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse {
         try await send(
             path: "api/v1/stickers/\(stickerID)/exports",
+            method: "POST",
+            body: request,
+            idempotencyKey: idempotencyKey
+        )
+    }
+
+    /// Attaches the WhatsApp and Telegram renditions to an already-published sticker.
+    ///
+    /// Answers with the whole sticker rather than an acknowledgement, because the caller has just
+    /// made it sendable and would otherwise have to re-list the pack to find that out. Unlike
+    /// `registerExport` there is no job to watch: nothing is rendered on the server, so the write
+    /// is finished when the call returns.
+    func bindMessengerRenditions(stickerID: String, request: MessengerRenditionsRequest, idempotencyKey: String) async throws -> Sticker {
+        try await send(
+            path: "api/v1/stickers/\(stickerID)/messenger-renditions",
             method: "POST",
             body: request,
             idempotencyKey: idempotencyKey

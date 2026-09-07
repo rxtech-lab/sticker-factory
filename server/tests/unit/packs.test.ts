@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { firstRow, type Database } from "@/lib/db/client";
 import { packInstalls, stickerPackItems, stickerPacks, stickers } from "@/lib/db/schema";
 import {
@@ -37,7 +37,33 @@ describe("sticker packs", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     await close();
+  });
+
+  it("checks publishing permissions for both direct publication and drafts", async () => {
+    vi.stubEnv("RX_SUBSCRIPTION_URL", "https://billing.example.test");
+    vi.stubEnv("RX_SUBSCRIPTION_API_KEY", "rxs_xcode_test");
+    let permissions: string[] = [];
+    const billing = vi.fn(async () => Response.json({ permissions, roles: [], plans: [], balances: [] }));
+    vi.stubGlobal("fetch", billing);
+    const sticker = await seedPublishedSticker(db, "creator");
+    await expect(createPack(db, "creator", {
+      title: "Direct", stickerIds: [sticker.stickerId], state: "published",
+    })).rejects.toMatchObject({ code: "SUBSCRIPTION_REQUIRED" });
+    const draft = await createPack(db, "creator", {
+      title: "Draft", stickerIds: [sticker.stickerId],
+    });
+    await expect(publishPack(db, "creator", draft.id)).rejects.toMatchObject({ code: "SUBSCRIPTION_REQUIRED" });
+    expect((await getPack(db, "creator", draft.id)).state).toBe("draft");
+    permissions = ["marketplace.publish:all"];
+    const direct = await createPack(db, "creator", {
+      title: "Direct", stickerIds: [sticker.stickerId], state: "published",
+    });
+    expect(direct.state).toBe("published");
+    expect((await publishPack(db, "creator", draft.id)).state).toBe("published");
+    expect(billing).toHaveBeenCalledTimes(4);
   });
 
   const counters = async (packId: string) =>

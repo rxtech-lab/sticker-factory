@@ -5,7 +5,7 @@ import type { GenerationJobRow } from "@/lib/db/schema";
 /** The RxSubscription balance unit API spend is charged against. */
 export const CREDIT_UNIT = "points";
 
-/** Permission a creator needs before a pack can go live on the marketplace. */
+/** Permission required to publish a pack to the marketplace. */
 export const PUBLISH_PERMISSION = "marketplace.publish";
 
 type JobKind = GenerationJobRow["kind"];

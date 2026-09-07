@@ -5,6 +5,7 @@ import SwiftUI
 struct AccountView: View {
     @Bindable var environment: AppEnvironment
     var onShowWelcome: () -> Void = {}
+    var onShowFeatures: () -> Void = {}
     @State private var confirmingLogout = false
 
     private var userName: String {
@@ -86,6 +87,11 @@ struct AccountView: View {
                     }
                 }
                 .accessibilityIdentifier("show-welcome-button")
+
+                Button(action: onShowFeatures) {
+                    Label("What's new", systemImage: "gift.fill")
+                }
+                .accessibilityIdentifier("show-feature-cards-button")
             } header: {
                 PosterListHeader("Help")
             }

@@ -46,7 +46,8 @@ final class StickerGeniOSUITests: XCTestCase {
     func testAuthenticatedTabsAndLibraryAccessibility() {
         XCTAssertTrue(app.tabBars.buttons["Library"].isSelected)
         XCTAssertFalse(app.tabBars.buttons["Create"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Marketplace"].exists)
+        XCTAssertFalse(app.tabBars.buttons["Marketplace"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Sticker Packs"].exists)
         XCTAssertTrue(app.tabBars.buttons["Account"].exists)
         XCTAssertTrue(element("create-sticker-button").exists)
         XCTAssertTrue(element("library-filter-menu").exists)
@@ -358,8 +359,8 @@ final class StickerGeniOSUITests: XCTestCase {
     /// publishing is not a one-way door, so the screen has to be reachable from the pack itself.
     @MainActor
     func testOwnedPackIsEditableFromItsDetailScreen() {
-        app.tabBars.buttons["Marketplace"].tap()
-        XCTAssertTrue(app.navigationBars["Marketplace"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Sticker Packs"].tap()
+        XCTAssertTrue(app.navigationBars["Sticker Packs"].waitForExistence(timeout: 5))
 
         element("create-pack-button").tap()
         let title = element("pack-title-field")
@@ -374,17 +375,28 @@ final class StickerGeniOSUITests: XCTestCase {
         element("sticker-picker-done-button").tap()
         element("pack-create-draft-button").tap()
 
-        // The composer closes onto the marketplace, and a pack of your own only lists under "My
-        // packs" — a draft is invisible in browse by design.
-        XCTAssertTrue(app.navigationBars["Marketplace"].waitForExistence(timeout: 8))
-        app.segmentedControls.buttons["My packs"].tap()
-        let card = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "marketplace-pack-"))
-            .firstMatch
-        XCTAssertTrue(card.waitForExistence(timeout: 5))
-        card.tap()
+        // The demo sticker has no WhatsApp or Telegram copy, so creating the pack pushes the
+        // conversion screen before anything else. There is no back button and no swipe-down: the
+        // fixture has no artwork to encode, so the run fails fast, says so beside the sticker, and
+        // offers Done — which is what lands on the pack.
+        let preparation = element("messenger-preparation-sheet")
+        XCTAssertTrue(preparation.waitForExistence(timeout: 8))
+        XCTAssertTrue(element("messenger-preparation-sticker-sticker-demo").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Preparing stickers"].exists)
+        let done = element("messenger-preparation-done")
+        XCTAssertTrue(done.waitForExistence(timeout: 15))
+        XCTAssertTrue(element("messenger-preparation-incomplete").exists)
+        done.tap()
 
+        // The sheet closes straight onto the pack it made: the messenger buttons live there, and
+        // sending the new pack somewhere is the next thing to do with it.
         let edit = element("pack-edit-button")
+        XCTAssertTrue(edit.waitForExistence(timeout: 8))
+        XCTAssertTrue(element("pack-messenger-whatsapp").exists)
+        XCTAssertTrue(element("pack-messenger-telegram").exists)
+        XCTAssertTrue(app.navigationBars["Editable pack"].exists)
+        // The creator is told the pack still cannot be sent, and where to fix that.
+        XCTAssertTrue(element("pack-messenger-unprepared").exists)
         XCTAssertTrue(edit.waitForExistence(timeout: 5))
         edit.tap()
 
@@ -392,6 +404,9 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(editorTitle.waitForExistence(timeout: 5))
         XCTAssertEqual(editorTitle.value as? String, "Editable pack")
         XCTAssertTrue(element("pack-editor-publish-button").exists)
+        XCTAssertTrue(element("pack-editor-member-sticker-demo").exists)
+        // The member is still unprepared, so the editor offers to prepare it without an edit.
+        XCTAssertTrue(element("pack-editor-prepare-button").exists)
         // Scoped to buttons: an unscoped descendants query resolves the toolbar item's container
         // first, and a container reports itself enabled whatever the button inside it says.
         let save = app.buttons["pack-editor-save-button"]
@@ -405,9 +420,140 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(save.isEnabled)
         save.tap()
 
-        // Saving closes the editor, and the detail screen behind it shows the edit rather than the
-        // copy it was opened with.
+        // Saving a pack with an unprepared member goes through the conversion screen again, and
+        // Done there is what closes the editor.
+        XCTAssertTrue(element("messenger-preparation-sheet").waitForExistence(timeout: 8))
+        let preparationDone = element("messenger-preparation-done")
+        XCTAssertTrue(preparationDone.waitForExistence(timeout: 15))
+        preparationDone.tap()
+
+        // The editor is gone, and the detail screen behind it shows the edit rather than the copy
+        // it was opened with.
         XCTAssertTrue(app.staticTexts["Edited after it was created"].waitForExistence(timeout: 8))
+        XCTAssertFalse(element("pack-editor-title-field").exists)
+    }
+
+    /// The feature cards come up after the welcome tour, one card per Next, and the last one is
+    /// dismissed by Got it. Forced by flag, exactly as the tour is.
+    @MainActor
+    func testFeatureCardsFollowTheWelcomeTour() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-welcome", "--ui-show-feature-cards"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker House"].waitForExistence(timeout: 8))
+        for _ in 0..<5 { app.buttons["Next"].tap() }
+        app.buttons["Get started"].tap()
+
+        // The cards follow the tour inside the same sheet; the first card's title is what says
+        // they arrived.
+        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 8))
+        let next = element("feature-card-next-button")
+        XCTAssertTrue(next.exists)
+        next.tap()
+        expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: app.staticTexts["Your packs, in Telegram"])
+        waitForExpectations(timeout: 3)
+        XCTAssertTrue(app.buttons["Got it"].exists)
+        app.buttons["Got it"].tap()
+        XCTAssertFalse(app.staticTexts["Your packs, in Telegram"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.tabBars.buttons["Library"].exists)
+    }
+
+    @MainActor
+    func testLibraryErrorWaitsUntilWelcomeAndFeatureCardsFinish() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = [
+            "--ui-testing", "--reduce-motion", "--ui-show-welcome",
+            "--ui-show-feature-cards", "--ui-library-list-failure",
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker House"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 2))
+        for _ in 0..<5 { app.buttons["Next"].tap() }
+        app.buttons["Get started"].tap()
+
+        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
+        element("feature-card-next-button").tap()
+        XCTAssertTrue(app.buttons["Got it"].waitForExistence(timeout: 3))
+        app.buttons["Got it"].tap()
+
+        XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Update Winky Sticker House to version 1.2 or later to view your stickers."].exists)
+        app.buttons["OK"].tap()
+        XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
+    }
+
+    /// Feature cards alone, with no tour in front of them, on a launch that has already seen it.
+    @MainActor
+    func testFeatureCardsShowWithoutTheWelcomeTour() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-feature-cards"]
+        app.launch()
+
+        XCTAssertTrue(element("feature-cards-sheet").waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["Welcome to Winky Sticker House"].exists)
+        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].exists)
+    }
+
+    /// The default launch shows no cards at all under automation, the same as the welcome tour.
+    @MainActor
+    func testFeatureCardsAreSuppressedUnderAutomationByDefault() {
+        XCTAssertFalse(element("feature-cards-sheet").waitForExistence(timeout: 2))
+    }
+
+    /// The pack screen offers both messengers, and the export sheet explains how the pack will be
+    /// cut and what to expect. It starts fetching the prepared files by itself — there is no button
+    /// to press first. Neither messenger is installed on a simulator, so the sheet says so and
+    /// keeps its send buttons disabled rather than opening nothing.
+    @MainActor
+    func testPackDetailOffersMessengerExport() {
+        app.tabBars.buttons["Sticker Packs"].tap()
+        XCTAssertTrue(app.navigationBars["Sticker Packs"].waitForExistence(timeout: 5))
+        let card = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "marketplace-pack-"))
+            .firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        card.tap()
+
+        let whatsapp = element("pack-messenger-whatsapp")
+        XCTAssertTrue(whatsapp.waitForExistence(timeout: 5))
+        XCTAssertTrue(element("pack-messenger-telegram").exists)
+
+        // Telegram: a single sticker is a valid set, so the fixture pack becomes one part.
+        element("pack-messenger-telegram").tap()
+        XCTAssertTrue(element("messenger-export-sheet").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Add to Telegram"].exists)
+        XCTAssertTrue(element("messenger-not-installed").waitForExistence(timeout: 3))
+        let telegramPart = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "messenger-part-"))
+            .firstMatch
+        XCTAssertTrue(telegramPart.waitForExistence(timeout: 5))
+        XCTAssertTrue(element("messenger-emoji-sticker-borrowed").waitForExistence(timeout: 3))
+        XCTAssertFalse(element("messenger-export-start").exists)
+        // The fixture's rendition is served locally, so the part is sendable — barring the app.
+        let send = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "messenger-send-"))
+            .firstMatch
+        XCTAssertTrue(send.waitForExistence(timeout: 8))
+        XCTAssertFalse(send.isEnabled)
+        element("messenger-export-close").tap()
+
+        // WhatsApp: one sticker is under its minimum of three, so nothing can be sent and the
+        // sticker is listed with the reason.
+        whatsapp.tap()
+        XCTAssertTrue(app.navigationBars["Add to WhatsApp"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element("messenger-skipped-sticker-borrowed").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "messenger-send-"))
+            .firstMatch.exists)
+        element("messenger-export-close").tap()
+        XCTAssertTrue(whatsapp.waitForExistence(timeout: 3))
     }
 
     private func openCreateSheet() {

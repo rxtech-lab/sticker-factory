@@ -4,6 +4,13 @@ import XCTest
 @testable import StickerGeniOS
 
 final class SubscriptionAccessTests: XCTestCase {
+    func testPublishingRequiresGlobalPermission() {
+        XCTAssertTrue(SubscriptionAccess.canPublishPacks(permissions: ["marketplace.publish:all"]))
+        XCTAssertTrue(SubscriptionAccess.canPublishPacks(permissions: ["marketplace.publish"]))
+        XCTAssertFalse(SubscriptionAccess.canPublishPacks(permissions: []))
+        XCTAssertFalse(SubscriptionAccess.canPublishPacks(permissions: ["marketplace.publish:pack-1"]))
+    }
+
     func testPublishableKeysSelectOnlyTheMatchingEnvironment() {
         let keys = SubscriptionPublishableKeys(
             xcode: "rxs_pk_xcode_local",

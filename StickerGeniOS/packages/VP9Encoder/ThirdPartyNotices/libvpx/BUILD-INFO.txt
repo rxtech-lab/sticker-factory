@@ -1,0 +1,6 @@
+libvpx v1.15.2 (https://chromium.googlesource.com/webm/libvpx)
+commit: d168454ecd099805c675d4a98c66f4891373302a
+built: 2026-09-07T12:16:49Z with Xcode 26.5 Build version 17F42 
+minimum iOS: 17.0
+common configure flags: --disable-vp8 --enable-vp9 --enable-vp9-encoder --enable-vp9-decoder --disable-vp9-highbitdepth --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-webm-io --disable-libyuv --disable-postproc --disable-vp9-postproc --disable-shared --enable-static --enable-pic --disable-install-docs --disable-install-bins --disable-install-srcs
+x86_64 simulator extra flags: --disable-mmx --disable-sse --disable-sse2 --disable-sse3 --disable-ssse3 --disable-sse4_1 --disable-avx --disable-avx2 --disable-avx512 --disable-runtime-cpu-detect

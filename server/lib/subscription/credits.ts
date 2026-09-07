@@ -266,7 +266,8 @@ export async function requirePermission(
     throw error;
   }
 
-  if (!permissions.includes(permission)) {
+  // RxArgo returns scoped grants; global publishing requires the all scope.
+  if (!permissions.includes(permission) && !permissions.includes(`${permission}:all`)) {
     throw new ApiError(402, "SUBSCRIPTION_REQUIRED", message, { permission });
   }
 }

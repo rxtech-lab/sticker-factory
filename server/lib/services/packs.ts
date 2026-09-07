@@ -1,3 +1,4 @@
+import { requirePublishEntitlement } from "@/lib/subscription/credits";
 import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { firstRow, type Database } from "@/lib/db/client";
 import {
@@ -6,7 +7,9 @@ import {
   previewAssetIdSql,
   previewAssets,
   systemAssets,
+  telegramAssets,
   webpAssets,
+  whatsappAssets,
 } from "@/lib/db/columns";
 import {
   creatorProfiles,
@@ -29,10 +32,11 @@ import {
   serializeStickerSummary,
   stickerSummaryColumns,
   systemAssetSummaryColumns,
+  telegramSummaryColumns,
   webpSummaryColumns,
+  whatsappSummaryColumns,
   type StickerSummaryRow,
 } from "@/lib/services/stickers";
-import { requirePublishEntitlement } from "@/lib/subscription/credits";
 
 /** A pack is a curated set, not a dumping ground; the Messages grid also has to stay scrollable. */
 export const MAX_PACK_ITEMS = 60;
@@ -246,6 +250,8 @@ type PackMemberRow = {
   attachmentMedium: StickerSummaryRow["attachmentMedium"];
   attachmentSmall: StickerSummaryRow["attachmentSmall"];
   webpAsset: StickerSummaryRow["webpAsset"];
+  whatsappAsset: StickerSummaryRow["whatsappAsset"];
+  telegramAsset: StickerSummaryRow["telegramAsset"];
 };
 
 function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | null) {
@@ -265,6 +271,8 @@ function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | nu
     attachmentMedium: attachmentMediumSummaryColumns,
     attachmentSmall: attachmentSmallSummaryColumns,
     webpAsset: webpSummaryColumns,
+    whatsappAsset: whatsappSummaryColumns,
+    telegramAsset: telegramSummaryColumns,
   })
     .from(stickerPackItems)
     .innerJoin(stickers, eq(stickers.id, stickerPackItems.stickerId))
@@ -277,6 +285,8 @@ function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | nu
     .leftJoin(attachmentMediumAssets, eq(attachmentMediumAssets.id, stickerRevisions.attachmentMediumAssetId))
     .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId))
     .leftJoin(webpAssets, eq(webpAssets.id, stickerRevisions.webpAssetId))
+    .leftJoin(whatsappAssets, eq(whatsappAssets.id, stickerRevisions.whatsappAssetId))
+    .leftJoin(telegramAssets, eq(telegramAssets.id, stickerRevisions.telegramAssetId))
     .where(and(...conditions))
     .orderBy(asc(stickerPackItems.packId), asc(stickerPackItems.position), asc(stickerPackItems.stickerId));
 }
@@ -297,6 +307,8 @@ function groupPackMembers(
       attachmentMedium: row.attachmentMedium,
       attachmentSmall: row.attachmentSmall,
       webpAsset: row.webpAsset,
+      whatsappAsset: row.whatsappAsset,
+      telegramAsset: row.telegramAsset,
     });
     byPack.set(row.packId, bucket);
   }
@@ -543,9 +555,7 @@ export async function createPack(
   if (wantsPublish && stickerIds.length === 0) {
     throw new ApiError(409, "PACK_EMPTY", "Add at least one published sticker before publishing a pack");
   }
-  // Creating a pack is always free; only putting one in front of other people
-  // needs the entitlement. Checked here as well as in `publishPack` because
-  // this call can go straight to `published` in one step.
+
   if (wantsPublish) await requirePublishEntitlement(creatorId);
 
   const packId = crypto.randomUUID();
@@ -597,10 +607,6 @@ export async function publishPack(db: Database, creatorId: string, packId: strin
   if ((members.get(packId) ?? []).length === 0) {
     throw new ApiError(409, "PACK_EMPTY", "A pack needs at least one published sticker before it can go live");
   }
-  // Unlike generation, publishing costs us nothing to run — it is a tier
-  // feature rather than a metered one, so it checks a permission instead of
-  // spending credits. Unpublishing is deliberately never gated: a plan lapsing
-  // must not trap a pack on the marketplace.
   await requirePublishEntitlement(creatorId);
   await ensureCreatorProfile(db, creatorId);
   await db.update(stickerPacks).set({

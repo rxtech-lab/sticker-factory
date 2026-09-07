@@ -1,230 +1,98 @@
+import Image from "next/image";
 import Link from "next/link";
 import { getHealthyWebSession } from "@/lib/auth/session";
+import "./home.css";
 
 const FAQ = [
-  { q: "Do I need to know how to draw?", a: "No. Describe what you want, pick a candidate, and tell the chat what to change. Masking a region or targeting a layer is a tap, not a skill." },
-  { q: "What happens to my photos?", a: "Personal photos, prompts, transcripts, and every revision stay private to your account. Nothing is published unless you put it in a pack yourself." },
-  { q: "How does the animation work?", a: "Motion is a small, validated JSON scene that renders natively on your device. Preview it live and export GIF or MP4 whenever you want a file." },
-  { q: "What is the web library for?", a: "Browsing, comparing revisions, downloading exports, and deleting projects from a bigger screen. Creation stays in the native app." },
-  { q: "Can I undo an edit?", a: "Every edit is a new immutable revision. Compare it against its parent, accept it, reject it, or revert to any earlier one." },
-  { q: "Can I delete everything?", a: "Yes. Deleting a project starts a durable purge of its records and every private media object. Data remains only until you delete the project." },
+  { q: "Do I need to know how to draw?", a: "No. Start with an idea or a photo, then tell Winky what to change. Try a different expression, add a tiny hat, or make your character move. Your imagination does the directing." },
+  { q: "Where can I use my stickers?", a: "Share sticker packs to WhatsApp and Telegram, or use your stickers in iMessage. Winky prepares the formats for each app and guides you through adding a pack." },
+  { q: "Can I make animated stickers and videos?", a: "Yes. Bring your sticker to life, preview the motion, and export animated stickers, GIFs, or MP4 videos. Save a transparent PNG when you want to keep things still." },
+  { q: "What happens to my photos?", a: "Your photo references, prompts, and edits stay private to your account. A sticker pack is only published when you choose to share it." },
+  { q: "Can I undo an edit?", a: "Absolutely. Each edit saves a new version. Compare your ideas, keep your favorite, or go back to an earlier version whenever you change your mind." },
+  { q: "What is the web library for?", a: "Create on iPhone and iPad. Use the web library to browse your stickers, compare versions, download exports, and delete projects from a bigger screen." },
 ];
+
+function Art({ name, alt = "", className = "", preload = false }: { name: string; alt?: string; className?: string; preload?: boolean }) {
+  return <Image className={`winky-art ${className}`} src={`/images/home/${name}.webp`} alt={alt} width={512} height={512} preload={preload} unoptimized />;
+}
 
 export default async function Home() {
   const session = await getHealthyWebSession();
   const primaryHref = session?.user ? "/library" : "/login";
-  const primaryLabel = session?.user ? "Open your library" : "Sign in with RxLab";
+  const primaryLabel = session?.user ? "Open your library" : "Sign in to your library";
 
   return (
-    <main className="landing">
-      {/* Hero: copy on the left, a sample project thread on the right */}
+    <main className="landing winky-home">
+      <div className="reading-progress" aria-hidden="true" />
       <header className="hero" id="top">
-        <div className="shell">
-          <div className="hero-grid">
-            <div>
-              <div className="eyebrow plain">Sticker Factory for iPhone and iPad</div>
-              <h1>Say it with a sticker <span className="hl">you made.</span></h1>
-              <p className="hero-copy">
-                Describe it, and a transparent sticker appears. Argue with it in a chat until it is right, then
-                {" "}<strong>make it move and send it from Messages.</strong>
-              </p>
-              <div className="hero-actions">
-                <Link className="pill-button" href={primaryHref}>{primaryLabel}</Link>
-                <a className="secondary-button" href="#how-it-works">How it works</a>
-              </div>
-              <div className="mini-proof">
-                <span>transparent PNG</span><span>animated</span><span>Messages ready</span><span>private</span>
-              </div>
+        <div className="shell hero-grid">
+          <div className="winky-hero-copy">
+            <div className="eyebrow plain">Winky - The sticker factory</div>
+            <h1>Big feelings.<br />Tiny <span className="hl">stickers.</span></h1>
+            <p className="hero-copy">That inside joke. Your cat’s attitude. Your very specific mood. Turn it into a sticker with Winky, then <strong>make it move.</strong></p>
+            <div className="hero-actions">
+              <Link className="pill-button" href={primaryHref}>{primaryLabel}</Link>
+              <a className="secondary-button" href="#how-it-works">Meet your sticker maker <span aria-hidden="true">↗</span></a>
             </div>
-
-            <div className="thread" aria-hidden="true">
-              <div className="thread-head"><span className="thread-title">Smug cat</span><span className="thread-meta">3 revisions</span></div>
-              <div className="thread-msg user">a smug cat, transparent please</div>
-              <div className="thread-sticker-row">
-                <div className="thread-sticker">🐱</div>
-                <span className="state state-candidate">v1 · candidate</span>
-              </div>
-              <div className="thread-msg user">make it wink and add sunglasses</div>
-              <div className="thread-sticker-row">
-                <div className="thread-sticker big">😎</div>
-                <span className="state state-accepted">v2 · accepted</span>
-              </div>
-              <div className="thread-msg user">now make the glasses drop in</div>
-              <div className="thread-sticker-row">
-                <div className="thread-sticker animated">😎</div>
-                <span className="state state-motion">v3 · animated</span>
-              </div>
-              <div className="thread-foot">Sent to Messages as a system sticker</div>
-            </div>
+            <p className="winky-device-note">Made on iPhone &amp; iPad. Shared everywhere you chat.</p>
+            <div className="platform-pills" aria-label="Supported messaging apps"><span>WhatsApp</span><span>Telegram</span><span>iMessage</span></div>
+          </div>
+          <div className="winky-studio" aria-label="Illustrated example of turning a cat into a sticker">
+            <div className="studio-top"><span>A LITTLE IDEA, A LOT OF PERSONALITY</span><span aria-hidden="true">↗</span></div>
+            <div className="studio-prompt">“My cat, but with main character energy.”</div>
+            <div className="studio-art"><Art name="cool-cat" alt="Winking orange cartoon cat wearing sunglasses" preload /><span className="studio-stamp">100%<br />your vibe</span><Art name="cat" className="studio-sidekick" /></div>
+            <div className="studio-caption"><span className="state state-accepted">Made with Winky</span><span>Still. Silly. Or in motion.</span></div>
           </div>
         </div>
       </header>
 
-      {/* How it works */}
-      <section className="band band-sky rounded" id="how-it-works" aria-label="How Sticker Factory works">
+      <div className="winky-format-strip" aria-label="Creative formats"><span>Static stickers</span><i aria-hidden="true" /><span>Animated stickers</span><i aria-hidden="true" /><span>GIFs</span><i aria-hidden="true" /><span>Videos</span><i aria-hidden="true" /><span>Sticker packs</span></div>
+
+      <section className="band band-sky rounded" id="how-it-works" aria-label="How Winky works">
         <div className="shell">
-          <div className="section-intro">
-            <div className="eyebrow">How it works</div>
-            <h2>One prompt.<br />One chat. One sticker.</h2>
-            <p className="lede">No layers panel and no export wizard. You describe, it draws, you refine, and the result lands in your Stickers drawer.</p>
-          </div>
+          <div className="section-intro scroll-reveal"><div className="eyebrow">From “what if” to “send”</div><h2>You bring the idea.<br />Winky brings it to life.</h2><p className="lede">A little imagination is all it takes. No drawing skills required.</p></div>
           <div className="feature-grid">
-            <article className="card feature-card card-peach">
-              <span>01</span>
-              <div className="feature-graphic">✍️</div>
-              <h3>Generate</h3>
-              <p>Use a prompt and optional personal-photo references to create one transparent candidate.</p>
-            </article>
-            <article className="card feature-card">
-              <span>02</span>
-              <div className="feature-graphic">💬</div>
-              <h3>Refine in chat</h3>
-              <p>Edit the whole image, mask a region, target a layer, compare, accept, reject, or revert.</p>
-            </article>
-            <article className="card feature-card card-lime">
-              <span>03</span>
-              <div className="feature-graphic">🎞️</div>
-              <h3>Animate and share</h3>
-              <p>Preview validated motion live, export GIF or MP4, and use the optimized system sticker in Messages.</p>
-            </article>
+            {[
+              { art: "pencil", title: "Dream it up", text: "Describe your idea or start with a photo. A pet, a friend, a snack with feelings. Anything goes.", color: "card-peach" },
+              { art: "chat", title: "Make it yours", text: "Keep the conversation going. Change the colors, try a new expression, or add that one perfect detail.", color: "" },
+              { art: "movie", title: "Give it a little life", text: "Make it wiggle, wink, or wave. Preview your animation, then share a sticker, GIF, or video.", color: "card-lime" },
+            ].map((step, index) => <article key={step.art} className={`card feature-card scroll-reveal ${step.color}`}><span>0{index + 1}</span><Art name={step.art} /><h3>{step.title}</h3><p>{step.text}</p></article>)}
           </div>
         </div>
       </section>
 
-      {/* Revisions */}
-      <section className="band band-peach" id="revisions" aria-label="Revisions">
+      <section className="band winky-sharing" aria-label="Supported apps and export formats">
         <div className="shell">
-          <div className="section-intro">
-            <div className="eyebrow">Every edit is a revision</div>
-            <h2>Change your mind.<br />Keep the receipts.</h2>
-            <p className="lede">Nothing is overwritten. Each edit becomes a new immutable revision you can compare with its parent, accept, reject, or revert to later.</p>
+          <div className="section-intro scroll-reveal"><div className="eyebrow">Good stickers travel</div><h2>Made by you.<br />Sent to your people.</h2><p className="lede">From the group chat to your favorite person. Your creations belong in the conversations you love.</p></div>
+          <div className="sharing-grid">
+            <article className="card share-card whatsapp scroll-reveal"><span className="share-number">01 / GROUP CHAT ENERGY</span><h3>WhatsApp</h3><p>Turn your creations into static or animated sticker packs and add them to WhatsApp.</p><span className="share-tag">Static + animated packs</span></article>
+            <article className="card share-card telegram scroll-reveal"><span className="share-number">02 / SEND SOMETHING EXTRA</span><h3>Telegram</h3><p>Take your characters to Telegram with static stickers and moving video stickers.</p><span className="share-tag">Static + video stickers</span></article>
+            <article className="card share-card imessage scroll-reveal"><span className="share-number">03 / A MORE PERSONAL REPLY</span><h3>iMessage</h3><p>Keep your favorites in Messages, ready to send as still or animated stickers.</p><span className="share-tag">Static + animated stickers</span></article>
           </div>
-          <div className="revision-strip">
-            <article className="card revision-card">
-              <div className="thread-sticker">🍞</div>
-              <span className="state state-rejected">v1 · rejected</span>
-              <p>“a loaf of bread with a face”</p>
-            </article>
-            <div className="revision-arrow">→</div>
-            <article className="card revision-card">
-              <div className="thread-sticker">🥐</div>
-              <span className="state state-candidate">v2 · candidate</span>
-              <p>“make it a croissant, keep the face”</p>
-            </article>
-            <div className="revision-arrow">→</div>
-            <article className="card revision-card card-lime">
-              <div className="thread-sticker">🥐</div>
-              <span className="state state-accepted">v3 · accepted</span>
-              <p>“add a tiny beret”</p>
-            </article>
-          </div>
+          <div className="export-note"><strong>Want a file instead?</strong><span>Export transparent PNG, animated PNG, GIF, or MP4 video. Save it, post it, or share it your way.</span></div>
         </div>
       </section>
 
-      {/* Motion */}
-      <section className="band band-indigo rounded" aria-label="Native animation">
+      <section className="band band-indigo rounded" aria-label="Animated stickers and video">
         <div className="shell two">
-          <div>
-            <div className="eyebrow lime">Motion without video files</div>
-            <h2>Animation that is<br />just a scene.</h2>
-            <p className="lede">Motion is a small JSON scene, not a baked clip. It renders natively on your device, previews instantly, and becomes a GIF or MP4 only when you ask for one.</p>
-          </div>
-          <div className="card work-panel">
-            <h3>Validated before it renders</h3>
-            <p>Every motion snapshot is checked against a schema, so a bad scene never reaches the screen.</p>
-            <h3>Live preview</h3>
-            <p>Watch the loop on device before you commit to a revision.</p>
-            <h3>Export on demand</h3>
-            <p>GIF, MP4, animated PNG, and an optimized system sticker for Messages.</p>
-          </div>
+          <div className="scroll-reveal"><div className="eyebrow lime">A little motion. A lot of mood.</div><h2>Why just smile<br />when you can <em>wink?</em></h2><p className="lede">Give your character a signature move. Preview the loop, fine-tune the feeling, and take it from animated sticker to shareable video.</p><div className="motion-formats"><span>Animated stickers</span><span>GIF</span><span>MP4 video</span></div></div>
+          <div className="motion-stage"><span className="motion-stage-label">YOUR NEXT REACTION</span><div className="motion-loop"><Art name="cool-cat" className="scroll-wiggle" alt="A cheeky cartoon cat ready to become an animated reaction" /></div><span className="motion-stage-foot">Small sticker. Big main-character energy.</span></div>
         </div>
       </section>
 
-      {/* Privacy */}
-      <section className="band band-dark" aria-label="Privacy">
-        <div className="shell two">
-          <div>
-            <div className="eyebrow lime">Private by default</div>
-            <h2>Your photos are<br />references, not content.</h2>
-            <p className="lede">Personal photos, prompts, chat transcripts, and revisions stay private to your account. Nothing is shared unless you publish a pack on purpose.</p>
-          </div>
-          <div className="card work-panel privacy-card">
-            <h3>Private references</h3>
-            <p>Photos you upload are only ever used for your own stickers.</p>
-            <h3>Immutable revisions</h3>
-            <p>Compare, revert, or reject without losing anything.</p>
-            <h3>Durable deletion</h3>
-            <p>Deleting a project purges its records and every private media object.</p>
-          </div>
-        </div>
+      <section className="band band-peach" id="revisions" aria-label="Creative revisions">
+        <div className="shell two"><div className="revision-art scroll-reveal"><Art name="cat" alt="Original cheerful orange cat sticker" /><span aria-hidden="true">↗</span><Art name="cool-cat" alt="Refined cat sticker with sunglasses" /></div><div className="scroll-reveal"><div className="eyebrow">Room to change your mind</div><h2>A little more this.<br />A little less that.</h2><p className="lede">Every edit gets its own version. Compare your ideas, keep the one you love, or go back to an earlier favorite. Experiment freely.</p></div></div>
       </section>
 
-      {/* Packs */}
       <section className="band band-lime" id="packs" aria-label="Sticker packs">
-        <div className="shell two">
-          <div>
-            <div className="eyebrow">Packs</div>
-            <h2>Bundle them.<br />Share them. Or not.</h2>
-            <p className="lede">Publishing is a deliberate choice per pack. Drafts stay yours, unpublishing pulls a pack back, and anyone who adds it gets a new section in their library and in Messages.</p>
-            <div className="hero-actions">
-              <Link className="secondary-button" href="/marketplace">Browse the marketplace</Link>
-            </div>
-          </div>
-          <div className="pack-sample card">
-            <div className="pack-sample-cover">
-              <span>🐱</span><span>😎</span><span>🥐</span><span>🍩</span>
-            </div>
-            <div className="pack-sample-copy">
-              <strong>Snack Cats</strong>
-              <span>4 stickers · published</span>
-            </div>
-          </div>
-        </div>
+        <div className="shell two"><div className="scroll-reveal"><div className="eyebrow">Better together</div><h2>Your own little<br />cast of characters.</h2><p className="lede">Build a pack around a mood, a friend, or an inside joke. Keep it just for you, or publish it for others to discover.</p><div className="hero-actions"><Link className="secondary-button" href="/marketplace">Explore sticker packs <span aria-hidden="true">↗</span></Link></div></div><div className="pack-sample card scroll-reveal"><div className="pack-sample-cover"><Art name="cat" /><Art name="cool-cat" /><Art name="croissant" /><Art name="movie" /></div><div className="pack-sample-copy"><strong>The personality pack</strong><span>A little collection of big moods</span></div></div></div>
       </section>
 
-      {/* FAQ */}
       <section className="band band-paper" id="faq" aria-label="Frequently asked questions">
-        <div className="shell">
-          <div className="section-intro">
-            <div className="eyebrow">Questions</div>
-            <h2>Things people ask<br />before their first sticker.</h2>
-          </div>
-          <div className="faq">
-            {FAQ.map((item) => (
-              <details key={item.q}>
-                <summary>{item.q}</summary>
-                <p>{item.a}</p>
-              </details>
-            ))}
-          </div>
-        </div>
+        <div className="shell"><div className="section-intro"><div className="eyebrow">Questions</div><h2>A few things<br />before your first wink.</h2><p className="lede">Big ideas welcome. Little questions, too.</p></div><div className="faq">{FAQ.map((item) => <details key={item.q}><summary>{item.q}</summary><div className="faq-answer"><p>{item.a}</p></div></details>)}</div></div>
       </section>
 
-      {/* CTA */}
-      <section className="band band-coral rounded" id="get" aria-label="Get started">
-        <div className="shell two">
-          <div>
-            <div className="eyebrow">Ready when you are</div>
-            <h2>Your next sticker<br />is one sentence away.</h2>
-            <p className="lede lede-on-coral">Create on iPhone or iPad. Sign in here to browse, compare, and download everything you have already made.</p>
-          </div>
-          <div className="card card-dark price-card">
-            <div className="launch-note">
-              <b>Sticker Factory</b>
-              <span>Create on iOS. Browse, compare, and download on the web.</span>
-            </div>
-            <ul className="checks">
-              <li>Transparent static and animated stickers</li>
-              <li>Chat-based refinement with masks and layers</li>
-              <li>Native motion with GIF and MP4 export</li>
-              <li>Packs you can publish and unpublish</li>
-              <li>Private by default, deletable for good</li>
-            </ul>
-            <Link className="pill-button" href={primaryHref}>{primaryLabel}</Link>
-            <p className="fine">Sign-in is handled by RxLab. Sticker Factory never sees your password.</p>
-          </div>
-        </div>
-      </section>
+      <section className="band band-coral rounded" id="get" aria-label="Get started with Winky"><div className="shell two"><div className="scroll-reveal"><div className="eyebrow">Winky - The sticker factory</div><h2>The group chat<br />is waiting.</h2><p className="lede lede-on-coral">Create on iPhone and iPad. Open your web library to browse your stickers, revisit your favorites, and download your exports.</p></div><div className="card card-dark price-card"><div className="launch-note"><b>A whole lot of you. In a sticker.</b><span>Private by default. Shared when you choose.</span></div><ul className="checks"><li>Static and animated stickers</li><li>WhatsApp, Telegram, and iMessage</li><li>GIF, transparent PNG, and video exports</li><li>Your ideas, your photos, your own style</li></ul><Link className="pill-button" href={primaryHref}>{primaryLabel}</Link><p className="fine">Secure sign-in with RxLab.</p></div></div></section>
     </main>
   );
 }
