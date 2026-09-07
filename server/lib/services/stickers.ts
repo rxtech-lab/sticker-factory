@@ -755,6 +755,19 @@ export function validateAnimatedRenditionTiming(
   const holdSeconds = exportHoldSeconds(document.loop);
   const expectedDuration = cycleSeconds + holdSeconds;
 
+  // libwebp merges identical adjacent frames and adds their delays. Video sampled above its
+  // source cadence commonly produces these duplicates, so encoded frame count is not render FPS.
+  // Keep the original grid's duration tolerance; using the merged FPS would allow seconds of drift.
+  if (rendition.kind === "webp") {
+    if (rendition.frameCount > Math.ceil(cycleSeconds * document.fps) + 1) {
+      throw new ApiError(422, "EXPORT_FRAME_COUNT_MISMATCH", "Animated rendition frame count does not match the accepted document cycle");
+    }
+    if (Math.abs(rendition.durationSeconds - expectedDuration) > 1 / document.fps + 0.01) {
+      throw new ApiError(422, "EXPORT_DURATION_MISMATCH", "Animated rendition duration does not match the accepted document cycle and loop hold");
+    }
+    return;
+  }
+
   // How the hold is spelled depends on what the container can say. GIF and APNG carry a delay per
   // frame, so it rides on the last one and the frame grid still spans exactly the motion cycle. An
   // H.264 track has no such field: AVAssetWriter re-derives every sample's duration from the
@@ -1801,7 +1814,7 @@ export async function bindExports(
       // frame rate away and a mismatch really is a bad export.
       request.attachmentMediumAssetId,
       request.attachmentSmallAssetId,
-      // A different container carrying the same cycle. Nothing about WebP loosens the timing.
+      // WebP preserves the cycle duration but may merge repeated frames.
       request.webpAssetId,
     ]) {
       if (!assetId) continue;

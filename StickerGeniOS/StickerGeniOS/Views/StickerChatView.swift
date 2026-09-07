@@ -960,6 +960,7 @@ struct StickerChatView: View {
     /// step aside for the error alert.
     @discardableResult
     private func acceptCandidate(_ revision: StickerRevision) async -> Bool {
+        Haptics.tap(.light)
         isDeciding = true
         defer { isDeciding = false }
         do {
@@ -978,6 +979,7 @@ struct StickerChatView: View {
 
     @discardableResult
     private func rejectCandidate(_ revision: StickerRevision) async -> Bool {
+        Haptics.tap(.light)
         isDeciding = true
         defer { isDeciding = false }
         do {
@@ -1237,7 +1239,10 @@ private struct ToolCallRow: View {
     }
 
     var body: some View {
-        Button { showingDetails = true } label: {
+        Button {
+            Haptics.tap(.light)
+            showingDetails = true
+        } label: {
             chip
         }
         .buttonStyle(.plain)

@@ -416,6 +416,7 @@ final class StickerCell: UICollectionViewCell {
     private let tapRecognizer = UITapGestureRecognizer()
     private let spinner = UIActivityIndicatorView(style: .medium)
     private var onTap: (() -> Void)?
+    private var peelDragEnabled = true
     private(set) var isBusy = false
 
     /// Tracks our intent rather than `MSStickerView.isAnimating()`: a static PNG has an
@@ -435,11 +436,12 @@ final class StickerCell: UICollectionViewCell {
         contentView.addSubview(stickerView)
 
         tapRecognizer.addTarget(self, action: #selector(handleTap))
-        tapRecognizer.cancelsTouchesInView = false
+        tapRecognizer.cancelsTouchesInView = true
         tapRecognizer.delaysTouchesBegan = false
         tapRecognizer.delaysTouchesEnded = false
         tapRecognizer.delegate = self
         stickerView.addGestureRecognizer(tapRecognizer)
+        updateStickerGestures()
 
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.hidesWhenStopped = true
@@ -463,6 +465,7 @@ final class StickerCell: UICollectionViewCell {
         self.onTap = onTap
         stopStickerAnimation()
         stickerView.sticker = sticker
+        updateStickerGestures()
         accessibilityLabel = sticker.localizedDescription
     }
 
@@ -483,15 +486,22 @@ final class StickerCell: UICollectionViewCell {
         }
     }
 
-    /// Toggles Apple's peel/drag while leaving our own tap recognizer alone.
-    ///
-    /// `MSStickerView` installs those recognizers itself and exposes no switch for them, so this
-    /// reaches for `gestureRecognizers` directly and may quietly stop working on a future OS.
-    /// The full-size surface's hint copy — never "press and hold" — is the real defense; this is
-    /// belt-and-braces so a drag cannot substitute the ≤500 KB rendition for the one asked for.
+    /// Native taps insert directly into Messages, bypassing our insert gate. Keep them
+    /// disabled even when peel/drag is enabled so one touch has only one insertion path.
     func setPeelDragEnabled(_ enabled: Bool) {
+        peelDragEnabled = enabled
+        updateStickerGestures()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // MSStickerView can install gestures after receiving its sticker or entering a window.
+        updateStickerGestures()
+    }
+
+    private func updateStickerGestures() {
         for recognizer in stickerView.gestureRecognizers ?? [] where recognizer !== tapRecognizer {
-            recognizer.isEnabled = enabled
+            recognizer.isEnabled = peelDragEnabled && !(recognizer is UITapGestureRecognizer)
         }
     }
 
@@ -525,11 +535,11 @@ final class StickerCell: UICollectionViewCell {
 }
 
 extension StickerCell: UIGestureRecognizerDelegate {
-    /// MSStickerView owns the recognizers behind peel/drag; never block them.
+    /// Preserve peel/drag cooperation, but never recognize two tap handlers together.
     nonisolated func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
-        true
+        !(otherGestureRecognizer is UITapGestureRecognizer)
     }
 }

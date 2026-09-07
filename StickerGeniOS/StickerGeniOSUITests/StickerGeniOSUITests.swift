@@ -18,6 +18,31 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testBalanceRefreshCancellationPreservesDataAndCanRefreshAgain() {
+        app.terminate()
+        app.launchArguments.append("--ui-balance-refresh")
+        app.launch()
+        let picker = element("credits-section-picker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 8))
+        picker.buttons["Balance"].tap()
+        let originalGrant = app.staticTexts["Refresh fixture grant 100"]
+        XCTAssertTrue(originalGrant.waitForExistence(timeout: 8))
+
+        let scroll = app.scrollViews.firstMatch
+        scroll.swipeDown()
+        // The second request returns URLSession's cancellation error for both endpoints.
+        XCTAssertFalse(app.staticTexts["cancelled"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Something went wrong"].exists)
+        XCTAssertTrue(originalGrant.exists)
+
+        scroll.swipeDown()
+        XCTAssertTrue(app.staticTexts["Refresh fixture grant 250"].waitForExistence(timeout: 8))
+        XCTAssertFalse(originalGrant.exists)
+        XCTAssertTrue(app.staticTexts["250"].exists)
+        XCTAssertFalse(app.staticTexts["cancelled"].exists)
+    }
+
+    @MainActor
     func testAuthenticatedTabsAndLibraryAccessibility() {
         XCTAssertTrue(app.tabBars.buttons["Library"].isSelected)
         XCTAssertFalse(app.tabBars.buttons["Create"].exists)

@@ -249,6 +249,48 @@ struct StickerMessagesContractTests {
         // Peel/drag stays owned by MSStickerView and remains part of the real-device check.
     }
 
+    @MainActor
+    @Test("Static sticker cells suppress native taps across layout, send-mode changes, and reuse")
+    func staticStickerCellHasOneTapPath() throws {
+        let fileURL = try Self.writeStickerPNG()
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let sticker = try MSSticker(contentsOfFileURL: fileURL, localizedDescription: "Static")
+        let cell = StickerCell(frame: CGRect(x: 0, y: 0, width: 84, height: 84))
+        cell.configure(with: sticker) {}
+        let stickerView = try #require(cell.contentView.subviews.compactMap { $0 as? MSStickerView }.first)
+        #expect(stickerView.gestureRecognizers?.filter { $0 is UITapGestureRecognizer && $0.isEnabled }.count == 1)
+
+        // Model a native recognizer installed after initial configuration. Layout must
+        // suppress it, and switching back from image mode must not re-enable it.
+        let nativeTap = UITapGestureRecognizer()
+        let nativeDrag = UILongPressGestureRecognizer()
+        stickerView.addGestureRecognizer(nativeTap)
+        stickerView.addGestureRecognizer(nativeDrag)
+        cell.setNeedsLayout()
+        cell.layoutIfNeeded()
+        #expect(!nativeTap.isEnabled)
+        #expect(nativeDrag.isEnabled)
+
+        cell.setPeelDragEnabled(false)
+        #expect(!nativeTap.isEnabled)
+        #expect(!nativeDrag.isEnabled)
+        cell.setPeelDragEnabled(true)
+        #expect(!nativeTap.isEnabled)
+        #expect(nativeDrag.isEnabled)
+
+        cell.prepareForReuse()
+        cell.configure(with: sticker) {}
+        #expect(!nativeTap.isEnabled)
+        let activeTaps = (stickerView.gestureRecognizers ?? []).filter {
+            $0 is UITapGestureRecognizer && $0.isEnabled
+        }
+        #expect(activeTaps.count == 1)
+        let customTap = try #require(activeTaps.first)
+        #expect(customTap.cancelsTouchesInView)
+        #expect(!cell.gestureRecognizer(customTap, shouldRecognizeSimultaneouslyWith: nativeTap))
+        #expect(cell.gestureRecognizer(customTap, shouldRecognizeSimultaneouslyWith: nativeDrag))
+    }
+
     @Test("Sectioned library fetch groups stickers and stamps their pack byline")
     func fetchSectionsGroupsByPack() async throws {
         let transport = SectionedStickerTransport()

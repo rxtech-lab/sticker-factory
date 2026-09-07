@@ -594,6 +594,9 @@
     "Active plan required" : {
 
     },
+    "Activity" : {
+
+    },
     "Add" : {
       "localizations" : {
         "zh-CN" : {
@@ -2956,6 +2959,9 @@
         }
       }
     },
+    "Load more" : {
+
+    },
     "Loading %@…" : {
       "localizations" : {
         "zh-CN" : {
@@ -2971,6 +2977,9 @@
           }
         }
       }
+    },
+    "Loading balances…" : {
+
     },
     "Loading conversation" : {
       "localizations" : {
@@ -3019,6 +3028,9 @@
           }
         }
       }
+    },
+    "Loading history…" : {
+
     },
     "Loading more packs…" : {
       "localizations" : {
@@ -3469,6 +3481,12 @@
           }
         }
       }
+    },
+    "No balance history" : {
+
+    },
+    "No balances" : {
+
     },
     "No installs yet" : {
       "localizations" : {
@@ -5061,6 +5079,9 @@
           }
         }
       }
+    },
+    "Saving sticker decision" : {
+
     },
     "Saving stickers…" : {
 
@@ -7250,9 +7271,6 @@
           }
         }
       }
-    },
-    "Your own stickers are already in your library." : {
-
     },
     "Your session expired. Please sign in again." : {
       "localizations" : {

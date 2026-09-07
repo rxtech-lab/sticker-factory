@@ -661,6 +661,42 @@ struct SharedAuthenticationTests {
 @Suite("Store and publisher regressions")
 @MainActor
 struct StoreAndPublisherTests {
+    @Test("Refreshing an older failed chat preserves the publish failure")
+    func transcriptPreservesPublishFailure() async throws {
+        let api = FailedTranscriptAPI()
+        let store = StickerStore(api: api)
+        store.observeExternalJob(jobID: "publish-job", stickerID: api.stickerID)
+        try await waitUntil { store.jobs[api.stickerID]?.isTerminal == true }
+        await store.loadMessages(stickerID: api.stickerID)
+        #expect(store.jobs[api.stickerID]?.jobID == "publish-job")
+        #expect(store.jobs[api.stickerID]?.failureMessage == "Animation timing does not match")
+        store.reset()
+    }
+
+    @Test("A transcript refresh before the send response does not duplicate the user message")
+    func refreshedMessageBeforeSendResponse() async throws {
+        let api = SlowChatAPI()
+        let store = StickerStore(api: api)
+        let send = Task {
+            try await store.sendMessage(
+                stickerID: api.stickerID, content: "Add particles", references: [],
+                mask: nil, targetLayerID: nil, intent: .chat
+            )
+        }
+        await api.waitUntilSending()
+        let refreshed = await store.loadMessages(stickerID: api.stickerID)
+        #expect(refreshed)
+        await api.finishSending()
+        try await send.value
+
+        let messages = store.messages[api.stickerID] ?? []
+        // Identical text from an earlier turn must remain; only server identity is deduplicated.
+        #expect(messages.map(\.id) == ["earlier-source-message", "slow-source-message"])
+        #expect(messages.last?.sequence == 42)
+        #expect(messages.last?.createdAt == Date(timeIntervalSince1970: 1234))
+        store.reset()
+    }
+
     @Test("A chat message appears before the network request completes")
     func chatSendIsOptimistic() async throws {
         let api = SlowChatAPI()
@@ -1690,6 +1726,17 @@ private actor SlowChatAPI: StickerAPIClientProtocol {
     private var startWaiters: [CheckedContinuation<Void, Never>] = []
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
+    func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
+        .init(data: ["earlier-source-message", "slow-source-message"].enumerated().map { index, id in
+            .init(
+                id: id, role: .user, kind: .text, content: "Add particles",
+                targetLayerId: nil, imagePlacement: .replace, baseRevisionId: nil,
+                sequence: 41 + index, revisionId: nil, jobId: nil, status: .streaming,
+                createdAt: Date(timeIntervalSince1970: 1234), attachments: []
+            )
+        }, nextBeforeSequence: nil)
+    }
+
     func sendChatMessage(stickerID: String, request: SendChatMessageRequest, idempotencyKey: String) async throws -> SendChatMessageResponse {
         sendStarted = true
         let waiters = startWaiters
@@ -1776,6 +1823,16 @@ private actor ResumeJobAPI: StickerAPIClientProtocol {
 
 private actor FailedTranscriptAPI: StickerAPIClientProtocol {
     nonisolated let stickerID = "failed-transcript-sticker"
+
+    nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.init(
+                id: 8, jobId: jobID, type: .failed, createdAt: Date(),
+                data: .init(message: "Animation timing does not match", progress: 1, messageId: nil, revisionId: nil, document: nil)
+            ))
+            continuation.finish()
+        }
+    }
 
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
         .init(data: [

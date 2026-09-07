@@ -538,7 +538,11 @@ final class StickerStore {
                 createdAt: optimisticCreatedAt,
                 attachments: attachmentRequests.map { .init(assetId: $0.assetId, kind: $0.kind, targetLayerId: $0.targetLayerId) }
             )
-            if let index = messages[stickerID]?.firstIndex(where: { $0.id == optimisticID }) {
+            if messages[stickerID]?.contains(where: { $0.id == persisted.id }) == true {
+                // A transcript refresh can receive the saved row before this send returns.
+                // Keep its authoritative sequence, timestamp and status, and discard any local echo.
+                messages[stickerID]?.removeAll { $0.id == optimisticID }
+            } else if let index = messages[stickerID]?.firstIndex(where: { $0.id == optimisticID }) {
                 messages[stickerID]?[index] = persisted
             } else {
                 messages[stickerID, default: []].append(persisted)
@@ -988,6 +992,11 @@ final class StickerStore {
         guard let source = messages.last(where: { $0.role == .user && $0.jobId != nil }),
               let jobID = source.jobId
         else { return }
+        // Export jobs have no source chat message. Refreshing an older chat turn must not
+        // replace the publish being observed, including its terminal failure and reason.
+        if let current = jobs[stickerID], current.sourceMessageID == nil, current.jobID != jobID {
+            return
+        }
         if jobs[stickerID]?.jobID == jobID, jobs[stickerID]?.isTerminal == true { return }
         let hasAssistant = hasAssistantTurn(stickerID: stickerID, jobID: jobID)
         switch source.status {

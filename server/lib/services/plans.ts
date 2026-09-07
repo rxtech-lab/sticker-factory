@@ -94,6 +94,15 @@ export async function stickerHasPlan(db: Database, ownerId: string, stickerId: s
   return Boolean(row);
 }
 
+/** A plan awaiting a user decision keeps subsequent chat in the planning flow. */
+export async function currentPendingPlan(db: Database, ownerId: string, stickerId: string) {
+  return db.select().from(plans).where(and(
+    eq(plans.ownerId, ownerId),
+    eq(plans.stickerId, stickerId),
+    inArray(plans.state, ["draft", "finalized"]),
+  )).orderBy(desc(plans.createdAt)).limit(1).then(firstRow);
+}
+
 /** The plan the agent is currently drafting for a sticker, if any. */
 export async function currentDraftPlan(db: Database, ownerId: string, stickerId: string) {
   return db.select().from(plans).where(and(

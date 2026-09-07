@@ -982,7 +982,7 @@
 			repositoryURL = "https://github.com/rxtech-lab/RxAuthSwift";
 			requirement = {
 				kind = exactVersion;
-				version = 1.2.0;
+				version = 1.2.1;
 			};
 		};
 		B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */ = {

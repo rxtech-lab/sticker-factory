@@ -67,6 +67,7 @@ import { appendGenerationEvent } from "@/lib/services/events";
 import {
   attachPlanConcept,
   createPlan,
+  currentPendingPlan,
   finalizePlan,
   latestPlanConcept,
   recentlyRejectedPlans,
@@ -207,6 +208,7 @@ type StickerToolName =
   | "edit_image_layer"
   | "add_image_layer"
   | "create_video"
+  | "generate-video"
   | "finalize_edit"
   | "adjust_layout"
   | "finalize_layout"
@@ -1553,6 +1555,7 @@ async function executeEditTurn(
     requiredReferenceCount?: number;
     /** The subset the model itself is shown — only what the user attached this turn. */
     attachedImages: Array<{ bytes: Uint8Array; mimeType: string }>;
+    video?: { layerId: string; motion: string; durationSeconds: number };
   },
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
@@ -1887,15 +1890,23 @@ async function executeEditTurn(
     },
   };
 
-  const result = await getAiProvider().editSticker({
-    document: base,
-    instruction,
-    history,
-    targetLayerId: options.targetLayerId,
-    imagePlacement: options.imagePlacement,
-    attachmentCount: options.references.length,
-    references: options.attachedImages,
-  }, session);
+  let result: { revision: number; finalized: boolean } | undefined;
+  if (options.video) {
+    // The chat tool already selected the layer and motion; no second model decision is needed.
+    await session.createVideoLayer(options.video);
+    const finalized = await session.finalizeEdit();
+    result = { revision: finalized.revision, finalized: true };
+  } else {
+    result = await getAiProvider().editSticker({
+      document: base,
+      instruction,
+      history,
+      targetLayerId: options.targetLayerId,
+      imagePlacement: options.imagePlacement,
+      attachmentCount: options.references.length,
+      references: options.attachedImages,
+    }, session);
+  }
 
   // Before anything below reports on the model, so a turn the user stopped is not also blamed on it.
   await assertJobStillRunning(job.id);
@@ -2674,16 +2685,18 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     return executePlanBuildTurn(job, sticker, sourceMessage, history, activeRevision, await loadReferenceImages());
   }
 
-  // A turn the user started by turning a plan down with a reason. It skips the router on purpose:
-  // they have already said they want a design rather than an edit, and re-reading their words as a
-  // fresh request is exactly how "the letters are too cramped" becomes a redraw of the whole sticker.
-  if (job.kind === "plan") {
+  // Pending plans stay in planning until the user confirms or cancels them. Bypass the general
+  // router so ordinary feedback cannot generate a sticker or edit the existing document.
+  const pendingPlan = await currentPendingPlan(db, job.ownerId, sticker.id);
+  if (job.kind === "plan" || pendingPlan) {
     return executePlanTurn(
       job,
       sticker,
       thread.id,
       sourceMessage.content,
-      planHistory,
+      pendingPlan
+        ? `${planHistory}\n\nCurrent pending plan (not yet accepted or rejected). Revise this design according to the user's follow-up, preserving everything else:\n${JSON.stringify(pendingPlan.planJson)}`
+        : planHistory,
       activeDocument,
       await loadReferenceImages(),
       await loadAttachedImages(),
@@ -2710,6 +2723,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
    * orchestrator loop to decide the obvious.
    */
   let editsThroughLoop = job.kind === "edit" && !job.quick;
+  let video: { layerId: string; motion: string; durationSeconds: number } | undefined;
   /**
    * Whether this animated project still has to be designed as layers before anything is drawn.
    *
@@ -2786,7 +2800,9 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         await beginToolCall(job, "plan-sticker"),
       );
     }
-    const toolName: StickerToolName = action.type === "generate"
+    const toolName: StickerToolName = action.type === "generate_video"
+      ? "generate-video"
+      : action.type === "generate"
       ? "generate-sticker"
       : action.type === "generate_image"
         ? "generate-image"
@@ -2844,7 +2860,14 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       && action.usePlanImage === true;
     targetLayerId = action.type === "edit" || action.type === "animate" ? action.targetLayerId : undefined;
     imagePlacement = action.type === "edit" ? action.imagePlacement : addsLayer ? "add" : "replace";
-    editsThroughLoop = action.type === "edit" && !job.quick;
+    video = action.type === "generate_video"
+      ? { layerId: action.layerId, motion: action.instruction, durationSeconds: action.durationSeconds }
+      : undefined;
+    if (video && (!activeDocument || !activeRevision)) {
+      throw new FatalError("Video generation requires an existing sticker");
+    }
+    if (video) targetLayerId = video.layerId;
+    editsThroughLoop = Boolean(video) || (action.type === "edit" && !job.quick);
     await db.update(chatMessages).set({
       kind: effectiveKind === "animation" ? "animation" : effectiveKind === "edit" ? "image_edit" : "image",
       // Explicitly null: an undefined column is one drizzle leaves alone, which would strand the
@@ -2916,6 +2939,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   // the whole layer stack rather than one image. The exception is a masked edit: the user painted
   // the region and the client named the layer, so the request is already fully specified and a
   // single redraw is the whole of it.
+  if (video && maskRow) throw new FatalError("Video generation does not support a painted mask");
   if (editsThroughLoop && effectiveKind === "edit" && activeDocument && activeRevision && !maskRow) {
     return executeEditTurn(
       job,
@@ -2931,6 +2955,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
         references: referenceImages,
         requiredReferenceCount: usePlanImage ? 1 : 0,
         attachedImages: await loadAttachedImages(),
+        video,
       },
       primaryToolCallId,
     );

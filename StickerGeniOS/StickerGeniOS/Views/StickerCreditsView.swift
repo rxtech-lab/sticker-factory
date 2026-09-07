@@ -51,7 +51,7 @@ struct StickerCreditsView<Header: View>: View {
             case .topUps:
                 StickerTopUpView(client: client)
             case .balance:
-                BalanceView(client: client)
+                StickerBalanceView(client: client)
             }
         }
         .background(AppColors.paper)

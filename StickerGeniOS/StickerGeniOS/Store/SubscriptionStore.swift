@@ -148,6 +148,15 @@ final class SubscriptionStore {
         self.environmentProvider = { nil }
     }
 
+    #if DEBUG
+    convenience init(uiTestClient: Client) {
+        self.init()
+        self.client = uiTestClient
+        self.pendingRefusal = .insufficientCredits(required: nil, available: nil)
+        self.isPaywallPresented = true
+    }
+    #endif
+
     deinit {
         clientBindingTask?.cancel()
         transactionObserver?.cancel()

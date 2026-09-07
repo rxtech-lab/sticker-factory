@@ -82,7 +82,13 @@ struct StickerChatActionsMenu: View {
                     .accessibilityIdentifier("delete-project")
             }
         } label: {
-            PosterSymbol("ellipsis.circle")
+            if isBusy {
+                ProgressView()
+                    .tint(AppColors.ink)
+                    .accessibilityLabel("Saving sticker decision")
+            } else {
+                PosterSymbol("ellipsis.circle")
+            }
         }
         .popoverTip(
             candidate == nil && activeRevision != nil ? versionsTip : nil,

@@ -142,7 +142,7 @@ struct StickerExportSheet: View {
         }
         // The publish call returns as soon as the job is accepted, so the server's half of the run
         // only reaches the timeline through the job state the store keeps.
-        .onChange(of: publishJob) { _, job in
+        .onChange(of: publishJob, initial: true) { _, job in
             StickerExportModel.log.debug(
                 """
                 job change job=\(job?.jobID ?? "-", privacy: .public) \

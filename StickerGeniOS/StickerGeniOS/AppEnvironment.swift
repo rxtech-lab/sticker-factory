@@ -98,6 +98,14 @@ final class AppEnvironment {
         // UI tests run with no notifier at all: a system permission alert over the app would fail
         // every test that follows it, and the mock generations are watched, never walked away from.
         let notifier = isUITesting ? nil : GenerationNotifier.live()
+        var subscription = isUITesting
+            ? SubscriptionStore()
+            : SubscriptionStore(configuration: configuration, tokenBroker: broker)
+        #if DEBUG
+        if isUITesting, arguments.contains("--ui-balance-refresh") {
+            subscription = SubscriptionStore(uiTestClient: BalanceRefreshFixture.makeClient())
+        }
+        #endif
         let environment = AppEnvironment(
             configuration: configuration,
             authManager: manager,
@@ -105,7 +113,7 @@ final class AppEnvironment {
             store: StickerStore(api: api, notifier: notifier),
             // UI tests run against the mock API with no billing at all: a paywall in front of a
             // scripted generation would fail every test that follows it.
-            subscription: isUITesting ? SubscriptionStore() : SubscriptionStore(configuration: configuration, tokenBroker: broker),
+            subscription: subscription,
             authenticationState: isUITesting
                 ? (simulatesExpiredAuthentication ? .signedOut : .signedIn)
                 : .checking,
