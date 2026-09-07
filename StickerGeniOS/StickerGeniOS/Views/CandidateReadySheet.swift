@@ -34,18 +34,25 @@ struct CandidateReadySheet: View {
     // roughly the height of the sticker preview, and the drag indicator already says
     // "swipe me away".
     var body: some View {
-        // A plain VStack with a Spacer, not a scroll view with a pinned inset: the content is
-        // short enough to never scroll, and the spacer drops the buttons to the bottom without
-        // painting a bar behind them that would cut the gradient in half.
-        VStack(spacing: 16) {
-            header
-            preview
-            Spacer(minLength: 16)
-            actions
+        GeometryReader { proxy in
+            // Keep the actions at the bottom when everything fits. On a shorter medium detent
+            // (or with larger text), let the content grow and scroll from its natural top instead
+            // of centring an oversized stack and clipping the eyebrow above the sheet.
+            ScrollView {
+                VStack(spacing: 16) {
+                    header
+                    preview
+                    Spacer(minLength: 16)
+                    actions
+                }
+                .padding(.top, 24)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
+                .frame(minHeight: proxy.size.height)
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .padding(.top, 24)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { PosterPaper() }
         .presentationDetents([.medium, .large])

@@ -194,6 +194,7 @@ nonisolated struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
     var attachments: [ChatAttachment]
     /// Present on `.plan` messages: the design the user is being asked to confirm.
     var plan: PlanRecord? = nil
+    var toolDetails: String? = nil
 }
 
 nonisolated enum ChatRole: String, Codable, Hashable, Sendable { case user, assistant, system }
@@ -802,13 +803,14 @@ nonisolated struct GenerationEventData: Codable, Hashable, Sendable {
     var toolCallId: String? = nil
     var toolName: String? = nil
     var toolStatus: ChatMessageStatus? = nil
+    var toolDetails: String? = nil
     var cancelled: Bool? = nil
     /// The assistant turn, shipped inline so the chat can render it without a refetch.
     var assistantMessage: ChatMessage? = nil
 
     enum CodingKeys: String, CodingKey {
         case message, progress, messageId, revisionId, document
-        case toolCallId, toolName, toolStatus, cancelled, assistantMessage
+        case toolCallId, toolName, toolStatus, toolDetails, cancelled, assistantMessage
     }
 }
 
@@ -827,6 +829,7 @@ nonisolated extension GenerationEventData {
             toolCallId: (try? c.decodeIfPresent(String.self, forKey: .toolCallId)) ?? nil,
             toolName: (try? c.decodeIfPresent(String.self, forKey: .toolName)) ?? nil,
             toolStatus: (try? c.decodeIfPresent(ChatMessageStatus.self, forKey: .toolStatus)) ?? nil,
+            toolDetails: (try? c.decodeIfPresent(String.self, forKey: .toolDetails)) ?? nil,
             cancelled: (try? c.decodeIfPresent(Bool.self, forKey: .cancelled)) ?? nil,
             assistantMessage: (try? c.decodeIfPresent(ChatMessage.self, forKey: .assistantMessage)) ?? nil
         )

@@ -290,10 +290,22 @@ function toolCallLabeller(): (toolName: StickerToolName) => string {
   };
 }
 
+function formatToolDetails(details: unknown): string | undefined {
+  if (details === undefined) return undefined;
+  if (details instanceof Error) return details.message.slice(0, 16000);
+  const text = typeof details === "string" ? details : JSON.stringify(details, (_key, value) => {
+    if (value instanceof Uint8Array) return `[Image/media: ${value.byteLength} bytes]`;
+    if (value?.type === "Buffer" && Array.isArray(value.data)) return `[Image/media: ${value.data.length} bytes]`;
+    return value;
+  }, 2);
+  return text && text.length > 16000 ? text.slice(0, 16000) + "\n… (truncated)" : text;
+}
+
 async function finishToolCall(
   job: typeof generationJobs.$inferSelect,
   toolCallId: string | undefined,
   status: "complete" | "failed" = "complete",
+  details?: unknown,
 ): Promise<void> {
   if (!toolCallId) return;
   const db = await getDatabase();
@@ -309,6 +321,7 @@ async function finishToolCall(
     toolCallId: tool.id,
     toolName: tool.toolName,
     toolStatus: status,
+    toolDetails: formatToolDetails(details),
   });
 }
 
@@ -322,10 +335,10 @@ async function showStickerThroughTool(
   const toolCallId = await beginToolCall(job, "show-sticker", revisionId);
   try {
     const content = await getAiProvider().showSticker(revisionId, kind, instruction, history);
-    await finishToolCall(job, toolCallId);
+    await finishToolCall(job, toolCallId, "complete", content);
     return content;
   } catch (error) {
-    await finishToolCall(job, toolCallId, "failed");
+    await finishToolCall(job, toolCallId, "failed", error);
     throw error;
   }
 }
@@ -1220,10 +1233,10 @@ async function executePlanTurn(
           planId: derivedAssetId(job.id, "plan"),
         });
         latest = { planId: created.planId, revision: created.revision, plan };
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", { planId: created.planId, revision: created.revision });
         return { planId: created.planId, revision: created.revision };
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1238,10 +1251,10 @@ async function executePlanTurn(
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const updated = await updatePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId, plan });
         latest = { planId: updated.planId, revision: updated.revision, plan };
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", updated);
         return updated;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1251,10 +1264,10 @@ async function executePlanTurn(
         if (!latest) throw new Error("There is no plan to show yet");
         await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references, history);
         await upsertPlanCard(job, planId, latest.revision, latest.plan.summary);
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", { planId, revision: latest.revision });
         return { planId, revision: latest.revision };
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1265,10 +1278,10 @@ async function executePlanTurn(
         await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references, history);
         const finalized = await finalizePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId });
         latest = { planId: finalized.planId, revision: finalized.revision, plan: finalized.plan };
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", { planId: finalized.planId, revision: finalized.revision });
         return { planId: finalized.planId, revision: finalized.revision };
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1387,10 +1400,10 @@ async function executeAnimationTurn(
       const call = await openCall("view_sticker");
       try {
         const render = await renderWorkingDocument(working ?? base, job.ownerId);
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", render);
         return render;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1399,10 +1412,10 @@ async function executeAnimationTurn(
       try {
         if (working) throw new Error(`An animation already exists (${animationId}); use update_animation to change it`);
         const state = await land(operations);
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1411,10 +1424,10 @@ async function executeAnimationTurn(
       try {
         if (!working) throw new Error("There is no animation to update yet; call create_animation first");
         const state = await land(operations);
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1440,10 +1453,10 @@ async function executeAnimationTurn(
         // which name no layer — are carried forward, and the merged set is re-applied to the base.
         const kept = landed.filter((operation) => animationOperationLayerId(operation) !== layerId);
         const state = await land([...kept, ...operations]);
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1451,10 +1464,10 @@ async function executeAnimationTurn(
       const call = await openCall("finalize_animation");
       try {
         if (!working) throw new Error("There is no animation to finalize yet; call create_animation first");
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", { animationId, revision, document: working });
         return { animationId, revision, document: working };
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1665,10 +1678,10 @@ async function executeEditTurn(
         }
         const assetId = await draw(prompt, layer);
         const state = await land([{ op: "replaceAsset", layerId, assetId }], { offCanvas: "clamp" });
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1701,10 +1714,10 @@ async function executeEditTurn(
           { op: "addLayer", layer, index },
           { op: "setLayerAnimations", layerId: layer.id, animations: [], anchor },
         ], { offCanvas: "clamp" });
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1832,10 +1845,10 @@ async function executeEditTurn(
             }]
             : []),
         ], { offCanvas: "clamp" });
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1843,10 +1856,10 @@ async function executeEditTurn(
       const call = await openCall("view_sticker");
       try {
         const render = await renderWorkingDocument(working, job.ownerId);
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", render);
         return render;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1855,20 +1868,20 @@ async function executeEditTurn(
       try {
         for (const operation of operations) validateEditOperation(operation);
         const state = await land(operations);
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
     finalizeEdit: async () => {
       const call = await openCall("finalize_edit");
       try {
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", { revision: changes, document: working });
         return { revision: changes, document: working };
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -1979,10 +1992,10 @@ async function refineBuiltLayout(
             await assertJobStillRunning(job.id).catch(abort);
             const viewable = await downscaleForModelInput(reference.bytes);
             viewedPlanImage = true;
-            await finishToolCall(job, call);
+            await finishToolCall(job, call, "complete", viewable);
             return viewable;
           } catch (error) {
-            await finishToolCall(job, call, "failed");
+            await finishToolCall(job, call, "failed", error);
             return abort(error);
           }
         },
@@ -1994,10 +2007,10 @@ async function refineBuiltLayout(
         const render = await renderWorkingDocument(working, job.ownerId);
         reviewed = working;
         viewedRevision = revision;
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", render);
         return render;
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         return abort(error);
       }
     },
@@ -2015,10 +2028,10 @@ async function refineBuiltLayout(
         await assertDocumentAssetsOwned(landed, job.ownerId, job.stickerId).catch(abort);
         working = landed;
         revision += 1;
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", { revision, document: working });
         return { revision, document: working };
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -2037,10 +2050,10 @@ async function refineBuiltLayout(
             `Keep every complete layer box on canvas. Fix: ${diagnostics.offCanvasLayerIds.join(", ")}`,
           );
         }
-        await finishToolCall(job, call);
+        await finishToolCall(job, call, "complete", { revision, document: working });
         return { revision, document: working };
       } catch (error) {
-        await finishToolCall(job, call, "failed");
+        await finishToolCall(job, call, "failed", error);
         throw error;
       }
     },
@@ -2209,7 +2222,7 @@ async function executePlanBuildTurn(
       });
       if (visualReference) separatedParts.push({ layerId: item.layer.layerId, subject });
     } catch (error) {
-      await finishToolCall(job, partToolCallId, "failed");
+      await finishToolCall(job, partToolCallId, "failed", error);
       throw error;
     }
     await finishToolCall(job, partToolCallId);
@@ -2233,7 +2246,7 @@ async function executePlanBuildTurn(
       const timing = await generateAndStoreVideoAsset(job, sticker.id, { stillAssetId: item.assetId, video: item.video });
       videoTimings.set(item.layer.layerId, timing);
     } catch (error) {
-      await finishToolCall(job, videoToolCallId, "failed");
+      await finishToolCall(job, videoToolCallId, "failed", error);
       throw error;
     }
     await finishToolCall(job, videoToolCallId);

@@ -105,6 +105,36 @@ describe("sticker packs", () => {
     expect(await counters(pack.id)).toMatchObject({ installCount: 1, itemCount: 1, installTotal: 2 });
   });
 
+  it.each([-3, 42])("counts visible members across pack surfaces despite a stored count of %i", async (itemCount) => {
+    const stickerIds: string[] = [];
+    for (let index = 0; index < 7; index += 1) {
+      stickerIds.push((await seedPublishedSticker(db, "creator")).stickerId);
+    }
+    const pack = await createPack(db, "creator", {
+      title: "Count actual stickers", stickerIds, state: "published",
+    });
+    await installPack(db, "installer", pack.id);
+    await db.update(stickers).set({ status: "draft", activeRevisionId: null })
+      .where(eq(stickers.id, stickerIds[6]));
+    await db.update(stickerPacks).set({ itemCount }).where(eq(stickerPacks.id, pack.id));
+
+    const detail = await getPack(db, "installer", pack.id);
+    expect(detail.stickers).toHaveLength(6);
+    expect(detail.itemCount).toBe(6);
+    const profile = await ensureCreatorProfile(db, "creator");
+    const pages = [
+      (await listMarketplacePacks(db, "installer")).data,
+      (await listOwnPacks(db, "creator")).data,
+      (await listPacksByCreator(db, "installer", profile.handle)).data,
+      await listInstalledPacks(db, "installer"),
+    ];
+    for (const page of pages) {
+      expect(page).toHaveLength(1);
+      expect(page[0].itemCount).toBe(6);
+      expect(page[0].coverStickers).toHaveLength(4);
+    }
+  });
+
   it("refuses stickers the creator does not own or has not published", async () => {
     const own = await seedPublishedSticker(db, "creator");
     const foreign = await seedPublishedSticker(db, "installer");

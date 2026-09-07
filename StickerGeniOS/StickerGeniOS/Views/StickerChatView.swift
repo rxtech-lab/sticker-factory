@@ -1226,6 +1226,7 @@ private struct TranscriptDivider: View {
 
 private struct ToolCallRow: View {
     let message: ChatMessage
+    @State private var showingDetails = false
 
     private var color: Color {
         switch message.status {
@@ -1236,6 +1237,49 @@ private struct ToolCallRow: View {
     }
 
     var body: some View {
+        Button { showingDetails = true } label: {
+            chip
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Tool \(message.content), \(message.status.label)")
+        .accessibilityHint("Shows the tool result or error")
+        .sheet(isPresented: $showingDetails) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(message.content).font(.headline)
+                        Label(message.status.label, systemImage: message.status == .failed ? "exclamationmark.circle" : "info.circle")
+                            .foregroundStyle(AppColors.muted)
+                        Text(message.toolDetails ?? fallbackDetails)
+                            .font(.body.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding()
+                }
+                .background(AppColors.paper)
+                .navigationTitle(message.status == .failed ? "Tool Error" : "Tool Result")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showingDetails = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var fallbackDetails: String {
+        switch message.status {
+        case .streaming: String(localized: "This tool is still running. Its result will appear here when available.")
+        case .complete: String(localized: "This tool completed. No result details were recorded.")
+        case .failed: String(localized: "This tool failed. No error details were recorded.")
+        }
+    }
+
+    private var chip: some View {
         HStack(spacing: 0) {
             UnevenRoundedRectangle(
                 topLeadingRadius: Poster.chipRadius - 2,

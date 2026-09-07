@@ -198,7 +198,7 @@ type PackJoinRow = {
 
 function serializePackSummary(
   row: PackJoinRow,
-  options: { viewerId: string; installed: boolean; coverStickers: StickerSummaryRow[] },
+  options: { viewerId: string; installed: boolean; members: StickerSummaryRow[] },
 ): PackSummaryV1 {
   const { pack } = row;
   return {
@@ -208,11 +208,13 @@ function serializePackSummary(
     summary: pack.summary,
     state: pack.state,
     creator: serializeCreator(row, { viewerId: options.viewerId }),
-    itemCount: pack.itemCount,
+    // Count the same publishable members shown in the grid; stored counters can drift and
+    // include stickers hidden after an edit or deletion.
+    itemCount: options.members.length,
     installCount: pack.installCount,
     installed: options.installed,
     isMine: pack.creatorId === options.viewerId,
-    coverStickers: options.coverStickers.map(serializeStickerSummary),
+    coverStickers: options.members.slice(0, COVER_STICKER_COUNT).map(serializeStickerSummary),
     monetization: { kind: pack.monetization, priceCents: pack.priceCents, currency: pack.currency },
     publishedAt: pack.publishedAt?.toISOString() ?? null,
     createdAt: pack.createdAt.toISOString(),
@@ -325,13 +327,13 @@ async function loadInstalledPackIds(db: Database, viewerId: string, packIds: str
 async function serializePackPage(db: Database, rows: PackJoinRow[], viewerId: string): Promise<PackSummaryV1[]> {
   const packIds = rows.map((row) => row.pack.id);
   const [members, installed] = await Promise.all([
-    loadPackMembers(db, packIds, { perPack: COVER_STICKER_COUNT }),
+    loadPackMembers(db, packIds),
     loadInstalledPackIds(db, viewerId, packIds),
   ]);
   return rows.map((row) => serializePackSummary(row, {
     viewerId,
     installed: installed.has(row.pack.id),
-    coverStickers: members.get(row.pack.id) ?? [],
+    members: members.get(row.pack.id) ?? [],
   }));
 }
 
@@ -481,7 +483,7 @@ export async function getPack(db: Database, viewerId: string, packRef: string): 
     ...serializePackSummary(row, {
       viewerId,
       installed: installed.has(row.pack.id),
-      coverStickers: packStickers.slice(0, COVER_STICKER_COUNT),
+      members: packStickers,
     }),
     stickers: packStickers.map(serializeStickerSummary),
   };
@@ -787,11 +789,11 @@ export async function listInstalledPacks(db: Database, userId: string): Promise<
     ))
     .orderBy(asc(packInstalls.position), asc(packInstalls.installedAt))
     .limit(MAX_INSTALLED_PACKS);
-  const members = await loadPackMembers(db, rows.map((row) => row.pack.id), { perPack: COVER_STICKER_COUNT });
+  const members = await loadPackMembers(db, rows.map((row) => row.pack.id));
   return rows.map((row) => serializePackSummary(row, {
     viewerId: userId,
     installed: true,
-    coverStickers: members.get(row.pack.id) ?? [],
+    members: members.get(row.pack.id) ?? [],
   }));
 }
 
