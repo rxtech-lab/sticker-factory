@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 /// One pack, in full: what it is, who made it, and a way to add it.
 ///
@@ -13,9 +14,13 @@ struct PackDetailView: View {
     @State private var isWorking = false
     @State private var previewedSticker: Sticker?
     @State private var isEditing = false
+    /// Which messenger the pack is being sent to, while its export sheet is up.
+    @State private var messengerDestination: MessengerDestination?
     /// Set by the editor when the pack is gone, so this screen pops instead of waiting on a detail
     /// the store will never hand back.
     @State private var wasDeleted = false
+    /// Points at the messenger row, so the first pack a reader opens says what those two buttons do.
+    private let messengerTip = MessengerExportTip()
 
     @Environment(\.dismiss) private var dismiss
 
@@ -42,12 +47,18 @@ struct PackDetailView: View {
         }
         .navigationTitle(detail?.title ?? String(localized: "Pack"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             if let detail, detail.state == .published || detail.state == .unlisted {
-                ShareLink(item: StickerShareRoute.packURL(detail.slug)) {
-                    PosterSymbolLabel("Share pack", posterSymbol: PosterIcon.share)
-                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: StickerShareRoute.packURL(detail.slug)) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    }
+                    .tint(AppColors.ink)
+                    .accessibilityLabel("Share pack")
                     .accessibilityIdentifier("pack-share")
+                }
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -55,6 +66,11 @@ struct PackDetailView: View {
         }
         .sheet(item: $previewedSticker) { sticker in
             stickerPreview(sticker)
+        }
+        .sheet(item: $messengerDestination) { destination in
+            if let detail {
+                MessengerExportSheet(destination: destination, pack: detail, api: store.api)
+            }
         }
         // Popping happens on the sheet's way out rather than the moment the delete lands: dismissing
         // a sheet and its presenter in the same turn drops the animation halfway.
@@ -208,6 +224,43 @@ struct PackDetailView: View {
                 ErrorBanner(message: error)
             }
 
+            // Encoding happens on the conversion screen after a save, never here — so the one
+            // thing this bar has to say is when a save is owed. Only the creator can act on it.
+            if detail.isMine, !unprepared(detail).isEmpty {
+                unpreparedNotice(unprepared(detail).count)
+            }
+
+            // Every pack is also a WhatsApp or Telegram pack. The export cuts it to the
+            // messenger's rules — one kind per pack, split when too large — so the buttons need
+            // no conditions beyond there being something to send.
+            if !detail.stickers.isEmpty {
+                HStack(spacing: 10) {
+                    ForEach(MessengerDestination.allCases) { destination in
+                        Button {
+                            messengerTip.invalidate(reason: .actionPerformed)
+                            Haptics.tap(.light)
+                            messengerDestination = destination
+                        } label: {
+                            Label {
+                                Text(destination.label)
+                            } icon: {
+                                Image(destination.logoAsset)
+                                    .renderingMode(.original)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
+                                    .accessibilityHidden(true)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.posterSecondaryCompact)
+                        .accessibilityLabel(String(localized: "Add to \(destination.label)"))
+                        .accessibilityIdentifier("pack-messenger-\(destination.rawValue)")
+                    }
+                }
+                .popoverTip(messengerTip, arrowEdge: .bottom)
+            }
+
             if detail.isMine {
                 // There is nothing to install — self-install is refused server-side, since the
                 // creator's own stickers already sit in their library — so the bar carries the one
@@ -241,7 +294,22 @@ struct PackDetailView: View {
         .animation(.snappy, value: detail.installed)
     }
 
-    @ViewBuilder
+    /// The members that cannot be sent to at least one messenger yet.
+    private func unprepared(_ detail: StickerPackDetail) -> [Sticker] {
+        MessengerRenditionPreparer.pending(in: detail.stickers)
+    }
+
+    /// "2 stickers aren't ready for WhatsApp and Telegram" — and the editor is where that is fixed.
+    private func unpreparedNotice(_ count: Int) -> some View {
+        Button { openEditor() } label: {
+            NoticeBanner(message: count == 1
+                ? String(localized: "1 sticker isn't ready for WhatsApp and Telegram. Edit the pack to prepare it.")
+                : String(localized: "\(count) stickers aren't ready for WhatsApp and Telegram. Edit the pack to prepare them."))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("pack-messenger-unprepared")
+    }
+
     private func installLabel(_ detail: StickerPackDetail) -> some View {
         HStack(spacing: 8) {
             if isWorking {

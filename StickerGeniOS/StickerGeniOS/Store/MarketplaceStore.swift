@@ -31,6 +31,14 @@ final class MarketplaceStore {
 
     let api: StickerAPIClientProtocol
 
+    /// Encodes and uploads the WhatsApp and Telegram copies of a pack's members.
+    ///
+    /// Run from the conversion screen the composer and the editor push after a save, never in the
+    /// background. Owned here rather than by that screen so the stickers it binds land in every
+    /// pack detail this store holds — a pack screen already on the stack then shows the new
+    /// renditions without a refetch.
+    let messengerPreparer: MessengerRenditionPreparer
+
     /// Called after an install or uninstall so the Library's sections reload. A closure rather than
     /// a direct reference keeps the two stores from knowing about each other.
     @ObservationIgnored var onInstallsChanged: (() async -> Void)?
@@ -52,7 +60,11 @@ final class MarketplaceStore {
     /// The pending debounced search. Keystrokes replace it; only the last one survives to reload.
     @ObservationIgnored private var searchTask: Task<Void, Never>?
 
-    init(api: StickerAPIClientProtocol) { self.api = api }
+    init(api: StickerAPIClientProtocol) {
+        self.api = api
+        self.messengerPreparer = MessengerRenditionPreparer(api: api)
+        self.messengerPreparer.onStickerPrepared = { [weak self] sticker in self?.absorbPrepared(sticker) }
+    }
 
     func reset() {
         refreshTask?.cancel()
@@ -250,6 +262,19 @@ final class MarketplaceStore {
         myPacks.removeAll { $0.id == detail.id }
         myPacks.insert(detail.pack, at: 0)
         return detail
+    }
+
+    /// Writes a freshly bound sticker into every pack that lists it.
+    ///
+    /// The bind is the server's word that the renditions exist, and the pack details cached here
+    /// are what the pack screen and the export sheet read — so without this, a member prepared a
+    /// moment ago would still be grayed out until the next refetch.
+    private func absorbPrepared(_ sticker: Sticker) {
+        for (packID, var detail) in details {
+            guard let index = detail.stickers.firstIndex(where: { $0.id == sticker.id }) else { continue }
+            detail.stickers[index] = sticker
+            details[packID] = detail
+        }
     }
 
     /// Renames a pack, or rewrites its description. Applies to a published pack as much as a draft:

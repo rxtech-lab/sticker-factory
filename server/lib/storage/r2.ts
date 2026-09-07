@@ -184,6 +184,21 @@ export interface Mp4Inspection {
   byteSize: number;
 }
 
+/**
+ * What can be learned about a WebM without decoding it.
+ *
+ * No `frameCount` or `fps`: those live in the cluster blocks, which means walking every frame of
+ * the file to count them, and nothing checks them — Telegram's rule is about duration and size.
+ */
+export interface WebMInspection {
+  width: number;
+  height: number;
+  codec: "V_VP9";
+  durationSeconds: number;
+  sha256: string;
+  byteSize: number;
+}
+
 function findAscii(bytes: Uint8Array, needle: string, start = 0): number {
   const pattern = new TextEncoder().encode(needle);
   outer: for (let index = start; index <= bytes.length - pattern.length; index += 1) {
@@ -301,6 +316,146 @@ export function inspectMp4(bytes: Uint8Array): Mp4Inspection {
     sha256: createHash("sha256").update(bytes).digest("hex"),
     byteSize: bytes.byteLength,
   };
+}
+
+/**
+ * Dimensions, codec and duration for a WebM, read straight out of its EBML elements.
+ *
+ * There is no decoder anywhere in this codebase that could open one — the server has sharp and
+ * nothing else — but nothing else needs to be opened to answer the only questions that matter: is
+ * this VP9, is it the 512 px square Telegram demands, and is it inside three seconds. Every other
+ * rendition has its pixels measured rather than taken on trust, and a WebM that lies about its size
+ * is not rejected here but by Telegram, *after* the hand-off, where the person who made the pack
+ * has no way to find out why.
+ *
+ * The one thing this deliberately does not verify is the alpha side-stream. Telegram wants
+ * transparency, the encoder writes it as a second VP9 stream in each block's `BlockAdditional`, and
+ * confirming it is really there means decoding a frame. Container, codec, dimensions and duration
+ * are what this admits.
+ */
+export function inspectWebM(bytes: Uint8Array): WebMInspection {
+  if (bytes.byteLength < 64 || bytes[0] !== 0x1a || bytes[1] !== 0x45 || bytes[2] !== 0xdf || bytes[3] !== 0xa3) {
+    throw new ApiError(422, "INVALID_WEBM", "The rendition is not a Matroska/WebM file");
+  }
+  const segment = findEbmlChild(bytes, { start: 0, end: bytes.byteLength }, EBML_SEGMENT);
+  if (!segment) throw new ApiError(422, "INVALID_WEBM", "The WebM file has no segment");
+
+  // Duration is stored in timecode units, so it means nothing without the scale beside it. The
+  // 1 ms default is Matroska's own, and is what every file this app produces uses.
+  const info = findEbmlChild(bytes, segment, EBML_INFO);
+  const timecodeScale = info ? readEbmlUint(bytes, findEbmlChild(bytes, info, EBML_TIMECODE_SCALE)) ?? 1_000_000 : 1_000_000;
+  const rawDuration = info ? readEbmlFloat(bytes, findEbmlChild(bytes, info, EBML_DURATION)) : undefined;
+  const durationSeconds = rawDuration === undefined ? 0 : (rawDuration * timecodeScale) / 1_000_000_000;
+
+  const tracks = findEbmlChild(bytes, segment, EBML_TRACKS);
+  if (!tracks) throw new ApiError(422, "INVALID_WEBM", "The WebM file has no track list");
+  let width = 0;
+  let height = 0;
+  let codec = "";
+  for (const entry of findEbmlChildren(bytes, tracks, EBML_TRACK_ENTRY)) {
+    const video = findEbmlChild(bytes, entry, EBML_VIDEO);
+    if (!video) continue;
+    codec = readEbmlString(bytes, findEbmlChild(bytes, entry, EBML_CODEC_ID)) ?? "";
+    width = readEbmlUint(bytes, findEbmlChild(bytes, video, EBML_PIXEL_WIDTH)) ?? 0;
+    height = readEbmlUint(bytes, findEbmlChild(bytes, video, EBML_PIXEL_HEIGHT)) ?? 0;
+    break;
+  }
+  if (codec !== "V_VP9") throw new ApiError(422, "INVALID_WEBM_CODEC", "WebM renditions must carry a VP9 video track");
+  if (!width || !height) throw new ApiError(422, "INVALID_WEBM_DIMENSIONS", "WebM video dimensions could not be verified");
+  return {
+    width,
+    height,
+    codec: "V_VP9",
+    durationSeconds,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    byteSize: bytes.byteLength,
+  };
+}
+
+// The handful of EBML ids this reader walks, each written as the full id including its length
+// marker, which is how they appear in the byte stream.
+const EBML_SEGMENT = 0x18538067;
+const EBML_INFO = 0x1549a966;
+const EBML_TIMECODE_SCALE = 0x2ad7b1;
+const EBML_DURATION = 0x4489;
+const EBML_TRACKS = 0x1654ae6b;
+const EBML_TRACK_ENTRY = 0xae;
+const EBML_VIDEO = 0xe0;
+const EBML_CODEC_ID = 0x86;
+const EBML_PIXEL_WIDTH = 0xb0;
+const EBML_PIXEL_HEIGHT = 0xba;
+
+interface EbmlRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * One EBML variable-length integer at `offset`.
+ *
+ * The leading zero bits count the extra bytes; the first set bit is the marker. Ids keep that
+ * marker (it is part of the id), sizes drop it (it is only a length prefix) — which is the whole
+ * difference between the two calls below.
+ */
+function readVarInt(bytes: Uint8Array, offset: number, keepMarker: boolean): { value: number; next: number; unknown: boolean } | null {
+  if (offset >= bytes.byteLength) return null;
+  const first = bytes[offset];
+  if (first === 0) return null;
+  let length = 1;
+  while (length <= 8 && (first & (0x80 >> (length - 1))) === 0) length += 1;
+  if (length > 8 || offset + length > bytes.byteLength) return null;
+  let value = keepMarker ? first : first & (0xff >> length);
+  for (let index = 1; index < length; index += 1) value = value * 256 + bytes[offset + index];
+  // A size with every value bit set means "unknown, runs to the end of the parent". Seven bits per
+  // byte survive the length marker, so that is 2^(7·length) − 1 and nothing else.
+  const unknown = !keepMarker && value === Math.pow(2, 7 * length) - 1;
+  return { value, next: offset + length, unknown };
+}
+
+/** Every direct child of `range` carrying `id`, in order. */
+function findEbmlChildren(bytes: Uint8Array, range: EbmlRange, id: number): EbmlRange[] {
+  const found: EbmlRange[] = [];
+  let cursor = range.start;
+  while (cursor < range.end) {
+    const element = readVarInt(bytes, cursor, true);
+    if (!element) break;
+    const size = readVarInt(bytes, element.next, false);
+    if (!size) break;
+    // An unknown-length element runs to the end of its parent. Only the segment is ever written
+    // that way — a live muxer that does not yet know how long the file will be — and treating it as
+    // "the rest" is exactly right for it.
+    const end = Math.min(size.unknown ? range.end : size.next + size.value, range.end);
+    if (end < size.next) break;
+    if (element.value === id) found.push({ start: size.next, end });
+    cursor = end;
+  }
+  return found;
+}
+
+function findEbmlChild(bytes: Uint8Array, range: EbmlRange, id: number): EbmlRange | undefined {
+  return findEbmlChildren(bytes, range, id)[0];
+}
+
+function readEbmlUint(bytes: Uint8Array, range: EbmlRange | undefined): number | undefined {
+  if (!range || range.end <= range.start || range.end - range.start > 8) return undefined;
+  let value = 0;
+  for (let index = range.start; index < range.end; index += 1) value = value * 256 + bytes[index];
+  return value;
+}
+
+function readEbmlFloat(bytes: Uint8Array, range: EbmlRange | undefined): number | undefined {
+  if (!range) return undefined;
+  const size = range.end - range.start;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (size === 4) return view.getFloat32(range.start);
+  if (size === 8) return view.getFloat64(range.start);
+  return undefined;
+}
+
+function readEbmlString(bytes: Uint8Array, range: EbmlRange | undefined): string | undefined {
+  if (!range) return undefined;
+  // Matroska pads fixed-width strings with NULs; `V_VP9\0` and `V_VP9` are the same codec.
+  return new TextDecoder().decode(bytes.subarray(range.start, range.end)).replace(/\0+$/, "");
 }
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -470,6 +625,7 @@ export function objectKey(ownerId: string, assetId: string, mimeType: string): s
     "image/webp": "webp",
     "image/gif": "gif",
     "video/mp4": "mp4",
+    "video/webm": "webm",
   } as Record<string, string>)[mimeType] ?? "bin";
   const safeOwner = createHash("sha256").update(ownerId).digest("hex").slice(0, 24);
   return `private/${safeOwner}/${assetId}.${extension}`;

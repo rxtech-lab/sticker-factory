@@ -9,9 +9,15 @@ import SwiftUI
 /// Everything the composer cannot do lives here rather than in `PackDetailView`: publishing,
 /// returning a pack to draft, and deleting it are all edits to the same pack, and splitting them
 /// across two screens would leave the creator hunting for the half they wanted.
+///
+/// Saving can also mean encoding. A member without its WhatsApp and Telegram copies cannot be
+/// sent, and the copies are made on this phone — so a save that leaves such members pushes
+/// `MessengerPreparationView` instead of closing, and the sheet comes down when that screen does.
 struct PackEditorView: View {
     @Bindable var store: MarketplaceStore
     let packID: String
+    /// The pack as this sheet was opened, for the rare route pushed before the store has reloaded it.
+    private let seed: StickerPackDetail
     /// Called once the pack is gone, so the detail screen behind this sheet can pop rather than sit
     /// on a pack the store no longer holds.
     var onDeleted: () -> Void
@@ -27,6 +33,8 @@ struct PackEditorView: View {
 
     @State private var showingPicker = false
     @State private var confirmingDelete = false
+    /// The members being encoded on the pushed screen, once a save has left some unprepared.
+    @State private var preparing: PackPreparationRoute?
     @State private var isWorking = false
     /// Which round trip is running, or `nil` when nothing is in flight.
     @State private var workStatus: String?
@@ -43,6 +51,7 @@ struct PackEditorView: View {
     init(store: MarketplaceStore, detail: StickerPackDetail, onDeleted: @escaping () -> Void) {
         self.store = store
         packID = detail.id
+        seed = detail
         self.onDeleted = onDeleted
         _title = State(initialValue: detail.title)
         _summary = State(initialValue: detail.summary ?? "")
@@ -75,6 +84,9 @@ struct PackEditorView: View {
 
     private var canSave: Bool { !trimmedTitle.isEmpty && hasChanges && !isWorking }
 
+    /// Members that cannot be sent to at least one messenger yet — what the save will encode.
+    private var unprepared: [Sticker] { MessengerRenditionPreparer.pending(in: members) }
+
     /// Members the server counts but will not hand back.
     ///
     /// Editing a sticker on device returns it to draft, and a draft has no system rendition — so it
@@ -88,8 +100,11 @@ struct PackEditorView: View {
     var body: some View {
         Form {
             detailsSection
-            membersSection
+            PackMembersSection(members: $members, api: store.api, identifierPrefix: "pack-editor") {
+                showingPicker = true
+            }
             if hiddenCount > 0 { hiddenSection }
+            if !unprepared.isEmpty { messengersSection }
             visibilitySection
             if let errorMessage {
                 Section { Text(errorMessage).font(.footnote).foregroundStyle(.red) }
@@ -125,6 +140,14 @@ struct PackEditorView: View {
         .sheet(isPresented: $showingPicker) {
             StickerPickerSheet(api: store.api, selection: $members)
         }
+        .navigationDestination(item: $preparing) { route in
+            MessengerPreparationView(
+                preparer: store.messengerPreparer,
+                api: store.api,
+                stickers: route.stickers,
+                onFinished: { dismiss() }
+            )
+        }
         .confirmationDialog("Delete this pack?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete pack", role: .destructive) {
                 Haptics.tap(.heavy)
@@ -132,7 +155,7 @@ struct PackEditorView: View {
             }
             Button("Keep pack", role: .cancel) {}
         } message: {
-            Text("It disappears from the marketplace and from everyone who added it. Your stickers themselves are untouched.")
+            Text("It disappears from Sticker Packs and from everyone who added it. Your stickers themselves are untouched.")
         }
         // Reopened after an edit elsewhere, the seed this view was built from can be stale.
         .task(id: packID) { await store.loadDetail(packID: packID) }
@@ -158,52 +181,6 @@ struct PackEditorView: View {
     }
 
     @ViewBuilder
-    private var membersSection: some View {
-        Section {
-            if members.isEmpty {
-                Text("Nothing in this pack yet — add the stickers it should contain.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(members) { sticker in
-                    HStack(spacing: 12) {
-                        StickerThumbnail(sticker: sticker, api: store.api)
-                            .frame(width: 44, height: 44)
-                        Text(sticker.title).lineLimit(1)
-                    }
-                    .accessibilityIdentifier("pack-editor-member-\(sticker.id)")
-                }
-                .onMove { members.move(fromOffsets: $0, toOffset: $1) }
-                .onDelete { members.remove(atOffsets: $0) }
-            }
-
-            Button {
-                showingPicker = true
-            } label: {
-                Label("Choose stickers", systemImage: "plus.circle")
-            }
-            .accessibilityIdentifier("pack-editor-choose-stickers-button")
-        } header: {
-            HStack {
-                Text("Stickers (\(members.count))")
-                Spacer()
-                // Reordering is drag-to-move, which needs edit mode. It sits here rather than in the
-                // toolbar because it governs this list alone, not the fields above it. `.textCase`
-                // undoes the uppercasing a section header would otherwise put on the button.
-                if members.count > 1 {
-                    EditButton()
-                        .textCase(nil)
-                        .accessibilityIdentifier("pack-editor-reorder-button")
-                }
-            }
-        } footer: {
-            // The server takes the first member as the cover, and the browse tile is built from the
-            // first four — so the order here is not only the grid's, it is the pack's shopfront.
-            if members.count > 1 { Text("The first sticker is the pack's cover. Drag to reorder.") }
-        }
-    }
-
-    @ViewBuilder
     private var hiddenSection: some View {
         Section {
             PosterSymbolLabel(
@@ -218,6 +195,29 @@ struct PackEditorView: View {
                 .foregroundStyle(.secondary)
         }
         .accessibilityIdentifier("pack-editor-hidden-warning")
+    }
+
+    /// Members the messengers cannot take yet, and the way to fix that without touching anything
+    /// else. Save is a no-op when nothing changed, and a pack made before this app stored
+    /// renditions — or whose member was re-published since — has nothing to change.
+    @ViewBuilder
+    private var messengersSection: some View {
+        Section {
+            PosterSymbolLabel(
+                verbatim: unprepared.count == 1
+                    ? String(localized: "1 sticker isn't ready for WhatsApp and Telegram.")
+                    : String(localized: "\(unprepared.count) stickers aren't ready for WhatsApp and Telegram."),
+                posterSymbol: "arrow.triangle.2.circlepath"
+            )
+            .font(.footnote)
+            Button("Prepare for WhatsApp and Telegram") {
+                Haptics.tap(.medium)
+                Task { await prepare() }
+            }
+            .accessibilityIdentifier("pack-editor-prepare-button")
+        } footer: {
+            Text("Saving prepares them too. Each sticker is encoded once on this iPhone and saved with the pack.")
+        }
     }
 
     @ViewBuilder
@@ -275,7 +275,26 @@ struct PackEditorView: View {
     private func save() async {
         guard await commit() else { return }
         Haptics.success()
-        dismiss()
+        // The edit is on the server. Whether the sheet can come down depends on whether the pack
+        // can be sent: a member short of a rendition keeps it up for the encode, and Done on that
+        // screen is what dismisses.
+        let pending = unprepared
+        if pending.isEmpty {
+            dismiss()
+        } else {
+            preparing = PackPreparationRoute(detail: detail ?? seed, stickers: pending)
+        }
+    }
+
+    /// Prepare without another edit: pending changes go first, exactly as they do for Publish.
+    private func prepare() async {
+        guard await commit() else { return }
+        let pending = unprepared
+        guard !pending.isEmpty else {
+            dismiss()
+            return
+        }
+        preparing = PackPreparationRoute(detail: detail ?? seed, stickers: pending)
     }
 
     /// Writes whatever changed, and reports whether everything landed.

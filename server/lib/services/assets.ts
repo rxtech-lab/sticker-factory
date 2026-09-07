@@ -1,7 +1,17 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
-import { ATTACHMENT_RENDITION_DIMENSIONS, type CreateUploadRequest } from "@/lib/contracts/api";
+import {
+  ATTACHMENT_RENDITION_DIMENSIONS,
+  MESSENGER_RENDITION_DIMENSION,
+  TELEGRAM_ANIMATED_BYTE_LIMIT,
+  TELEGRAM_MAX_SECONDS,
+  TELEGRAM_STATIC_BYTE_LIMIT,
+  WHATSAPP_ANIMATED_BYTE_LIMIT,
+  WHATSAPP_MAX_SECONDS,
+  WHATSAPP_STATIC_BYTE_LIMIT,
+  type CreateUploadRequest,
+} from "@/lib/contracts/api";
 import { MAX_RENDITION_SECONDS, SHARING_APNG_DIMENSIONS, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
 import { previewAssetIdSql } from "@/lib/db/columns";
@@ -11,6 +21,7 @@ import {
   getObjectStore,
   inspectImage,
   inspectMp4,
+  inspectWebM,
   objectKey,
   type ImageInspection,
 } from "@/lib/storage/r2";
@@ -320,6 +331,46 @@ export function validateImageForKind(
       throw new ApiError(422, "INVALID_ATTACHMENT_TIMING", `Animated attachment renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
+  if (asset.kind === "messenger_whatsapp") {
+    // 512 exactly, never a range: WhatsApp checks the dimension itself and refuses anything else,
+    // which is why the client's ladder spends quality and frame rate but never pixels.
+    if (inspection.mimeType !== "image/webp"
+      || inspection.width !== MESSENGER_RENDITION_DIMENSION || inspection.height !== MESSENGER_RENDITION_DIMENSION
+      || !inspection.hasAlpha || !inspection.hasTransparentPixels) {
+      throw new ApiError(
+        422,
+        "INVALID_WHATSAPP_RENDITION",
+        `WhatsApp renditions must be transparent ${MESSENGER_RENDITION_DIMENSION}×${MESSENGER_RENDITION_DIMENSION} WebP files`,
+      );
+    }
+    // Two ceilings, and which one applies is the file's own business: a still is held to 100 KB and
+    // an animation to 500 KB, exactly as WhatsApp holds them. `frameCount` is trustworthy here
+    // because libvips pages WebP natively — unlike APNG, which needs its chunks read by hand.
+    const limit = inspection.frameCount > 1 ? WHATSAPP_ANIMATED_BYTE_LIMIT : WHATSAPP_STATIC_BYTE_LIMIT;
+    if (inspection.byteSize > limit) {
+      throw new ApiError(422, "WHATSAPP_RENDITION_TOO_LARGE", `WhatsApp ${inspection.frameCount > 1 ? "animated" : "still"} renditions must be ${limit / 1024} KB or smaller`);
+    }
+    if (inspection.frameCount > 1 && inspection.durationSeconds > WHATSAPP_MAX_SECONDS + 0.01) {
+      throw new ApiError(422, "INVALID_WHATSAPP_TIMING", `Animated WhatsApp renditions must be ${WHATSAPP_MAX_SECONDS} seconds or shorter`);
+    }
+  }
+  // Only the still half of the kind lands here. An animated Telegram rendition is a WebM, which is
+  // not an image at all and never reaches `inspectImage` — `completeUpload` sends it to
+  // `inspectWebM` instead.
+  if (asset.kind === "messenger_telegram") {
+    if (inspection.mimeType !== "image/png" || inspection.frameCount !== 1
+      || inspection.width !== MESSENGER_RENDITION_DIMENSION || inspection.height !== MESSENGER_RENDITION_DIMENSION
+      || !inspection.hasAlpha || !inspection.hasTransparentPixels) {
+      throw new ApiError(
+        422,
+        "INVALID_TELEGRAM_RENDITION",
+        `Telegram still renditions must be transparent single-frame ${MESSENGER_RENDITION_DIMENSION}×${MESSENGER_RENDITION_DIMENSION} PNG files`,
+      );
+    }
+    if (inspection.byteSize > TELEGRAM_STATIC_BYTE_LIMIT) {
+      throw new ApiError(422, "TELEGRAM_RENDITION_TOO_LARGE", `Telegram still renditions must be ${TELEGRAM_STATIC_BYTE_LIMIT / 1024} KB or smaller`);
+    }
+  }
 }
 
 export async function completeUpload(db: Database, ownerId: string, assetId: string, expectedSha256?: string) {
@@ -341,6 +392,7 @@ export async function completeUpload(db: Database, ownerId: string, assetId: str
 
   let inspection: ImageInspection | undefined;
   let mp4Inspection: ReturnType<typeof inspectMp4> | undefined;
+  let webmInspection: ReturnType<typeof inspectWebM> | undefined;
   if (IMAGE_TYPES.has(asset.mimeType)) {
     inspection = await inspectImage(object.bytes);
     validateImageForKind(asset, inspection);
@@ -349,11 +401,29 @@ export async function completeUpload(db: Database, ownerId: string, assetId: str
     if (mp4Inspection.width !== 1024 || mp4Inspection.height !== 1024) {
       throw new ApiError(422, "INVALID_MP4_DIMENSIONS", "MP4 exports must be 1024x1024");
     }
+  } else if (asset.kind === "messenger_telegram" && asset.mimeType === "video/webm") {
+    // Telegram's animated rendition, the one file in this API that no image decoder can open.
+    webmInspection = inspectWebM(object.bytes);
+    if (webmInspection.width !== MESSENGER_RENDITION_DIMENSION || webmInspection.height !== MESSENGER_RENDITION_DIMENSION) {
+      throw new ApiError(
+        422,
+        "INVALID_TELEGRAM_RENDITION",
+        `Telegram video renditions must be ${MESSENGER_RENDITION_DIMENSION}×${MESSENGER_RENDITION_DIMENSION}`,
+      );
+    }
+    if (webmInspection.byteSize > TELEGRAM_ANIMATED_BYTE_LIMIT) {
+      throw new ApiError(422, "TELEGRAM_RENDITION_TOO_LARGE", `Telegram video renditions must be ${TELEGRAM_ANIMATED_BYTE_LIMIT / 1024} KB or smaller`);
+    }
+    // A zero here means the muxer wrote no duration, not that the clip is empty — the ceiling is
+    // what Telegram enforces, so only an over-long file is refused.
+    if (webmInspection.durationSeconds > TELEGRAM_MAX_SECONDS + 0.01) {
+      throw new ApiError(422, "INVALID_TELEGRAM_TIMING", `Telegram video renditions must be ${TELEGRAM_MAX_SECONDS} seconds or shorter`);
+    }
   } else {
     throw new ApiError(422, "UNSUPPORTED_MEDIA", "This asset kind requires an image");
   }
 
-  const actualSha256 = inspection?.sha256 ?? mp4Inspection?.sha256
+  const actualSha256 = inspection?.sha256 ?? mp4Inspection?.sha256 ?? webmInspection?.sha256
     ?? (await import("node:crypto")).createHash("sha256").update(object.bytes).digest("hex");
   const requiredSha = expectedSha256 ?? asset.sha256;
   if (requiredSha && requiredSha.toLowerCase() !== actualSha256) {
@@ -368,12 +438,15 @@ export async function completeUpload(db: Database, ownerId: string, assetId: str
   const [ready] = await db.update(assets).set({
     state: "ready",
     byteSize: object.bytes.byteLength,
-    width: inspection?.width ?? mp4Inspection?.width,
-    height: inspection?.height ?? mp4Inspection?.height,
+    width: inspection?.width ?? mp4Inspection?.width ?? webmInspection?.width,
+    height: inspection?.height ?? mp4Inspection?.height ?? webmInspection?.height,
+    // A WebM contributes no frame count: counting its frames means walking every cluster block, and
+    // nothing reads the number. The client learns an animated Telegram rendition is animated from
+    // the sticker's own `kind`, which is the same thing it used to decide to encode a video.
     frameCount: declaresOwnTiming ? asset.frameCount : inspection?.frameCount ?? mp4Inspection?.frameCount,
     durationSeconds: declaresOwnTiming
       ? asset.durationSeconds
-      : inspection?.durationSeconds ?? mp4Inspection?.durationSeconds,
+      : inspection?.durationSeconds ?? mp4Inspection?.durationSeconds ?? webmInspection?.durationSeconds,
     fps: declaresOwnTiming ? asset.fps : inspection?.fps ?? mp4Inspection?.fps,
     sha256: actualSha256,
     hasAlpha: inspection?.hasAlpha,
@@ -439,7 +512,15 @@ export type AssetAudience = "owner" | "pack-member";
  * the sharing rendition. Leaving it owner-only would turn every `.image` send of a borrowed sticker
  * into a 404 on a rendition the listing had just offered.
  */
-const PACK_SHARED_ASSET_KINDS = ["system", "preview", "apng", "gif", "master", "attachment", "webp"] as const;
+/**
+ * The messenger renditions are here for the plainest reason of all: sending an installed pack on to
+ * WhatsApp or Telegram is what installing it is *for*. Leaving them owner-only would let the pack
+ * screen offer two hand-off buttons and then 404 on every sticker the moment either was pressed.
+ */
+const PACK_SHARED_ASSET_KINDS = [
+  "system", "preview", "apng", "gif", "master", "attachment", "webp",
+  "messenger_whatsapp", "messenger_telegram",
+] as const;
 
 /**
  * Whether `asset` is artwork the marketplace has already made public.
@@ -472,6 +553,10 @@ async function isPackPublishedAsset(db: Database, asset: typeof assets.$inferSel
         // Deliberately outside `previewAssetIdSql`: the WebP must never *replace* the preview a
         // client resolves, only be readable beside it.
         eq(stickerRevisions.webpAssetId, asset.id),
+        // Same reasoning again for the two messenger renditions: readable beside the preview, never
+        // in place of it. A WebM is not artwork anything in this app can draw.
+        eq(stickerRevisions.whatsappAssetId, asset.id),
+        eq(stickerRevisions.telegramAssetId, asset.id),
       ),
     ))
     .limit(1)
@@ -503,7 +588,8 @@ function assetExtension(mimeType: string): string {
   return mimeType === "image/png" ? "png"
     : mimeType === "image/gif" ? "gif"
       : mimeType === "video/mp4" ? "mp4"
-        : mimeType === "image/webp" ? "webp" : "jpg";
+        : mimeType === "video/webm" ? "webm"
+          : mimeType === "image/webp" ? "webp" : "jpg";
 }
 
 export async function createAssetDownload(db: Database, requesterId: string, assetId: string) {

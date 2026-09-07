@@ -18,7 +18,40 @@
         },
         "attachmentMedium": null,
         "attachmentSmall": null,
-        "webpAsset": null
+        "webpAsset": null,
+        "whatsappAsset": {
+          "id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          "stickerId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "kind": "messenger_whatsapp",
+          "state": "ready",
+          "mimeType": "image/webp",
+          "byteSize": 412880,
+          "width": 512,
+          "height": 512,
+          "frameCount": 24,
+          "durationSeconds": 1.2,
+          "fps": 20,
+          "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "hasAlpha": true,
+          "createdAt": "2026-08-24T00:02:00.000Z"
+        },
+        "telegramAsset": {
+          "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+          "stickerId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "kind": "messenger_telegram",
+          "state": "ready",
+          "mimeType": "video/webm",
+          "byteSize": 208640,
+          "width": 512,
+          "height": 512,
+          "frameCount": null,
+          "durationSeconds": 1.2,
+          "fps": null,
+          "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "hasAlpha": null,
+          "createdAt": "2026-08-24T00:02:00.000Z"
+        },
+        "messengerEmoji": "☁️"
       }
     ],
     "nextCursor": null
@@ -56,7 +89,10 @@
     "attachmentSmallAssetId": "88888888-8888-4888-8888-888888888888",
     "mp4Background": {
       "type": "linearGradient",
-      "colors": ["#112233", "#445566"],
+      "colors": [
+        "#112233",
+        "#445566"
+      ],
       "angleDegrees": 30
     }
   },
@@ -97,7 +133,10 @@
             },
             "attachmentMedium": null,
             "attachmentSmall": null,
-            "webpAsset": null
+            "webpAsset": null,
+            "whatsappAsset": null,
+            "telegramAsset": null,
+            "messengerEmoji": null
           }
         ],
         "monetization": {
@@ -147,7 +186,10 @@
         },
         "attachmentMedium": null,
         "attachmentSmall": null,
-        "webpAsset": null
+        "webpAsset": null,
+        "whatsappAsset": null,
+        "telegramAsset": null,
+        "messengerEmoji": null
       }
     ],
     "monetization": {
@@ -176,7 +218,10 @@
         },
         "attachmentMedium": null,
         "attachmentSmall": null,
-        "webpAsset": null
+        "webpAsset": null,
+        "whatsappAsset": null,
+        "telegramAsset": null,
+        "messengerEmoji": null
       }
     ]
   },
@@ -269,7 +314,40 @@
               "sha256": "9999999999999999999999999999999999999999999999999999999999999999",
               "hasAlpha": true,
               "createdAt": "2026-08-24T00:01:00.000Z"
-            }
+            },
+            "whatsappAsset": {
+              "id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+              "stickerId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "kind": "messenger_whatsapp",
+              "state": "ready",
+              "mimeType": "image/webp",
+              "byteSize": 412880,
+              "width": 512,
+              "height": 512,
+              "frameCount": 24,
+              "durationSeconds": 1.2,
+              "fps": 20,
+              "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "hasAlpha": true,
+              "createdAt": "2026-08-24T00:02:00.000Z"
+            },
+            "telegramAsset": {
+              "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+              "stickerId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "kind": "messenger_telegram",
+              "state": "ready",
+              "mimeType": "video/webm",
+              "byteSize": 208640,
+              "width": 512,
+              "height": 512,
+              "frameCount": null,
+              "durationSeconds": 1.2,
+              "fps": null,
+              "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "hasAlpha": null,
+              "createdAt": "2026-08-24T00:02:00.000Z"
+            },
+            "messengerEmoji": "☁️"
           }
         ]
       },
@@ -306,7 +384,10 @@
             },
             "attachmentMedium": null,
             "attachmentSmall": null,
-            "webpAsset": null
+            "webpAsset": null,
+            "whatsappAsset": null,
+            "telegramAsset": null,
+            "messengerEmoji": null
           }
         ]
       }

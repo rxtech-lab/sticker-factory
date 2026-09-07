@@ -7,9 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-        C119B001A001A001A001A001 /* ClipLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B001A001A001A001A002 /* ClipLibraryView.swift */; };
-		C11A00000000000000000001 /* RxAuthSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000019 /* RxAuthSwift */; };
-		C11A00000000000000000002 /* RxAuthSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000020 /* RxAuthSwiftUI */; };
 		02229E3D7ED5D801BB5348BB /* QuickHTTPTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630BD9F3FF2B7870AD961E48 /* QuickHTTPTransport.swift */; };
 		024E2790F8CE42CEC457DC7B /* QuickHTTPTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630BD9F3FF2B7870AD961E48 /* QuickHTTPTransport.swift */; };
 		07FAB9AB5CC6079A934AF278 /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = DFD446B330404667007C420E /* icon.icon */; };
@@ -32,6 +29,9 @@
 		A00000000000000000000003 /* StickerMessages.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* StickerMessages.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B00000000000000000000001 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000002 /* Kingfisher */; };
 		BEDA92EBF02EFB0893E0B42D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7FE3E61FCB0BE974B72CE94A /* Foundation.framework */; };
+		C119B001A001A001A001A001 /* ClipLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B001A001A001A001A002 /* ClipLibraryView.swift */; };
+		C11A00000000000000000001 /* RxAuthSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000019 /* RxAuthSwift */; };
+		C11A00000000000000000002 /* RxAuthSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000020 /* RxAuthSwiftUI */; };
 		C11F00000000000000000001 /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11F00000000000000000003 /* AppColors.swift */; };
 		C11F00000000000000000002 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11F00000000000000000004 /* DesignSystem.swift */; };
 		C26FB4EC37147EED5796B7E4 /* MessagesJobWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E443F41899805A0051CA539 /* MessagesJobWatcher.swift */; };
@@ -43,6 +43,10 @@
 		DFD465E8304847DD007C420E /* InAppPurchaseConfiguration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = DFD465E7304847DD007C420E /* InAppPurchaseConfiguration.storekit */; };
 		DFD465F730487904007C420E /* RxSubscriptionIOS in Frameworks */ = {isa = PBXBuildFile; productRef = DFD465F630487904007C420E /* RxSubscriptionIOS */; };
 		DFD46C613049D782007C420E /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = C00000000000000000000002 /* libwebp */; };
+		E10000000000000000000001 /* WASticker in Frameworks */ = {isa = PBXBuildFile; productRef = E10000000000000000000011 /* WASticker */; };
+		E10000000000000000000002 /* VP9Encoder in Frameworks */ = {isa = PBXBuildFile; productRef = E10000000000000000000012 /* VP9Encoder */; };
+		E10000000000000000000003 /* TelegramStickersImport in Frameworks */ = {isa = PBXBuildFile; productRef = E10000000000000000000013 /* TelegramStickersImport */; };
+		E10000000000000000000004 /* VP9Encoder in Frameworks */ = {isa = PBXBuildFile; productRef = E10000000000000000000014 /* VP9Encoder */; };
 		FEE4261A41752C8259D5AB1B /* QuickHTTPTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630BD9F3FF2B7870AD961E48 /* QuickHTTPTransport.swift */; };
 /* End PBXBuildFile section */
 
@@ -117,7 +121,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-        C119B001A001A001A001A002 /* ClipLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipLibraryView.swift; sourceTree = "<group>"; };
 		10CFC4A0F2BED0360644588B /* StickerAppClip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StickerAppClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		213B6045E1ABC6942D35394F /* ClipAuthentication.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ClipAuthentication.swift; sourceTree = "<group>"; };
 		3E03547049FE2AC330CA3D60 /* QuickGenerationClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickGenerationClient.swift; sourceTree = "<group>"; };
@@ -134,6 +137,7 @@
 		A00000000000000000000034 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		A88A6C60A2B23098AB635695 /* StickerAppClipURLUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StickerAppClipURLUITests.swift; sourceTree = "<group>"; };
 		BD46604BC03322FA69C32012 /* QuickModeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickModeView.swift; sourceTree = "<group>"; };
+		C119B001A001A001A001A002 /* ClipLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipLibraryView.swift; sourceTree = "<group>"; };
 		C11F00000000000000000003 /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppColors.swift; path = StickerGeniOS/AppColors.swift; sourceTree = SOURCE_ROOT; };
 		C11F00000000000000000004 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DesignSystem.swift; path = StickerGeniOS/Views/DesignSystem.swift; sourceTree = SOURCE_ROOT; };
 		D5064562E4FFA7578BD1B762 /* StickerAppClipUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerAppClipUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -249,6 +253,9 @@
 				A00000000000000000000002 /* RxAuthSwiftUI in Frameworks */,
 				DFD465E53048198D007C420E /* RxSubscriptionIOS in Frameworks */,
 				DFD465F730487904007C420E /* RxSubscriptionIOS in Frameworks */,
+				E10000000000000000000001 /* WASticker in Frameworks */,
+				E10000000000000000000002 /* VP9Encoder in Frameworks */,
+				E10000000000000000000003 /* TelegramStickersImport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -256,6 +263,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E10000000000000000000004 /* VP9Encoder in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -475,6 +483,9 @@
 				DF2A4293303DD070006910C8 /* AnimatedView */,
 				DFD465E43048198D007C420E /* RxSubscriptionIOS */,
 				DFD465F630487904007C420E /* RxSubscriptionIOS */,
+				E10000000000000000000011 /* WASticker */,
+				E10000000000000000000012 /* VP9Encoder */,
+				E10000000000000000000013 /* TelegramStickersImport */,
 			);
 			productName = StickerGeniOS;
 			productReference = DF2A3E15303C7709006910C8 /* StickerGeniOS.app */;
@@ -497,6 +508,9 @@
 				DF2A3E27303C770A006910C8 /* StickerGeniOSTests */,
 			);
 			name = StickerGeniOSTests;
+			packageProductDependencies = (
+				E10000000000000000000014 /* VP9Encoder */,
+			);
 			productName = StickerGeniOSTests;
 			productReference = DF2A3E24303C770A006910C8 /* StickerGeniOSTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -569,6 +583,9 @@
 				A00000000000000000000018 /* XCRemoteSwiftPackageReference "RxAuthSwift" */,
 				DF2A4292303DD070006910C8 /* XCLocalSwiftPackageReference "packages/AnimatedView" */,
 				DFD465F530487904007C420E /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */,
+				E10000000000000000000021 /* XCLocalSwiftPackageReference "packages/WASticker" */,
+				E10000000000000000000022 /* XCLocalSwiftPackageReference "packages/VP9Encoder" */,
+				E10000000000000000000023 /* XCRemoteSwiftPackageReference "TelegramStickersImport" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DF2A3E16303C7709006910C8 /* Products */;
@@ -751,10 +768,6 @@
 		B69EAF4E342A3808B3D76CB1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = StickerAppClip;
-			packageProductDependencies = (
-				A00000000000000000000019 /* RxAuthSwift */,
-				A00000000000000000000020 /* RxAuthSwiftUI */,
-			);
 			target = 52C7DF7A6F60130331BEF5A0 /* StickerAppClip */;
 			targetProxy = 571A3AD6D42CDBA249D0E38F /* PBXContainerItemProxy */;
 		};
@@ -771,10 +784,6 @@
 		E1C10092A23F7347E2178B3E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = StickerAppClip;
-			packageProductDependencies = (
-				A00000000000000000000019 /* RxAuthSwift */,
-				A00000000000000000000020 /* RxAuthSwiftUI */,
-			);
 			target = 52C7DF7A6F60130331BEF5A0 /* StickerAppClip */;
 			targetProxy = D73DE5872EB4366E321B06C1 /* PBXContainerItemProxy */;
 		};
@@ -1378,6 +1387,14 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = packages/AnimatedView;
 		};
+		E10000000000000000000021 /* XCLocalSwiftPackageReference "packages/WASticker" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = packages/WASticker;
+		};
+		E10000000000000000000022 /* XCLocalSwiftPackageReference "packages/VP9Encoder" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = packages/VP9Encoder;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1411,6 +1428,14 @@
 			requirement = {
 				kind = exactVersion;
 				version = 1.1.1;
+			};
+		};
+		E10000000000000000000023 /* XCRemoteSwiftPackageReference "TelegramStickersImport" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/TelegramMessenger/TelegramStickersImport";
+			requirement = {
+				kind = revision;
+				revision = b8951c8a02b245142142d341644d0756cf16278c;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -1448,6 +1473,23 @@
 			isa = XCSwiftPackageProductDependency;
 			package = DFD465F530487904007C420E /* XCRemoteSwiftPackageReference "RxSubscriptionIOS" */;
 			productName = RxSubscriptionIOS;
+		};
+		E10000000000000000000011 /* WASticker */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WASticker;
+		};
+		E10000000000000000000012 /* VP9Encoder */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VP9Encoder;
+		};
+		E10000000000000000000013 /* TelegramStickersImport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E10000000000000000000023 /* XCRemoteSwiftPackageReference "TelegramStickersImport" */;
+			productName = TelegramStickersImport;
+		};
+		E10000000000000000000014 /* VP9Encoder */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VP9Encoder;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

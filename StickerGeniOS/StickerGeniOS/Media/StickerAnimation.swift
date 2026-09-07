@@ -52,11 +52,13 @@ nonisolated enum StickerArtworkError: Error {
     case undecodable
 }
 
-/// Turns GIF/APNG bytes into frames.
+/// Turns GIF/APNG/WebP bytes into frames.
 ///
 /// APNG is what a publish uploads, so this cannot lean on Kingfisher: its animation support is GIF
 /// only, and for APNG data it hands back frame zero — blank for any sticker that fades or slides in,
-/// which is why every still surface goes through `StickerPosterFrame` instead.
+/// which is why every still surface goes through `StickerPosterFrame` instead. WebP is here because
+/// a messenger export previews the file it is about to hand over, and WhatsApp's is an animated
+/// WebP.
 nonisolated enum StickerAnimationDecoder {
     /// What one animation's frames may occupy. Longer animations are not refused, they are played
     /// at a lower frame rate: `stride` below drops frames until the rest fit.
@@ -114,8 +116,10 @@ nonisolated enum StickerAnimationDecoder {
 
     /// The delay this container states for one frame, in seconds.
     ///
-    /// GIF and APNG each keep it in their own property dictionary. The unclamped value is preferred
-    /// where both exist: the clamped one is floored at 0.1 s for the benefit of 1990s browsers, and
+    /// GIF, APNG and WebP each keep it in their own property dictionary, and only the one matching
+    /// the container is present — so a format with no branch here falls through to `minimumDelay`
+    /// and plays at 100 FPS rather than at its own speed. The unclamped value is preferred where
+    /// both exist: the clamped one is floored at 0.1 s for the benefit of 1990s browsers, and
     /// applying that floor to a 30 FPS sticker plays it at a third of its speed.
     private static func delay(source: CGImageSource, index: Int) -> Double {
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil)
@@ -131,6 +135,13 @@ nonisolated enum StickerAnimationDecoder {
         if let png = properties[kCGImagePropertyPNGDictionary] as? [CFString: Any] {
             let unclamped = png[kCGImagePropertyAPNGUnclampedDelayTime] as? Double
             let clamped = png[kCGImagePropertyAPNGDelayTime] as? Double
+            if let delay = [unclamped, clamped].compactMap({ $0 }).first(where: { $0 > 0 }) {
+                return delay
+            }
+        }
+        if let webp = properties[kCGImagePropertyWebPDictionary] as? [CFString: Any] {
+            let unclamped = webp[kCGImagePropertyWebPUnclampedDelayTime] as? Double
+            let clamped = webp[kCGImagePropertyWebPDelayTime] as? Double
             if let delay = [unclamped, clamped].compactMap({ $0 }).first(where: { $0 > 0 }) {
                 return delay
             }

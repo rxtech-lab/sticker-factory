@@ -33,6 +33,9 @@
         }
       }
     },
+    "Uploading…" : {
+
+    },
     "—" : {
       "localizations" : {
         "zh-CN" : {
@@ -48,6 +51,9 @@
           }
         }
       }
+    },
+    "·" : {
+
     },
     "@%@" : {
       "localizations" : {
@@ -103,6 +109,39 @@
         }
       }
     },
+    "%@ is not installed on this iPhone." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未安装 %@。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未安裝 %@。"
+          }
+        }
+      }
+    },
+    "%@ is not installed on this iPhone. Install it, then come back to add this pack." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未安装 %@。安装后再回来添加这个贴纸包。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未安裝 %@。安裝後再回來加入這個貼圖包。"
+          }
+        }
+      }
+    },
     "%@ is responding" : {
       "localizations" : {
         "zh-CN" : {
@@ -118,6 +157,51 @@
           }
         }
       }
+    },
+    "%@ keeps still and animated stickers in separate packs." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会把静态和动态贴纸放在不同的包中。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會把靜態和動態貼圖放在不同的包中。"
+          }
+        }
+      }
+    },
+    "%@ packs need at least %lld %@; this pack has %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ packs need at least %2$lld %3$@; this pack has %4$lld."
+          }
+        }
+      }
+    },
+    "%@ s" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 秒"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 秒"
+          }
+        }
+      }
+    },
+    "%@ Share Sticker Factory" : {
+
     },
     "%@ stickers" : {
       "localizations" : {
@@ -175,6 +259,23 @@
         }
       }
     },
+    "%1$@ packs need at least %2$lld %3$@; this pack has %4$lld." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 贴纸包至少需要 %2$lld %3$@；这个贴纸包只有 %4$lld 张。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 貼圖包至少需要 %2$lld %3$@；這個貼圖包只有 %4$lld 張。"
+          }
+        }
+      }
+    },
     "%lld" : {
       "localizations" : {
         "zh-CN" : {
@@ -207,7 +308,7 @@
         }
       }
     },
-    "%lld free generations left today" : {
+    "%lld generations remaining" : {
 
     },
     "%lld LAYERS" : {
@@ -247,6 +348,18 @@
           }
         }
       }
+    },
+    "%lld stickers" : {
+
+    },
+    "%lld stickers aren't ready for WhatsApp and Telegram." : {
+
+    },
+    "%lld stickers aren't ready for WhatsApp and Telegram. Edit the pack to prepare them." : {
+
+    },
+    "%lld stickers could not be prepared for every messenger. The reasons are beside them; the rest can be sent." : {
+
     },
     "%lld stickers in this pack are hidden from people who added it." : {
       "localizations" : {
@@ -376,6 +489,9 @@
         }
       }
     },
+    "1 sticker could not be prepared for every messenger. The reason is beside it; the rest can be sent." : {
+
+    },
     "1 sticker in this pack is hidden from people who added it." : {
       "localizations" : {
         "zh-CN" : {
@@ -391,6 +507,12 @@
           }
         }
       }
+    },
+    "1 sticker isn't ready for WhatsApp and Telegram." : {
+
+    },
+    "1 sticker isn't ready for WhatsApp and Telegram. Edit the pack to prepare it." : {
+
     },
     "1. Generate" : {
       "localizations" : {
@@ -472,6 +594,33 @@
         }
       }
     },
+    "A %@ pack holds at most %lld stickers, so larger groups are split evenly." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A %1$@ pack holds at most %2$lld stickers, so larger groups are split evenly."
+          }
+        }
+      }
+    },
+    "A %1$@ pack holds at most %2$lld stickers, so larger groups are split evenly." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个 %1$@ 贴纸包最多容纳 %2$lld 张贴纸，更多的会平均拆分。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一個 %1$@ 貼圖包最多容納 %2$lld 張貼圖，更多的會平均拆分。"
+          }
+        }
+      }
+    },
     "A joyful corgi in a raincoat, thick white sticker outline…" : {
       "localizations" : {
         "zh-CN" : {
@@ -507,6 +656,22 @@
     "A reference image could not be uploaded (HTTP %lld)." : {
 
     },
+    "A sticker file is empty." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有一个贴纸文件是空的。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有一個貼圖檔案是空的。"
+          }
+        }
+      }
+    },
     "A sticker frame could not be read for encoding." : {
       "localizations" : {
         "zh-CN" : {
@@ -535,6 +700,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法渲染貼圖畫面。"
+          }
+        }
+      }
+    },
+    "A sticker is not the size Telegram expects." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有一张贴纸的尺寸不符合 Telegram 的要求。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有一張貼圖的尺寸不符合 Telegram 的要求。"
+          }
+        }
+      }
+    },
+    "A sticker is over Telegram's size limit." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有一张贴纸超过了 Telegram 的大小限制。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有一張貼圖超過了 Telegram 的大小限制。"
           }
         }
       }
@@ -780,6 +977,22 @@
         }
       }
     },
+    "Add to %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加到 %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入到 %@"
+          }
+        }
+      }
+    },
     "Add to library" : {
       "localizations" : {
         "zh-CN" : {
@@ -1004,6 +1217,22 @@
         }
       }
     },
+    "animated stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "张动态贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "張動態貼圖"
+          }
+        }
+      }
+    },
     "Animated stickers need motion before they can be published. Describe how it should move in chat first." : {
       "localizations" : {
         "zh-CN" : {
@@ -1128,6 +1357,49 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "成為第一個發佈貼圖包的人。"
+          }
+        }
+      }
+    },
+    "Becomes %1$lld %2$@ packs." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将拆分为 %1$lld 个 %2$@ 贴纸包。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將拆分為 %1$lld 個 %2$@ 貼圖包。"
+          }
+        }
+      }
+    },
+    "Becomes %lld %@ packs." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Becomes %1$lld %2$@ packs."
+          }
+        }
+      }
+    },
+    "Becomes one %@ pack." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将成为一个 %@ 贴纸包。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將成為一個 %@ 貼圖包。"
           }
         }
       }
@@ -1484,7 +1756,7 @@
         }
       }
     },
-    "Checking your daily allowance…" : {
+    "Checking your allowance…" : {
 
     },
     "Choose a PNG mask with transparent and painted areas. Regular opaque photos cannot be used as masks." : {
@@ -1518,6 +1790,9 @@
           }
         }
       }
+    },
+    "Choose an emoji for this sticker in the exported pack." : {
+
     },
     "Choose stickers" : {
       "localizations" : {
@@ -2371,6 +2646,29 @@
         }
       }
     },
+    "Downloading" : {
+
+    },
+    "Downloading artwork" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在下载作品"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在下載作品"
+          }
+        }
+      }
+    },
+    "Downloading artwork…" : {
+
+    },
     "Draft" : {
       "localizations" : {
         "zh-CN" : {
@@ -2454,7 +2752,23 @@
     "Dream it up. We'll sticker it." : {
 
     },
-    "Each generation or revision uses one allowance." : {
+    "Each pack is handed over on its own. Finish adding it in %@, then come back for the next." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个贴纸包单独交接。先在 %@ 中完成添加，再回来发送下一个。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個貼圖包單獨交接。先在 %@ 中完成加入，再回來傳送下一個。"
+          }
+        }
+      }
+    },
+    "Each sticker is encoded once per messenger and saved with the pack, so nobody who adds it has to do this again. Keep the app open; stop now and the rest is prepared the next time you save this pack." : {
 
     },
     "Edit" : {
@@ -2472,6 +2786,12 @@
           }
         }
       }
+    },
+    "Edit emoji" : {
+
+    },
+    "Edit emoji for %@" : {
+
     },
     "Edit pack" : {
       "localizations" : {
@@ -2553,6 +2873,26 @@
         }
       }
     },
+    "Emoji" : {
+
+    },
+    "Emoji for %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的表情符号"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的表情符號"
+          }
+        }
+      }
+    },
     "Encoding %lld px · frame %lld of %lld" : {
       "localizations" : {
         "en" : {
@@ -2608,6 +2948,33 @@
         }
       }
     },
+    "Encoding frame %1$lld of %2$lld" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在编码第 %1$lld/%2$lld 帧"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在編碼第 %1$lld/%2$lld 格"
+          }
+        }
+      }
+    },
+    "Encoding frame %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Encoding frame %1$lld of %2$lld"
+          }
+        }
+      }
+    },
     "Encoding GIF" : {
       "localizations" : {
         "zh-CN" : {
@@ -2652,6 +3019,132 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "編碼影片"
+          }
+        }
+      }
+    },
+    "Even the smallest encoding is %@, over the %@ limit." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Even the smallest encoding is %1$@, over the %2$@ limit."
+          }
+        }
+      }
+    },
+    "Even the smallest encoding is %1$@, over the %2$@ limit." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即使最小的编码也有 %1$@，超过了 %2$@ 的限制。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即使最小的編碼也有 %1$@，超過了 %2$@ 的限制。"
+          }
+        }
+      }
+    },
+    "Every pack works in both. Stickers are converted for you, and a pack too big for one messenger is split into parts it accepts." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个贴纸包在两边都能用。贴纸会自动转换格式；超出某个应用上限的贴纸包，会自动拆成它能接受的几部分。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個貼圖包在兩邊都能用。貼圖會自動轉換格式；超出某個應用上限的貼圖包，會自動拆成它能接受的幾部分。"
+          }
+        }
+      }
+    },
+    "Every sticker is ready for WhatsApp and Telegram." : {
+
+    },
+    "Every sticker needs an emoji." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每张贴纸都需要一个表情符号。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每張貼圖都需要一個表情符號。"
+          }
+        }
+      }
+    },
+    "Exclude" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除"
+          }
+        }
+      }
+    },
+    "Exclude “%@” to send this pack without it." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除“%@”即可发送这个贴纸包的其余部分。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除「%@」即可傳送這個貼圖包的其餘部分。"
+          }
+        }
+      }
+    },
+    "Exclude the %lld stickers that could not be prepared to send this pack without them." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除无法准备的 %lld 张贴纸，即可发送这个贴纸包的其余部分。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除無法準備的 %lld 張貼圖，即可傳送這個貼圖包的其餘部分。"
+          }
+        }
+      }
+    },
+    "Excluded" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已排除"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已排除"
           }
         }
       }
@@ -3215,6 +3708,49 @@
         }
       }
     },
+    "Got it" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "知道了"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "知道了"
+          }
+        }
+      }
+    },
+    "Handed to %@. Finish adding it there; send it again if %@ did not pick it up." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Handed to %1$@. Finish adding it there; send it again if %2$@ did not pick it up."
+          }
+        }
+      }
+    },
+    "Handed to %1$@. Finish adding it there; send it again if %2$@ did not pick it up." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已交给 %1$@。请在那里完成添加；如果 %2$@ 没有收到，可再次发送。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已交給 %1$@。請在那裡完成加入；如果 %2$@ 沒有收到，可再次傳送。"
+          }
+        }
+      }
+    },
     "Help" : {
       "localizations" : {
         "zh-CN" : {
@@ -3295,7 +3831,40 @@
         }
       }
     },
+    "Include" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含"
+          }
+        }
+      }
+    },
+    "It disappears from Sticker Packs and from everyone who added it. Your stickers themselves are untouched." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它会从“贴纸包”中消失，所有添加过它的人也会失去它。你的贴纸本身不受影响。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它會從「貼圖包」中消失，所有加入過它的人也會失去它。你的貼圖本身不受影響。"
+          }
+        }
+      }
+    },
     "It disappears from the marketplace and from everyone who added it. Your stickers themselves are untouched." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -3974,6 +4543,7 @@
       }
     },
     "Marketplace" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -4085,7 +4655,7 @@
         }
       }
     },
-    "More ideas? Come back after your daily reset." : {
+    "More ideas? Come back after your allowance resets." : {
 
     },
     "Move to draft" : {
@@ -4521,6 +5091,25 @@
         }
       }
     },
+    "Not every sticker was prepared. Save this pack again to finish the rest." : {
+
+    },
+    "Not included" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未包含"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未包含"
+          }
+        }
+      }
+    },
     "Not now" : {
       "localizations" : {
         "zh-CN" : {
@@ -4537,7 +5126,30 @@
         }
       }
     },
+    "Not prepared for %@ yet. Its creator can prepare it from Edit pack." : {
+
+    },
+    "Not prepared. Save this pack again to try it." : {
+
+    },
+    "Not published yet, so there is no artwork to send." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未发布，没有可发送的作品。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未發佈，沒有可傳送的作品。"
+          }
+        }
+      }
+    },
     "Nothing chosen yet — add the stickers this pack should contain." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -4581,6 +5193,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這裏還沒有內容"
+          }
+        }
+      }
+    },
+    "Nothing in this pack can be sent to %@ yet." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个贴纸包中暂时没有可发送到 %@ 的内容。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個貼圖包中暫時沒有可傳送到 %@ 的內容。"
           }
         }
       }
@@ -4857,6 +5485,22 @@
         }
       }
     },
+    "Open any pack under Sticker Packs and tap Add to WhatsApp. Still and animated stickers become separate packs, and a big pack is split evenly, so every one fits WhatsApp's rules. Pick each sticker's emoji before you send." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“贴纸包”中打开任意贴纸包，点按“添加到 WhatsApp”。静态和动态贴纸会分成不同的包，过大的包会平均拆分，以符合 WhatsApp 的规则。发送前可为每张贴纸选择表情符号。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「貼圖包」中打開任何貼圖包，點按「加入到 WhatsApp」。靜態和動態貼圖會分成不同的包，過大的包會平均拆分，以符合 WhatsApp 的規則。傳送前可為每張貼圖選擇表情符號。"
+          }
+        }
+      }
+    },
     "Open Sticker actions to compare versions, restore an earlier one, or publish the current version." : {
       "localizations" : {
         "zh-CN" : {
@@ -4968,6 +5612,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "貼圖包詳情"
+          }
+        }
+      }
+    },
+    "Pack name" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸包名称"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖包名稱"
           }
         }
       }
@@ -5087,6 +5747,9 @@
         }
       }
     },
+    "Plan allowance: %lld generations" : {
+
+    },
     "Planning sticker" : {
       "localizations" : {
         "zh-CN" : {
@@ -5199,6 +5862,58 @@
         }
       }
     },
+    "Prepare for WhatsApp and Telegram" : {
+
+    },
+    "Prepared for WhatsApp and Telegram on save" : {
+
+    },
+    "Preparing %1$lld of %2$lld · %3$@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备第 %1$lld/%2$lld 张 · %3$@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在準備第 %1$lld/%2$lld 張 · %3$@"
+          }
+        }
+      }
+    },
+    "Preparing %lld of %lld" : {
+
+    },
+    "Preparing %lld of %lld · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preparing %1$lld of %2$lld · %3$@"
+          }
+        }
+      }
+    },
+    "Preparing %lld of %lld for %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Preparing %1$lld of %2$lld for %3$@"
+          }
+        }
+      }
+    },
+    "Preparing %lld stickers for WhatsApp and Telegram" : {
+
+    },
+    "Preparing 1 sticker for WhatsApp and Telegram" : {
+
+    },
     "Preparing exports…" : {
       "localizations" : {
         "zh-CN" : {
@@ -5230,6 +5945,12 @@
           }
         }
       }
+    },
+    "Preparing for %@…" : {
+
+    },
+    "Preparing stickers" : {
+
     },
     "Privacy Policy" : {
       "localizations" : {
@@ -5554,9 +6275,6 @@
     "Quick generation uses your points." : {
 
     },
-    "Quick mode" : {
-
-    },
     "Re-export" : {
       "localizations" : {
         "zh-CN" : {
@@ -5588,6 +6306,12 @@
           }
         }
       }
+    },
+    "Ready for %@" : {
+
+    },
+    "Ready for WhatsApp and Telegram" : {
+
     },
     "Ready to publish" : {
       "localizations" : {
@@ -5937,6 +6661,22 @@
         }
       }
     },
+    "Resume" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繼續"
+          }
+        }
+      }
+    },
     "Retry" : {
       "localizations" : {
         "zh-CN" : {
@@ -6244,6 +6984,9 @@
         }
       }
     },
+    "Saving prepares them too. Each sticker is encoded once on this iPhone and saved with the pack." : {
+
+    },
     "Saving replaces it with an unpublished draft. Export again to put it back in Messages." : {
       "localizations" : {
         "zh-CN" : {
@@ -6384,6 +7127,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "發送"
+          }
+        }
+      }
+    },
+    "Send the pack to WhatsApp or Telegram" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "把贴纸包发到 WhatsApp 或 Telegram"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "把貼圖包發到 WhatsApp 或 Telegram"
+          }
+        }
+      }
+    },
+    "Send to %@ again" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次发送到 %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次傳送到 %@"
           }
         }
       }
@@ -6788,6 +7563,22 @@
         }
       }
     },
+    "Some stickers in this pack are not ready yet." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个贴纸包中的部分贴纸尚未准备好。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個貼圖包中的部分貼圖尚未準備好。"
+          }
+        }
+      }
+    },
     "Sort" : {
       "localizations" : {
         "zh-CN" : {
@@ -6820,6 +7611,23 @@
         }
       }
     },
+    "sped up %@× to fit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加速 %@ 倍以符合限制"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加速 %@ 倍以符合限制"
+          }
+        }
+      }
+    },
     "Start with a prompt and optional photos. The assistant will propose a plan before it generates anything." : {
       "localizations" : {
         "zh-CN" : {
@@ -6835,6 +7643,12 @@
           }
         }
       }
+    },
+    "Starting a generation or revision uses one allowance." : {
+
+    },
+    "Starting a generation or revision uses one allowance. Points are charged on success." : {
+
     },
     "Starting securely…" : {
       "localizations" : {
@@ -6896,6 +7710,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "靜態參考圖"
+          }
+        }
+      }
+    },
+    "static stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "张静态贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "張靜態貼圖"
           }
         }
       }
@@ -6996,6 +7826,22 @@
         }
       }
     },
+    "Sticker Packs" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖包"
+          }
+        }
+      }
+    },
     "Sticker size" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -7062,7 +7908,24 @@
         }
       }
     },
+    "Stickers" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "贴纸"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼圖"
+          }
+        }
+      }
+    },
     "Stickers (%lld selected)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -7174,6 +8037,22 @@
         }
       }
     },
+    "Stopped before every sticker was ready." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在所有贴纸准备好之前已停止。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在所有貼圖準備好之前已停止。"
+          }
+        }
+      }
+    },
     "Subscription" : {
       "localizations" : {
         "zh-CN" : {
@@ -7270,6 +8149,9 @@
         }
       }
     },
+    "Swipe a sticker to remove it." : {
+
+    },
     "Tap a photo you attached to cut its subject away from the background, so only the part you want reaches the sticker." : {
       "localizations" : {
         "zh-CN" : {
@@ -7314,6 +8196,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "輕點查看或編輯"
+          }
+        }
+      }
+    },
+    "Telegram asks for the pack's name when it opens." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Telegram 打开后会询问贴纸包名称。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Telegram 開啟後會詢問貼圖包名稱。"
+          }
+        }
+      }
+    },
+    "Telegram is not installed on this iPhone." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未安装 Telegram。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未安裝 Telegram。"
           }
         }
       }
@@ -7566,7 +8480,11 @@
         }
       }
     },
+    "The first sticker is the pack's cover. Drag to reorder, swipe to remove." : {
+
+    },
     "The first sticker is the pack's cover. Drag to reorder." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -7679,6 +8597,22 @@
         }
       }
     },
+    "The pack could not be handed to WhatsApp." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将贴纸包交给 WhatsApp。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法將貼圖包交給 WhatsApp。"
+          }
+        }
+      }
+    },
     "The purchase is pending approval." : {
       "localizations" : {
         "zh-CN" : {
@@ -7707,6 +8641,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請求失敗（HTTP %lld）。"
+          }
+        }
+      }
+    },
+    "The same pack screen sends to Telegram: stills go as PNG, animations as transparent video, sped up when they run past Telegram's three seconds. Telegram asks for the pack's name when it opens." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同一个贴纸包页面也能发送到 Telegram：静态贴纸以 PNG 发送，动画以透明视频发送，超过 Telegram 三秒限制的会加速播放。Telegram 打开后会询问贴纸包名称。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同一個貼圖包頁面也能傳送到 Telegram：靜態貼圖以 PNG 傳送，動畫以透明影片傳送，超過 Telegram 三秒限制的會加速播放。Telegram 開啟後會詢問貼圖包名稱。"
           }
         }
       }
@@ -7787,6 +8737,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "伺服器返回了無法讀取的文檔。"
+          }
+        }
+      }
+    },
+    "The set mixes still and video stickers." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个贴纸集混合了静态和视频贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個貼圖集混合了靜態和影片貼圖。"
           }
         }
       }
@@ -7895,6 +8861,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法編碼 WebP 匯出檔案。"
+          }
+        }
+      }
+    },
+    "There is nothing to send." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可发送的内容。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可傳送的內容。"
           }
         }
       }
@@ -8015,6 +8997,38 @@
         }
       }
     },
+    "This sticker could not be drawn at the messenger's size." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法按该应用要求的尺寸绘制这张贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法按該應用程式要求的尺寸繪製這張貼圖。"
+          }
+        }
+      }
+    },
+    "This sticker has no published artwork to send." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这张贴纸没有已发布的作品可发送。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這張貼圖沒有已發佈的作品可傳送。"
+          }
+        }
+      }
+    },
     "This sticker is published" : {
       "localizations" : {
         "zh-CN" : {
@@ -8047,6 +9061,9 @@
         }
       }
     },
+    "This sticker isn't prepared for %@ yet." : {
+
+    },
     "This sticker was made with a newer version of the app (document version %lld)." : {
       "localizations" : {
         "zh-CN" : {
@@ -8062,6 +9079,25 @@
           }
         }
       }
+    },
+    "This sticker's artwork could not be read." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取这张贴纸的作品。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取這張貼圖的作品。"
+          }
+        }
+      }
+    },
+    "This sticker's prepared file could not be read." : {
+
     },
     "This tool completed. No result details were recorded." : {
       "localizations" : {
@@ -8194,6 +9230,22 @@
     },
     "Those reference images are too large together. Remove one and try again." : {
 
+    },
+    "Too many stickers for one Telegram set." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个 Telegram 贴纸集装不下这么多贴纸。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一個 Telegram 貼圖集裝不下這麼多貼圖。"
+          }
+        }
+      }
     },
     "Tool %@, %@" : {
       "localizations" : {
@@ -8501,6 +9553,9 @@
         }
       }
     },
+    "Unlimited generations" : {
+
+    },
     "Unlisted" : {
       "localizations" : {
         "zh-CN" : {
@@ -8805,6 +9860,22 @@
         }
       }
     },
+    "Waiting…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待中…"
+          }
+        }
+      }
+    },
     "WebP" : {
       "localizations" : {
         "zh-CN" : {
@@ -8865,6 +9936,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "哪裏需要修改？"
+          }
+        }
+      }
+    },
+    "What's new" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新功能"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新功能"
+          }
+        }
+      }
+    },
+    "WhatsApp is not installed on this iPhone." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未安装 WhatsApp。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 未安裝 WhatsApp。"
+          }
+        }
+      }
+    },
+    "WhatsApp refused the pack: %@." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhatsApp 拒绝了这个贴纸包：%@。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhatsApp 拒絕了這個貼圖包：%@。"
           }
         }
       }
@@ -8984,6 +10103,9 @@
     "You can attach up to eight reference images." : {
 
     },
+    "You can prepare this export now. Install %@, then come back to add the pack." : {
+
+    },
     "You created this pack" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9100,6 +10222,38 @@
         }
       }
     },
+    "Your packs, in Telegram" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "把贴纸包带到 Telegram"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "把貼圖包帶到 Telegram"
+          }
+        }
+      }
+    },
+    "Your packs, in WhatsApp" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "把贴纸包带到 WhatsApp"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "把貼圖包帶到 WhatsApp"
+          }
+        }
+      }
+    },
     "Your session expired. Please sign in again." : {
       "localizations" : {
         "zh-CN" : {
@@ -9115,9 +10269,6 @@
           }
         }
       }
-    },
-    "Your sticker, fresh off the press" : {
-
     },
     "Your versions are safe" : {
       "localizations" : {

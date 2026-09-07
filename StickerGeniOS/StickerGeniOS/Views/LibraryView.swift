@@ -54,6 +54,7 @@ struct LibraryView: View {
     @Bindable var marketplace: MarketplaceStore
     /// Defaulted so previews and tests keep working; an unconfigured store shows no chip.
     @Bindable var subscription: SubscriptionStore = .init()
+    var defersErrors = false
     @State private var filter: LibraryFilter = .all
     @State private var searchText = ""
     @State private var showingCreation = false
@@ -79,8 +80,8 @@ struct LibraryView: View {
 
     private var isShowingError: Binding<Bool> {
         Binding(
-            get: { store.errorMessage != nil },
-            set: { if !$0 { store.errorMessage = nil } }
+            get: { !defersErrors && store.errorMessage != nil },
+            set: { if !$0 && !defersErrors { store.errorMessage = nil } }
         )
     }
 

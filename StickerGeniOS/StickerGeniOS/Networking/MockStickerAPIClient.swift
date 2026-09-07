@@ -1,5 +1,7 @@
 import AnimatedView
+import CoreGraphics
 import Foundation
+import UIKit
 
 actor MockStickerAPIClient: StickerAPIClientProtocol {
     private var stickers = [PreviewFixtures.sticker]
@@ -13,6 +15,11 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     /// was never going to share a video does not encode one.
     private(set) var uploadedKinds: [AssetKind] = []
     private(set) var publishedExportRequests: [PublishExportsRequest] = []
+    /// Every messenger bind this mock was asked to make, in order, for tests to assert against.
+    private(set) var messengerRenditionRequests: [(stickerID: String, request: MessengerRenditionsRequest)] = []
+    /// Upload calls recorded with their idempotency key, so a test can prove the key is stable
+    /// across two runs over identical bytes rather than a fresh UUID that defeats the replay.
+    private(set) var uploadCalls: [(kind: AssetKind, byteCount: Int, idempotencyKey: String)] = []
     private let failCreationAsUpload: Bool
     private let failChatSendAsInsufficientCredits: Bool
     private let failLibraryListing: Bool
@@ -453,9 +460,79 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
 
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String {
         uploadedKinds.append(kind)
+        uploadCalls.append((kind, data.count, idempotencyKey))
         return UUID().uuidString
     }
-    func assetDownload(assetID: String) async throws -> AssetDownload { throw StickerAPIError.http(404) }
+
+    /// Records the bind and answers with the sticker as the server would leave it.
+    ///
+    /// The asset records are synthesised from the ids the caller sent, so a test can assert that a
+    /// sticker which fitted only one messenger comes back supporting exactly that one — the state
+    /// the pack screen grays for.
+    func bindMessengerRenditions(stickerID: String, request: MessengerRenditionsRequest, idempotencyKey: String) async throws -> Sticker {
+        messengerRenditionRequests.append((stickerID, request))
+        var sticker = stickers.first { $0.id == stickerID } ?? PreviewFixtures.sticker
+        if let assetID = request.whatsappAssetId {
+            sticker.whatsappAsset = Self.mockRendition(assetID, stickerID: stickerID, kind: .messengerWhatsApp, mimeType: "image/webp")
+        }
+        if let assetID = request.telegramAssetId {
+            let mimeType = sticker.kind == .animated ? "video/webm" : "image/png"
+            sticker.telegramAsset = Self.mockRendition(assetID, stickerID: stickerID, kind: .messengerTelegram, mimeType: mimeType)
+        }
+        if let emoji = request.emoji { sticker.messengerEmoji = emoji }
+        if let index = stickers.firstIndex(where: { $0.id == stickerID }) { stickers[index] = sticker }
+        return sticker
+    }
+
+    private static func mockRendition(_ id: String, stickerID: String, kind: AssetKind, mimeType: String) -> AssetRecord {
+        .init(
+            id: id,
+            stickerId: stickerID,
+            kind: kind,
+            state: .ready,
+            mimeType: mimeType,
+            byteSize: 64_000,
+            width: 512,
+            height: 512,
+            frameCount: mimeType == "video/webm" ? nil : 1,
+            durationSeconds: nil,
+            fps: nil,
+            sha256: nil,
+            hasAlpha: true,
+            createdAt: Date()
+        )
+    }
+    /// Only the borrowed fixture has artwork: a transparent PNG drawn once into the temporary
+    /// directory and served as a file URL, which `URLSession` reads like any other. Everything
+    /// else is 404, as it always was.
+    func assetDownload(assetID: String) async throws -> AssetDownload {
+        guard assetID == PreviewFixtures.borrowedAssetID else { throw StickerAPIError.http(404) }
+        let url = try Self.fixtureArtworkURL()
+        return .init(
+            url: url,
+            expiresAt: Date().addingTimeInterval(3_600),
+            asset: .init(id: assetID, stickerId: PreviewFixtures.borrowedSticker.id, kind: .master, state: .ready, mimeType: "image/png", width: 256, height: 256, hasAlpha: true)
+        )
+    }
+
+    private static func fixtureArtworkURL() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appending(path: "mock-borrowed-sticker.png")
+        if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) { return url }
+        let side = 256
+        guard let context = CGContext(
+            data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { throw StickerAPIError.http(500) }
+        context.clear(CGRect(x: 0, y: 0, width: side, height: side))
+        context.setFillColor(CGColor(red: 0.85, green: 1, blue: 0.33, alpha: 1))
+        context.fillEllipse(in: CGRect(x: 24, y: 40, width: 208, height: 176))
+        context.setFillColor(CGColor(red: 0.1, green: 0.09, blue: 0.09, alpha: 1))
+        context.fillEllipse(in: CGRect(x: 84, y: 130, width: 20, height: 20))
+        context.fillEllipse(in: CGRect(x: 152, y: 130, width: 20, height: 20))
+        guard let image = context.makeImage(), let data = UIImage(cgImage: image).pngData() else { throw StickerAPIError.http(500) }
+        try data.write(to: url, options: .atomic)
+        return url
+    }
 
     nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
         AsyncThrowingStream { continuation in

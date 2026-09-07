@@ -48,7 +48,14 @@ struct StickerFactoryTabView: View {
     @Bindable var environment: AppEnvironment
     @AppStorage(StickerOnboarding.welcomeStorageKey) private var hasSeenWelcome = false
     @State private var selection = 0
-    @State private var showingWelcome = false
+    /// The welcome tour and the unread feature cards, as one sheet that advances from the first
+    /// to the second. One sheet rather than two: a card sheet presented from the tour's dismissal
+    /// lands while the tour is still tearing down and is dropped, and the steps are captured when
+    /// the sheet goes up so the set cannot shift underneath it as each card is acknowledged.
+    @State private var launchFlow: LaunchFlowPresentation?
+    // Keep background alerts deferred through the sheet dismissal animation as well.
+    @State private var defersLibraryErrors = true
+    @State private var featureStore = FeatureAnnouncementStore()
     @State private var showingQuickMode = false
     /// Driven only from outside the UI — a tapped "sticker ready" banner. Tapping around the
     /// Library still pushes through its own `NavigationLink`s, which this path also records.
@@ -62,7 +69,8 @@ struct StickerFactoryTabView: View {
                 LibraryView(
                     store: environment.store,
                     marketplace: environment.marketplace,
-                    subscription: environment.subscription
+                    subscription: environment.subscription,
+                    defersErrors: defersLibraryErrors
                 )
                 .navigationDestination(for: SharedPackDestination.self) { route in
                     SharedPackEntry(store: environment.marketplace, slug: route.slug)
@@ -71,12 +79,24 @@ struct StickerFactoryTabView: View {
                 .tabItem { Label("Library", systemImage: "square.grid.2x2") }
                 .tag(0)
 
-            NavigationStack { MarketplaceView(store: environment.marketplace) }
-                .tabItem { Label("Marketplace", systemImage: "bag") }
+            // Owns its own navigation stack: creating a pack lands on that pack, which the
+            // composer can only ask for from inside the stack.
+            MarketplaceView(store: environment.marketplace)
+                .tabItem { Label("Sticker Packs", systemImage: "square.stack.3d.up") }
                 .tag(1)
 
             NavigationStack {
-                AccountView(environment: environment, onShowWelcome: { showingWelcome = true })
+                AccountView(
+                    environment: environment,
+                    onShowWelcome: {
+                        defersLibraryErrors = true
+                        launchFlow = .init(steps: [.welcome])
+                    },
+                    onShowFeatures: {
+                        defersLibraryErrors = true
+                        launchFlow = .init(steps: [.featureCards(FeatureAnnouncement.all)])
+                    }
+                )
             }
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag(2)
@@ -99,26 +119,51 @@ struct StickerFactoryTabView: View {
             openPendingSticker()
             openShareRoute()
             StickerOnboardingTips.setWelcomeCompleted(hasSeenWelcome)
-            let arguments = ProcessInfo.processInfo.arguments
-            if StickerOnboarding.shouldPresentWelcome(
-                hasSeenWelcome: hasSeenWelcome,
-                isUITesting: environment.isUITesting,
-                forceWelcome: arguments.contains("--ui-show-welcome")
-            ) {
-                showingWelcome = true
-            }
+            presentLaunchFlowIfNeeded()
+            defersLibraryErrors = launchFlow != nil
         }
-        .sheet(isPresented: $showingWelcome) {
-            StickerWelcomeSheet {
-                hasSeenWelcome = true
-                StickerOnboardingTips.setWelcomeCompleted(true)
-                showingWelcome = false
-            }
+        .sheet(item: $launchFlow, onDismiss: { defersLibraryErrors = false }) { flow in
+            LaunchFlowView(
+                steps: flow.steps,
+                onWelcomeSeen: {
+                    hasSeenWelcome = true
+                    StickerOnboardingTips.setWelcomeCompleted(true)
+                },
+                onCardAcknowledged: { featureStore.markRead($0) },
+                onFinished: { launchFlow = nil }
+            )
         }
         // Hosted once, at the root. A refusal can come from a chat turn, an export, or a publish —
         // all on different screens, some of them already inside their own sheet — and presenting
         // from each of them would mean a paywall that cannot open over whatever is in the way.
         .subscriptionPaywall(environment.subscription)
+    }
+
+    /// Puts up whatever this launch owes: the welcome tour on a first launch, then any feature
+    /// cards this device has not acknowledged. Both follow the same automation rule — suppressed
+    /// while UI tests run unless a test asks for them by flag.
+    private func presentLaunchFlowIfNeeded() {
+        guard launchFlow == nil else { return }
+        let arguments = ProcessInfo.processInfo.arguments
+        var steps: [LaunchStep] = []
+        if StickerOnboarding.shouldPresentWelcome(
+            hasSeenWelcome: hasSeenWelcome,
+            isUITesting: environment.isUITesting,
+            forceWelcome: arguments.contains("--ui-show-welcome")
+        ) {
+            steps.append(.welcome)
+        }
+        let forceCards = arguments.contains("--ui-show-feature-cards")
+        let cards = forceCards ? FeatureAnnouncement.all : featureStore.unread
+        if FeatureAnnouncementStore.shouldPresent(
+            unreadCount: cards.count,
+            isUITesting: environment.isUITesting,
+            force: forceCards
+        ), !cards.isEmpty {
+            steps.append(.featureCards(cards))
+        }
+        guard !steps.isEmpty else { return }
+        launchFlow = LaunchFlowPresentation(steps: steps)
     }
 
     private func openShareRoute() {

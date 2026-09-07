@@ -68,6 +68,12 @@ struct StickerThumbnail: View {
     /// How large the frames are decoded. The default suits a grid tile; a sheet showing one sticker
     /// large passes `.preview`.
     var detail: StickerAnimationDetail = .thumbnail
+    /// Draws the sticker as unavailable — drained of colour and faded back.
+    ///
+    /// Only the messenger export sheet passes this, and only for a member it cannot send. It is a
+    /// property of *that list*, not of the sticker: the same sticker is perfectly usable in the
+    /// library and in Messages, and dimming it there would say something untrue.
+    var isUnavailable = false
 
     var body: some View {
         // `Color.clear` takes exactly the size it is offered and the artwork is laid over it, so a
@@ -76,6 +82,8 @@ struct StickerThumbnail: View {
         // its images had arrived — cards visibly grew once the artwork was cached.
         Color.clear
             .overlay { artwork }
+            .grayscale(isUnavailable ? 1 : 0)
+            .opacity(isUnavailable ? 0.45 : 1)
     }
 
     @ViewBuilder

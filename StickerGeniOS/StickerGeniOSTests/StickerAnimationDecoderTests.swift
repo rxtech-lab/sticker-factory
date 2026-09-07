@@ -88,6 +88,32 @@ struct StickerAnimationDecoderTests {
         }
     }
 
+    /// The file a WhatsApp export hands over, out of the same encoder the export uses.
+    private func exportedWebP(dimension: Int, frameCount: Int, delayMilliseconds: Int) throws -> Data {
+        let stream = try #require(WebPEncoder.AnimationStream(width: dimension, height: dimension, loops: 0))
+        for index in 0..<frameCount {
+            #expect(stream.append(
+                frame: frame(index: index, frameCount: frameCount, dimension: dimension),
+                delayMilliseconds: delayMilliseconds
+            ))
+        }
+        return try #require(stream.finish())
+    }
+
+    /// The messenger export sheet previews the file it is about to hand over, and WhatsApp's is an
+    /// animated WebP. WebP states its frame delays in its own property dictionary, so a decoder
+    /// reading only the GIF and APNG ones falls through to `minimumDelay` and plays every sticker
+    /// at 100 FPS — a 2.4 s animation in under half a second.
+    @Test("An exported animated WebP decodes at the speed it was encoded at")
+    func decodesExportedWebP() throws {
+        let data = try exportedWebP(dimension: 512, frameCount: 48, delayMilliseconds: 50)
+        let animation = try #require(StickerAnimationDecoder.decode(data, id: "webp@192", maxPixelSize: 192))
+
+        #expect(animation.frames.count == 48)
+        #expect(abs(animation.duration - 2.4) < 0.01)
+        for delay in animation.delays { #expect(abs(delay - 0.05) < 0.001) }
+    }
+
     @Test("A still asset decodes to no animation, so the caller draws it as a still")
     func stillAssetHasNoAnimation() throws {
         let context = CGContext(

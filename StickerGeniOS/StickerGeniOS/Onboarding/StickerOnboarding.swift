@@ -67,6 +67,18 @@ struct StickerWelcomeSlide: Identifiable, Equatable {
     let icon: String
     let title: String
     let message: String
+
+    var imageName: String? {
+        switch id {
+        case "welcome": "WelcomeStickers"
+        case "generate": "WelcomeGenerate"
+        case "confirm": "WelcomeConfirm"
+        case "versions": "WelcomeVersions"
+        case "publish": "WelcomePublish"
+        case "use": "WelcomeUse"
+        default: nil
+        }
+    }
 }
 
 /// The same compact, paged first-launch pattern used by debate-bot, adapted to the complete
@@ -95,14 +107,20 @@ struct StickerWelcomeSheet: View {
                 TabView(selection: $index) {
                     ForEach(Array(StickerOnboarding.slides.enumerated()), id: \.element.id) { offset, slide in
                         VStack(spacing: 22) {
-                            // Each slide gets its own crayon, so paging through the tour walks
-                            // through the palette rather than repeating one accent five times.
-                            StickerBlobIcon(
-                                icon: slide.icon,
-                                fill: Self.slideColors[offset % Self.slideColors.count],
-                                tilt: offset.isMultiple(of: 2) ? -7 : 6
-                            )
-                            .frame(width: 132, height: 132)
+                            if let imageName = slide.imageName {
+                                Image(imageName)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 180, height: 180)
+                                    .accessibilityHidden(true)
+                            } else {
+                                StickerBlobIcon(
+                                    icon: slide.icon,
+                                    fill: Self.slideColors[offset % Self.slideColors.count],
+                                    tilt: offset.isMultiple(of: 2) ? -7 : 6
+                                )
+                                .frame(width: 132, height: 132)
+                            }
 
                             Text(slide.title)
                                 .font(.posterDisplay(30, weight: .heavy))
@@ -110,8 +128,9 @@ struct StickerWelcomeSheet: View {
                                 .multilineTextAlignment(.center)
 
                             Text(slide.message)
-                                .font(.system(size: 16, design: .rounded))
-                                .foregroundStyle(AppColors.muted)
+                                .font(.cartoonBody)
+                                .foregroundStyle(AppColors.ink.opacity(0.8))
+                                .lineSpacing(4)
                                 .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -240,6 +259,19 @@ struct UseStickerTip: Tip {
         Text(String(localized: "Open \(AppConfiguration.defaultAppName) in the Messages app drawer to send this sticker. You can also share the exported files below."))
     }
     var image: Image? { Image("PosterSignIn") }
+    var rules: [Rule] {
+        #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
+    }
+    var options: [any TipOption] { Tips.MaxDisplayCount(1) }
+}
+
+/// One tip for the pair of messenger buttons rather than one each: they sit side by side, and two
+/// popovers competing over the same row would each cover the other's button.
+struct MessengerExportTip: Tip {
+    var id: String { "sticker-factory.onboarding.messenger-export.v1" }
+    var title: Text { Text("Send the pack to WhatsApp or Telegram") }
+    var message: Text? { Text("Every pack works in both. Stickers are converted for you, and a pack too big for one messenger is split into parts it accepts.") }
+    var image: Image? { Image("FeatureWhatsApp") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
     }

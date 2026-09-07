@@ -47,7 +47,17 @@ nonisolated enum PreviewFixtures {
         systemSticker: nil
     )
 
+    /// The borrowed sticker's published artwork. `MockStickerAPIClient` serves a drawn PNG for it,
+    /// so the pack screens — and a messenger export — have real pixels to work with.
+    static let borrowedAssetID = "22222222-2222-4222-8222-222222222222"
+
     /// A sticker owned by somebody else — what an installed pack's members look like.
+    ///
+    /// Carries both messenger renditions, because that is what a member of a pack somebody else
+    /// prepared looks like — and the export sheet, which downloads rather than encodes, has nothing
+    /// to show for a member without them. The mock serves the same PNG under every asset id it
+    /// knows, so the WhatsApp copy is a PNG wearing a WebP label; nothing in the app decodes it
+    /// beyond what `ImageIO` does for the preview.
     static let borrowedSticker = Sticker(
         id: "sticker-borrowed",
         title: "Loaf",
@@ -56,8 +66,10 @@ nonisolated enum PreviewFixtures {
         activeRevisionId: "revision-borrowed",
         createdAt: Date().addingTimeInterval(-7_200),
         updatedAt: Date().addingTimeInterval(-600),
-        previewAsset: nil,
-        systemSticker: nil
+        previewAsset: .init(id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .master, state: .ready, mimeType: "image/png", width: 256, height: 256, hasAlpha: true),
+        systemSticker: nil,
+        whatsappAsset: .init(id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .messengerWhatsApp, state: .ready, mimeType: "image/webp", width: 512, height: 512, hasAlpha: true),
+        telegramAsset: .init(id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .messengerTelegram, state: .ready, mimeType: "image/png", width: 512, height: 512, hasAlpha: true)
     )
 
     static let creator = PackCreator(

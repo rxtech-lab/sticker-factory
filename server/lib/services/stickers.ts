@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or, s
 import type {
   CreateStickerRequest,
   ImportStickerRequest,
+  MessengerRenditionsRequest,
   PostChatMessageRequest,
   PublishExportsRequest,
   SaveEditedDocumentRequest,
@@ -25,7 +26,9 @@ import {
   attachmentSmallAssets,
   previewAssetIdSql,
   previewAssets,
+  telegramAssets,
   webpAssets,
+  whatsappAssets,
   systemAssets,
 } from "@/lib/db/columns";
 import {
@@ -108,6 +111,7 @@ export const stickerSummaryColumns = {
   kind: stickers.kind,
   status: stickers.status,
   activeRevisionId: stickers.activeRevisionId,
+  messengerEmoji: stickers.messengerEmoji,
   createdAt: stickers.createdAt,
   updatedAt: stickers.updatedAt,
 };
@@ -195,6 +199,40 @@ export const webpSummaryColumns = {
   createdAt: webpAssets.createdAt,
 };
 
+export const whatsappSummaryColumns = {
+  id: whatsappAssets.id,
+  stickerId: whatsappAssets.stickerId,
+  kind: whatsappAssets.kind,
+  state: whatsappAssets.state,
+  mimeType: whatsappAssets.mimeType,
+  byteSize: whatsappAssets.byteSize,
+  width: whatsappAssets.width,
+  height: whatsappAssets.height,
+  frameCount: whatsappAssets.frameCount,
+  durationSeconds: whatsappAssets.durationSeconds,
+  fps: whatsappAssets.fps,
+  sha256: whatsappAssets.sha256,
+  hasAlpha: whatsappAssets.hasAlpha,
+  createdAt: whatsappAssets.createdAt,
+};
+
+export const telegramSummaryColumns = {
+  id: telegramAssets.id,
+  stickerId: telegramAssets.stickerId,
+  kind: telegramAssets.kind,
+  state: telegramAssets.state,
+  mimeType: telegramAssets.mimeType,
+  byteSize: telegramAssets.byteSize,
+  width: telegramAssets.width,
+  height: telegramAssets.height,
+  frameCount: telegramAssets.frameCount,
+  durationSeconds: telegramAssets.durationSeconds,
+  fps: telegramAssets.fps,
+  sha256: telegramAssets.sha256,
+  hasAlpha: telegramAssets.hasAlpha,
+  createdAt: telegramAssets.createdAt,
+};
+
 /**
  * A sticker plus its active revision's system and preview assets, resolved in one statement.
  *
@@ -210,6 +248,8 @@ export function selectStickerSummaries(db: Database) {
     attachmentMedium: attachmentMediumSummaryColumns,
     attachmentSmall: attachmentSmallSummaryColumns,
     webpAsset: webpSummaryColumns,
+    whatsappAsset: whatsappSummaryColumns,
+    telegramAsset: telegramSummaryColumns,
   }).from(stickers)
     .leftJoin(stickerRevisions, and(
       eq(stickerRevisions.id, stickers.activeRevisionId),
@@ -219,7 +259,9 @@ export function selectStickerSummaries(db: Database) {
     .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql))
     .leftJoin(attachmentMediumAssets, eq(attachmentMediumAssets.id, stickerRevisions.attachmentMediumAssetId))
     .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId))
-    .leftJoin(webpAssets, eq(webpAssets.id, stickerRevisions.webpAssetId));
+    .leftJoin(webpAssets, eq(webpAssets.id, stickerRevisions.webpAssetId))
+    .leftJoin(whatsappAssets, eq(whatsappAssets.id, stickerRevisions.whatsappAssetId))
+    .leftJoin(telegramAssets, eq(telegramAssets.id, stickerRevisions.telegramAssetId));
 }
 
 export type AssetSummary = Pick<typeof assets.$inferSelect,
@@ -228,7 +270,7 @@ export type AssetSummary = Pick<typeof assets.$inferSelect,
 
 export type StickerSummaryRow = {
   sticker: Pick<typeof stickers.$inferSelect,
-    "id" | "title" | "kind" | "status" | "activeRevisionId" | "createdAt" | "updatedAt">;
+    "id" | "title" | "kind" | "status" | "activeRevisionId" | "messengerEmoji" | "createdAt" | "updatedAt">;
   systemAsset: Pick<typeof assets.$inferSelect, "id" | "mimeType" | "byteSize" | "sha256"> | null;
   previewAsset: AssetSummary | null;
   /** Null on anything published before attachment renditions existed. */
@@ -236,6 +278,14 @@ export type StickerSummaryRow = {
   attachmentSmall: AssetSummary | null;
   /** Null on anything published before WebP exports existed, and on any client that cannot encode one. */
   webpAsset: AssetSummary | null;
+  /**
+   * The messenger renditions, null until the sticker has been added to a pack — that is when the
+   * phone encodes them — and null forever for artwork that overshot a messenger's ceiling. The two
+   * are independent: fitting WhatsApp says nothing about fitting Telegram, whose animated budget is
+   * half the size.
+   */
+  whatsappAsset: AssetSummary | null;
+  telegramAsset: AssetSummary | null;
 };
 
 export interface ListStickersOptions {
@@ -262,6 +312,8 @@ export function serializeStickerSummary({
   attachmentMedium,
   attachmentSmall,
   webpAsset,
+  whatsappAsset,
+  telegramAsset,
 }: StickerSummaryRow) {
   return {
     id: sticker.id,
@@ -286,6 +338,12 @@ export function serializeStickerSummary({
     // Held to the same `ready` gate: an unfinished WebP offered to the extension is a tap spent on
     // a 404, and the APNG it would have fallen back to was there the whole time.
     webpAsset: serializeAttachment(webpAsset),
+    // Same gate again, and it matters more here than anywhere: these two are the *only* thing the
+    // export sheet can send now that it no longer encodes, so offering one that is not ready would
+    // strand a hand-off with nothing to fall back to.
+    whatsappAsset: serializeAttachment(whatsappAsset),
+    telegramAsset: serializeAttachment(telegramAsset),
+    messengerEmoji: sticker.messengerEmoji ?? null,
   };
 }
 
@@ -298,6 +356,8 @@ async function serializeSticker(db: Database, sticker: typeof stickers.$inferSel
     attachmentMedium: null,
     attachmentSmall: null,
     webpAsset: null,
+    whatsappAsset: null,
+    telegramAsset: null,
   });
 }
 
@@ -1882,4 +1942,122 @@ export async function bindExports(
     }
   });
   return { stickerId, revisionId: publishedRevisionId, sourceRevisionId: request.revisionId, status: "published" as const };
+}
+
+/**
+ * Attaches the WhatsApp and Telegram renditions to a sticker's already-published revision.
+ *
+ * Deliberately *not* part of `bindExports`. That function mints a new published revision out of an
+ * accepted candidate and charges an export job for it; these files arrive much later, when an
+ * already-published sticker is put into a pack, and there is nothing new to publish — only two
+ * empty columns to fill on the revision that is already active.
+ *
+ * Which makes this the one place in this file that mutates a published revision in place. It is
+ * safe because of what it is allowed to do: it only ever writes these two columns, they take no
+ * part in the preview-resolution chain, and the `activeRevisionId` guard in both statements means a
+ * device edit that lands first wins — the bind then fails rather than stapling renditions onto
+ * artwork that has already moved on. Anyone extending this to a third column should re-read that
+ * sentence first.
+ *
+ * Every field is optional and independent. Artwork that fits WhatsApp's 500 KB animated ceiling
+ * regularly misses Telegram's 256 KB one, and binding the rendition that worked is strictly better
+ * than refusing both — a pack that can go to one messenger is not a failed pack.
+ */
+export async function bindMessengerRenditions(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  request: MessengerRenditionsRequest,
+) {
+  const sticker = await assertOwnedSticker(db, ownerId, stickerId);
+  if (sticker.status !== "published") {
+    throw new ApiError(409, "STICKER_NOT_PUBLISHED", "Messenger renditions belong to a published sticker");
+  }
+  if (sticker.activeRevisionId !== request.revisionId) {
+    throw new ApiError(409, "REVISION_NOT_ACTIVE", "Messenger renditions may only be bound to the active revision");
+  }
+  const revision = await db.select().from(stickerRevisions).where(and(
+    eq(stickerRevisions.id, request.revisionId),
+    eq(stickerRevisions.stickerId, stickerId),
+  )).then(firstRow);
+  if (!revision) throw new ApiError(409, "REVISION_NOT_ACTIVE", "The active revision could not be read");
+
+  const ids = [request.whatsappAssetId, request.telegramAssetId].filter((value): value is string => Boolean(value));
+  const rows = await getReadyOwnedAssets(db, ownerId, ids);
+  const byId = new Map(rows.map((asset) => [asset.id, asset]));
+  for (const asset of rows) {
+    if (asset.stickerId !== stickerId) throw new ApiError(422, "ASSET_STICKER_MISMATCH", "A messenger rendition belongs to another sticker");
+  }
+
+  // `completeUpload` already proved each file is a transparent 512 px square inside its messenger's
+  // byte ceiling. What it could not know is which *sticker* it was headed for, so the one thing left
+  // is that the rendition moves with this one: a still file under an animated sticker would be
+  // handed to a pack the messenger has been told is animated, and rejected on arrival.
+  const whatsapp = request.whatsappAssetId ? byId.get(request.whatsappAssetId)! : undefined;
+  if (whatsapp) {
+    if (whatsapp.kind !== "messenger_whatsapp") {
+      throw new ApiError(422, "INVALID_WHATSAPP_RENDITION", "whatsappAssetId must reference a WhatsApp rendition");
+    }
+    if ((revision.kind === "animated") !== ((whatsapp.frameCount ?? 1) > 1)) {
+      throw new ApiError(
+        422,
+        "WHATSAPP_RENDITION_MISMATCH",
+        `whatsappAssetId must be ${revision.kind === "animated" ? "animated" : "a single frame"} to match the sticker`,
+      );
+    }
+  }
+  const telegram = request.telegramAssetId ? byId.get(request.telegramAssetId)! : undefined;
+  if (telegram) {
+    if (telegram.kind !== "messenger_telegram") {
+      throw new ApiError(422, "INVALID_TELEGRAM_RENDITION", "telegramAssetId must reference a Telegram rendition");
+    }
+    // Telegram is the one destination where the container itself is the discriminator: a static
+    // sticker goes as a still PNG and an animated one as a VP9 WebM. `frameCount` cannot arbitrate
+    // — a WebM never reports one, because counting its frames means walking every cluster block —
+    // so the mime type is what the two kinds are told apart by, and it is exact.
+    const expected = revision.kind === "animated" ? "video/webm" : "image/png";
+    if (telegram.mimeType !== expected) {
+      throw new ApiError(
+        422,
+        "TELEGRAM_RENDITION_MISMATCH",
+        `telegramAssetId must be ${expected} to match ${revision.kind === "animated" ? "an animated" : "a static"} sticker`,
+      );
+    }
+  }
+
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    // Only the fields that arrived are written. An emoji-only call must not blank the renditions,
+    // and a rendition-only call must not blank the emoji.
+    const revisionPatch: Partial<typeof stickerRevisions.$inferInsert> = {};
+    if (request.whatsappAssetId) revisionPatch.whatsappAssetId = request.whatsappAssetId;
+    if (request.telegramAssetId) revisionPatch.telegramAssetId = request.telegramAssetId;
+    if (Object.keys(revisionPatch).length > 0) {
+      await tx.update(stickerRevisions).set(revisionPatch).where(and(
+        eq(stickerRevisions.id, request.revisionId),
+        eq(stickerRevisions.stickerId, stickerId),
+      ));
+    }
+    // The emoji rides along on the sticker rather than the revision, so this is a second statement
+    // — and the one that carries the `activeRevisionId` guard for the whole call. A racing device
+    // edit moves the active revision, this matches nothing, and the bind is refused.
+    const touched = await tx.update(stickers).set({
+      ...(request.emoji ? { messengerEmoji: request.emoji } : {}),
+      updatedAt: now,
+    }).where(and(
+      eq(stickers.id, stickerId),
+      eq(stickers.ownerId, ownerId),
+      eq(stickers.activeRevisionId, request.revisionId),
+      ne(stickers.status, "deleting"),
+    )).returning({ id: stickers.id });
+    if (touched.length === 0) {
+      throw new ApiError(409, "REVISION_NOT_ACTIVE", "The active revision changed before the renditions could be bound");
+    }
+  });
+
+  // The whole summary, not an acknowledgement: the client just learned this sticker is sendable and
+  // would otherwise have to re-list the pack to find out.
+  const row = await selectStickerSummaries(db).where(eq(stickers.id, stickerId)).then(firstRow);
+  if (!row) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
+  return serializeStickerSummary(row);
 }

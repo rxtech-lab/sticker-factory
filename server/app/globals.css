@@ -526,3 +526,6 @@ pre { max-height: 280px; overflow: auto; white-space: pre-wrap; font: 0.72rem va
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+.brand-tagline { font-size: 12px; letter-spacing: -0.02em; }
+@media (max-width: 380px) { .brand-tagline { font-size: 10px; } }

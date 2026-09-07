@@ -145,9 +145,8 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
   then loses the one-active-job-per-sticker race is released by `abandonHold`.
 - Deleting your own work and still exports remain free. Animated exports keep their fixed charge
   because they run a frame-by-frame encode rather than a paid AI API call.
-- Publishing a pack checks the `marketplace.publish` permission instead of spending credits — it is
-  a tier feature, not a metered one. Unpublishing is never gated: a lapsed plan must not trap a pack
-  on the marketplace.
+- Publishing a pack requires the `marketplace.publish:all` permission (legacy `marketplace.publish`
+  grants also work) and spends no credits. Ownership and published-sticker validation still apply.
 - Failures are told apart deliberately. Out of credits is `402 INSUFFICIENT_CREDITS`, no plan is
   `402 SUBSCRIPTION_REQUIRED`, and a billing service that cannot be reached is `503`, never an empty
   wallet. Settle and release swallow their errors — a job that really ran must not be reported as

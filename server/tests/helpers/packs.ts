@@ -14,15 +14,24 @@ import { getObjectStore, objectKey } from "@/lib/storage/r2";
 export async function seedPublishedSticker(
   db: Database,
   ownerId: string,
-  options: { title?: string; kind?: "static" | "animated"; attachments?: boolean } = {},
+  options: {
+    title?: string;
+    kind?: "static" | "animated";
+    attachments?: boolean;
+    /** Seeds the two messenger renditions and binds them to the revision, as add-to-pack would. */
+    messengerRenditions?: boolean;
+  } = {},
 ) {
   const stickerId = crypto.randomUUID();
   const systemAssetId = crypto.randomUUID();
   const pngAssetId = crypto.randomUUID();
   const attachmentMediumAssetId = crypto.randomUUID();
   const attachmentSmallAssetId = crypto.randomUUID();
+  const whatsappAssetId = crypto.randomUUID();
+  const telegramAssetId = crypto.randomUUID();
   const revisionId = crypto.randomUUID();
   const now = new Date();
+  const animated = (options.kind ?? "static") === "animated";
 
   await db.insert(stickers).values({
     id: stickerId,
@@ -66,6 +75,40 @@ export async function seedPublishedSticker(
     });
   }
 
+  if (options.messengerRenditions) {
+    // The two are seeded together but are genuinely independent columns; a test that needs only one
+    // bound should bind it itself rather than reach for this flag.
+    const messenger: [string, "messenger_whatsapp" | "messenger_telegram", string][] = [
+      [whatsappAssetId, "messenger_whatsapp", "image/webp"],
+      [telegramAssetId, "messenger_telegram", animated ? "video/webm" : "image/png"],
+    ];
+    for (const [id, kind, mimeType] of messenger) {
+      const r2Key = objectKey(ownerId, id, mimeType);
+      await store.put(r2Key, { bytes: Buffer.from(`${kind}:${id}`), contentType: mimeType });
+      await db.insert(assets).values({
+        id,
+        ownerId,
+        stickerId,
+        kind,
+        state: "ready",
+        r2Key,
+        mimeType,
+        byteSize: 64_000,
+        width: 512,
+        height: 512,
+        // A WebM never reports a frame count — see `inspectWebM` — so an animated Telegram
+        // rendition is seeded the way one really arrives, with the column null.
+        frameCount: kind === "messenger_telegram" && animated ? null : animated ? 24 : 1,
+        durationSeconds: animated ? 1.2 : 0,
+        sha256: id.replace(/-/g, "").padEnd(64, "0"),
+        hasAlpha: kind === "messenger_telegram" && animated ? null : true,
+        originalFilename: `${kind}.bin`,
+        createdAt: now,
+        readyAt: now,
+      });
+    }
+  }
+
   await db.insert(stickerRevisions).values({
     id: revisionId,
     stickerId,
@@ -86,12 +129,23 @@ export async function seedPublishedSticker(
     systemAssetId,
     attachmentMediumAssetId: options.attachments ? attachmentMediumAssetId : null,
     attachmentSmallAssetId: options.attachments ? attachmentSmallAssetId : null,
+    whatsappAssetId: options.messengerRenditions ? whatsappAssetId : null,
+    telegramAssetId: options.messengerRenditions ? telegramAssetId : null,
     createdAt: now,
     decidedAt: now,
   });
   await db.update(stickers).set({ activeRevisionId: revisionId }).where(eq(stickers.id, stickerId));
 
-  return { stickerId, revisionId, systemAssetId, pngAssetId, attachmentMediumAssetId, attachmentSmallAssetId };
+  return {
+    stickerId,
+    revisionId,
+    systemAssetId,
+    pngAssetId,
+    attachmentMediumAssetId,
+    attachmentSmallAssetId,
+    whatsappAssetId,
+    telegramAssetId,
+  };
 }
 
 export async function seedUser(db: Database, id: string, displayName?: string) {

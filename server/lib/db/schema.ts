@@ -49,7 +49,7 @@ const messageStatuses = ["complete", "streaming", "failed"] as const;
 const imagePlacements = ["replace", "add"] as const;
 const assetKinds = [
   "reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment",
-  "sequence", "attachment", "video", "webp",
+  "sequence", "attachment", "video", "webp", "messenger_whatsapp", "messenger_telegram",
 ] as const;
 const assetStates = ["pending", "ready", "failed", "deleted"] as const;
 const candidateStates = ["candidate", "accepted", "rejected", "superseded"] as const;
@@ -81,6 +81,14 @@ export const stickers = pgTable("stickers", {
   kind: text("kind", { enum: stickerKinds }).notNull(),
   status: text("status", { enum: stickerStatuses }).notNull().default("draft"),
   activeRevisionId: text("active_revision_id"),
+  /**
+   * The single emoji WhatsApp and Telegram file this sticker under.
+   *
+   * On the sticker rather than the revision: it is a labelling choice, not artwork, and re-editing
+   * the drawing is no reason to forget it. Null means the creator never chose one, and the client
+   * falls back to its own default. A device-local choice still overrides this.
+   */
+  messengerEmoji: text("messenger_emoji"),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
   deletedAt: timestampColumn("deleted_at"),
@@ -259,6 +267,18 @@ export const stickerRevisions = pgTable("sticker_revisions", {
    * before this column existed has none, and so does any client without a WebP encoder.
    */
   webpAssetId: text("webp_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  /**
+   * The 512 px copies WhatsApp and Telegram accept, encoded on the phone when the sticker is added
+   * to a pack. WhatsApp is always WebP; Telegram is a still PNG for a static sticker and a
+   * transparent VP9 WebM for an animated one, so the sticker's own `kind` says which arrived.
+   *
+   * They hang off the revision rather than the sticker because they are derived artwork: a new
+   * revision has different pixels, and inheriting the old encodings would send the wrong sticker.
+   * Null is an ordinary state — every revision published before this column existed has none, and a
+   * sticker whose artwork cannot be squeezed under a messenger's ceiling never gets one.
+   */
+  whatsappAssetId: text("whatsapp_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  telegramAssetId: text("telegram_asset_id").references(() => assets.id, { onDelete: "set null" }),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   decidedAt: timestampColumn("decided_at"),
 }, (table) => [

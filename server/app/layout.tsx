@@ -4,17 +4,17 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
-  title: { default: "Sticker Factory", template: "%s · Sticker Factory" },
-  description: "Your private library for AI-created static and animated stickers.",
+  title: { default: "Winky - The sticker factory", template: "%s · Winky - The sticker factory" },
+  description: "Create static and animated stickers with Winky. Share to WhatsApp, Telegram, and iMessage, or export GIFs and videos.",
   openGraph: {
     type: "website",
-    siteName: "Sticker Factory",
-    title: "Sticker Factory",
+    siteName: "Winky - The sticker factory",
+    title: "Winky - The sticker factory",
     description: "Say it with a sticker you made. Create, refine, animate, and share from iPhone and iPad.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sticker Factory",
+    title: "Winky - The sticker factory",
     description: "Say it with a sticker you made. Create, refine, animate, and share from iPhone and iPad.",
   },
 };
@@ -29,8 +29,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <div className="shell">
             <div className="footer-grid">
               <div className="footer-brand">
-                Sticker Factory
-                <p>Turn an idea into a sticker that actually moves. Private by default, native on iPhone, iPad, and Messages.</p>
+                Winky - The sticker factory
+                <p>Turn an idea into a sticker that actually moves. Create on iPhone and iPad. Share to WhatsApp, Telegram, and iMessage.</p>
               </div>
               <nav className="footer-links" aria-label="Footer">
                 <Link href="/#how-it-works">How it works</Link>
@@ -42,8 +42,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               </nav>
             </div>
             <div className="footer-bottom">
-              <span>© {new Date().getUTCFullYear()} Sticker Factory</span>
-              <span>iPhone · iPad · Messages · Stickers drawer</span>
+              <span>© {new Date().getUTCFullYear()} Winky - The sticker factory</span>
+              <span>WhatsApp · Telegram · iMessage</span>
             </div>
           </div>
         </footer>

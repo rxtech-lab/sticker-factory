@@ -11,6 +11,46 @@ nonisolated struct Sticker: Codable, Identifiable, Hashable, Sendable {
     var updatedAt: Date
     var previewAsset: AssetRecord?
     var systemSticker: SystemStickerRecord?
+    /// The 512 px copies WhatsApp and Telegram accept, encoded and uploaded when this sticker was
+    /// added to a pack.
+    ///
+    /// Optional with a default so a response from a server that predates them still decodes, and
+    /// independently nil because the two messengers give an animation very different budgets — 500
+    /// KB against 256 KB — so artwork routinely clears one and misses the other. Nil is what the
+    /// pack screen reads to gray a member out: there is no fallback to re-encode from any more.
+    var whatsappAsset: AssetRecord?
+    var telegramAsset: AssetRecord?
+    /// The emoji the creator filed this sticker under, when they chose one. A device-local choice
+    /// in `MessengerEmojiStore` still overrides it.
+    var messengerEmoji: String?
+
+    init(
+        id: String,
+        title: String,
+        kind: StickerKind,
+        status: StickerStatus,
+        activeRevisionId: String? = nil,
+        createdAt: Date,
+        updatedAt: Date,
+        previewAsset: AssetRecord? = nil,
+        systemSticker: SystemStickerRecord? = nil,
+        whatsappAsset: AssetRecord? = nil,
+        telegramAsset: AssetRecord? = nil,
+        messengerEmoji: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.status = status
+        self.activeRevisionId = activeRevisionId
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.previewAsset = previewAsset
+        self.systemSticker = systemSticker
+        self.whatsappAsset = whatsappAsset
+        self.telegramAsset = telegramAsset
+        self.messengerEmoji = messengerEmoji
+    }
 }
 
 nonisolated enum StickerStatus: String, Codable, CaseIterable, Hashable, Sendable { case draft, published, deleting }
@@ -25,6 +65,9 @@ nonisolated struct StickerDetail: Codable, Identifiable, Hashable, Sendable {
     var updatedAt: Date
     var previewAsset: AssetRecord?
     var systemSticker: SystemStickerRecord?
+    var whatsappAsset: AssetRecord?
+    var telegramAsset: AssetRecord?
+    var messengerEmoji: String?
     var revisions: [StickerRevision]
 
     var sticker: Sticker {
@@ -37,7 +80,10 @@ nonisolated struct StickerDetail: Codable, Identifiable, Hashable, Sendable {
             createdAt: createdAt,
             updatedAt: updatedAt,
             previewAsset: previewAsset,
-            systemSticker: systemSticker
+            systemSticker: systemSticker,
+            whatsappAsset: whatsappAsset,
+            telegramAsset: telegramAsset,
+            messengerEmoji: messengerEmoji
         )
     }
     var activeRevision: StickerRevision? { revisions.first { $0.id == activeRevisionId } }
@@ -126,6 +172,12 @@ nonisolated struct AssetRecord: Codable, Identifiable, Hashable, Sendable {
 
 nonisolated enum AssetKind: String, Codable, CaseIterable, Hashable, Sendable {
     case reference, mask, master, preview, apng, mp4, system
+    /// The copy WhatsApp accepts: a transparent 512 px WebP, still or animated.
+    case messengerWhatsApp = "messenger_whatsapp"
+    /// The copy Telegram accepts: a transparent 512 px PNG for a static sticker, a VP9 WebM for an
+    /// animated one. One kind for both containers, because a sticker has one Telegram rendition and
+    /// its own `kind` already says which of the two it is.
+    case messengerTelegram = "messenger_telegram"
     /// The sharing rendition before APNG replaced it. Nothing uploads one; the case stays so an
     /// asset published under the old kind still decodes.
     case gif
@@ -742,6 +794,19 @@ nonisolated enum SystemRenditionKind: String, Codable, Sendable {
 
 nonisolated struct PublishExportsResponse: Codable, Sendable {
     var job: GenerationJobReference
+}
+
+/// The messenger renditions for one already-published revision.
+///
+/// Its own request rather than more fields on `PublishExportsRequest`, because it is sent at a
+/// different moment: a publish uploads the whole export set at once, while these arrive later, when
+/// the sticker is put into a pack. Every field is optional — artwork that fits WhatsApp's ceiling
+/// can still miss Telegram's, and binding the one that worked beats sending neither.
+nonisolated struct MessengerRenditionsRequest: Codable, Sendable {
+    var revisionId: String
+    var whatsappAssetId: String?
+    var telegramAssetId: String?
+    var emoji: String?
 }
 
 /// A document edited on device, sent back as a new revision.

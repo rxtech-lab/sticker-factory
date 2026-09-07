@@ -8,6 +8,15 @@ Sticker Factory is an iOS 26 sticker studio with a companion web library and two
 - `StickerGeniOS/` — Swift 6 iPhone/iPad app, RxAuthSwift sign-in, deterministic SwiftUI renderer/exporter, shared token broker, and both Messages extensions.
 - `server/fixtures/` — canonical JSON fixtures shared with the Swift contract tests.
 
+## WhatsApp and Telegram
+
+Any pack under the **Sticker Packs** tab can be sent to WhatsApp or Telegram from its pack screen.
+The pack is cut to the messenger's rules on the phone — one kind per pack, split evenly past the
+cap — and every sticker is re-encoded at 512 px: WebP for WhatsApp, PNG or transparent VP9 WebM for
+Telegram. See `docs/messenger-export.md`. The VP9 encoder is `StickerGeniOS/packages/VP9Encoder`
+(libvpx, rebuilt by its `scripts/build-libvpx.sh`); the WhatsApp hand-off is
+`StickerGeniOS/packages/WASticker`.
+
 ## The two Messages apps
 
 iOS permits only one `com.apple.message-payload-provider` extension per containing app — a second

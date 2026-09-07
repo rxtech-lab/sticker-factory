@@ -13,10 +13,19 @@ private enum MarketplaceTab: String, CaseIterable, Identifiable {
     }
 }
 
+/// The Sticker Packs tab: packs to browse, the user's own, and the way into any one of them.
+///
+/// Every pack here is also the unit a messenger receives — `PackDetailView` sends one to WhatsApp
+/// or Telegram — which is why a freshly created pack is pushed straight onto the stack: the next
+/// thing to do with it is on that screen.
 struct MarketplaceView: View {
     @Bindable var store: MarketplaceStore
     @State private var tab: MarketplaceTab = .browse
     @State private var showingComposer = false
+    @State private var path = NavigationPath()
+    /// The pack the composer just made, pushed once its sheet has gone: pushing while a sheet is
+    /// still dismissing drops one of the two animations.
+    @State private var createdPackID: String?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var visible: [StickerPack] {
@@ -43,6 +52,12 @@ struct MarketplaceView: View {
     }
 
     var body: some View {
+        NavigationStack(path: $path) {
+            content
+        }
+    }
+
+    private var content: some View {
         StickerBackground {
             Group {
                 if store.isLoading && visible.isEmpty {
@@ -95,7 +110,7 @@ struct MarketplaceView: View {
                 }
             }
         }
-        .navigationTitle("Marketplace")
+        .navigationTitle("Sticker Packs")
         .navigationDestination(for: PackRoute.self) { route in
             PackDetailView(store: store, packID: route.packID)
         }
@@ -142,9 +157,16 @@ struct MarketplaceView: View {
             }
         }
         .onChange(of: store.sort) { Task { await store.refresh() } }
-        .sheet(isPresented: $showingComposer) {
+        .sheet(isPresented: $showingComposer, onDismiss: {
+            guard let createdPackID else { return }
+            self.createdPackID = nil
+            path.append(PackRoute(packID: createdPackID))
+        }) {
             NavigationStack {
-                PackComposerView(store: store, onCreated: { showingComposer = false })
+                PackComposerView(store: store, onCreated: { detail in
+                    createdPackID = detail.id
+                    showingComposer = false
+                })
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close") { showingComposer = false }

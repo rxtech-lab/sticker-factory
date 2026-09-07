@@ -22,6 +22,11 @@ nonisolated enum SubscriptionAccess {
     static func isActive(status: String) -> Bool {
         activeStatuses.contains(status)
     }
+
+    static func canPublishPacks(permissions: [String]) -> Bool {
+        permissions.contains("marketplace.publish") || permissions.contains("marketplace.publish:all")
+    }
+
 }
 
 nonisolated enum SubscriptionBalance {
@@ -57,7 +62,7 @@ nonisolated enum SubscriptionPaywallContent: Equatable {
 ///
 /// The RxSubscription client is stateless and each of the package's screens fetches for itself, so
 /// this exists to give the rest of the app one cached, observable answer to "how many credits do
-/// they have" and "may they publish" — questions asked from a toolbar and from a service, neither
+/// they have" — questions asked from a toolbar and from a service, neither
 /// of which should be issuing its own network call.
 ///
 /// Deliberately not the enforcement point. The server holds the secret key and decides whether a
@@ -66,9 +71,6 @@ nonisolated enum SubscriptionPaywallContent: Equatable {
 @MainActor
 @Observable
 final class SubscriptionStore {
-    /// Matches `PUBLISH_PERMISSION` on the server.
-    private static let publishPermission = "marketplace.publish"
-
     private(set) var entitlements: Entitlements?
     private(set) var isLoading = false
     private(set) var lastError: String?
@@ -115,12 +117,10 @@ final class SubscriptionStore {
         activePlanName != nil
     }
 
-    /// Whether the marketplace is open to this user. Unknown-yet reads as allowed: the server
-    /// refuses a publish it should not permit, and blocking the button on a cache that has not
-    /// loaded would make the app look broken to a paying user.
+    /// The server enforces publishing access while entitlements are still loading.
     var canPublishPacks: Bool {
         guard isConfigured, let entitlements else { return true }
-        return entitlements.permissions.contains(Self.publishPermission)
+        return SubscriptionAccess.canPublishPacks(permissions: entitlements.permissions)
     }
 
     init(
