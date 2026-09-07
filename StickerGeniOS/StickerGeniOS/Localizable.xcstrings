@@ -207,6 +207,9 @@
         }
       }
     },
+    "%lld free generations left today" : {
+
+    },
     "%lld LAYERS" : {
       "localizations" : {
         "zh-CN" : {
@@ -501,6 +504,9 @@
         }
       }
     },
+    "A reference image could not be uploaded (HTTP %lld)." : {
+
+    },
     "A sticker frame could not be read for encoding." : {
       "localizations" : {
         "zh-CN" : {
@@ -583,7 +589,6 @@
       }
     },
     "About" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -1479,6 +1484,9 @@
         }
       }
     },
+    "Checking your daily allowance…" : {
+
+    },
     "Choose a PNG mask with transparent and painted areas. Regular opaque photos cannot be used as masks." : {
       "localizations" : {
         "zh-CN" : {
@@ -2248,6 +2256,9 @@
         }
       }
     },
+    "Describe a change" : {
+
+    },
     "Describe one sticker, choose static or animated, and add reference photos when they help." : {
       "localizations" : {
         "zh-CN" : {
@@ -2439,6 +2450,12 @@
           }
         }
       }
+    },
+    "Dream it up. We'll sticker it." : {
+
+    },
+    "Each generation or revision uses one allowance." : {
+
     },
     "Edit" : {
       "localizations" : {
@@ -3077,6 +3094,9 @@
         }
       }
     },
+    "Generate sticker" : {
+
+    },
     "Generate your first sticker" : {
       "localizations" : {
         "zh-CN" : {
@@ -3109,6 +3129,9 @@
         }
       }
     },
+    "Generated sticker" : {
+
+    },
     "Generation failed. You can retry this request." : {
       "localizations" : {
         "zh-CN" : {
@@ -3140,6 +3163,9 @@
           }
         }
       }
+    },
+    "Get the full app" : {
+
     },
     "Getting ready…" : {
       "localizations" : {
@@ -3190,7 +3216,6 @@
       }
     },
     "Help" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -3415,7 +3440,6 @@
       }
     },
     "Legal" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -3831,6 +3855,12 @@
         }
       }
     },
+    "Make a sticker" : {
+
+    },
+    "Make another sticker" : {
+
+    },
     "Make expressive stickers from words and photos." : {
       "localizations" : {
         "zh-CN" : {
@@ -4054,6 +4084,9 @@
           }
         }
       }
+    },
+    "More ideas? Come back after your daily reset." : {
+
     },
     "Move to draft" : {
       "localizations" : {
@@ -4744,6 +4777,22 @@
         }
       }
     },
+    "One-time purchase" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次性购买"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次性購買"
+          }
+        }
+      }
+    },
     "Only the subject you lift is uploaded. The rest of the photo stays on your device." : {
       "localizations" : {
         "zh-CN" : {
@@ -4823,6 +4872,9 @@
           }
         }
       }
+    },
+    "Open the main app and sign in before creating a sticker here." : {
+
     },
     "Opens full screen" : {
       "localizations" : {
@@ -4919,6 +4971,9 @@
           }
         }
       }
+    },
+    "Pack unavailable" : {
+
     },
     "Personal photos are uploaded privately to create or edit this sticker. Sources, chat, and revisions remain until you delete the project." : {
       "localizations" : {
@@ -5496,6 +5551,12 @@
         }
       }
     },
+    "Quick generation uses your points." : {
+
+    },
+    "Quick mode" : {
+
+    },
     "Re-export" : {
       "localizations" : {
         "zh-CN" : {
@@ -5624,6 +5685,12 @@
         }
       }
     },
+    "Reference images must be at least 64 pixels per side." : {
+
+    },
+    "Reference photo" : {
+
+    },
     "Reference photo. Tap to lift a subject out of it." : {
       "localizations" : {
         "zh-CN" : {
@@ -5736,6 +5803,9 @@
         }
       }
     },
+    "Remove photo" : {
+
+    },
     "Remove reference" : {
       "localizations" : {
         "zh-CN" : {
@@ -5831,6 +5901,9 @@
           }
         }
       }
+    },
+    "Resets %@" : {
+
     },
     "Restore Purchases" : {
       "localizations" : {
@@ -6023,6 +6096,9 @@
           }
         }
       }
+    },
+    "Revise" : {
+
     },
     "Revising the plan" : {
       "localizations" : {
@@ -6457,6 +6533,15 @@
         }
       }
     },
+    "Share pack" : {
+
+    },
+    "Share sticker" : {
+
+    },
+    "Share Sticker Factory" : {
+
+    },
     "Shared credentials and cached iMessage stickers will be removed from this device." : {
       "localizations" : {
         "zh-CN" : {
@@ -6586,7 +6671,6 @@
       }
     },
     "Signed In" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -7091,7 +7175,6 @@
       }
     },
     "Subscription" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -7267,6 +7350,9 @@
         }
       }
     },
+    "That didn't finish. Try again." : {
+
+    },
     "That image format could not be read." : {
       "localizations" : {
         "zh-CN" : {
@@ -7298,6 +7384,9 @@
           }
         }
       }
+    },
+    "That reference image is too large." : {
+
     },
     "The animation document is invalid." : {
       "localizations" : {
@@ -7766,6 +7855,18 @@
         }
       }
     },
+    "The sticker service could not be reached (HTTP %lld). Try again." : {
+
+    },
+    "The sticker service could not start that. Try again." : {
+
+    },
+    "The sticker service is not configured in this build." : {
+
+    },
+    "The sticker service returned an invalid response." : {
+
+    },
     "The WebP encoder is unavailable." : {
       "localizations" : {
         "zh-CN" : {
@@ -7895,6 +7996,9 @@
         }
       }
     },
+    "This is taking longer than expected. It is still running — open the main app to pick it up." : {
+
+    },
     "This one needs %lld credits and you have %lld. Top up to finish it." : {
       "localizations" : {
         "zh-CN" : {
@@ -7991,6 +8095,23 @@
         }
       }
     },
+    "This tool failed. No result details were recorded." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此工具失败。没有记录结果详情。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此工具失敗。沒有記錄結果詳情。"
+          }
+        }
+      }
+    },
     "This tool is still running. Its result will appear here when available." : {
       "localizations" : {
         "zh-CN" : {
@@ -8070,6 +8191,9 @@
           }
         }
       }
+    },
+    "Those reference images are too large together. Remove one and try again." : {
+
     },
     "Tool %@, %@" : {
       "localizations" : {
@@ -8221,6 +8345,9 @@
         }
       }
     },
+    "Try “a happy cat riding a skateboard”" : {
+
+    },
     "Try a different search or filter." : {
       "localizations" : {
         "zh-CN" : {
@@ -8236,6 +8363,9 @@
           }
         }
       }
+    },
+    "Try again" : {
+
     },
     "Try Again" : {
       "localizations" : {
@@ -8851,6 +8981,9 @@
         }
       }
     },
+    "You can attach up to eight reference images." : {
+
+    },
     "You created this pack" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8948,6 +9081,25 @@
         }
       }
     },
+    "Your idea" : {
+
+    },
+    "Your packs" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的贴纸包"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的貼圖包"
+          }
+        }
+      }
+    },
     "Your session expired. Please sign in again." : {
       "localizations" : {
         "zh-CN" : {
@@ -8964,6 +9116,9 @@
         }
       }
     },
+    "Your sticker, fresh off the press" : {
+
+    },
     "Your versions are safe" : {
       "localizations" : {
         "zh-CN" : {
@@ -8979,55 +9134,7 @@
           }
         }
       }
-    },
-  "This tool failed. No result details were recorded." : {
-    "localizations" : {
-      "zh-CN" : {
-        "stringUnit" : {
-          "state" : "translated",
-          "value" : "此工具失败。没有记录结果详情。"
-        }
-      },
-      "zh-HK" : {
-        "stringUnit" : {
-          "state" : "translated",
-          "value" : "此工具失敗。沒有記錄結果詳情。"
-        }
-      }
     }
-  },
-    "One-time purchase" : {
-        "localizations" : {
-          "zh-CN" : {
-            "stringUnit" : {
-              "state" : "translated",
-              "value" : "一次性购买"
-            }
-          },
-          "zh-HK" : {
-            "stringUnit" : {
-              "state" : "translated",
-              "value" : "一次性購買"
-            }
-          }
-        }
-      },
-    "Your packs" : {
-        "localizations" : {
-          "zh-CN" : {
-            "stringUnit" : {
-              "state" : "translated",
-              "value" : "你的贴纸包"
-            }
-          },
-          "zh-HK" : {
-            "stringUnit" : {
-              "state" : "translated",
-              "value" : "你的貼圖包"
-            }
-          }
-        }
-      }
   },
   "version" : "1.0"
 }

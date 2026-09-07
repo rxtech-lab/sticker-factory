@@ -1,3 +1,4 @@
+import { quickGenerationPolicy, recordAppClipUsage } from "@/lib/subscription/app-clip";
 import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, max, ne, or, sql } from "drizzle-orm";
 import type {
   CreateStickerRequest,
@@ -1017,8 +1018,16 @@ export async function createChatTurn(
   ownerId: string,
   stickerId: string,
   request: PostChatMessageRequest,
+  appClip = false,
 ) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
+  // Shared OAuth identifies the account; the constrained operation selects its plan allowance.
+  appClip = appClip || request.useQuickModeAllowance === true;
+  if (appClip && (sticker.kind !== "static" || !request.quick ||
+      !["generate", "edit"].includes(request.intent) || request.targetLayerId ||
+      request.attachments.some((a) => a.kind !== "reference"))) {
+    throw new ApiError(422, "APP_CLIP_QUICK_ONLY", "App Clip supports static quick generation and revision only.");
+  }
   const thread = await db.select().from(chatThreads).where(and(
     eq(chatThreads.stickerId, stickerId),
     eq(chatThreads.ownerId, ownerId),
@@ -1106,14 +1115,19 @@ export async function createChatTurn(
   const now = new Date();
   const jobKind = intentToJobKind(request.intent);
   const creditHold = jobCreditHold(jobKind);
-  const reservationId = await holdCreditsForJob({
-    ownerId,
-    amount: creditHold,
-    idempotencyKey: `reserve:${jobId}`,
-    description: `Sticker ${request.intent}`,
-    metadata: { jobId, stickerId, kind: jobKind },
-  });
+  const policy = appClip ? await quickGenerationPolicy(ownerId) : null;
+  let reservationId: string | null = null;
   try {
+    reservationId = policy && !policy.chargesPoints ? null : await holdCreditsForJob({
+      ownerId,
+      amount: creditHold,
+      idempotencyKey: `reserve:${jobId}`,
+      description: `Sticker ${request.intent}`,
+      metadata: { jobId, stickerId, kind: jobKind },
+    });
+    // Check points before consuming an attempt. The existing usage API records
+    // immediately; generation failures keep the attempt but release point holds.
+    if (appClip) await recordAppClipUsage(ownerId, jobId);
     await db.transaction(async (tx) => {
       const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
         .where(eq(chatMessages.threadId, thread.id)).then(firstRow);
@@ -1126,6 +1140,7 @@ export async function createChatTurn(
           sourceMessageId: messageId,
           kind: jobKind,
           quick: request.quick ?? false,
+          appClip,
           state: "queued",
           reservationId,
           reservationAmount: reservationId ? creditHold : 0,

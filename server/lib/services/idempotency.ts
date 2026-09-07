@@ -10,6 +10,16 @@ export interface IdempotentResult<T> {
   replayed: boolean;
 }
 
+/** Only use after a rejected operation's local changes have been rolled back.
+ * Ambiguous provider/dispatch failures must keep their lock to prevent duplicates.
+ */
+export class RetryableIdempotencyError extends Error {
+  constructor(readonly originalError: unknown) {
+    super("The operation was rejected and rolled back", { cause: originalError });
+    this.name = "RetryableIdempotencyError";
+  }
+}
+
 function stableJson(value: unknown): string {
   if (value === undefined) return '"__undefined__"';
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -87,13 +97,13 @@ export async function executeIdempotent<T>(
     }).where(identity);
     return { ...result, replayed: false };
   } catch (error) {
-    if (error instanceof ApiError && error.status < 500) {
+    if (error instanceof RetryableIdempotencyError || (error instanceof ApiError && error.status < 500)) {
       await db.delete(idempotencyKeys).where(identity);
     } else {
       await db.update(idempotencyKeys).set({
         expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       }).where(identity);
     }
-    throw error;
+    throw error instanceof RetryableIdempotencyError ? error.originalError : error;
   }
 }

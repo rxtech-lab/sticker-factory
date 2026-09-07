@@ -93,6 +93,7 @@ export const CreateStickerRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(4_000),
   referenceAssetIds: z.array(z.string().uuid()).max(8).default([]),
   quick: QuickGenerationSchema,
+  useQuickModeAllowance: z.boolean().optional(),
 }).strict();
 
 /**
@@ -125,6 +126,7 @@ export const PostChatMessageRequestSchema = z.object({
   baseRevisionId: z.string().uuid().optional(),
   imagePlacement: z.enum(["replace", "add"]).default("replace"),
   quick: QuickGenerationSchema,
+  useQuickModeAllowance: z.boolean().optional(),
 }).strict().superRefine((value, context) => {
   if (value.intent === "animate" && !value.baseRevisionId) {
     context.addIssue({ code: "custom", path: ["baseRevisionId"], message: "Animation requires an explicit base revision" });

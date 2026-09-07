@@ -49,6 +49,7 @@ struct StickerFactoryTabView: View {
     @AppStorage(StickerOnboarding.welcomeStorageKey) private var hasSeenWelcome = false
     @State private var selection = 0
     @State private var showingWelcome = false
+    @State private var showingQuickMode = false
     /// Driven only from outside the UI — a tapped "sticker ready" banner. Tapping around the
     /// Library still pushes through its own `NavigationLink`s, which this path also records.
     @State private var libraryPath = NavigationPath()
@@ -63,6 +64,9 @@ struct StickerFactoryTabView: View {
                     marketplace: environment.marketplace,
                     subscription: environment.subscription
                 )
+                .navigationDestination(for: SharedPackDestination.self) { route in
+                    SharedPackEntry(store: environment.marketplace, slug: route.slug)
+                }
             }
                 .tabItem { Label("Library", systemImage: "square.grid.2x2") }
                 .tag(0)
@@ -79,11 +83,21 @@ struct StickerFactoryTabView: View {
         }
         .tint(AppColors.accent)
         .accessibilityIdentifier("sticker-factory-tabs")
+        .sheet(isPresented: $showingQuickMode) {
+            NavigationStack {
+                QuickModeView(model: QuickModeModel(baseURL: environment.configuration.apiBaseURL, appClip: false) { force in
+                    try await environment.tokenBroker.validAccessToken(forceRefresh: force)
+                })
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showingQuickMode = false } } }
+            }
+        }
+        .onChange(of: environment.pendingShareRoute) { _, _ in openShareRoute() }
         .onChange(of: environment.pendingStickerID) { _, _ in openPendingSticker() }
         .task {
             // A deep link can arrive before authentication finishes and before this tab hierarchy
             // exists. Consume it on first appearance as well as through `onChange`.
             openPendingSticker()
+            openShareRoute()
             StickerOnboardingTips.setWelcomeCompleted(hasSeenWelcome)
             let arguments = ProcessInfo.processInfo.arguments
             if StickerOnboarding.shouldPresentWelcome(
@@ -105,6 +119,18 @@ struct StickerFactoryTabView: View {
         // all on different screens, some of them already inside their own sheet — and presenting
         // from each of them would mean a paywall that cannot open over whatever is in the way.
         .subscriptionPaywall(environment.subscription)
+    }
+
+    private func openShareRoute() {
+        guard let route = environment.pendingShareRoute else { return }
+        environment.pendingShareRoute = nil
+        selection = 0
+        switch route {
+        case .quick: showingQuickMode = true
+        case .pack(let slug):
+            libraryPath = NavigationPath()
+            libraryPath.append(SharedPackDestination(slug: slug))
+        }
     }
 
     private func openPendingSticker() {
@@ -141,4 +167,20 @@ struct StickerFactoryTabView: View {
         authenticationState: .signedIn,
         isUITesting: true
     ))
+}
+
+private struct SharedPackDestination: Hashable { let slug: String }
+
+private struct SharedPackEntry: View {
+    @Bindable var store: MarketplaceStore
+    let slug: String
+    @State private var packID: String?
+    @State private var loaded = false
+    var body: some View {
+        Group {
+            if let packID { PackDetailView(store: store, packID: packID) }
+            else if loaded { ContentUnavailableView("Pack unavailable", systemImage: "photo", description: Text(store.errorMessage ?? "This pack is no longer available.")) }
+            else { ProgressView("Loading pack…") }
+        }.task(id: slug) { packID = await store.loadDetail(packID: slug)?.id; loaded = true }
+    }
 }

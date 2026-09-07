@@ -42,6 +42,14 @@ struct PackDetailView: View {
         }
         .navigationTitle(detail?.title ?? String(localized: "Pack"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let detail, detail.state == .published || detail.state == .unlisted {
+                ShareLink(item: StickerShareRoute.packURL(detail.slug)) {
+                    PosterSymbolLabel("Share pack", posterSymbol: PosterIcon.share)
+                }
+                    .accessibilityIdentifier("pack-share")
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             if let detail { bottomBar(detail) }
         }

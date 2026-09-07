@@ -49,13 +49,13 @@
 	<key>StickerFactoryAuthTokenURL</key>
 	<string>$(STICKER_FACTORY_AUTH_TOKEN_URL)</string>
 	<key>StickerFactoryIOSClientID</key>
-	<string>client_1ce3e6efd6da4214a61df67949a71622</string>
+	<string>$(STICKER_FACTORY_IOS_CLIENT_ID)</string>
 	<key>StickerFactoryKeychainAccessGroup</key>
 	<string>$(AppIdentifierPrefix)app.rxlab.sticker-factory.shared</string>
 	<key>StickerFactoryOAuthIssuer</key>
 	<string>$(STICKER_FACTORY_OAUTH_ISSUER)</string>
 	<key>StickerFactoryOAuthRedirectURI</key>
-	<string>stickerfactory://oauth/callback</string>
+	<string>$(STICKER_FACTORY_OAUTH_REDIRECT_URI)</string>
 	<key>StickerFactorySubscriptionProductionKey</key>
 	<string>$(STICKER_FACTORY_SUBSCRIPTION_PRODUCTION_KEY)</string>
 	<key>StickerFactorySubscriptionSandboxKey</key>

@@ -66,6 +66,7 @@ struct LibraryView: View {
     @State private var showingRename = false
     @State private var deletionCandidate: Sticker?
     @State private var confirmingDelete = false
+    @State private var showingHomeShareSheet = false
     @State private var pendingEdit: LibraryPendingEdit?
     private let generateTip = GenerateStickerTip()
 
@@ -291,12 +292,24 @@ struct LibraryView: View {
                     Picker("Filter", selection: $filter) {
                         ForEach(LibraryFilter.allCases) { Text($0.label).tag($0) }
                     }
+                    Divider()
+                    Button {
+                        Haptics.tap(.light)
+                        showingHomeShareSheet = true
+                    } label: {
+                        Text("\(PosterIcon.share) Share Sticker Factory")
+                    }
+                    .accessibilityLabel("Share Sticker Factory")
+                    .accessibilityIdentifier("home-share")
                 } label: {
                     PosterToolbarIcon(glyph: .filter)
                 }
                 .accessibilityLabel("Filter")
                 .accessibilityIdentifier("library-filter-menu")
             }
+        }
+        .sheet(isPresented: $showingHomeShareSheet) {
+            HomeShareSheet(items: [StickerShareRoute.homeURL])
         }
         .sheet(isPresented: $showingCreation) {
             NavigationStack {
@@ -368,6 +381,16 @@ struct LibraryView: View {
             await store.searchLibrary(query: searchText)
         }
     }
+}
+
+private struct HomeShareSheet: UIViewControllerRepresentable {
+    let items: [URL]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 /// A navigation value distinct from `String`, which the library already uses for sticker ids.

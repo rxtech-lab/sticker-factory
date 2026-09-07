@@ -1,3 +1,4 @@
+import { SharePackButton } from "@/components/share-pack-button";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -49,6 +50,7 @@ export default async function PackDetailPage({ params }: { params: Promise<{ slu
         </div>
 
         <div className="pack-toolbar">
+          {(pack.state === "published" || pack.state === "unlisted") && <SharePackButton slug={pack.slug} title={pack.title} />}
           {pack.isMine ? (
             <>
               <span className="platform-note glass-panel"><strong>Your pack</strong><span>Your stickers are already in your library.</span></span>

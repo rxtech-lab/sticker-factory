@@ -43,7 +43,7 @@ describe("workflow dispatch recovery", () => {
 
     startMock.mockResolvedValueOnce({ runId: "run-quick" });
     await expect(startGenerationWorkflow(db, turn.jobId)).resolves.toBe("run-quick");
-    expect(startMock).toHaveBeenCalledWith(expect.any(Function), [turn.jobId, true]);
+    expect(startMock).toHaveBeenCalledWith(expect.any(Function), [turn.jobId, true, false]);
   });
 
   it("keeps ordinary generation on the durable workflow", async () => {
@@ -56,6 +56,6 @@ describe("workflow dispatch recovery", () => {
     startMock.mockResolvedValueOnce({ runId: "run-durable" });
 
     await expect(startGenerationWorkflow(db, turn.jobId)).resolves.toBe("run-durable");
-    expect(startMock).toHaveBeenCalledWith(expect.any(Function), [turn.jobId, false]);
+    expect(startMock).toHaveBeenCalledWith(expect.any(Function), [turn.jobId, false, false]);
   });
 });

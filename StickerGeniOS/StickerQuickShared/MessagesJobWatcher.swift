@@ -7,7 +7,7 @@ import os
 /// a handful of frames name a `stage` and carry a fraction, while every tool the agent runs
 /// announces itself with a `toolName` and no stage at all. A reader that waits for stages sits on
 /// its first message through the entire planning phase, which is the longest part of a turn.
-struct MessagesJobProgress: Sendable {
+nonisolated struct MessagesJobProgress: Sendable {
     /// The server's stage token, e.g. `generating_image`.
     let stage: String?
     /// The tool being run, e.g. `plan-sticker`. Repeats within a turn are suffixed — `create_plan #2`.
@@ -22,7 +22,7 @@ struct MessagesJobProgress: Sendable {
 }
 
 /// How a generation or publish job ended.
-enum MessagesJobOutcome: Sendable, Equatable {
+nonisolated enum MessagesJobOutcome: Sendable, Equatable {
     case succeeded
     /// The server's own words. Written to be shown: `failJob` fills it with a public reason when it
     /// has one, and a generic retryable sentence when it does not.
@@ -41,7 +41,7 @@ enum MessagesJobOutcome: Sendable, Equatable {
 /// so a long generation is watched across several connections, each resumed from the last event id
 /// exactly as SSE prescribes. `URLSession.bytes` rather than the shared `StickerHTTPTransport`
 /// because that protocol buffers a whole response, which a stream never finishes producing.
-struct MessagesJobWatcher: Sendable {
+nonisolated struct MessagesJobWatcher: Sendable {
     /// Long enough for an image model plus the server-side export ladder, short enough that a
     /// wedged job eventually says so rather than spinning until the drawer closes.
     static let deadline: TimeInterval = 8 * 60
@@ -205,7 +205,7 @@ private extension String {
     ///
     /// SSE also permits a field with no space after the colon; both spellings are accepted because
     /// the value is what matters and a missed `id:` would restart a reconnect from the wrong place.
-    func dropPrefix(_ prefix: String) -> String? {
+    nonisolated func dropPrefix(_ prefix: String) -> String? {
         if hasPrefix(prefix) { return String(dropFirst(prefix.count)) }
         let compact = prefix.replacingOccurrences(of: " ", with: "")
         if hasPrefix(compact) { return String(dropFirst(compact.count)) }

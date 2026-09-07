@@ -113,6 +113,8 @@ export const generationJobs = pgTable("generation_jobs", {
    * `AI_QUICK_IMAGE_MODEL` against a chroma backdrop instead of by `AI_IMAGE_MODEL`.
    */
   quick: boolean("quick").notNull().default(false),
+  appClip: boolean("app_clip").notNull().default(false),
+  usageReservationId: text("usage_reservation_id"),
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
   state: text("state", { enum: jobStates }).notNull().default("queued"),
   workflowRunId: text("workflow_run_id"),

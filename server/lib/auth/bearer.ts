@@ -37,6 +37,7 @@ export function getBearerVerifierConfig(): BearerVerifierConfig {
     ...(process.env.RXLAB_ALLOWED_CLIENT_IDS ?? "").split(","),
     process.env.AUTH_CLIENT_ID ?? "",
     process.env.IOS_OAUTH_CLIENT_ID ?? "",
+    process.env.APP_CLIP_OAUTH_CLIENT_ID ?? "",
   ].map((value) => value.trim()).filter(Boolean);
   if (ids.length === 0) throw new ApiError(503, "AUTH_NOT_CONFIGURED", "No allowed OAuth client IDs are configured");
   return { issuer: normalizeIssuer(issuer), allowedClientIds: new Set(ids) };

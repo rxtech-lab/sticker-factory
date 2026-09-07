@@ -19,6 +19,7 @@ final class AppEnvironment {
     /// banner. Held here rather than in a view so it survives whichever screen happens to be up;
     /// `StickerFactoryTabView` consumes it and clears it.
     var pendingStickerID: String?
+    var pendingShareRoute: StickerShareRoute?
     /// Strong-held: `UNUserNotificationCenter` keeps only a weak reference to its delegate.
     @ObservationIgnored private let notifier: GenerationNotifier?
 
@@ -166,6 +167,7 @@ final class AppEnvironment {
     /// which uses the same custom scheme — are deliberately ignored here and remain owned by the
     /// authentication library.
     func handleIncomingURL(_ url: URL) {
+        if let route = StickerShareRoute(url: url) { pendingShareRoute = route; return }
         guard let stickerID = StickerDeepLink.stickerID(from: url) else { return }
         pendingStickerID = stickerID
     }
