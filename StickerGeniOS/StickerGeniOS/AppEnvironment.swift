@@ -158,6 +158,7 @@ final class AppEnvironment {
     }
 
     func authenticationCompleted() {
+        AppTelemetry.event("login", parameters: ["method": "rxlab"])
         synchronizeAuthenticationState()
         Task { await store.refresh() }
         bindSubscription()
@@ -167,8 +168,12 @@ final class AppEnvironment {
     /// which uses the same custom scheme — are deliberately ignored here and remain owned by the
     /// authentication library.
     func handleIncomingURL(_ url: URL) {
-        if let route = StickerShareRoute(url: url) { pendingShareRoute = route; return }
+        if let route = StickerShareRoute(url: url) {
+            AppTelemetry.event("deep_link_opened", parameters: ["destination": "shared_content"])
+            pendingShareRoute = route; return
+        }
         guard let stickerID = StickerDeepLink.stickerID(from: url) else { return }
+        AppTelemetry.event("deep_link_opened", parameters: ["destination": "sticker"])
         pendingStickerID = stickerID
     }
 
@@ -206,6 +211,7 @@ final class AppEnvironment {
     }
 
     func signOut() async {
+        AppTelemetry.event("logout")
         await PushDeviceRegistry.shared.signedOut()
         try? await tokenBroker.logout()
         await authManager.logout()

@@ -4,6 +4,8 @@
 .winky-home h1 { font-size: clamp(3.6rem, 7.4vw, 6.2rem); }
 .winky-home .hero-actions { gap: 14px; }
 .winky-home .hero-actions a { font-size: 13px; padding-inline: 18px; }
+.winky-app-store-badge { display: block; width: fit-content; margin: 24px 15px 0; }
+.winky-app-store-badge img { display: block; width: auto; height: 60px; }
 .winky-device-note { font-size: 13px; color: var(--muted); margin: 26px 0 12px; }
 .platform-pills, .motion-formats { display: flex; flex-wrap: wrap; gap: 8px; }
 .platform-pills span, .motion-formats span { border: 1.5px solid currentColor; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; }

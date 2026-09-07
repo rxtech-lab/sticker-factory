@@ -381,6 +381,7 @@ struct LibraryView: View {
         .task(id: searchText) {
             await store.searchLibrary(query: searchText)
         }
+        .telemetryScreen("library")
     }
 }
 

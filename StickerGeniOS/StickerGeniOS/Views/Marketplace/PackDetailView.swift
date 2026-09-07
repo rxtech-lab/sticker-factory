@@ -85,6 +85,7 @@ struct PackDetailView: View {
             }
         }
         .task(id: packID) { await store.loadDetail(packID: packID) }
+        .telemetryScreen("pack_detail")
     }
 
     // MARK: - Header

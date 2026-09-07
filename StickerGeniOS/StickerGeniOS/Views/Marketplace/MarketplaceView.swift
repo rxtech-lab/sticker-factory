@@ -55,6 +55,7 @@ struct MarketplaceView: View {
         NavigationStack(path: $path) {
             content
         }
+        .telemetryScreen("marketplace")
     }
 
     private var content: some View {

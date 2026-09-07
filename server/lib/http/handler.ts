@@ -1,3 +1,4 @@
+import { recordServerEvent } from "@/lib/analytics/server";
 import { assertAppClipRoute } from "@/lib/subscription/app-clip";
 import { requireApiPrincipal, type ApiPrincipal } from "@/lib/auth/bearer";
 import { getDatabase, type Database } from "@/lib/db/client";
@@ -56,6 +57,8 @@ export async function withApiAuth(
         request: apiRequestMetadata(request, principal),
         ...(failureStage ? { failureStage, error: apiFailureDetails(failure) } : {}),
       };
+      recordServerEvent("api_request", { path: context.path, method: context.method, status, durationMs: entry.durationMs });
+      if (status >= 500) recordServerEvent("server_error", { path: context.path, method: context.method, status });
       const line = `[api] ${JSON.stringify(entry)}`;
       if (status >= 500) console.error(line);
       else if (status >= 400) console.warn(line);

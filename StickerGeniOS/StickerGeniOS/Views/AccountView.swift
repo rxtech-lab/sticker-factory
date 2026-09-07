@@ -148,6 +148,7 @@ struct AccountView: View {
         } message: {
             Text("Shared credentials and cached iMessage stickers will be removed from this device.")
         }
+        .telemetryScreen("account")
     }
 }
 

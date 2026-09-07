@@ -342,6 +342,7 @@ struct StickerChatView: View {
         } message: {
             Text("Deletion starts a durable purge of the private source images, transcript, revisions, and exports.")
         }
+        .telemetryScreen("sticker_chat")
     }
 
     // MARK: - Transcript

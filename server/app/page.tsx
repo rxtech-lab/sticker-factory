@@ -20,6 +20,7 @@ export default async function Home() {
   const session = await getHealthyWebSession();
   const primaryHref = session?.user ? "/library" : "/login";
   const primaryLabel = session?.user ? "Open your library" : "Sign in to your library";
+  const appStoreUrl = process.env.APP_STORE_URL?.trim();
 
   return (
     <main className="landing winky-home">
@@ -34,6 +35,11 @@ export default async function Home() {
               <Link className="pill-button" href={primaryHref}>{primaryLabel}</Link>
               <a className="secondary-button" href="#how-it-works">Meet your sticker maker <span aria-hidden="true">↗</span></a>
             </div>
+            {appStoreUrl && (
+              <a className="winky-app-store-badge" href={appStoreUrl}>
+                <Image src="/images/home/download-on-the-app-store.svg" alt="Download on the App Store" width={180} height={60} unoptimized />
+              </a>
+            )}
             <p className="winky-device-note">Made on iPhone &amp; iPad. Shared everywhere you chat.</p>
             <div className="platform-pills" aria-label="Supported messaging apps"><span>WhatsApp</span><span>Telegram</span><span>iMessage</span></div>
           </div>

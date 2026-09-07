@@ -282,9 +282,11 @@ final class SubscriptionStore {
 
     /// Restores App Store purchases and reloads. Surfaced in Account, where App Review looks for it.
     func restorePurchases() async throws {
-        guard let client else { return }
-        _ = try await client.restoreApplePurchases()
-        refresh()
+        return try await AppTelemetry.measure(.restorePurchases) {
+            guard let client else { return }
+            _ = try await client.restoreApplePurchases()
+            refresh()
+        }
     }
 
     /// Drops everything on sign-out.
@@ -316,6 +318,9 @@ final class SubscriptionStore {
             // subscriber; refresh so the rest of the UI converges on the newest backend state.
             refresh()
             return
+        }
+        if !isPaywallPresented {
+            AppTelemetry.event("paywall_viewed", parameters: ["reason": refusal == nil ? "user" : "refusal"])
         }
         pendingRefusal = refusal
         isPaywallPresented = true
