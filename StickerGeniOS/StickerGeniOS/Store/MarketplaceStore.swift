@@ -145,6 +145,9 @@ final class MarketplaceStore {
             nextCursor = Self.usableCursor(browsed.nextCursor)
             myPacks = owned.items
             nextMyPacksCursor = Self.usableCursor(owned.nextCursor)
+            if !key.query.isEmpty {
+                AppTelemetry.event("search_completed", parameters: ["surface": "marketplace", "result_count": browsed.items.count])
+            }
             appliedQuery = key.query
             errorMessage = nil
         } catch {
@@ -242,9 +245,11 @@ final class MarketplaceStore {
             // The response carries no count on purpose (it can be replayed for 24 hours), so the
             // authoritative number comes from a refetch.
             await loadDetail(packID: packID)
+            AppTelemetry.event(installed ? "pack_installed" : "pack_uninstalled")
             await onInstallsChanged?()
             await publishSectionAllowlist()
         } catch {
+            AppTelemetry.failure(error, operation: installed ? "install_pack" : "uninstall_pack")
             restore(rollback, packID: packID)
             guard !StickerStore.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
@@ -254,14 +259,16 @@ final class MarketplaceStore {
     // MARK: - Authoring
 
     func createPack(title: String, summary: String?, stickerIDs: [String]) async throws -> StickerPackDetail {
-        let detail = try await api.createPack(
-            .init(title: title, summary: summary, stickerIds: stickerIDs),
-            idempotencyKey: UUID().uuidString
-        )
-        apply(detail)
-        myPacks.removeAll { $0.id == detail.id }
-        myPacks.insert(detail.pack, at: 0)
-        return detail
+        return try await AppTelemetry.measure(.createPack) {
+            let detail = try await api.createPack(
+                .init(title: title, summary: summary, stickerIds: stickerIDs),
+                idempotencyKey: UUID().uuidString
+            )
+            apply(detail)
+            myPacks.removeAll { $0.id == detail.id }
+            myPacks.insert(detail.pack, at: 0)
+            return detail
+        }
     }
 
     /// Writes a freshly bound sticker into every pack that lists it.
@@ -283,33 +290,43 @@ final class MarketplaceStore {
     /// `summary: nil` clears the description rather than leaving it alone — the request encodes it
     /// explicitly for exactly that reason.
     func updateDetails(packID: String, title: String, summary: String?) async throws {
-        apply(try await api.updatePack(
-            id: packID,
-            request: .init(title: title, summary: summary),
-            idempotencyKey: UUID().uuidString
-        ))
+        return try await AppTelemetry.measure(.updatePack) {
+            apply(try await api.updatePack(
+                id: packID,
+                request: .init(title: title, summary: summary),
+                idempotencyKey: UUID().uuidString
+            ))
+        }
     }
 
     func setItems(packID: String, stickerIDs: [String]) async throws {
-        apply(try await api.setPackItems(id: packID, stickerIDs: stickerIDs, idempotencyKey: UUID().uuidString))
+        return try await AppTelemetry.measure(.setPackItems) {
+            apply(try await api.setPackItems(id: packID, stickerIDs: stickerIDs, idempotencyKey: UUID().uuidString))
+        }
     }
 
     func publish(packID: String) async throws {
-        apply(try await api.publishPack(id: packID, idempotencyKey: UUID().uuidString))
-        await refresh()
+        return try await AppTelemetry.measure(.publishPack) {
+            apply(try await api.publishPack(id: packID, idempotencyKey: UUID().uuidString))
+            await refresh()
+        }
     }
 
     func unpublish(packID: String) async throws {
-        apply(try await api.unpublishPack(id: packID, state: .draft, idempotencyKey: UUID().uuidString))
-        await refresh()
+        return try await AppTelemetry.measure(.unpublishPack) {
+            apply(try await api.unpublishPack(id: packID, state: .draft, idempotencyKey: UUID().uuidString))
+            await refresh()
+        }
     }
 
     func deletePack(packID: String) async throws {
-        _ = try await api.deletePack(id: packID, idempotencyKey: UUID().uuidString)
-        details[packID] = nil
-        packs.removeAll { $0.id == packID }
-        myPacks.removeAll { $0.id == packID }
-        await onInstallsChanged?()
+        return try await AppTelemetry.measure(.deletePack) {
+            _ = try await api.deletePack(id: packID, idempotencyKey: UUID().uuidString)
+            details[packID] = nil
+            packs.removeAll { $0.id == packID }
+            myPacks.removeAll { $0.id == packID }
+            await onInstallsChanged?()
+        }
     }
 
     /// Tells the Messages extension which sections still belong to this user.

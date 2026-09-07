@@ -76,6 +76,8 @@ final class StickerStore {
     @ObservationIgnored private var observationGenerations: [String: Int] = [:]
     @ObservationIgnored private var pollers: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var reattachAttempts: [String: Int] = [:]
+    /// A candidate is not the final result; streams can replay terminal events on reconnect.
+    @ObservationIgnored private var reportedGenerationJobs: Set<String> = []
 
     /// The in-flight full-library reload, if any. Launch drives `refresh()` from two places —
     /// `AppEnvironment.start()` and `LibraryView`'s appearance task — and the library is still
@@ -107,6 +109,7 @@ final class StickerStore {
         observationGenerations = [:]
         pollers = [:]
         reattachAttempts = [:]
+        reportedGenerationJobs = []
         stickers = []
         details = [:]
         messages = [:]
@@ -217,6 +220,7 @@ final class StickerStore {
             let (owned, sectionResponse) = try await (ownedRequest, sectionsRequest)
             guard generation == librarySearchGeneration, activeLibrarySearchQuery == query else { return }
             var seenIDs = Set<String>()
+            AppTelemetry.event("search_completed", parameters: ["surface": "library", "result_count": owned.items.count])
             librarySearchResults = owned.items.filter { seenIDs.insert($0.id).inserted }
             librarySearchSections = sectionResponse.packSections
             nextLibrarySearchCursor = Self.usableCursor(owned.nextCursor)
@@ -283,18 +287,20 @@ final class StickerStore {
 
     @discardableResult
     func create(kind: StickerKind, prompt: String, references: [PendingMediaAttachment]) async throws -> Sticker {
-        let assetIDs = try await upload(references, stickerID: nil, kind: .reference)
-        let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
-        let response = try await api.createSticker(
-            .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs),
-            idempotencyKey: UUID().uuidString
-        )
-        let detail = try await api.sticker(id: response.stickerId)
-        stickers.removeAll { $0.id == detail.id }
-        stickers.insert(detail.sticker, at: 0)
-        reattachAttempts[detail.id] = 0
-        observe(jobID: response.job.id, stickerID: detail.id, sourceMessageID: response.initialMessageId)
-        return detail.sticker
+        return try await AppTelemetry.measure(.createSticker) {
+            let assetIDs = try await upload(references, stickerID: nil, kind: .reference)
+            let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
+            let response = try await api.createSticker(
+                .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs),
+                idempotencyKey: UUID().uuidString
+            )
+            let detail = try await api.sticker(id: response.stickerId)
+            stickers.removeAll { $0.id == detail.id }
+            stickers.insert(detail.sticker, at: 0)
+            reattachAttempts[detail.id] = 0
+            observe(jobID: response.job.id, stickerID: detail.id, sourceMessageID: response.initialMessageId)
+            return detail.sticker
+        }
     }
 
     /// Puts a picture the app is already holding into the sticker pack, published and ready to send.
@@ -311,37 +317,39 @@ final class StickerStore {
     /// - Returns: the new sticker, already in `stickers` so the library shows it without a reload.
     @discardableResult
     func addImageToStickerPack(_ image: UIImage, title: String) async throws -> Sticker {
-        guard let data = image.pngData() else { throw MediaNormalizationError.unreadableImage }
-        let attachment = try MediaNormalizer.reference(data: data, basename: "sticker-import")
-        let assetIDs = try await upload([attachment], stickerID: nil, kind: .reference)
-        guard let assetID = assetIDs.first else { throw MediaNormalizationError.unreadableImage }
+        return try await AppTelemetry.measure(.importSticker) {
+            guard let data = image.pngData() else { throw MediaNormalizationError.unreadableImage }
+            let attachment = try MediaNormalizer.reference(data: data, basename: "sticker-import")
+            let assetIDs = try await upload([attachment], stickerID: nil, kind: .reference)
+            guard let assetID = assetIDs.first else { throw MediaNormalizationError.unreadableImage }
 
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let response = try await api.importSticker(
-            .init(title: String((trimmed.isEmpty ? String(localized: "Sticker") : trimmed).prefix(64)), assetId: assetID),
-            idempotencyKey: UUID().uuidString
-        )
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let response = try await api.importSticker(
+                .init(title: String((trimmed.isEmpty ? String(localized: "Sticker") : trimmed).prefix(64)), assetId: assetID),
+                idempotencyKey: UUID().uuidString
+            )
 
-        let detail = try await api.sticker(id: response.stickerId)
-        guard let revision = detail.revisions.first(where: { $0.id == response.revisionId }) else {
-            throw StickerPublishError.importedRevisionUnavailable
+            let detail = try await api.sticker(id: response.stickerId)
+            guard let revision = detail.revisions.first(where: { $0.id == response.revisionId }) else {
+                throw StickerPublishError.importedRevisionUnavailable
+            }
+            // The image the renderer draws is the one the caller handed over, not a re-download of the
+            // asset that was just uploaded from it — the bytes are the same and the round trip is not.
+            // Sticker-only: a still has no video to encode, and nothing here is going to a share sheet.
+            let registered = try await StickerPublisher(api: api).publish(
+                stickerID: response.stickerId,
+                revision: revision,
+                assets: .init(images: [assetID: image]),
+                verifiedAssetIDs: [assetID],
+                selection: .sticker
+            )
+
+            let published = try await awaitPackPublish(stickerID: response.stickerId, jobID: registered.jobID)
+            stickers.removeAll { $0.id == published.id }
+            stickers.insert(published.sticker, at: 0)
+            details[published.id] = published
+            return published.sticker
         }
-        // The image the renderer draws is the one the caller handed over, not a re-download of the
-        // asset that was just uploaded from it — the bytes are the same and the round trip is not.
-        // Sticker-only: a still has no video to encode, and nothing here is going to a share sheet.
-        let registered = try await StickerPublisher(api: api).publish(
-            stickerID: response.stickerId,
-            revision: revision,
-            assets: .init(images: [assetID: image]),
-            verifiedAssetIDs: [assetID],
-            selection: .sticker
-        )
-
-        let published = try await awaitPackPublish(stickerID: response.stickerId, jobID: registered.jobID)
-        stickers.removeAll { $0.id == published.id }
-        stickers.insert(published.sticker, at: 0)
-        details[published.id] = published
-        return published.sticker
     }
 
     /// Waits for a registered export to actually land, and hands back the sticker once it has.
@@ -411,8 +419,10 @@ final class StickerStore {
             )
             absorb(detail: detail)
             errorMessage = nil
+            AppTelemetry.event("sticker_renamed")
             return true
         } catch {
+            AppTelemetry.failure(error, operation: "rename_sticker")
             guard !Self.isCancellation(error) else { return false }
             errorMessage = error.localizedDescription
             return false
@@ -470,61 +480,17 @@ final class StickerStore {
         imagePlacement: ImagePlacement = .replace,
         baseRevisionID: String? = nil
     ) async throws {
-        guard !computingStickerIDs.contains(stickerID) else { throw StickerStoreError.turnAlreadyComputing }
-        computingStickerIDs.insert(stickerID)
-        var startedObservation = false
-        defer { if !startedObservation { computingStickerIDs.remove(stickerID) } }
+        return try await AppTelemetry.measure(.sendMessage) {
+            guard !computingStickerIDs.contains(stickerID) else { throw StickerStoreError.turnAlreadyComputing }
+            computingStickerIDs.insert(stickerID)
+            var startedObservation = false
+            defer { if !startedObservation { computingStickerIDs.remove(stickerID) } }
 
-        let optimisticID = "local-\(UUID().uuidString)"
-        let optimisticSequence = nextLocalSequence(stickerID: stickerID)
-        let optimisticCreatedAt = Date()
-        messages[stickerID, default: []].append(.init(
-            id: optimisticID,
-            role: .user,
-            kind: intent == .animate ? .animation : intent == .edit ? .imageEdit : .text,
-            content: content,
-            targetLayerId: targetLayerID,
-            imagePlacement: imagePlacement,
-            baseRevisionId: baseRevisionID,
-            sequence: optimisticSequence,
-            revisionId: nil,
-            jobId: nil,
-            status: .streaming,
-            createdAt: optimisticCreatedAt,
-            attachments: []
-        ))
-
-        do {
-            let assets = try await upload(references, stickerID: stickerID, kind: .reference)
-            let maskAsset: String?
-            if let mask {
-                maskAsset = try await upload([mask], stickerID: stickerID, kind: .mask).first
-            } else {
-                maskAsset = nil
-            }
-            var attachmentRequests = assets.map { ChatAttachmentRequest(assetId: $0, kind: .reference, targetLayerId: targetLayerID) }
-            if let maskAsset { attachmentRequests.append(.init(assetId: maskAsset, kind: .mask, targetLayerId: targetLayerID)) }
-            let response: SendChatMessageResponse
-            do {
-                response = try await api.sendChatMessage(
-                    stickerID: stickerID,
-                    request: .init(
-                        text: content,
-                        intent: intent,
-                        attachments: attachmentRequests,
-                        targetLayerId: targetLayerID,
-                        imagePlacement: imagePlacement,
-                        baseRevisionId: baseRevisionID
-                    ),
-                    idempotencyKey: UUID().uuidString
-                )
-            } catch {
-                // Only this one call can leave a turn running on the server that the client never
-                // learned about, so it is the only place that has to report the ambiguity.
-                throw SendMessageFailure(underlying: error, mayHaveBeenDelivered: Self.mayHaveBeenDelivered(error))
-            }
-            let persisted = ChatMessage(
-                id: response.message.id,
+            let optimisticID = "local-\(UUID().uuidString)"
+            let optimisticSequence = nextLocalSequence(stickerID: stickerID)
+            let optimisticCreatedAt = Date()
+            messages[stickerID, default: []].append(.init(
+                id: optimisticID,
                 role: .user,
                 kind: intent == .animate ? .animation : intent == .edit ? .imageEdit : .text,
                 content: content,
@@ -533,28 +499,74 @@ final class StickerStore {
                 baseRevisionId: baseRevisionID,
                 sequence: optimisticSequence,
                 revisionId: nil,
-                jobId: response.job.id,
-                status: response.message.status,
+                jobId: nil,
+                status: .streaming,
                 createdAt: optimisticCreatedAt,
-                attachments: attachmentRequests.map { .init(assetId: $0.assetId, kind: $0.kind, targetLayerId: $0.targetLayerId) }
-            )
-            if messages[stickerID]?.contains(where: { $0.id == persisted.id }) == true {
-                // A transcript refresh can receive the saved row before this send returns.
-                // Keep its authoritative sequence, timestamp and status, and discard any local echo.
+                attachments: []
+            ))
+
+            do {
+                let assets = try await upload(references, stickerID: stickerID, kind: .reference)
+                let maskAsset: String?
+                if let mask {
+                    maskAsset = try await upload([mask], stickerID: stickerID, kind: .mask).first
+                } else {
+                    maskAsset = nil
+                }
+                var attachmentRequests = assets.map { ChatAttachmentRequest(assetId: $0, kind: .reference, targetLayerId: targetLayerID) }
+                if let maskAsset { attachmentRequests.append(.init(assetId: maskAsset, kind: .mask, targetLayerId: targetLayerID)) }
+                let response: SendChatMessageResponse
+                do {
+                    response = try await api.sendChatMessage(
+                        stickerID: stickerID,
+                        request: .init(
+                            text: content,
+                            intent: intent,
+                            attachments: attachmentRequests,
+                            targetLayerId: targetLayerID,
+                            imagePlacement: imagePlacement,
+                            baseRevisionId: baseRevisionID
+                        ),
+                        idempotencyKey: UUID().uuidString
+                    )
+                } catch {
+                    // Only this one call can leave a turn running on the server that the client never
+                    // learned about, so it is the only place that has to report the ambiguity.
+                    throw SendMessageFailure(underlying: error, mayHaveBeenDelivered: Self.mayHaveBeenDelivered(error))
+                }
+                let persisted = ChatMessage(
+                    id: response.message.id,
+                    role: .user,
+                    kind: intent == .animate ? .animation : intent == .edit ? .imageEdit : .text,
+                    content: content,
+                    targetLayerId: targetLayerID,
+                    imagePlacement: imagePlacement,
+                    baseRevisionId: baseRevisionID,
+                    sequence: optimisticSequence,
+                    revisionId: nil,
+                    jobId: response.job.id,
+                    status: response.message.status,
+                    createdAt: optimisticCreatedAt,
+                    attachments: attachmentRequests.map { .init(assetId: $0.assetId, kind: $0.kind, targetLayerId: $0.targetLayerId) }
+                )
+                if messages[stickerID]?.contains(where: { $0.id == persisted.id }) == true {
+                    // A transcript refresh can receive the saved row before this send returns.
+                    // Keep its authoritative sequence, timestamp and status, and discard any local echo.
+                    messages[stickerID]?.removeAll { $0.id == optimisticID }
+                } else if let index = messages[stickerID]?.firstIndex(where: { $0.id == optimisticID }) {
+                    messages[stickerID]?[index] = persisted
+                } else {
+                    messages[stickerID, default: []].append(persisted)
+                }
+                reattachAttempts[stickerID] = 0
+                observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id)
+                // Only hand `computingStickerIDs` over to the stream if one is actually running,
+                // otherwise the composer would stay disabled with nothing driving it.
+                startedObservation = observations[stickerID] != nil
+            } catch {
                 messages[stickerID]?.removeAll { $0.id == optimisticID }
-            } else if let index = messages[stickerID]?.firstIndex(where: { $0.id == optimisticID }) {
-                messages[stickerID]?[index] = persisted
-            } else {
-                messages[stickerID, default: []].append(persisted)
+                throw error
             }
-            reattachAttempts[stickerID] = 0
-            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id)
-            // Only hand `computingStickerIDs` over to the stream if one is actually running,
-            // otherwise the composer would stay disabled with nothing driving it.
-            startedObservation = observations[stickerID] != nil
-        } catch {
-            messages[stickerID]?.removeAll { $0.id == optimisticID }
-            throw error
         }
     }
 
@@ -570,84 +582,92 @@ final class StickerStore {
     }
 
     func retryFailedMessage(stickerID: String) async throws {
-        guard let state = jobs[stickerID], state.isFailed, let sourceMessageID = state.sourceMessageID else {
-            throw StickerStoreError.noRetryableTurn
+        return try await AppTelemetry.measure(.retryMessage) {
+            guard let state = jobs[stickerID], state.isFailed, let sourceMessageID = state.sourceMessageID else {
+                throw StickerStoreError.noRetryableTurn
+            }
+            let response = try await api.retryChatMessage(
+                stickerID: stickerID,
+                messageID: sourceMessageID,
+                idempotencyKey: UUID().uuidString
+            )
+            if let index = messages[stickerID]?.firstIndex(where: { $0.id == response.messageId }) {
+                messages[stickerID]?[index].status = .streaming
+                messages[stickerID]?[index].jobId = response.job.id
+            }
+            reattachAttempts[stickerID] = 0
+            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.messageId, force: true)
         }
-        let response = try await api.retryChatMessage(
-            stickerID: stickerID,
-            messageID: sourceMessageID,
-            idempotencyKey: UUID().uuidString
-        )
-        if let index = messages[stickerID]?.firstIndex(where: { $0.id == response.messageId }) {
-            messages[stickerID]?[index].status = .streaming
-            messages[stickerID]?[index].jobId = response.job.id
-        }
-        reattachAttempts[stickerID] = 0
-        observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.messageId, force: true)
     }
 
     /// Starts generating a proposed composition plan.
     ///
     /// The plan already lives on the server, so this carries no payload — it is a bare "go".
     func confirmPlan(stickerID: String, planID: String) async throws {
-        guard !computingStickerIDs.contains(stickerID) else { throw StickerStoreError.turnAlreadyComputing }
-        let response = try await api.confirmPlan(
-            stickerID: stickerID,
-            planID: planID,
-            idempotencyKey: UUID().uuidString
-        )
-        // Attach before reloading the transcript, not after: the reload sees a user message that is
-        // already streaming and would otherwise open its own stream for the same job, which this
-        // call would then immediately supersede.
-        reattachAttempts[stickerID] = 0
-        observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, force: true)
-        await loadMessages(stickerID: stickerID)
+        return try await AppTelemetry.measure(.confirmPlan) {
+            guard !computingStickerIDs.contains(stickerID) else { throw StickerStoreError.turnAlreadyComputing }
+            let response = try await api.confirmPlan(
+                stickerID: stickerID,
+                planID: planID,
+                idempotencyKey: UUID().uuidString
+            )
+            // Attach before reloading the transcript, not after: the reload sees a user message that is
+            // already streaming and would otherwise open its own stream for the same job, which this
+            // call would then immediately supersede.
+            reattachAttempts[stickerID] = 0
+            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, force: true)
+            await loadMessages(stickerID: stickerID)
+        }
     }
 
     /// Rejects a plan. The reason is optional but worth asking for: given one, the server keeps the
     /// conversation going — it posts the reason as the next message and the agent redrafts against
     /// it, which is why this attaches to the turn that comes back.
     func cancelPlan(stickerID: String, planID: String, reason: String? = nil) async throws {
-        // A reason starts a turn, and the server allows only one at a time. Say so here rather than
-        // letting it come back as a 409 that would also have thrown the plan away.
-        let hasReason = !(reason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-        if hasReason, computingStickerIDs.contains(stickerID) { throw StickerStoreError.turnAlreadyComputing }
-        let response = try await api.cancelPlan(
-            stickerID: stickerID,
-            planID: planID,
-            reason: reason,
-            idempotencyKey: UUID().uuidString
-        )
-        // Attached before the transcript reload for the same reason as `confirmPlan`: the reload
-        // would otherwise see a streaming user message and open a second stream for one job.
-        if let job = response.job, let message = response.message {
-            reattachAttempts[stickerID] = 0
-            observe(jobID: job.id, stickerID: stickerID, sourceMessageID: message.id, force: true)
+        return try await AppTelemetry.measure(.cancelPlan) {
+            // A reason starts a turn, and the server allows only one at a time. Say so here rather than
+            // letting it come back as a 409 that would also have thrown the plan away.
+            let hasReason = !(reason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            if hasReason, computingStickerIDs.contains(stickerID) { throw StickerStoreError.turnAlreadyComputing }
+            let response = try await api.cancelPlan(
+                stickerID: stickerID,
+                planID: planID,
+                reason: reason,
+                idempotencyKey: UUID().uuidString
+            )
+            // Attached before the transcript reload for the same reason as `confirmPlan`: the reload
+            // would otherwise see a streaming user message and open a second stream for one job.
+            if let job = response.job, let message = response.message {
+                reattachAttempts[stickerID] = 0
+                observe(jobID: job.id, stickerID: stickerID, sourceMessageID: message.id, force: true)
+            }
+            await loadMessages(stickerID: stickerID)
         }
-        await loadMessages(stickerID: stickerID)
     }
 
     func stopGeneration(stickerID: String) async throws {
-        guard let state = jobs[stickerID], computingStickerIDs.contains(stickerID) else { return }
-        guard !stoppingStickerIDs.contains(stickerID) else { return }
-        stoppingStickerIDs.insert(stickerID)
-        defer { stoppingStickerIDs.remove(stickerID) }
+        return try await AppTelemetry.measure(.stopGeneration) {
+            guard let state = jobs[stickerID], computingStickerIDs.contains(stickerID) else { return }
+            guard !stoppingStickerIDs.contains(stickerID) else { return }
+            stoppingStickerIDs.insert(stickerID)
+            defer { stoppingStickerIDs.remove(stickerID) }
 
-        let response = try await api.cancelGeneration(jobID: state.jobID, idempotencyKey: UUID().uuidString)
-        observations[stickerID]?.cancel()
-        observations[stickerID] = nil
-        var stopped = jobs[stickerID] ?? state
-        stopped.message = response.state == .cancelled ? String(localized: "Stopped") : stopped.message
-        stopped.progress = response.state == .cancelled ? 1 : stopped.progress
-        stopped.isTerminal = true
-        stopped.isFailed = response.state == .failed
-        jobs[stickerID] = stopped
-        streamingDocuments[stickerID] = nil
-        computingStickerIDs.remove(stickerID)
-        if response.state == .cancelled {
-            markStreamingTools(stickerID: stickerID, jobID: state.jobID, status: .failed)
+            let response = try await api.cancelGeneration(jobID: state.jobID, idempotencyKey: UUID().uuidString)
+            observations[stickerID]?.cancel()
+            observations[stickerID] = nil
+            var stopped = jobs[stickerID] ?? state
+            stopped.message = response.state == .cancelled ? String(localized: "Stopped") : stopped.message
+            stopped.progress = response.state == .cancelled ? 1 : stopped.progress
+            stopped.isTerminal = true
+            stopped.isFailed = response.state == .failed
+            jobs[stickerID] = stopped
+            streamingDocuments[stickerID] = nil
+            computingStickerIDs.remove(stickerID)
+            if response.state == .cancelled {
+                markStreamingTools(stickerID: stickerID, jobID: state.jobID, status: .failed)
+            }
+            await loadMessages(stickerID: stickerID)
         }
-        await loadMessages(stickerID: stickerID)
     }
 
     /// Saves a document edited on device as a new revision.
@@ -662,36 +682,40 @@ final class StickerStore {
         document: AnimatedDocument,
         note: String? = nil
     ) async throws -> SaveEditedDocumentResponse {
-        let response = try await api.saveEditedDocument(
-            stickerID: stickerID,
-            request: .init(parentRevisionId: parentRevisionID, document: document, note: note),
-            // A fresh key per attempt, not per session: the server hashes the whole body against
-            // it, so reusing one for a changed document is a conflict rather than a save.
-            idempotencyKey: UUID().uuidString
-        )
-        details[stickerID] = try await api.sticker(id: stickerID)
-        // The edit shows up in the transcript as its own message, and it retires any candidate it
-        // moved past, so both have to be re-read rather than patched locally.
-        streamingDocuments[stickerID] = nil
-        await loadMessages(stickerID: stickerID)
-        await refresh()
-        return response
-    }
-
-    func transition(stickerID: String, revisionID: String, action: RevisionAction) async throws {
-        do {
-            _ = try await api.transitionRevision(
+        return try await AppTelemetry.measure(.saveDocument) {
+            let response = try await api.saveEditedDocument(
                 stickerID: stickerID,
-                revisionID: revisionID,
-                action: action,
+                request: .init(parentRevisionId: parentRevisionID, document: document, note: note),
+                // A fresh key per attempt, not per session: the server hashes the whole body against
+                // it, so reusing one for a changed document is a conflict rather than a save.
                 idempotencyKey: UUID().uuidString
             )
             details[stickerID] = try await api.sticker(id: stickerID)
+            // The edit shows up in the transcript as its own message, and it retires any candidate it
+            // moved past, so both have to be re-read rather than patched locally.
             streamingDocuments[stickerID] = nil
+            await loadMessages(stickerID: stickerID)
             await refresh()
-        } catch {
-            errorMessage = error.localizedDescription
-            throw error
+            return response
+        }
+    }
+
+    func transition(stickerID: String, revisionID: String, action: RevisionAction) async throws {
+        return try await AppTelemetry.measure(.revisionAction) {
+            do {
+                _ = try await api.transitionRevision(
+                    stickerID: stickerID,
+                    revisionID: revisionID,
+                    action: action,
+                    idempotencyKey: UUID().uuidString
+                )
+                details[stickerID] = try await api.sticker(id: stickerID)
+                streamingDocuments[stickerID] = nil
+                await refresh()
+            } catch {
+                errorMessage = error.localizedDescription
+                throw error
+            }
         }
     }
 
@@ -713,8 +737,10 @@ final class StickerStore {
             details[stickerID] = nil
             messages[stickerID] = nil
             computingStickerIDs.remove(stickerID)
+            AppTelemetry.event("sticker_deleted")
             return true
         } catch {
+            AppTelemetry.failure(error, operation: "delete_sticker")
             errorMessage = error.localizedDescription
             return false
         }
@@ -827,6 +853,12 @@ final class StickerStore {
     /// Applies one event. Deliberately non-throwing: a payload this client cannot use must never
     /// end the stream, because the terminal event is what tells the chat the turn is over.
     private func apply(event: GenerationEvent, stickerID: String, jobID: String) async {
+        if (event.type == .completed || event.type == .failed),
+           reportedGenerationJobs.insert(jobID).inserted {
+            AppTelemetry.event("generation_result", parameters: [
+                "result": event.data.cancelled == true ? "cancelled" : event.type.rawValue
+            ])
+        }
         var state = jobs[stickerID] ?? .init(jobID: jobID)
         state.progress = event.data.progress ?? state.progress
         state.message = event.data.message ?? state.message

@@ -29,6 +29,7 @@ struct ContentView: View {
                     onAuthSuccess: { environment.authenticationCompleted() }
                 )
                 .accessibilityIdentifier("rxauth-sign-in")
+                .telemetryScreen("sign_in")
             case .signedIn:
                 StickerFactoryTabView(environment: environment)
             }
@@ -103,6 +104,9 @@ struct StickerFactoryTabView: View {
         }
         .tint(AppColors.accent)
         .accessibilityIdentifier("sticker-factory-tabs")
+        .onChange(of: selection) { _, tab in
+            AppTelemetry.event("tab_selected", parameters: ["tab": ["library", "marketplace", "account"][tab]])
+        }
         .sheet(isPresented: $showingQuickMode) {
             NavigationStack {
                 QuickModeView(model: QuickModeModel(baseURL: environment.configuration.apiBaseURL, appClip: false) { force in
@@ -126,6 +130,7 @@ struct StickerFactoryTabView: View {
             LaunchFlowView(
                 steps: flow.steps,
                 onWelcomeSeen: {
+                    AppTelemetry.event("tutorial_complete")
                     hasSeenWelcome = true
                     StickerOnboardingTips.setWelcomeCompleted(true)
                 },

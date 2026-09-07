@@ -224,6 +224,7 @@ final class StickerExportModel {
         assets: StickerRenderAssets,
         verifiedAssetIDs: Set<String>
     ) async {
+        AppTelemetry.event("export_started")
         isPublishing = true
         // A run started anywhere else — a test, or a retry that skipped the sheet — opens its own
         // timeline rather than reporting into the finished one still on screen.
@@ -278,8 +279,10 @@ final class StickerExportModel {
             errorMessage = nil
             // A local export is over. A publish is not: the timeline's last step stays running
             // until the job the server handed back reports how it ended — see `apply(publishJob:)`.
+            AppTelemetry.event(publishJobID == nil ? "export_completed" : "publish_submitted", parameters: ["file_count": exports.count])
             if publishJobID == nil { progress.succeed() }
         } catch {
+            AppTelemetry.failure(error, operation: "export_sticker")
             // A cancelled run is not a failed one, and it has nothing to say in a banner. The check
             // covers both shapes cancellation arrives in: `CancellationError` from the render
             // loops, and `URLError.cancelled` from an upload that was already in flight.

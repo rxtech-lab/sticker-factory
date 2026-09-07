@@ -1,3 +1,4 @@
+import { recordServerEvent } from "@/lib/analytics/server";
 import { ZodError } from "zod";
 import type { ApiPrincipal } from "@/lib/auth/bearer";
 import { ApiError } from "@/lib/http/errors";
@@ -103,6 +104,7 @@ export function createApiRequestLogContext(request: Request, requestId: string):
     method,
     path,
     log(event, fields = {}) {
+      recordServerEvent("server_log", { path, method, logCode: event });
       console.log(`[api:event] ${JSON.stringify({
         requestId,
         method,

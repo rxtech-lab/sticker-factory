@@ -31,6 +31,8 @@ bun run dev
 
 For a local AI-free environment, set `STICKER_FACTORY_MOCK_SERVICES=true`; jobs still run through the local Vercel Workflow runtime. Never enable mock services in production. Missing OAuth, AI, database, or R2 secrets do not prevent a production build; the corresponding runtime operation returns a configuration error.
 
+Set `APP_STORE_URL=https://apps.apple.com/app/id6805825708` to show the home page's App Store download badge. Leave it unset or blank to hide the badge. The unmodified SVG in `public/images/home/download-on-the-app-store.svg` comes from [Apple's official badge artwork](https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg).
+
 Production needs separate RxLab OAuth clients:
 
 - confidential web client for `@rxtech-lab/authjs-rxlab@1.6.1`, including the registered Auth.js callback;
@@ -187,3 +189,43 @@ API specs are grouped by authentication, packs, validation, chat, devices, and s
 PGlite runs the production migration journal in a freshly reset, guarded temporary directory. Workflow data lives under that directory, and `.next-e2e` isolates the test build from a running development server. The E2E environment clears subscription credentials so a local `.env` cannot enable real billing during tests. The token issuer and mock model fixtures live under `e2e/support`; E2E seed and mock selection remain disabled in production.
 
 Real OAuth, Neon/R2, AI Gateway, Workflow observation, and Messages/iOS device behavior remain staging/device checks because they require provisioned external credentials and Apple capabilities.
+
+### Google Analytics / Firebase
+
+Copy the Firebase variables from `analytics.env.example` into `.env.local` or the deployment environment.
+Set `NEXT_PUBLIC_ANALYTICS_ENABLED=true` before building to enable browser analytics. Public
+variables are embedded at build time, so rebuild after changing them. Local and preview builds
+should leave analytics disabled unless testing against a separate GA4 property.
+
+In GA4 Admin → Data streams → the web stream `G-65JFHT2E48`, **turn off Enhanced measurement**.
+The app sends its own page views on initial load and completed pathname changes; automatic
+history tracking would duplicate them and automatic URL/form collection could include private
+values. Query-only and hash-only changes do not count as new page views. Page locations/titles
+use masked route paths; queries, fragments, referrers, IDs, handles, and message content are omitted.
+Google's SDK still manages anonymous browser/session identifiers for user and engagement analytics.
+
+Browser events: `page_view`, `web_error` (runtime errors, rejected promises, React boundaries),
+and `web_log` (console log/info/warn/error severity counts, **not message text**). Error/log events
+are capped at 30 per minute per page instance. Unsupported browsers or SDK failures skip reporting.
+
+For server reporting, create a **Measurement Protocol API secret** in that same web stream and set
+`GOOGLE_ANALYTICS_API_SECRET` and `GOOGLE_ANALYTICS_SERVER_ENABLED=true`. The Firebase web API key
+is public configuration and cannot replace this secret. Server analytics runs independently of
+the browser enable switch. `withApiAuth` records `api_request` with status/duration and `server_error`
+for 5xx responses; its structured lifecycle logs emit `server_log`. Next.js instrumentation also
+reports uncaught route, render, and action errors. Background workflow logs and arbitrary server
+console calls remain in the hosting logs and are not automatically forwarded.
+
+Server requests are sent after the response, with a two-second delivery timeout; reporting failure
+never changes the application response. Operational events use the synthetic `server.operations`
+client identity and `source=server`, not an authenticated user's identity. Filter `source=web` for
+website user reports; server events are not attributed to browser sessions. GA4 is used for event
+counts/trends, while existing server logs retain diagnostic detail. No raw error messages, stacks,
+request bodies, credentials, or user IDs are sent by these event helpers.
+
+Register event-scoped custom dimensions for `source`, `route`, `method`, `status_code`, `log_code`,
+`log_level`, `error_kind`, and `error_type`, and a custom metric for `duration_ms` if needed in reports.
+Verify browser events in GA4 Realtime after deployment. Server events may appear in standard reports
+later; successful Measurement Protocol HTTP responses do not guarantee event validation. Use Google's
+[validation endpoint](https://developers.google.com/analytics/devguides/collection/protocol/ga4/validating-events)
+with a test property for payload diagnostics. No live GA delivery is exercised by the unit tests.

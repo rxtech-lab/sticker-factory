@@ -181,6 +181,7 @@ struct CreateStickerView: View {
         .navigationTitle("Create")
         .onChange(of: pickerItems) { _, newItems in Task { await loadReferences(newItems) } }
         .subjectLiftSheet(pending: $pendingLift, references: $references, basename: "capture")
+        .telemetryScreen("create_sticker")
     }
 
     /// Picking a photo attaches it. Nothing else.

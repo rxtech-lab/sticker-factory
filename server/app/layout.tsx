@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { WebAnalytics } from "@/components/web-analytics";
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
@@ -23,6 +25,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
       <body>
+        <Suspense fallback={null}><WebAnalytics /></Suspense>
         <SiteHeader />
         {children}
         <footer className="site-footer">
