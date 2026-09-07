@@ -1411,8 +1411,12 @@ private struct StickerAttachment: View {
             StickerPlayer(document: document, assets: assets, videos: videos, repeats: true)
                 .padding(10)
         }
-        .frame(maxWidth: 240)
+        // Square first, then capped: a list row proposes no height, and `aspectRatio` fills a
+        // missing dimension from the other one. Capping the width before the ratio is applied
+        // keeps the tile at most 240 tall; capping it after let the ratio see the row's full
+        // width first, which on iPad reserved a screen-tall column for a 240pt sticker.
         .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: 240)
         .posterSurface(cornerRadius: Poster.tileRadius, fill: AppColors.paper, offset: Poster.smallShadow)
         .padding(.trailing, Poster.smallShadow.width)
         .padding(.bottom, Poster.smallShadow.height)
