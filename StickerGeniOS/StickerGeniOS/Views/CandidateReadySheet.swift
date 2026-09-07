@@ -107,7 +107,7 @@ private extension CandidateReadySheet {
                     "Continue with this sticker",
                     systemImage: "checkmark.circle",
                     spinning: pending == .accept,
-                    spinnerTint: AppColors.card
+                    spinnerTint: AppColors.ink
                 )
             }
             .buttonStyle(.poster)
@@ -132,7 +132,7 @@ private extension CandidateReadySheet {
                     "Reject",
                     systemImage: nil,
                     spinning: pending == .reject,
-                    spinnerTint: AppColors.card
+                    spinnerTint: AppColors.ink
                 )
             }
             // Coral, not another cream button: turning the sticker down must not read as the

@@ -3,6 +3,7 @@ import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  distDir: process.env.STICKER_FACTORY_E2E === "true" ? ".next-e2e" : ".next",
   allowedDevOrigins: ["127.0.0.1"],
   /**
    * Both database drivers load their own non-JavaScript payload — PGlite a WebAssembly build of

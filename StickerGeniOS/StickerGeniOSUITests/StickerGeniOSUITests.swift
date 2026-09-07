@@ -18,6 +18,31 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testBalanceRefreshCancellationPreservesDataAndCanRefreshAgain() {
+        app.terminate()
+        app.launchArguments.append("--ui-balance-refresh")
+        app.launch()
+        let picker = element("credits-section-picker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 8))
+        picker.buttons["Balance"].tap()
+        let originalGrant = app.staticTexts["Refresh fixture grant 100"]
+        XCTAssertTrue(originalGrant.waitForExistence(timeout: 8))
+
+        let scroll = element("balance-scroll")
+        pullToRefresh(scroll)
+        // The second request returns URLSession's cancellation error for both endpoints.
+        XCTAssertFalse(app.staticTexts["cancelled"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["Something went wrong"].exists)
+        XCTAssertTrue(originalGrant.exists)
+
+        pullToRefresh(scroll)
+        XCTAssertTrue(app.staticTexts["Refresh fixture grant 250"].waitForExistence(timeout: 8))
+        XCTAssertFalse(originalGrant.exists)
+        XCTAssertTrue(app.staticTexts["250"].exists)
+        XCTAssertFalse(app.staticTexts["cancelled"].exists)
+    }
+
+    @MainActor
     func testAuthenticatedTabsAndLibraryAccessibility() {
         XCTAssertTrue(app.tabBars.buttons["Library"].isSelected)
         XCTAssertFalse(app.tabBars.buttons["Create"].exists)
@@ -378,6 +403,14 @@ final class StickerGeniOSUITests: XCTestCase {
         create.tap()
         XCTAssertTrue(app.navigationBars["Create"].waitForExistence(timeout: 3))
         XCTAssertTrue(element("dismiss-create-button").exists)
+    }
+
+    /// A flick from `swipeDown()` does not reliably travel far enough to trigger `.refreshable`;
+    /// a held drag past the threshold does.
+    private func pullToRefresh(_ scroll: XCUIElement) {
+        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+        start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .default, thenHoldForDuration: 0.3)
     }
 
     private func element(_ identifier: String) -> XCUIElement {

@@ -732,9 +732,9 @@ extension PosterSectionHeader where Trailing == EmptyView {
 /// A `Form` section title in the poster's uppercase label voice. The stock grey caption is the
 /// last thing on a settings screen that still reads as somebody else's design system.
 struct PosterListHeader: View {
-    let title: String
+    let title: LocalizedStringKey
 
-    init(_ title: String) { self.title = title }
+    init(_ title: LocalizedStringKey) { self.title = title }
 
     var body: some View {
         Text(title).posterLabelStyle(10, color: AppColors.muted)

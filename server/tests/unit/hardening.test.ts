@@ -9,6 +9,26 @@ import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation
 import { spliceApngControlChunks } from "@/tests/helpers/apng";
 
 describe("media and animation hardening", () => {
+  it("accepts WebP merged duplicate frames without relaxing its duration", async () => {
+    const document = StickerDocumentSchema.parse({
+      version: 2, kind: "animated", durationSeconds: 2, fps: 30, loop: "loop",
+      canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+      layers: [],
+    });
+    if (document.kind !== "animated") throw new Error("Expected animation");
+    const frames = Array.from({ length: 60 }, (_, i) => Buffer.alloc(16 * 16 * 4, i < 30 ? 100 : 200));
+    const raw = { width: 16, height: 16 * 60, channels: 4 as const, pageHeight: 16, pages: 60 };
+    const bytes = await sharp(Buffer.concat(frames), { raw }).webp({
+      lossless: true, delay: frames.map((_, i) => Math.round((i + 1) * 1000 / 30) - Math.round(i * 1000 / 30) + (i === 59 ? 600 : 0)),
+    }).toBuffer();
+    const inspection = await inspectImage(bytes);
+    expect(inspection.frameCount).toBeLessThan(60);
+    expect(inspection.durationSeconds).toBeCloseTo(2.6, 2);
+    const rendition = { ...inspection, kind: "webp" as const };
+    expect(() => validateAnimatedRenditionTiming(document, rendition)).not.toThrow();
+    expect(() => validateAnimatedRenditionTiming(document, { ...rendition, durationSeconds: 2 })).toThrow(/duration/);
+    expect(() => validateAnimatedRenditionTiming(document, { ...rendition, kind: "apng" })).toThrow(/FPS/);
+  });
   it("uses per-frame canvas height and verified timing for animated images", async () => {
     const gif = await sharp({
       create: { width: 64, height: 128, pageHeight: 64, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },

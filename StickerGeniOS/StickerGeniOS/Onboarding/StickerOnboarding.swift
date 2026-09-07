@@ -130,7 +130,7 @@ struct StickerWelcomeSheet: View {
                         withAnimation { index += 1 }
                     }
                 } label: {
-                    Text(isLastSlide ? "Get started" : "Next")
+                    Text(isLastSlide ? LocalizedStringKey("Get started") : LocalizedStringKey("Next"))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(isLastSlide ? .posterLime : .poster)

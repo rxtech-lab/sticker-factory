@@ -213,10 +213,6 @@ struct PackDetailView: View {
                 }
                 .buttonStyle(.poster)
                 .accessibilityIdentifier("pack-edit-button")
-
-                Text("Your own stickers are already in your library.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             } else if detail.installed {
                 // Already added: the way out stays available but does not compete with the grid,
                 // so it drops to plain glass while adding keeps the tinted, prominent treatment.
@@ -245,7 +241,9 @@ struct PackDetailView: View {
             } else {
                 Image(systemName: detail.installed ? "trash" : "plus")
             }
-            Text(detail.installed ? "Remove from library" : "Add to library")
+            Text(detail.installed
+                ? LocalizedStringKey("Remove from library")
+                : LocalizedStringKey("Add to library"))
         }
         .font(.headline)
         .frame(maxWidth: .infinity)

@@ -1329,7 +1329,7 @@ describe("durable sticker workflow", () => {
     await close();
   });
 
-  it("turns an image layer into a clip through create_video and keeps the layer it replaced", async () => {
+  it.each([false, true])("turns an image layer into a clip and keeps its artwork (direct chat tool: %s)", async (direct) => {
     const { db, close } = await createTestDatabase();
     const store = new MemoryObjectStore();
     setDatabaseForTests(db);
@@ -1344,7 +1344,9 @@ describe("durable sticker workflow", () => {
     let refusedSecondClip = "";
     setAiProviderForTests({
       ...unusedAiProvider,
-      routeChatTurn: mockProvider.routeChatTurn.bind(mockProvider),
+      routeChatTurn: direct
+        ? async (input) => ({ type: "generate_video", instruction: "slow 360° turntable rotation, one full turn", layerId: input.document!.layers[0].id, durationSeconds: 2 })
+        : mockProvider.routeChatTurn.bind(mockProvider),
       planSticker: mockProvider.planSticker.bind(mockProvider),
       generateConceptImage: mockProvider.generateConceptImage.bind(mockProvider),
       generateStickerImage: mockProvider.generateStickerImage.bind(mockProvider),
@@ -1365,6 +1367,7 @@ describe("durable sticker workflow", () => {
         return mockProvider.generateStickerVideo(input);
       },
       editSticker: async (input, session) => {
+        if (direct) throw new Error("Direct video generation must bypass the editing agent");
         const hero = input.document.layers[0];
         refusedUnknownLayer = await session
           .createVideoLayer({ layerId: "no_such_layer", motion: "turn around", durationSeconds: 2 })
@@ -1412,8 +1415,10 @@ describe("durable sticker workflow", () => {
       keyColor: "green",
       backdropOpaque: true,
     }]);
-    expect(refusedUnknownLayer).toMatch(/Unknown layer no_such_layer/);
-    expect(refusedSecondClip).toMatch(/already made a clip/);
+    if (!direct) {
+      expect(refusedUnknownLayer).toMatch(/Unknown layer no_such_layer/);
+      expect(refusedSecondClip).toMatch(/already made a clip/);
+    }
 
     const clip = (await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId)))
       .find((asset) => asset.kind === "video");
@@ -1460,10 +1465,12 @@ describe("durable sticker workflow", () => {
     const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, editTurn.jobId)).orderBy(chatMessages.sequence))
       .filter((message) => message.role === "system");
     expect(toolRows.map((message) => message.content))
-      .toEqual(["edit-sticker", "create_video", "create_video #2", "create_video #3", "finalize_edit", "show-sticker"]);
+      .toEqual(direct
+        ? ["generate-video", "create_video", "finalize_edit", "show-sticker"]
+        : ["edit-sticker", "create_video", "create_video #2", "create_video #3", "finalize_edit", "show-sticker"]);
     // The refused calls are rows of their own rather than a retry re-marking the one that failed.
     expect(toolRows.filter((message) => message.status === "failed").map((message) => message.content))
-      .toEqual(["create_video", "create_video #3"]);
+      .toEqual(direct ? [] : ["create_video", "create_video #3"]);
 
     // A step retry after the clip landed must not buy a second one.
     await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, editTurn.jobId));
@@ -1612,6 +1619,9 @@ describe("durable sticker workflow", () => {
       text: "Plan some cartoon words", intent: "generate", attachments: [], imagePlacement: "replace",
     });
     expect((await stickerGenerationWorkflow(planTurn.jobId)).workflowStatus).toBe("succeeded");
+
+    const [pending] = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
+    await cancelPlan(db, "owner-plan-image", sticker.stickerId, pending.id);
 
     const reuseTurn = await createChatTurn(db, "owner-plan-image", sticker.stickerId, {
       text: "Use the plan image as the reference", intent: "chat", attachments: [], imagePlacement: "replace",
@@ -1959,6 +1969,47 @@ describe("durable sticker workflow", () => {
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     expect(document.layers.flatMap((layer) => (layer.type === "image" ? [layer.assetId] : [])).sort())
       .toEqual(reusedIds.sort());
+    await close();
+  });
+
+  it.each(["draft", "finalized"] as const)("keeps follow-up chat in planning while a plan is %s", async (state) => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-pending", createdAt: new Date(), updatedAt: new Date() });
+    const sticker = await createSticker(db, "owner-pending", {
+      title: "HI", kind: "static", prompt: "HI", referenceAssetIds: [],
+    });
+    const first = await createChatTurn(db, "owner-pending", sticker.stickerId, {
+      text: "Compose the word HI from separate letters", intent: "chat", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(first.jobId)).workflowStatus).toBe("succeeded");
+    const [pending] = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
+    await db.update(planRows).set({ state }).where(eq(planRows.id, pending.id));
+    const mockProvider = getAiProvider();
+    const instructions: string[] = [];
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      planSticker: async (input, session) => {
+        instructions.push(input.instruction);
+        expect(input.history).toContain("Current pending plan");
+        return mockProvider.planSticker(input, session);
+      },
+      generateConceptImage: mockProvider.generateConceptImage.bind(mockProvider),
+    });
+    for (const text of ["Make the letters blue", "Add more spacing"]) {
+      const followup = await createChatTurn(db, "owner-pending", sticker.stickerId, {
+        text, intent: "chat", attachments: [], imagePlacement: "replace",
+      });
+      expect((await stickerGenerationWorkflow(followup.jobId)).workflowStatus).toBe("succeeded");
+    }
+    expect(instructions).toEqual(["Make the letters blue", "Add more spacing"]);
+    const rows = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
+    expect(rows).toHaveLength(3);
+    expect(rows.filter((row) => row.state === "finalized")).toHaveLength(1);
+    expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.stickerId, sticker.stickerId)))
+      .toHaveLength(0);
     await close();
   });
 

@@ -43,3 +43,8 @@ next-env.d.ts
 
 # Row dumps written by scripts/rebuild-revisions-table.ts before it drops anything. Real user data.
 sticker_revisions-backup*.json
+
+# Isolated Playwright build and failure artifacts
+/.next-e2e/
+/test-results/
+/playwright-report/

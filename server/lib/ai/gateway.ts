@@ -7,6 +7,7 @@ import {
   stepCountIs,
   tool,
   type ModelMessage,
+  type LanguageModel,
 } from "ai";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -145,6 +146,7 @@ export type AiChatAction =
       usePlanImage?: boolean;
     }
   | { type: "animate"; instruction: string; targetLayerId?: string }
+  | { type: "generate_video"; instruction: string; layerId: string; durationSeconds: number }
   | { type: "plan"; instruction: string }
   | { type: "show"; caption: string };
 
@@ -1169,6 +1171,8 @@ async function generateKeyedStickerImage(input: AiImageInput): Promise<AiImageOu
 }
 
 class GatewayAiProvider implements AiProvider {
+  constructor(private readonly chatModel?: LanguageModel) {}
+
   async selectImageReferences(
     input: AiReferenceSelectionContext,
   ): Promise<number[]> {
@@ -2043,7 +2047,31 @@ class GatewayAiProvider implements AiProvider {
   async routeChatTurn(input: AiChatContext): Promise<AiChatAction> {
     const priorArt = await viewablePlanVisuals(input.priorArt);
     const viewable = await viewableReferences(input.references);
+    const videoLayers = input.stickerKind === "animated" && input.document?.kind === "animated"
+      && !input.document.layers.some((layer) => layer.type === "video")
+      ? input.document.layers.filter((layer) => layer.type === "image")
+      : [];
+    const videoInput = z.object({
+      layerId: z.enum(videoLayers.length > 0 ? videoLayers.map((layer) => layer.id) : ["unavailable"]),
+      motion: z.string().trim().min(1).max(500),
+      durationSeconds: z.number().int().min(2).max(4).default(3),
+    }).strict();
     const tools = {
+      ...(videoLayers.length > 0 ? {
+        "generate-video": tool({
+          description: [
+            "Generate a video clip from an existing image layer in this animated sticker.",
+            "The layer becomes a looping video in the same position, keeping its artwork as the poster.",
+            "Use for explicit video-generation requests or motion requiring new frames, such as a",
+            "character turning around, speaking, flapping its wings, or changing expression.",
+            "motion describes the subject or camera movement. Select the image layer from the document.",
+            "Costs a video generation; takes longer than keyframes. Duration is 2–4 seconds, one clip per sticker.",
+            "For simple movement, scaling, flat rotation, or fading, prefer animate-sticker.",
+          ].join(" "),
+          inputSchema: videoInput,
+          execute: async (value) => value,
+        }),
+      } : {}),
       reply: tool({
         description: [
           "Answer the user in words and change nothing. This is the correct choice whenever the user",
@@ -2173,7 +2201,7 @@ class GatewayAiProvider implements AiProvider {
       }),
     };
     const result = await generateText({
-      model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+      model: this.chatModel ?? gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
       system: [
         "You are Sticker Factory's tool-routing agent.",
         "Choose exactly one tool from the user's natural-language request; the app has no edit mode, animation mode, or layer picker.",
@@ -2185,7 +2213,7 @@ class GatewayAiProvider implements AiProvider {
         "small talk, or anything you are unsure about — call reply. Questions such as 'who is this?',",
         "'what is that?', 'what can you do?', or 'why does it look like that?' are answered with reply,",
         "never by generating or editing.",
-        "Only pick generate-sticker, generate-image, edit-sticker, animate-sticker, or plan-sticker when",
+        "Only pick generate-sticker, generate-image, generate-video, edit-sticker, animate-sticker, or plan-sticker when",
         "the user is actually asking for the artwork to change. Those tools discard the current candidate,",
         "so a wrong guess loses the user's work; when in doubt, reply and ask what they want.",
         "Use show-sticker when the user asks to see or preview the current sticker without changing it.",
@@ -2204,6 +2232,11 @@ class GatewayAiProvider implements AiProvider {
         "generate-image, or edit-sticker as appropriate and set usePlanImage to true. Do not call",
         "reply to claim the image is unavailable or ask the user to upload it again.",
         "Decide between animate-sticker and plan-sticker by what the requested motion needs.",
+        "When generate-video is available, use it for explicit video requests or motion that needs new",
+        "frames, such as talking, wing flapping, or turning to another viewing angle. Do not route those",
+        "requests to keyframes or planning when an existing image layer can be animated into a clip.",
+        "When describing your capabilities, include video generation if generate-video is available.",
+        "Video needs an animated project with an image layer and no existing clip; static projects cannot play it.",
         "animate-sticker only re-keyframes the layers listed in the current document, so it can only move,",
         "scale, rotate, or fade artwork that already exists as its own layer.",
         "If the effect needs elements to appear, build up, or move one at a time — a typewriter or",
@@ -2224,7 +2257,7 @@ class GatewayAiProvider implements AiProvider {
         "On a static project the sticker never moves: never call animate-sticker or plan-sticker for motion.",
         "On an animated project the finished sticker has to move, and only layers can be keyframed.",
         "So when an animated project has no plan yet, design it with plan-sticker rather than drawing it",
-        "with generate-sticker: one flat image has no separate parts and can never be animated afterwards.",
+        "with generate-sticker. An existing image layer can still be animated into a clip with generate-video.",
       ].join(" "),
       messages: userTurn([
         `Sticker kind: ${input.stickerKind}`,
@@ -2252,7 +2285,13 @@ class GatewayAiProvider implements AiProvider {
     if (result.toolCalls.length !== 1)
       throw new Error("Sticker chat agent must return exactly one tool call");
     const call = result.toolCalls[0];
+    if (!call) throw new Error("Sticker chat agent returned no tool call");
     switch (call.toolName) {
+      case "generate-video": {
+        if (videoLayers.length === 0) throw new Error("Video generation is unavailable for this sticker");
+        const value = videoInput.parse(call.input);
+        return { type: "generate_video", instruction: value.motion, layerId: value.layerId, durationSeconds: value.durationSeconds };
+      }
       case "reply": {
         const value = z.object({ message: z.string() }).parse(call.input);
         return { type: "reply", message: value.message };
@@ -3171,6 +3210,10 @@ class MockAiProvider implements AiProvider {
   }
 
   async routeChatTurn(input: AiChatContext): Promise<AiChatAction> {
+    if (process.env.NODE_ENV !== "production" && process.env.STICKER_FACTORY_E2E === "true") {
+      const { chatModel } = await import("@/e2e/support/chat-model");
+      return new GatewayAiProvider(chatModel()).routeChatTurn(input);
+    }
     const instruction = input.instruction.trim();
     const normalized = instruction.toLowerCase();
     if (/\b(show|preview|see|display)\b/.test(normalized)) {

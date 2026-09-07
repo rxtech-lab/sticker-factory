@@ -2,7 +2,8 @@ import sharp from "sharp";
 import { and, eq } from "drizzle-orm";
 import { start } from "workflow/api";
 import { firstRow, getDatabase, type Database } from "@/lib/db/client";
-import { assets, creatorProfiles, stickerPacks, stickerRevisions, stickers, users } from "@/lib/db/schema";
+import { assets, creatorProfiles, plans, stickerPacks, stickerRevisions, stickers, users } from "@/lib/db/schema";
+import { confirmPlan } from "@/lib/services/plans";
 import { createPack } from "@/lib/services/packs";
 import { bindExports, acceptRevision, createChatTurn, createSticker } from "@/lib/services/stickers";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
@@ -126,6 +127,7 @@ export async function POST(request: Request) {
   const existing = await db.select({ id: stickers.id }).from(stickers).where(and(
     eq(stickers.ownerId, ownerId),
     eq(stickers.title, "Playwright Cloud"),
+    eq(stickers.status, "published"),
   )).then(firstRow);
   if (existing) return Response.json({ staticStickerId: existing.id, ...marketplace });
 
@@ -154,7 +156,12 @@ export async function POST(request: Request) {
   await runGeneration(secondTurn.jobId);
   await acceptRevision(db, ownerId, created.stickerId, secondTurn.jobId);
 
-  const master = await db.select().from(assets).where(eq(assets.id, secondTurn.jobId)).then(firstRow);
+  // Edit loops allocate image assets independently from the generation job.
+  const revision = await db.select().from(stickerRevisions)
+    .where(eq(stickerRevisions.id, secondTurn.jobId)).then(firstRow);
+  const master = revision?.masterAssetId
+    ? await db.select().from(assets).where(eq(assets.id, revision.masterAssetId)).then(firstRow)
+    : undefined;
   if (!master) throw new Error("E2E master asset was not generated");
   const store = getObjectStore();
   const masterObject = await store.get(master.r2Key);
@@ -184,7 +191,7 @@ export async function POST(request: Request) {
   });
   await bindExports(db, ownerId, created.stickerId, {
     revisionId: secondTurn.jobId,
-    pngAssetId: secondTurn.jobId,
+    pngAssetId: master.id,
     systemAssetId,
   });
 
@@ -201,7 +208,15 @@ export async function POST(request: Request) {
     imagePlacement: "replace",
   });
   await runGeneration(animatedTurn.jobId);
-  await acceptRevision(db, ownerId, animated.stickerId, animatedTurn.jobId);
+  const plan = await db.select().from(plans)
+    .where(eq(plans.stickerId, animated.stickerId)).then(firstRow);
+  if (!plan) throw new Error("E2E animated plan was not generated");
+  const composition = await confirmPlan(db, ownerId, animated.stickerId, plan.id);
+  await runGeneration(composition.jobId);
+  await acceptRevision(db, ownerId, animated.stickerId, composition.jobId);
 
+  // Workflows now summarize titles; keep the browser fixture labels stable after they finish.
+  await db.update(stickers).set({ title: "Playwright Cloud" }).where(eq(stickers.id, created.stickerId));
+  await db.update(stickers).set({ title: "Playwright Bounce" }).where(eq(stickers.id, animated.stickerId));
   return Response.json({ staticStickerId: created.stickerId, animatedStickerId: animated.stickerId, ...marketplace });
 }

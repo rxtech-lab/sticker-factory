@@ -142,7 +142,7 @@ struct StickerExportSheet: View {
         }
         // The publish call returns as soon as the job is accepted, so the server's half of the run
         // only reaches the timeline through the job state the store keeps.
-        .onChange(of: publishJob) { _, job in
+        .onChange(of: publishJob, initial: true) { _, job in
             StickerExportModel.log.debug(
                 """
                 job change job=\(job?.jobID ?? "-", privacy: .public) \
@@ -226,7 +226,7 @@ struct StickerExportSheet: View {
             HStack {
                 Text(revision.createdAt, format: .relative(presentation: .named))
                 Spacer(minLength: 8)
-                Text(canEdit ? "Tap to view or edit" : "Tap to view")
+                Text(canEdit ? LocalizedStringKey("Tap to view or edit") : LocalizedStringKey("Tap to view"))
             }
             .font(.caption)
             .foregroundStyle(.secondary)

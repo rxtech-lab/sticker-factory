@@ -121,7 +121,17 @@ async function createPgliteDatabase(url: string): Promise<DatabaseHandle> {
     import("drizzle-orm/pglite/migrator"),
   ]);
   const dataDir = url.slice("pglite:".length);
-  const client = instrumentQuery(new PGlite(dataDir || undefined));
+  // Next.js route/workflow bundles can load separate instances of this module. A disk-backed
+  // PGlite directory must still have exactly one engine; multiple engines retain stale buffers.
+  // In-memory databases stay independent so each unit/integration test owns its fixture.
+  const globalPglite = globalThis as typeof globalThis & {
+    stickerFactoryPglite?: Map<string, InstanceType<typeof PGlite>>;
+  };
+  const clients = globalPglite.stickerFactoryPglite ??= new Map<string, InstanceType<typeof PGlite>>();
+  const client = dataDir && clients.has(dataDir)
+    ? clients.get(dataDir)!
+    : instrumentQuery(new PGlite(dataDir || undefined));
+  if (dataDir) clients.set(dataDir, client);
   const db = drizzlePglite(client, { schema });
   return {
     db: db as unknown as Database,
@@ -129,7 +139,10 @@ async function createPgliteDatabase(url: string): Promise<DatabaseHandle> {
     exec: async (script) => void await client.exec(script),
     query: async (text, values) =>
       (await client.query<Record<string, unknown>>(text, values as unknown[])).rows,
-    close: () => client.close(),
+    close: async () => {
+      if (dataDir && clients.get(dataDir) === client) clients.delete(dataDir);
+      await client.close();
+    },
   };
 }
 

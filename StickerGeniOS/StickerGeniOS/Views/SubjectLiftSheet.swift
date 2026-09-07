@@ -189,7 +189,9 @@ struct SubjectLiftSheet: View {
             Color.black.opacity(0.55).ignoresSafeArea()
             VStack(spacing: 10) {
                 ProgressView().controlSize(.large).tint(.white)
-                Text(capture.hasMotion ? "Lifting the subject from every frame…" : "Lifting the subject…")
+                Text(capture.hasMotion
+                    ? LocalizedStringKey("Lifting the subject from every frame…")
+                    : LocalizedStringKey("Lifting the subject…"))
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.8))
             }
