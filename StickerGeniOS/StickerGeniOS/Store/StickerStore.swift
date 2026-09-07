@@ -1053,6 +1053,9 @@ final class StickerStore {
         if let index = messages[stickerID]?.firstIndex(where: { $0.id == id }) {
             messages[stickerID]?[index].status = status
             messages[stickerID]?[index].content = name
+            if let details = event.data.toolDetails {
+                messages[stickerID]?[index].toolDetails = details
+            }
             return
         }
         messages[stickerID, default: []].append(.init(
@@ -1068,7 +1071,8 @@ final class StickerStore {
             jobId: event.jobId,
             status: status,
             createdAt: event.createdAt,
-            attachments: []
+            attachments: [],
+            toolDetails: event.data.toolDetails
         ))
     }
 

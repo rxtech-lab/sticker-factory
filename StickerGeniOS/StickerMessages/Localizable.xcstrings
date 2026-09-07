@@ -75,6 +75,9 @@
     "Checking it over…" : {
 
     },
+    "Couldn’t Complete Action" : {
+
+    },
     "Create" : {
 
     },
@@ -201,6 +204,9 @@
           }
         }
       }
+    },
+    "OK" : {
+
     },
     "Open a conversation to send a full-size image." : {
 

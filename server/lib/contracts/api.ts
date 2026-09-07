@@ -368,6 +368,7 @@ export const ChatMessageV1Schema = z.object({
   role: z.enum(["user", "assistant", "system"]),
   kind: z.enum(["text", "image", "image_edit", "animation", "device_edit", "export", "status"]),
   content: z.string(),
+  toolDetails: z.string().optional(),
   targetLayerId: z.string().nullable(),
   baseRevisionId: z.string().uuid().nullable(),
   imagePlacement: z.enum(["replace", "add"]),

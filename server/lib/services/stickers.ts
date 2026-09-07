@@ -1296,12 +1296,27 @@ export async function listChatMessages(
   const planRows = await loadPlansByIds(db, [...new Set(
     filtered.map((row) => row.planId).filter((id): id is string => id !== null),
   )]);
+  // Tool details live in the durable event log, alongside the streamed status.
+  const toolIds = filtered.filter((row) => row.role === "system" && row.kind === "status").map((row) => row.id);
+  const toolJobIds = [...new Set(filtered.filter((row) => toolIds.includes(row.id)).flatMap((row) => row.jobId ? [row.jobId] : []))];
+  const toolEvents = toolIds.length && toolJobIds.length
+    ? await db.select({ data: generationEvents.dataJson }).from(generationEvents).where(and(
+      eq(generationEvents.ownerId, ownerId),
+      inArray(generationEvents.jobId, toolJobIds),
+      inArray(sql<string>`${generationEvents.dataJson}->>'toolCallId'`, toolIds),
+      sql`${generationEvents.dataJson}->>'toolDetails' IS NOT NULL`,
+    )).orderBy(asc(generationEvents.id))
+    : [];
+  const toolDetails = new Map(toolEvents.map(({ data }) => [data.toolCallId, data.toolDetails]));
   return {
-    data: filtered.map((message) => serializeChatMessage(
-      message,
-      attachments.filter((item) => item.messageId === message.id),
-      planRows.find((plan) => plan.id === message.planId),
-    )),
+    data: filtered.map((message) => ({
+      ...serializeChatMessage(
+        message,
+        attachments.filter((item) => item.messageId === message.id),
+        planRows.find((plan) => plan.id === message.planId),
+      ),
+      toolDetails: toolDetails.get(message.id),
+    })),
     nextBeforeSequence: hasOlder && filtered.length > 0 ? filtered[0].sequence : null,
   };
 }

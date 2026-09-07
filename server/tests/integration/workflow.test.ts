@@ -399,6 +399,15 @@ describe("durable sticker workflow", () => {
       .toEqual(["animate-sticker", "create_animation", "create_animation #2", "finalize_animation", "show-sticker"]);
     expect(toolRows.find((message) => message.content === "create_animation")?.status).toBe("failed");
     expect(toolRows.find((message) => message.content === "create_animation #2")?.status).toBe("complete");
+    const transcript = await listChatMessages(db, "owner-repair", sticker.stickerId);
+    expect(transcript.data.find((message) => message.content === "create_animation")?.toolDetails)
+      .toBe(rejections[0]);
+    expect(transcript.data.find((message) => message.content === "create_animation #2")?.toolDetails)
+      .toContain('"animationId"');
+    const events = await db.select().from(generationEvents).where(eq(generationEvents.jobId, animateTurn.jobId));
+    expect(events.find((event) => event.dataJson.toolStatus === "failed")?.dataJson.toolDetails)
+      .toBe(rejections[0]);
+
     await close();
   }, 30_000);
 

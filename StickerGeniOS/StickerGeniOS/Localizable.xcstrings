@@ -5344,6 +5344,9 @@
         }
       }
     },
+    "Shows the tool result or error" : {
+
+    },
     "Sign in with RxLab" : {
       "localizations" : {
         "zh-CN" : {
@@ -6506,6 +6509,15 @@
         }
       }
     },
+    "This tool completed. No result details were recorded." : {
+
+    },
+    "This tool failed. No error details were recorded." : {
+
+    },
+    "This tool is still running. Its result will appear here when available." : {
+
+    },
     "This uses the approved static reference to assemble %lld existing layers and add motion." : {
       "localizations" : {
         "zh-CN" : {
@@ -6591,6 +6603,12 @@
           }
         }
       }
+    },
+    "Tool Error" : {
+
+    },
+    "Tool Result" : {
+
     },
     "Top Up" : {
 
