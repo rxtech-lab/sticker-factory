@@ -31,27 +31,6 @@ struct DownloadedRendition: Sendable {
     let mimeType: String?
 }
 
-struct StickerHTTPResult: @unchecked Sendable {
-    let data: Data
-    let response: HTTPURLResponse
-}
-
-protocol StickerHTTPTransport: Sendable {
-    func data(for request: URLRequest) async throws -> StickerHTTPResult
-}
-
-struct URLSessionStickerHTTPTransport: StickerHTTPTransport {
-    let session: URLSession
-
-    func data(for request: URLRequest) async throws -> StickerHTTPResult {
-        let (data, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse else {
-            throw StickerLibraryError.invalidResponse
-        }
-        return .init(data: data, response: response)
-    }
-}
-
 struct StickerLibraryClient: Sendable {
     static let maximumPageCount = 100
 

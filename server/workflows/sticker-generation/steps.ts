@@ -3086,7 +3086,7 @@ export async function quickPublishStep(jobId: string) {
   "use step";
   const db = await getDatabase();
   const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
-  if (!job || job.kind !== "export") throw new Error("Export job not found");
+  if (!job || (job.kind !== "export" && !(job.appClip && job.quick))) throw new Error("Export job not found");
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "rendering_exports", progress: 0.02 });
   try {
     // Reported as tool calls rather than as bare stages, because the surface watching a quick

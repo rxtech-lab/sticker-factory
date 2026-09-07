@@ -91,6 +91,7 @@ nonisolated enum PosterToolbarGlyph: CaseIterable {
     case filter
     case sort
     case add
+    case signOut
 
     var tilt: Double {
         switch self {
@@ -99,6 +100,7 @@ nonisolated enum PosterToolbarGlyph: CaseIterable {
         case .filter: -2
         case .sort: -1
         case .add: 2
+        case .signOut: -3
         }
     }
 }
@@ -221,6 +223,26 @@ struct PosterToolbarIcon: View {
                 arrows.addLine(to: point(16.3, 20.6))
                 arrows.addLine(to: point(21.2, 15.7))
                 drawInkedStroke(arrows)
+
+            case .signOut:
+                var door = Path()
+                door.move(to: point(3, 3))
+                door.addLine(to: point(13, 2))
+                door.addLine(to: point(13, 21))
+                door.addLine(to: point(3.5, 20))
+                door.closeSubpath()
+                drawStickerFill(door, color: sky)
+
+                var arrow = Path()
+                arrow.move(to: point(9, 10))
+                arrow.addLine(to: point(16, 10))
+                arrow.addLine(to: point(16, 6.5))
+                arrow.addLine(to: point(22, 12))
+                arrow.addLine(to: point(16, 17.5))
+                arrow.addLine(to: point(16, 14))
+                arrow.addLine(to: point(9, 14))
+                arrow.closeSubpath()
+                drawStickerFill(arrow, color: coral)
 
             case .add:
                 var plus = Path()

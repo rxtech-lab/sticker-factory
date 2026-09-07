@@ -22,7 +22,8 @@ export interface EntitlementBalance {
 export interface Entitlements {
   roles: string[];
   permissions: string[];
-  plans: { key: string; name: string }[];
+  plans: { planKey: string; planName: string; status: string; billingProvider: string }[];
+  usage: UsageAllowance[];
   balances: EntitlementBalance[];
 }
 
@@ -192,4 +193,20 @@ export async function releaseReservation(input: {
   await call(requireConfig(), "POST", `balances/reservations/${input.reservationId}/release`, {
     body: { idempotencyKey: input.idempotencyKey, reason: input.reason },
   });
+}
+
+
+export interface UsageAllowance {
+  key: string; used: number; reserved?: number; limit: number | null;
+  remaining: number | null; resetsAt: string | null;
+}
+export const QUICK_MODE_USAGE_ITEM = "quick_mode_allowance";
+export function fetchUsage(rxlabUserId: string) {
+  return call<{ usage: UsageAllowance[] }>(requireConfig(), "GET", "usage", { query: { rxlabUserId } });
+}
+/** The deployed usage API records one attempt and enforces the server's allowance. */
+export function recordGenerationUsage(rxlabUserId: string, jobId: string) {
+  return call<{ allowed: boolean; reason?: string }>(requireConfig(), "POST", "usage", { body: {
+    rxlabUserId, item: QUICK_MODE_USAGE_ITEM, amount: 1, idempotencyKey: jobId, metadata: { jobId },
+  } });
 }

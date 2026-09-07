@@ -1,9 +1,13 @@
+import { and, eq, inArray } from "drizzle-orm";
+import { assets } from "@/lib/db/schema";
+import { isAppClipClient } from "@/lib/subscription/app-clip";
+import { ApiError } from "@/lib/http/errors";
 import { CreateStickerRequestSchema } from "@/lib/contracts/api";
 import { noStoreJson, readJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
 import { requireSupportedIOSAppVersion } from "@/lib/http/ios-app-version";
 import { integerQuery, textQuery } from "@/lib/http/query";
-import { executeIdempotent, requireIdempotencyKey } from "@/lib/services/idempotency";
+import { executeIdempotent, requireIdempotencyKey, RetryableIdempotencyError } from "@/lib/services/idempotency";
 import { purgeStickerMediaImmediately } from "@/lib/services/assets";
 import { createChatTurn, createSticker, listStickers } from "@/lib/services/stickers";
 import { startGenerationWorkflow } from "@/lib/services/workflows";
@@ -28,6 +32,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return withApiAuth(request, async (principal, db) => {
     const body = await readJson(request, CreateStickerRequestSchema.parse);
+    const appClip = isAppClipClient(principal) || body.useQuickModeAllowance === true;
+    if (appClip && (body.kind !== "static" || !body.quick)) throw new ApiError(422, "APP_CLIP_QUICK_ONLY", "Choose static quick generation.");
     const key = requireIdempotencyKey(request);
     const result = await executeIdempotent(db, {
       ownerId: principal.sub,
@@ -44,14 +50,25 @@ export async function POST(request: Request) {
           attachments: body.referenceAssetIds.map((assetId) => ({ assetId, kind: "reference" as const })),
           imagePlacement: "replace",
           quick: body.quick,
-        });
+        }, appClip);
       } catch (error) {
+        // A missing usage endpoint/item definitively rejected the operation before
+        // a generation job or usage record existed. Keep uploaded inputs for a retry.
+        const safeToRetry = error instanceof ApiError && error.code === "APP_CLIP_USAGE_NOT_CONFIGURED";
+        let rolledBack = false;
         try {
+          if (safeToRetry && body.referenceAssetIds.length > 0) {
+            await db.update(assets).set({ stickerId: null }).where(and(
+              eq(assets.ownerId, principal.sub), eq(assets.stickerId, created.stickerId),
+              inArray(assets.id, body.referenceAssetIds),
+            ));
+          }
           await purgeStickerMediaImmediately(db, principal.sub, created.stickerId);
+          rolledBack = true;
         } catch (cleanupError) {
           console.error("Failed to purge a partially created sticker", { stickerId: created.stickerId, cleanupError });
         }
-        throw error;
+        throw safeToRetry && rolledBack ? new RetryableIdempotencyError(error) : error;
       }
       let workflowRunId: string | null = null;
       let state: "queued" | "failed" = "queued";

@@ -25,8 +25,22 @@ type StickerGenerationWorkflowResult =
 export async function stickerGenerationWorkflow(
   jobId: string,
   quick = false,
+  appClip = false,
 ): Promise<StickerGenerationWorkflowResult> {
   "use workflow";
+  if (appClip) {
+    await beginJobStep(jobId);
+    try {
+      const result = await executeAiJobStep(jobId);
+      // Separate durable steps: publication retries never redraw or spend another allowance.
+      await quickPublishStep(jobId);
+      await completeJobStep(jobId, result);
+      return { workflowStatus: "succeeded" as const, result };
+    } catch (error) {
+      await failJobStep(jobId, error instanceof Error ? error.message : String(error));
+      return { status: "failed" as const };
+    }
+  }
   if (quick) {
     try {
       return await quickGenerationStep(jobId);

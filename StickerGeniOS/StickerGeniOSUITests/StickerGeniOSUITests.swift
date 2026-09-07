@@ -68,6 +68,19 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testHomeActionsMenuOffersShareAlongsideFilter() {
+        let menu = element("library-filter-menu")
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+
+        menu.tap()
+
+        XCTAssertTrue(element("home-share").waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["All"].exists)
+        XCTAssertTrue(app.buttons["Static"].exists)
+        XCTAssertTrue(app.buttons["Animated"].exists)
+    }
+
+    @MainActor
     func testLegalDocumentHidesTabBar() {
         app.tabBars.buttons["Account"].tap()
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 3))

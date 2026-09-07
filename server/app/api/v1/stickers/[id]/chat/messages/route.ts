@@ -1,3 +1,4 @@
+import { isAppClipClient } from "@/lib/subscription/app-clip";
 import { PostChatMessageRequestSchema } from "@/lib/contracts/api";
 import { noStoreJson, readJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
@@ -36,7 +37,7 @@ export async function POST(request: Request, context: Context) {
       key,
       request: body,
     }, async () => {
-      const turn = await createChatTurn(db, principal.sub, id, body);
+      const turn = await createChatTurn(db, principal.sub, id, body, isAppClipClient(principal));
       let workflowRunId: string | null = null;
       let state: "queued" | "failed" = "queued";
       try {

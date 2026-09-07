@@ -1,3 +1,4 @@
+import { assertAppClipRoute } from "@/lib/subscription/app-clip";
 import { requireApiPrincipal, type ApiPrincipal } from "@/lib/auth/bearer";
 import { getDatabase, type Database } from "@/lib/db/client";
 import { errorResponse } from "@/lib/http/errors";
@@ -25,6 +26,7 @@ export async function withApiAuth(
     try {
       const authenticatedPrincipal = await timeStage("auth", () => requireApiPrincipal(request));
       principal = authenticatedPrincipal;
+      assertAppClipRoute(request, authenticatedPrincipal);
       const requiresUserRow = request.method !== "GET" && request.method !== "HEAD";
       stage = requiresUserRow ? "ensure-user" : "handler";
       const db = await getDatabase();

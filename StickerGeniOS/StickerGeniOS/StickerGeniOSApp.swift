@@ -22,6 +22,9 @@ struct StickerGeniOSApp: App {
         WindowGroup {
             ContentView(environment: environment)
                 .task { await environment.start() }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { environment.handleIncomingURL(url) }
+                }
                 .onOpenURL { url in environment.handleIncomingURL(url) }
                 .onReceive(NotificationCenter.default.publisher(for: .rxAuthSessionExpired)) { _ in
                     Task { await environment.sessionExpired() }

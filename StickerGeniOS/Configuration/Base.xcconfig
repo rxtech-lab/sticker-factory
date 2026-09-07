@@ -1,4 +1,5 @@
 STICKER_FACTORY_AUTH_TOKEN_URL = https:/$()/auth.rxlab.app/api/oauth/token
 STICKER_FACTORY_IOS_CLIENT_ID = client_1ce3e6efd6da4214a61df67949a71622
 STICKER_FACTORY_OAUTH_ISSUER = https:/$()/auth.rxlab.app
+STICKER_FACTORY_OAUTH_REDIRECT_URI = stickerfactory:/$()/oauth/callback
 STICKER_FACTORY_SUBSCRIPTION_URL = https:/$()/subscription.rxlab.app
