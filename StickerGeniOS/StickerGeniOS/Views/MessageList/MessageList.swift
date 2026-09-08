@@ -71,8 +71,8 @@ struct MessageList<
 
     @State private var pinning = MessageListPinningController<Message.MessageID>()
     @State private var scrollPhase: ScrollPhase = .idle
-    /// Usable viewport after scroll content insets (including the floating composer).
-    /// `bounds` and `containerSize` both include those strips; subtract them once.
+    /// The viewport reported by the live scroll view tracks keyboard and content margins.
+    /// Subtracting its content insets again can collapse this to zero with the keyboard open.
     @State private var visibleContentHeight: CGFloat = 0
     /// The active turn — the pinned user message and everything under it — measured
     /// as ONE view.
@@ -87,7 +87,11 @@ struct MessageList<
     ///
     /// One view's own height cannot disagree with itself, so none of that arises:
     /// content above may move the turn, but never changes how tall it is.
-    @State private var activeTurnHeight: CGFloat = 0
+    @State private var activeTurnMeasurement: MessageListTurnMeasurement<Message.MessageID>?
+    private var activeTurnHeight: CGFloat {
+        guard activeTurnMeasurement?.messageID == pinning.pinnedUserMessageID else { return 0 }
+        return activeTurnMeasurement?.height ?? 0
+    }
     @State private var canReleasePinnedUserMessageByScroll = false
     @State private var hasPlacedInitialContent = false
     @State private var pinTask: Task<Void, Never>?
@@ -127,7 +131,7 @@ struct MessageList<
                 .coordinateSpace(.named(MessageListConstants.coordinateSpaceName))
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                max(0, geometry.containerSize.height - geometry.contentInsets.top - geometry.contentInsets.bottom)
+                geometry.bounds.height
             } action: { _, height in
                 updateVisibleContentHeight(height)
             }
@@ -194,10 +198,10 @@ struct MessageList<
             trailingContent()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onGeometryChange(for: CGFloat.self) { geometry in
-            geometry.size.height
-        } action: { height in
-            updateActiveTurnHeight(height)
+        .onGeometryChange(for: MessageListTurnMeasurement<Message.MessageID>.self) { geometry in
+            MessageListTurnMeasurement(messageID: pinning.pinnedUserMessageID, height: geometry.size.height)
+        } action: { measurement in
+            updateActiveTurnMeasurement(measurement)
         }
     }
 
@@ -307,7 +311,8 @@ struct MessageList<
     private func handleSettledScrollGeometry() {
         // The turn now fills the viewport on its own; there is nothing left to hold
         // in place. Releasing only stops the re-assert — it never scrolls.
-        if shouldReleasePinnedUserMessageForFilledTurn, !isUserDrivenScroll {
+        if canReleasePinnedUserMessageByScroll,
+           shouldReleasePinnedUserMessageForFilledTurn, !isUserDrivenScroll {
             releasePinnedUserMessage()
         }
     }
@@ -547,12 +552,15 @@ struct MessageList<
         }
     }
 
-    private func updateActiveTurnHeight(_ value: CGFloat) {
-        guard abs(value - activeTurnHeight) > 0.5 else { return }
+    private func updateActiveTurnMeasurement(_ value: MessageListTurnMeasurement<Message.MessageID>) {
+        // A queued callback from the previous turn must never size or release the new pin.
+        guard value.messageID == pinning.pinnedUserMessageID else { return }
+        guard activeTurnMeasurement?.messageID != value.messageID
+            || abs(value.height - (activeTurnMeasurement?.height ?? 0)) > 0.5 else { return }
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
-            activeTurnHeight = value
+            activeTurnMeasurement = value
         }
     }
 }
@@ -615,4 +623,9 @@ private nonisolated enum MessageListConstants {
     static let placementSettleFrames = 8
     static let pinAnimationDuration: Duration = .milliseconds(250)
     static let pinAnimationSeconds: Double = 0.25
+}
+
+private nonisolated struct MessageListTurnMeasurement<ID: Hashable & Sendable>: Equatable {
+    var messageID: ID?
+    var height: CGFloat
 }

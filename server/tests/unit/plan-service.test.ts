@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlanV1Schema, type PlanV1 } from "@/lib/contracts/plan";
 import { firstRow, type Database } from "@/lib/db/client";
-import { chatMessages, generationJobs, plans, users } from "@/lib/db/schema";
+import { assets, chatMessages, generationJobs, plans, users } from "@/lib/db/schema";
 import {
   cancelPlan,
   confirmPlan,
@@ -12,9 +12,11 @@ import {
   listPlans,
   recentlyRejectedPlans,
   serializePlan,
+  selectPlanVersion,
   updatePlan,
 } from "@/lib/services/plans";
 import { createChatTurn, createSticker } from "@/lib/services/stickers";
+import { listChatMessages } from "@/lib/services/sticker-chat";
 import { createTestDatabase } from "@/tests/helpers/database";
 
 function plan(title: string, layerCount = 2): PlanV1 {
@@ -73,6 +75,84 @@ describe("plan service", () => {
   const settleFixtureTurn = () => db.update(generationJobs)
     .set({ state: "succeeded", completedAt: new Date() })
     .where(eq(generationJobs.stickerId, stickerId));
+
+  async function readyHistory() {
+    const first = await create(plan("Original", 1));
+    await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: first.planId });
+    const second = await create(plan("Revised", 3));
+    await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: second.planId });
+    for (const [index, version] of [first, second].entries()) {
+      await db.insert(assets).values({
+        id: `reference-${index}`, ownerId: "owner-a", stickerId, kind: "reference",
+        state: "ready", r2Key: `reference-${index}`, mimeType: "image/png",
+      });
+      await db.update(plans).set({ conceptAssetId: `reference-${index}` }).where(eq(plans.id, version.planId));
+      await db.insert(chatMessages).values({
+        id: `plan-card-${index}`, ownerId: "owner-a", threadId, role: "assistant", kind: "plan",
+        content: "Plan", sequence: index + 2, planId: version.planId, planRevision: version.revision,
+      });
+    }
+    await settleFixtureTurn();
+    return { first, second };
+  }
+
+  it("activates the older version in the latest card and builds its own plan and reference", async () => {
+    const { first, second } = await readyHistory();
+    const selected = await selectPlanVersion(db, "owner-a", stickerId, first.planId, second.planId, second.revision);
+    expect(selected.messageId).toBe("plan-card-1");
+    expect(selected.plan).toMatchObject({ sourceVersionId: first.planId, actionable: true, conceptAssetId: "reference-0" });
+    expect(selected.plan.id).not.toBe(first.planId);
+    const transcript = await listChatMessages(db, "owner-a", stickerId);
+    expect(transcript.data.find((message) => message.id === "plan-card-1")?.plan).toMatchObject({
+      id: selected.plan.id, sourceVersionId: first.planId, actionable: true, plan: { title: "Original" },
+    });
+    expect(await listPlans(db, "owner-a", stickerId)).toHaveLength(2);
+    const build = await confirmPlan(db, "owner-a", stickerId, selected.plan.id);
+    const built = await db.select().from(plans).where(eq(plans.jobId, build.jobId)).then(firstRow);
+    expect(built).toMatchObject({ id: selected.plan.id, conceptAssetId: "reference-0", planJson: { title: "Original" } });
+    expect(built?.planJson.layers).toHaveLength(1);
+    await expect(confirmPlan(db, "owner-a", stickerId, selected.plan.id))
+      .rejects.toMatchObject({ code: "PLAN_ALREADY_CONFIRMED" });
+  });
+
+  it("preserves a previously confirmed version and its build when restoring and rejecting it", async () => {
+    const { first, second } = await readyHistory();
+    await db.insert(generationJobs).values({
+      id: "previous-build", ownerId: "owner-a", stickerId, kind: "compose", state: "succeeded",
+    });
+    await db.update(plans).set({ state: "confirmed", jobId: "previous-build" }).where(eq(plans.id, first.planId));
+    const selected = await selectPlanVersion(db, "owner-a", stickerId, first.planId, second.planId, second.revision);
+    await cancelPlan(db, "owner-a", stickerId, selected.plan.id);
+    expect(await db.select().from(plans).where(eq(plans.id, first.planId)).then(firstRow))
+      .toMatchObject({ state: "confirmed", jobId: "previous-build", conceptAssetId: "reference-0" });
+    const newer = await selectPlanVersion(db, "owner-a", stickerId, second.planId, selected.plan.id, selected.plan.revision);
+    expect(newer.plan).toMatchObject({ sourceVersionId: second.planId, actionable: true, plan: { title: "Revised" } });
+    expect(await listPlans(db, "owner-a", stickerId)).toHaveLength(2);
+  });
+
+  it("rejects stale or unauthorized selections and makes selecting the current active version a no-op", async () => {
+    const { first, second } = await readyHistory();
+    const noChange = await selectPlanVersion(db, "owner-a", stickerId, second.planId, second.planId, second.revision);
+    expect(noChange.plan.id).toBe(second.planId);
+    await expect(selectPlanVersion(db, "owner-a", stickerId, first.planId, second.planId, second.revision + 1))
+      .rejects.toMatchObject({ code: "PLAN_CHANGED" });
+    await expect(selectPlanVersion(db, "owner-b", stickerId, first.planId, second.planId, second.revision))
+      .rejects.toMatchObject({ code: "STICKER_NOT_FOUND" });
+    const restored = await selectPlanVersion(db, "owner-a", stickerId, first.planId, second.planId, second.revision);
+    await expect(selectPlanVersion(db, "owner-a", stickerId, second.planId, second.planId, second.revision))
+      .rejects.toMatchObject({ code: "PLAN_CHANGED" });
+    expect((await selectPlanVersion(db, "owner-a", stickerId, first.planId, restored.plan.id, restored.plan.revision)).plan.id)
+      .toBe(restored.plan.id);
+  });
+
+  it("does not switch plans while a generation is active", async () => {
+    const { first, second } = await readyHistory();
+    await db.insert(generationJobs).values({ id: "active-build", ownerId: "owner-a", stickerId, kind: "compose", state: "queued" });
+    await expect(selectPlanVersion(db, "owner-a", stickerId, first.planId, second.planId, second.revision))
+      .rejects.toMatchObject({ code: "AI_TURN_IN_PROGRESS" });
+    expect((await db.select().from(chatMessages).where(eq(chatMessages.id, "plan-card-1")).then(firstRow))?.planId)
+      .toBe(second.planId);
+  });
 
   it("creates a draft at revision 1", async () => {
     const created = await create(plan("First"));

@@ -11,7 +11,8 @@ struct PlanCard: View {
     let record: PlanRecord
     /// All saved plans in chronological order. Draft edits within one plan share its version.
     var versions: [PlanRecord] = []
-    var onSelectVersion: (String) -> Void = { _ in }
+    var currentVersionID: String?
+    var onShowVersions: () -> Void = {}
     let referenceImage: UIImage?
     let isBusy: Bool
     let onConfirm: () -> Void
@@ -71,6 +72,7 @@ struct PlanCard: View {
                     Text(statusNote)
                         .posterLabelStyle(9, color: AppColors.muted)
                 }
+                versionPicker
             }
             .padding(14)
 
@@ -121,7 +123,6 @@ struct PlanCard: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .posterCapsule(fill: AppColors.lime, lineWidth: 1, offset: .zero)
-                versionPicker
                 if !record.actionable {
                     Text("Preview only")
                         .posterLabelStyle(9, color: AppColors.muted)
@@ -139,24 +140,16 @@ struct PlanCard: View {
     }
 
     private var versionNumber: Int {
-        (versions.firstIndex(where: { $0.id == record.id }) ?? 0) + 1
+        (versions.firstIndex(where: { $0.versionID == record.versionID }) ?? 0) + 1
     }
 
     private var versionPicker: some View {
-        Menu {
-            Picker("Plan version", selection: Binding(
-                get: { record.id },
-                set: { onSelectVersion($0) }
-            )) {
-                ForEach(Array(versions.enumerated().reversed()), id: \.element.id) { index, version in
-                    Text("Version \(index + 1): \(version.plan.title)")
-                        .tag(version.id)
-                }
-            }
+        Button {
+            onShowVersions()
         } label: {
             HStack(spacing: 4) {
                 Text("Version \(versionNumber)")
-                if record.id == versions.last?.id {
+                if record.versionID == currentVersionID {
                     Text("Current")
                 }
                 if versions.count > 1 {
@@ -450,7 +443,7 @@ private struct PlanReferencePreview: View {
 /// Layers are labelled with their index, matching the numbered list below, because full names
 /// collide illegibly the moment two boxes are close together — which is the normal case for the
 /// per-letter layouts this card exists to show.
-private struct PlanLayoutPreview: View {
+struct PlanLayoutPreview: View {
     let layers: [PlanLayer]
 
     private static let boardSide: CGFloat = 150

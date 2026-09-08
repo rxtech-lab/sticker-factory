@@ -232,6 +232,7 @@ describe("durable sticker workflow: composition", () => {
     const mockProvider = getAiProvider();
     let conceptBytes: number[] | undefined;
     const generatedReferences: number[][][] = [];
+    let failSecondPart = true;
     const referenceSelections: Array<Array<{ label: string; required?: boolean }>> = [];
     setAiProviderForTests({
       ...unusedAiProvider,
@@ -249,6 +250,10 @@ describe("durable sticker workflow: composition", () => {
         return mockProvider.selectImageReferences(input);
       },
       generateStickerImage: async (input) => {
+        if (generatedReferences.length === 1 && failSecondPart) {
+          failSecondPart = false;
+          throw new Error("Second part provider outage");
+        }
         generatedReferences.push(input.references.map((reference) => [...reference.bytes]));
         return mockProvider.generateStickerImage(input);
       },
@@ -307,14 +312,17 @@ describe("durable sticker workflow: composition", () => {
       .rejects.toMatchObject({ code: "PLAN_ALREADY_CONFIRMED" });
     // A user retry has a fresh job id while the immutable confirmed plan still names the original
     // confirmation job. The compose step must recover that plan through their shared source turn.
-    await db.update(generationJobs).set({ state: "failed", completedAt: new Date() })
-      .where(eq(generationJobs.id, confirmed.jobId));
-    await db.update(chatMessages).set({ status: "failed" }).where(eq(chatMessages.id, confirmed.messageId));
+    expect(await stickerGenerationWorkflow(confirmed.jobId)).toEqual({ status: "failed" });
+    expect(generatedReferences).toHaveLength(1);
+    const savedPart = await db.select().from(assets)
+      .where(eq(assets.id, derivedAssetId(confirmed.jobId, 0))).then(firstRow);
+    expect(savedPart?.state).toBe("ready");
     const retry = await retryFailedChatTurn(db, "owner-c", sticker.stickerId, confirmed.messageId);
     expect((await stickerGenerationWorkflow(retry.jobId)).workflowStatus).toBe("succeeded");
 
     expect(generatedReferences).toHaveLength(partCount);
-    expect(referenceSelections).toHaveLength(partCount);
+    // Only the failed part selects references again; the completed part skips both AI calls.
+    expect(referenceSelections).toHaveLength(partCount + 1);
     for (const candidates of referenceSelections) {
       expect(candidates).toEqual([
         { label: "approved plan image", required: true },
@@ -326,9 +334,10 @@ describe("durable sticker workflow: composition", () => {
     }
 
     const composedAssets = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
-    expect(composedAssets).toHaveLength(partCount + 2);
+    expect(composedAssets.filter((asset) => !asset.r2Key.includes("/tool-previews/"))).toHaveLength(partCount + 2);
     expect(composedAssets.filter((asset) => asset.kind === "master").map((asset) => asset.id).sort())
-      .toEqual(Array.from({ length: partCount }, (_, index) => derivedAssetId(retry.jobId, index)).sort());
+      .toEqual(Array.from({ length: partCount }, (_, index) => derivedAssetId(confirmed.jobId, index)).sort());
+    expect(composedAssets.find((asset) => asset.id === savedPart!.id)).toEqual(savedPart);
     expect(composedAssets.find((asset) => asset.kind === "preview")?.id).toBe(referenceAsset.id);
 
     const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, retry.jobId)).then(firstRow);
@@ -356,20 +365,29 @@ describe("durable sticker workflow: composition", () => {
         .toEqual([round(spec.delay), round(spec.delay + spec.duration)]);
     }
 
-    const toolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, retry.jobId)).orderBy(chatMessages.sequence))
-      .filter((message) => message.role === "system").map((message) => message.content);
+    const toolMessages = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, retry.jobId)).orderBy(chatMessages.sequence))
+      .filter((message) => message.role === "system");
+    const toolRows = toolMessages.map((message) => message.content);
     expect(toolRows).toContain("build-plan");
     expect(toolRows.filter((name) => name.startsWith("compose-part:"))).toHaveLength(partCount);
     expect(toolRows).toContain("view_plan_image");
     expect(toolRows).toContain("view_sticker");
     expect(toolRows).toContain("finalize_layout");
+    const transcript = await listChatMessages(db, "owner-c", sticker.stickerId);
+    const partCalls = transcript.data.filter((message) => message.content.startsWith("compose-part:") && toolMessages.some((tool) => tool.id === message.id));
+    expect(partCalls).toHaveLength(partCount);
+    for (const call of partCalls) {
+      const details = JSON.parse(call.toolDetails as string);
+      expect(composedAssets.some((asset) => asset.id === details.previewAssetId)).toBe(true);
+    }
 
     // A step retry must not mint a second set of assets or a second revision: that is what the
     // (jobId, index) derived asset ids and the deterministic revision id are for.
     await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, retry.jobId));
     const replay = await executeAiJobStep(retry.jobId);
     expect(replay.revisionId).toBe(retry.jobId);
-    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(partCount + 2);
+    expect((await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId)))
+      .filter((asset) => !asset.r2Key.includes("/tool-previews/"))).toHaveLength(partCount + 2);
     expect(await db.select().from(stickerRevisions).where(eq(stickerRevisions.stickerId, sticker.stickerId))).toHaveLength(1);
 
     await close();
@@ -440,7 +458,7 @@ describe("durable sticker workflow: composition", () => {
     // The concept preview, one transparent still per layer — the clip's poster among them — and
     // the clip itself. Its timing comes off the container, not off the plan.
     const stored = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
-    expect(stored).toHaveLength(partCount + 2);
+    expect(stored.filter((asset) => !asset.r2Key.includes("/tool-previews/"))).toHaveLength(partCount + 2);
     expect(stored.filter((asset) => asset.kind === "master")).toHaveLength(partCount);
     const clip = stored.find((asset) => asset.kind === "video");
     expect(clip).toMatchObject({
@@ -490,7 +508,19 @@ describe("durable sticker workflow: composition", () => {
     const replay = await executeAiJobStep(confirmed.jobId);
     expect(replay.revisionId).toBe(confirmed.jobId);
     expect(videoRequests).toHaveLength(1);
-    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(partCount + 2);
+    // A fresh user retry must also reuse the stored clip and poster, not just a runtime replay.
+    await failJobStep(confirmed.jobId, "Failure after video storage");
+    const retry = await retryFailedChatTurn(db, "owner-v", sticker.stickerId, confirmed.messageId);
+    expect((await stickerGenerationWorkflow(retry.jobId)).workflowStatus).toBe("succeeded");
+    expect(videoRequests).toHaveLength(1);
+    const retriedRevision = await db.select().from(stickerRevisions)
+      .where(eq(stickerRevisions.id, retry.jobId)).then(firstRow);
+    expect(StickerDocumentSchema.parse(retriedRevision!.documentJson).layers[0]).toMatchObject({
+      assetId: clip!.id,
+      posterAssetId: derivedAssetId(confirmed.jobId, 0),
+    });
+    expect((await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId)))
+      .filter((asset) => !asset.r2Key.includes("/tool-previews/"))).toHaveLength(partCount + 2);
 
     await close();
   });

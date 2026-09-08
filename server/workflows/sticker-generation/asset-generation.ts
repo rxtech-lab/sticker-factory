@@ -19,6 +19,21 @@ import { derivedAssetId } from "@/lib/services/assets";
 import { getObjectStore, inspectImage, inspectMp4, objectKey, type ObjectStore } from "@/lib/storage/r2";
 import { isAbortError } from "./turn-context";
 
+export async function loadStoredGeneratedImage(
+  job: typeof generationJobs.$inferSelect,
+  stickerId: string,
+  assetId: string,
+): Promise<{ subject?: SubjectBounds } | undefined> {
+  const stored = await (await getDatabase()).select().from(assets).where(and(
+    eq(assets.id, assetId),
+    eq(assets.ownerId, job.ownerId),
+    eq(assets.stickerId, stickerId),
+    eq(assets.state, "ready"),
+  )).then(firstRow);
+  if (!stored) return undefined;
+  return { subject: await storedSubjectBounds(getObjectStore(), stored.r2Key) };
+}
+
 export async function generateAndStoreAsset(
   job: typeof generationJobs.$inferSelect,
   stickerId: string,
@@ -54,16 +69,12 @@ export async function generateAndStoreAsset(
   // Every failure after this point replays the whole step, so a turn that dies late pays for the same
   // picture again on each attempt. The id is derived from the job, so an image already stored under it
   // was produced by this turn from this prompt: take it instead of buying a second copy.
-  const stored = await db.select({ state: assets.state }).from(assets).where(and(
-    eq(assets.id, params.assetId),
-    eq(assets.ownerId, job.ownerId),
-    eq(assets.stickerId, stickerId),
-  )).then(firstRow);
-  if (stored?.state === "ready") {
+  const stored = await loadStoredGeneratedImage(job, stickerId, params.assetId);
+  if (stored) {
     traceEvent("generateImage:reused", trace);
     // The measurement was taken from the frame the model returned, which is gone: the stored master
     // is the crop. It was written next to the object for exactly this replay.
-    return { subject: await storedSubjectBounds(objectStore, objectKey(job.ownerId, params.assetId, "image/png")) };
+    return stored;
   }
   const generated = await traceSpan("generateImage", trace, () => params.concept
     ? provider.generateConceptImage({ prompt: params.prompt, references: params.references })

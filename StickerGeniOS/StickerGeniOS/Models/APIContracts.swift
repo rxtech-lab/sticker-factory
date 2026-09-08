@@ -260,6 +260,9 @@ nonisolated struct PlanRecord: Codable, Identifiable, Hashable, Sendable {
     var conceptAssetId: String?
     var decisionReason: String?
     var supersedesId: String?
+    /// The saved version this active copy restores. Its build identity remains `id`.
+    var sourceVersionId: String?
+    var versionID: String { sourceVersionId ?? id }
     /// The server's verdict on whether this card may still be acted on. Trusted over `state`
     /// alone, because a card can be stale even while the plan itself is finalized.
     var actionable: Bool
@@ -517,6 +520,16 @@ nonisolated struct PlanAnimation: Codable, Hashable, Sendable {
 nonisolated struct ConfirmPlanResponse: Codable, Sendable {
     var message: AcceptedMessageReference
     var job: GenerationJobReference
+}
+
+nonisolated struct SelectPlanVersionRequest: Codable, Sendable {
+    var currentPlanId: String
+    var currentRevision: Int
+}
+
+nonisolated struct SelectPlanVersionResponse: Codable, Sendable {
+    var messageId: String
+    var plan: PlanRecord
 }
 
 nonisolated struct CancelPlanRequest: Codable, Sendable {

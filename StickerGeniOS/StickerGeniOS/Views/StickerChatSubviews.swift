@@ -28,7 +28,7 @@ struct ChatBubble: View {
     let sticker: AnimatedDocument?
     let assets: [String: UIImage]
     var videos: [String: KeyedVideoFrames] = [:]
-    var toolAPI: (any StickerAPIClientProtocol)? = nil
+    var toolAPI: (any StickerAPIClientProtocol)?
     let onOpenSticker: (AnimatedDocument) -> Void
 
     @ViewBuilder
@@ -247,8 +247,10 @@ private struct ToolCallRow: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AppColors.paper)
                 .navigationTitle(message.status == .failed ? "Tool Error" : "Tool Result")
                 .navigationBarTitleDisplayMode(.inline)
@@ -266,6 +268,7 @@ private struct ToolCallRow: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+            .presentationBackground(AppColors.paper)
         }
     }
 
@@ -476,7 +479,7 @@ struct ComposerMediaChip: View {
 
 nonisolated extension ChatMessage {
     var toolPreviewAssetID: String? {
-        guard status == .complete, content.hasPrefix("view"),
+        guard status == .complete,
               let data = toolDetails?.data(using: .utf8),
               let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let assetID = result["previewAssetId"] as? String, !assetID.isEmpty

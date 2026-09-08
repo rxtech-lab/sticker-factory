@@ -34,6 +34,7 @@ struct StickerChatView: View {
     @State var assetStore = StickerAssetStore()
     @State var exportModel = StickerExportModel()
     @State private var showingVersions = false
+    @State private var planVersionMessage: ChatMessage?
     @State private var showingExport = false
     @State private var showingComparison = false
     @State private var confirmingDelete = false
@@ -43,7 +44,6 @@ struct StickerChatView: View {
     @State var isDeciding = false
     @State var isConfirmingPlan = false
     @State private var savedPlanVersions: [PlanRecord] = []
-    @State private var selectedPlanIDs: [String: String] = [:]
     /// A retry is in flight. Held here rather than read off the job, because the job only stops
     /// looking failed once the replacement stream opens — well after the tap.
     @State var isRetrying = false
@@ -95,11 +95,13 @@ struct StickerChatView: View {
     private var actionablePlanID: String? {
         messages.compactMap(\.plan).last(where: \.actionable)?.id
     }
+    private var latestPlanMessage: ChatMessage? { messages.last(where: { $0.plan != nil }) }
     private var planVersions: [PlanRecord] {
         // Transcript updates can arrive before the history request completes. Keep their latest
         // contents, while retaining older plans outside the currently loaded message page.
         var versions = savedPlanVersions
         for record in messages.compactMap(\.plan) {
+            guard record.sourceVersionId == nil else { continue }
             if let index = versions.firstIndex(where: { $0.id == record.id }) {
                 if record.revision >= versions[index].revision { versions[index] = record }
             } else {
@@ -312,6 +314,20 @@ struct StickerChatView: View {
         .onChange(of: isComputing) { _, newValue in
             if newValue { showingCandidate = false }
         }
+        .sheet(item: $planVersionMessage) { _ in
+            NavigationStack {
+                PlanVersionsSheet(
+                    versions: planVersions,
+                    selectedID: latestPlanMessage?.plan?.versionID ?? "",
+                    assets: assetStore.images,
+                    api: store.api,
+                    onSelect: { versionID in
+                        guard let current = latestPlanMessage?.plan else { throw StickerAPIError.http(409) }
+                        try await store.selectPlanVersion(stickerID: stickerID, versionID: versionID, current: current)
+                    }
+                )
+            }
+        }
         .sheet(isPresented: $showingVersions) {
             NavigationStack {
                 StickerVersionsSheet(store: store, stickerID: stickerID, assets: assetStore.images)
@@ -497,19 +513,14 @@ struct StickerChatView: View {
                 }
             }
         } else if let record = message.plan {
-            let selected = planVersions.first(where: {
-                $0.id == (selectedPlanIDs[message.id] ?? record.id)
-            }) ?? record
-            // Browsing history must never grant permission to act. Only the original live card
-            // may expose its actions, and only while it displays that same current plan.
-            let canAct = selected.id == record.id && record.actionable
-                && selected.revision == record.revision
-                && record.id == actionablePlanID && record.id == planVersions.last?.id
+            let canAct = record.actionable && message.id == latestPlanMessage?.id
+                && record.id == actionablePlanID
             PlanCard(
-                record: canAct ? record : selected.readOnly,
+                record: canAct ? record : record.readOnly,
                 versions: planVersions,
-                onSelectVersion: { selectedPlanIDs[message.id] = $0 },
-                referenceImage: selected.conceptAssetId.flatMap { assetStore.images[$0] },
+                currentVersionID: latestPlanMessage?.plan?.versionID,
+                onShowVersions: { planVersionMessage = message },
+                referenceImage: record.conceptAssetId.flatMap { assetStore.images[$0] },
                 isBusy: isConfirmingPlan || isComputing,
                 onConfirm: { Task { await confirmPlan(record) } },
                 onReject: { reason in Task { await rejectPlan(record, reason: reason) } },
@@ -521,8 +532,8 @@ struct StickerChatView: View {
                     Task { await savePlanImageToPhotoLibrary(image) }
                 }
             )
-            .task(id: selected.conceptAssetId) {
-                if let assetID = selected.conceptAssetId {
+            .task(id: record.conceptAssetId) {
+                if let assetID = record.conceptAssetId {
                     await assetStore.load(assetID: assetID, api: store.api)
                 }
             }

@@ -4,7 +4,7 @@
 
 import { and, eq, inArray, max } from "drizzle-orm";
 import { compactTranscript, type TranscriptOptions } from "@/lib/ai/compaction";
-import { applyStickerOperationsV1, layerImageAssetIds, layerVideoAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
+import { applyStickerOperationsV1, StickerDocumentSchema, layerImageAssetIds, layerVideoAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, chatMessages, chatThreads, generationEvents, generationJobs } from "@/lib/db/schema";
 import { getAiProvider } from "@/lib/ai/gateway";
@@ -219,7 +219,15 @@ function formatToolDetails(details: unknown): string | undefined {
     if (value?.type === "Buffer" && Array.isArray(value.data)) return `[Image/media: ${value.data.length} bytes]`;
     return value;
   }, 2);
-  return text && text.length > 16000 ? text.slice(0, 16000) + "\n… (truncated)" : text;
+  if (text && text.length > 16000) {
+    const truncated = text.slice(0, 16000) + "\n… (truncated)";
+    // Keep the preview reference parseable even for large layout documents.
+    if (details && typeof details === "object" && "previewAssetId" in details) {
+      return JSON.stringify({ previewAssetId: details.previewAssetId, details: truncated });
+    }
+    return truncated;
+  }
+  return text;
 }
 
 export async function finishToolCall(
@@ -240,10 +248,16 @@ export async function finishToolCall(
   if (!tool) return;
   // Keep the exact review pixels out of JSON/model history, but retain an owned asset
   // so both a live event and a reopened transcript can display this call's snapshot.
-  if (status === "complete" && tool.toolName.startsWith("view") && details && typeof details === "object"
-      && "bytes" in details && details.bytes instanceof Uint8Array) {
+  if (status === "complete" && details && typeof details === "object"
+      && ("bytes" in details || "document" in details)) {
     try {
-      const bytes = details.bytes;
+      const rendered = "bytes" in details && details.bytes instanceof Uint8Array
+        ? { bytes: details.bytes }
+        : "document" in details
+          ? await renderWorkingDocument(StickerDocumentSchema.parse(details.document), job.ownerId)
+          : undefined;
+      if (!rendered) throw new Error("Tool result has no renderable image");
+      const bytes = rendered.bytes;
       const inspection = await inspectImage(bytes);
       const previewAssetId = derivedAssetId(tool.id, "tool-preview");
       const r2Key = `${job.ownerId}/${job.stickerId}/tool-previews/${previewAssetId}`;
@@ -257,7 +271,7 @@ export async function finishToolCall(
       }).onConflictDoNothing();
       details = { ...details, previewAssetId };
     } catch (error) {
-      // Saving a transcript preview must not turn a successful model review into a failure.
+      // Saving a transcript preview must not turn a successful tool call into a failure.
       traceEvent("tool-preview:fail", { toolCallId, error: describeError(error) });
     }
   }

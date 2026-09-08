@@ -339,6 +339,8 @@ export const plans = pgTable("plans", {
   /** Bumped by every `update_plan`, so a card can say which revision it rendered. */
   revision: integer("revision").notNull().default(1),
   supersedesId: text("supersedes_id").references((): AnyPgColumn => plans.id, { onDelete: "set null" }),
+  /** Saved version activated by this copy; keeps prior builds and version numbers intact. */
+  restoredFromId: text("restored_from_id").references((): AnyPgColumn => plans.id, { onDelete: "set null" }),
   jobId: text("job_id").references(() => generationJobs.id, { onDelete: "set null" }),
   /** A storyboard render of the plan, shown on the plan card before anything real is made. */
   conceptAssetId: text("concept_asset_id").references(() => assets.id, { onDelete: "set null" }),

@@ -5782,6 +5782,22 @@
         }
       }
     },
+    "Plan versions" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案版本"
+          }
+        }
+      }
+    },
     "Planning sticker" : {
       "localizations" : {
         "zh-CN" : {
@@ -6482,6 +6498,22 @@
         }
       }
     },
+    "Reference unavailable" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考图不可用"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "參考圖片無法使用"
+          }
+        }
+      }
+    },
     "Reject" : {
       "localizations" : {
         "zh-CN" : {
@@ -7162,6 +7194,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分區"
+          }
+        }
+      }
+    },
+    "Select" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇"
+          }
+        }
+      }
+    },
+    "Selected" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选择"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已選擇"
           }
         }
       }
@@ -9861,6 +9925,7 @@
       }
     },
     "Version %lld: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {

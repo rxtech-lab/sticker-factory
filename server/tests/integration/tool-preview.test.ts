@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { afterEach, expect, it } from "vitest";
 import sharp from "sharp";
+import { StickerDocumentSchema } from "@/lib/contracts/sticker";
+import { renderWorkingDocument } from "@/workflows/sticker-generation/turn-context";
 import { eq } from "drizzle-orm";
 import { firstRow, setDatabaseForTests } from "@/lib/db/client";
 import { assets, generationEvents, generationJobs, users } from "@/lib/db/schema";
@@ -37,5 +40,15 @@ it("retains exact view-tool pixels for live events and reopened transcripts with
       const events = await db.select().from(generationEvents).where(eq(generationEvents.jobId, job.id));
       expect(events.some(event => event.dataJson.toolDetails === JSON.stringify(details, null, 2))).toBe(true);
     }
+    const document = StickerDocumentSchema.parse(JSON.parse(readFileSync("fixtures/sticker-document-v2.json", "utf8")));
+    const expected = await renderWorkingDocument(document, job.ownerId);
+    const layoutCall = await beginToolCall(job, "adjust_layout");
+    await finishToolCall(job, layoutCall, "complete", { revision: 1, document, diagnostic: "x".repeat(17000) });
+    const transcript = await listChatMessages(db, job.ownerId, job.stickerId);
+    const layoutDetails = JSON.parse(transcript.data.find(row => row.id === layoutCall)!.toolDetails as string);
+    expect(layoutDetails.previewAssetId).toBeTruthy();
+    const layoutAsset = (await db.select().from(assets).where(eq(assets.id, layoutDetails.previewAssetId)).then(firstRow))!;
+    expect(Buffer.from((await objects.get(layoutAsset.r2Key)).bytes)).toEqual(Buffer.from(expected.bytes));
+    await expect(getOwnedAsset(db, "someone-else", layoutAsset.id)).rejects.toThrow();
   } finally { await close(); }
 }, 30_000);

@@ -149,10 +149,36 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         return .init(data: messages.compactMap(\.plan), nextCursor: nil)
     }
 
+    func selectPlanVersion(stickerID: String, versionID: String, request: SelectPlanVersionRequest, idempotencyKey: String) async throws -> SelectPlanVersionResponse {
+        guard let index = messages.lastIndex(where: { $0.plan != nil }),
+              messages[index].plan?.id == request.currentPlanId,
+              messages[index].plan?.revision == request.currentRevision,
+              var selected = PreviewFixtures.planVersions.first(where: { $0.id == versionID }) else {
+            throw StickerAPIError.http(409)
+        }
+        selected.sourceVersionId = selected.id
+        selected.id = UUID().uuidString
+        selected.messageId = messages[index].id
+        selected.state = .finalized
+        selected.actionable = true
+        selected.jobId = nil
+        messages[index].plan = selected
+        return .init(messageId: messages[index].id, plan: selected)
+    }
+
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
         if ProcessInfo.processInfo.arguments.contains("--ui-tool-preview") {
+            let arguments = ProcessInfo.processInfo.arguments
+            let toolName: String
+            if arguments.contains("--ui-compose-preview") {
+                toolName = "compose-part:0 Heart"
+            } else if arguments.contains("--ui-layout-preview") {
+                toolName = "adjust_layout"
+            } else {
+                toolName = "view_sticker"
+            }
             return .init(data: [ChatMessage(
-                id: "tool-preview", role: .system, kind: .status, content: "view_sticker",
+                id: "tool-preview", role: .system, kind: .status, content: toolName,
                 imagePlacement: .replace, sequence: 1, status: .complete, createdAt: Date(),
                 attachments: [], toolDetails: "{\"previewAssetId\":\"\(PreviewFixtures.borrowedAssetID)\"}"
             )], nextBeforeSequence: nil)
