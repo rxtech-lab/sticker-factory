@@ -11,6 +11,7 @@ import {
 } from "@/lib/http/logging";
 import { elapsedMs, formatTimings, runTimed, serverTimingHeader, timeStage } from "@/lib/http/timing";
 import { ensureUser } from "@/lib/services/users";
+import { withBillingRequest } from "@/lib/subscription/environment";
 
 export async function withApiAuth(
   request: Request,
@@ -35,7 +36,8 @@ export async function withApiAuth(
         await timeStage("ensure-user", () => ensureUser(db, authenticatedPrincipal));
       }
       stage = "handler";
-      const response = await timeStage("handler", () => action(authenticatedPrincipal, db, context));
+      const response = await timeStage("handler", () =>
+        withBillingRequest(request, authenticatedPrincipal, () => action(authenticatedPrincipal, db, context)));
       status = response.status;
       response.headers.set("x-request-id", requestId);
       return withTimings(response);

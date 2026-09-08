@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
    * practice means the Playwright run.
    */
   serverExternalPackages: ["@electric-sql/pglite", "ws"],
+  outputFileTracingIncludes: { "/*": ["./lib/subscription/certificates/*.cer"] },
 };
 
 export default withWorkflow(nextConfig);

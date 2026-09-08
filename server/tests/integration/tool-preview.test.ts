@@ -11,7 +11,8 @@ import { getOwnedAsset } from "@/lib/services/assets";
 import { MemoryObjectStore, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { resetWorkflowTestState } from "@/tests/helpers/workflow";
-import { beginJob, beginToolCall, finishToolCall } from "@/workflows/sticker-generation/turn-context";
+import { beginToolCall, finishToolCall } from "@/workflows/sticker-generation/turn-context";
+import { beginJob } from "@/lib/services/job-lifecycle";
 
 afterEach(resetWorkflowTestState);
 it("retains exact view-tool pixels for live events and reopened transcripts with owner access", async () => {

@@ -8,7 +8,7 @@ Next.js 16 backend and read-only web library for Sticker Factory. The iOS app cr
 - `app/library`: authenticated web Library, private previews/downloads, parent-based revision comparison, read-only chat, and durable deletion.
 - `lib/contracts`: strict Zod `StickerDocumentV1`, operation, event, and API envelopes shared through `fixtures/`.
 - `lib/db` and `drizzle/`: Drizzle/Postgres model on Neon, active-job constraints, asset deletion guards, and immutable revision triggers. `drizzle/sqlite-legacy/` is the pre-migration libSQL history, kept for reference and never applied.
-- `workflows/sticker-generation`: Vercel Workflow generation, editing, validated animation snapshots, export publication, decision transitions, and delayed R2 deletion sweeps.
+- `workflows/sticker-generation`: Vercel Workflow generation, editing, validated animation snapshots, decision transitions, and delayed R2 deletion sweeps. Its `"use step"` wrappers are shells over `lib/services/job-lifecycle.ts`, which owns the three transitions a job can take and is shared with the work that does not need a workflow.
 - `lib/ai`: Vercel AI Gateway adapter (`AI_IMAGE_MODEL` for every image generation/edit,
   `AI_QUICK_IMAGE_MODEL` for turns the Messages extension's quick mode starts, and
   `AI_ORCHESTRATOR_MODEL` for chat, routing, planning, review, and animation) plus a deterministic
@@ -58,7 +58,7 @@ All state-changing endpoints require `Idempotency-Key`. JSON bodies are content-
 - `POST /api/v1/stickers/{id}/chat/messages/{messageId}/retry`
 - `POST /api/v1/stickers/{id}/revisions` — saves a client-edited document as a new accepted revision
 - `POST /api/v1/stickers/{id}/revisions/{revisionId}/{accept|reject|revert}`
-- `POST /api/v1/stickers/{id}/exports`
+- `POST /api/v1/stickers/{id}/exports` — binds an already-rendered, already-verified export set. It runs in the request rather than through the durable runtime (see `lib/services/export-publish.ts`), so the job it returns is usually terminal before the client opens its event stream
 - `POST /api/v1/uploads`
 - `POST /api/v1/uploads/{assetId}/complete`
 - `GET /api/v1/assets/{assetId}/download`
@@ -111,8 +111,8 @@ turn the user was still watching.
   JWT. HTTP/2 is the only transport APNs accepts and `fetch` will not negotiate it, which is the
   whole reason the file is not a thin wrapper. Provider tokens are cached for 45 minutes, inside
   Apple's one-hour validity and well clear of `TooManyProviderTokenUpdates`.
-- `completeJobStep`/`failJobStep` push after the terminal transition commits, so a step that re-runs
-  over an already-finished job cannot announce it twice. Cleanup and export jobs stay silent.
+- `completeJob`/`failJob` push after the terminal transition commits, so a step that re-runs over an
+  already-finished job cannot announce it twice. Cleanup and export jobs stay silent.
 - Sending is best-effort and never throws: a sticker that generated must not be reported as failed
   because Apple timed out. A 410/`BadDeviceToken` disables that `device_tokens` row rather than
   deleting it, so a dead token is not retried every turn and a later re-registration revives it.
@@ -144,9 +144,11 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
 - `generation_jobs.reservation_id` / `reservation_amount` carry the hold. Every terminal transition
   a job can take has to be able to find it again, and no other row outlives all four. Both are
   cleared once the hold closes, so a replayed transition cannot settle twice.
-- Reserving happens at each `generationJobs` insert; settling in `completeJobStep`, releasing in
+- Reserving happens at each `generationJobs` insert; settling in `completeJob`, releasing in
   `failJob`, `cancelGenerationWorkflow`, and `recordDispatchFailure`. A hold placed for a job that
-  then loses the one-active-job-per-sticker race is released by `abandonHold`.
+  then loses the one-active-job-per-sticker race is released by `abandonHold`. A publish settles
+  after its response flushes — the exports route hands the settlement `after` from `next/server`,
+  because the job is already terminal in the database and the client is waiting on the reply.
 - Deleting your own work and still exports remain free. Animated exports keep their fixed charge
   because they run a frame-by-frame encode rather than a paid AI API call.
 - Publishing a pack requires the `marketplace.publish:all` permission (legacy `marketplace.publish`
@@ -155,11 +157,32 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
   `402 SUBSCRIPTION_REQUIRED`, and a billing service that cannot be reached is `503`, never an empty
   wallet. Settle and release swallow their errors — a job that really ran must not be reported as
   failed because billing hiccuped, and an unreleased hold expires on its own.
-- Set `RX_SUBSCRIPTION_URL` and `RX_SUBSCRIPTION_API_KEY`. The key must be a **secret** one: it
-  holds and settles credits, which no client may be able to do. The iOS app carries its own
-  publishable key. Leaving either variable empty is a supported state that turns every credit and
-  entitlement check off — generation is unmetered and publishing ungated — which is how local
-  development and the test suites run.
+- Set `RX_SUBSCRIPTION_URL`, `RX_SUBSCRIPTION_SANDBOX_API_KEY`, and
+  `RX_SUBSCRIPTION_PRODUCTION_API_KEY` to serve TestFlight and App Store users together. Both
+  keys are server-only secrets. The updated iOS client sends `X-StoreKit-App-Transaction` alongside
+  its OAuth token. Apple's official verifier checks its signature, certificate chain/revocation,
+  bundle ID, App Store app ID, and environment before selecting the matching key. Plain environment
+  headers never select a key, and Xcode-signed transactions are never accepted as Apple proof.
+- `APPLE_BUNDLE_ID` and `APPLE_APP_ID` optionally override the existing Sticker Factory identity
+  (`app.rxlab.stickerfactory`, `6805825708`). The authenticated web OAuth client uses production;
+  mobile clients with missing or invalid proof cannot perform billing operations. Reads and refunds
+  remain available without proof; refund routing comes from the saved job.
+- Apply migration `0006_job_billing_environment` before deploying. New jobs store their billing
+  environment next to the reservation. Background settlement, cancellation, and refunds use that
+  saved environment even if the user later switches builds. Never copy a production key into the
+  sandbox variable (or vice versa); missing or mismatched keys return an error.
+- Roll out a new iOS build together with the server changes. Older mobile builds do not send proof
+  and receive `BILLING_ENVIRONMENT_REQUIRED` for billing operations once split keys are enabled.
+  No deployment-wide `RX_SUBSCRIPTION_ENVIRONMENT` is needed for dual-environment routing.
+- `RX_SUBSCRIPTION_API_KEY` remains supported for legacy/local single-environment deployments.
+  An explicit `RX_SUBSCRIPTION_ENVIRONMENT=sandbox|production` remains available for a dedicated
+  deployment and old jobs without a recorded environment. Verified requests and recorded job
+  environments take precedence. Audit existing open reservations before changing this fallback;
+  in a dual-key-only deployment, old holds with no recorded environment are logged and left
+  unsettled instead of guessing a balance. Do not backfill historical jobs from the current key.
+- Deployed servers reject missing billing configuration with `503 SUBSCRIPTION_NOT_CONFIGURED`.
+  Only fully unconfigured local development/tests bypass billing. Apple's public root certificate
+  is included in the deployment; this verification does not require an App Store Connect private key.
 
 ## Media and deletion invariants
 

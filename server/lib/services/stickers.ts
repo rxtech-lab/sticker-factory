@@ -1,3 +1,4 @@
+import { currentBillingEnvironment } from "@/lib/subscription/client";
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte } from "drizzle-orm";
 import type { CreateStickerRequest, ImportStickerRequest, UpdateStickerRequest } from "@/lib/contracts/api";
 import { CURRENT_DOCUMENT_VERSION, downcastForClient, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
@@ -199,6 +200,7 @@ export async function createExportJob(
         kind: "export",
         state: "queued",
         reservationId,
+        billingEnvironment: await currentBillingEnvironment(),
         reservationAmount: reservationId ? creditCost : 0,
         createdAt: now,
         updatedAt: now,

@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.62",
+    "@apple/app-store-server-library": "^3.1.0",
     "@aws-sdk/client-s3": "^3.1116.0",
     "@aws-sdk/s3-request-presigner": "^3.1116.0",
     "@neondatabase/serverless": "^1.1.0",

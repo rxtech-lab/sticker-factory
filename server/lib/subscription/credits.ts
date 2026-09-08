@@ -11,7 +11,7 @@ import {
   settleReservation,
   SubscriptionServiceError,
 } from "./client";
-import { subscriptionEnabled } from "./config";
+import { subscriptionEnabled, type BillingEnvironment } from "./config";
 import { CREDIT_UNIT, PUBLISH_PERMISSION } from "./pricing";
 
 /**
@@ -111,7 +111,7 @@ export async function chargeJobCredits(db: Database, job: GenerationJobRow): Pro
           videoPoints: job.apiVideoPoints,
           chargedPoints: amount,
         },
-    });
+    }, job.billingEnvironment ?? null);
     if (settlement.operationShortfallAmount > 0) {
       console.error("A generation job's API-priced point charge was only partially settled", {
         jobId: job.id,
@@ -176,14 +176,16 @@ export async function abandonHold(
   reservationId: string | null,
   jobId: string,
   reason: string,
-): Promise<void> {
-  if (!reservationId) return;
+  environment?: BillingEnvironment | null,
+): Promise<boolean> {
+  if (!reservationId) return true;
   try {
     await releaseReservation({
       reservationId,
       idempotencyKey: `release:${jobId}`,
       reason,
-    });
+    }, environment);
+    return true;
   } catch (error) {
     console.error("Could not release the credit hold of a job that was never created", {
       jobId,
@@ -191,6 +193,7 @@ export async function abandonHold(
       reason,
       error,
     });
+    return false;
   }
 }
 
@@ -207,8 +210,9 @@ export async function refundJobCredits(
   reason: string,
 ): Promise<void> {
   if (!job.reservationId) return;
-  await abandonHold(job.reservationId, job.id, reason);
-  await clearJobReservation(db, job.id);
+  if (await abandonHold(job.reservationId, job.id, reason, job.billingEnvironment ?? null)) {
+    await clearJobReservation(db, job.id);
+  }
 }
 
 /**

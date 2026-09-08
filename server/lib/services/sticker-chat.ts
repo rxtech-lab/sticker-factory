@@ -1,3 +1,4 @@
+import { currentBillingEnvironment } from "@/lib/subscription/client";
 // Chat turns: starting one, retrying a failed one, and reading the transcript back.
 
 import { quickGenerationPolicy, recordAppClipUsage } from "@/lib/subscription/app-clip";
@@ -144,6 +145,7 @@ export async function createChatTurn(
           appClip,
           state: "queued",
           reservationId,
+          billingEnvironment: await currentBillingEnvironment(),
           reservationAmount: reservationId ? creditHold : 0,
           createdAt: now,
           updatedAt: now,
@@ -267,6 +269,7 @@ export async function retryFailedChatTurn(
         quick: original.quick,
         state: "queued",
         reservationId,
+        billingEnvironment: await currentBillingEnvironment(),
         reservationAmount: reservationId ? creditHold : 0,
         createdAt: now,
         updatedAt: now,

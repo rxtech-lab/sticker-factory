@@ -1,6 +1,7 @@
 import AnimatedView
 import CryptoKit
 import Foundation
+import StoreKit
 import os
 
 nonisolated protocol StickerAPIClientProtocol: Sendable {
@@ -75,6 +76,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     private let session: URLSession
     private let appVersion: String?
     private let acceptLanguage: String?
+    private let appTransactionProvider: @Sendable () async -> String?
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     /// Called when the server declines a request for want of credits or a plan.
@@ -92,13 +94,20 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         tokenBroker: SharedTokenBroker,
         session: URLSession = .shared,
         appVersion: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-        acceptLanguage: String? = Locale.preferredLanguages.first
+        acceptLanguage: String? = Locale.preferredLanguages.first,
+        appTransactionProvider: @escaping @Sendable () async -> String? = {
+            guard let result = try? await AppTransaction.shared,
+                  case .verified(let transaction) = result,
+                  transaction.environment != .xcode else { return nil }
+            return result.jwsRepresentation
+        }
     ) {
         self.baseURL = baseURL
         self.tokenBroker = tokenBroker
         self.session = session
         self.appVersion = appVersion
         self.acceptLanguage = acceptLanguage
+        self.appTransactionProvider = appTransactionProvider
         encoder = JSONEncoder.api
         decoder = JSONDecoder.api
     }
@@ -637,6 +646,9 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(try await tokenBroker.validAccessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // Apple signs the environment; a plain sandbox/production header is not proof.
+        // Keep reads usable if StoreKit is unavailable. Billing writes fail closed on the server.
+        request.setValue(await appTransactionProvider(), forHTTPHeaderField: "X-StoreKit-App-Transaction")
         Self.addClientMetadataHeaders(
             to: &request,
             appVersion: appVersion,
