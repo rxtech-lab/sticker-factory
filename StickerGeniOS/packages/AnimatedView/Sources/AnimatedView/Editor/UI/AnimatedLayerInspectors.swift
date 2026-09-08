@@ -63,7 +63,7 @@ struct AnimatedSequenceLayerInspector: View {
         if let tile = FrameAtlasCache.shared.tile(for: layer, index: index, assets: assets) {
             Image(platformImage: tile)
                 .resizable()
-                .aspectRatio(contentMode: .fit)
+                .scaledToFit()
                 .frame(width: 88, height: 88)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
@@ -168,7 +168,7 @@ struct AnimatedVideoLayerInspector: View {
             ?? assets.image(for: layer.posterAssetId) {
             Image(platformImage: frame)
                 .resizable()
-                .aspectRatio(contentMode: .fit)
+                .scaledToFit()
                 .frame(width: 88, height: 88)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
@@ -214,7 +214,10 @@ struct AnimatedUnsupportedLayerInspector: View {
                 icon: "questionmark.square.dashed"
             )
         } footer: {
-            Text("It is kept exactly as it was and will not be lost, but it cannot be shown or edited here. Update the app to work with it.")
+            Text("""
+                It is kept exactly as it was and will not be lost, \
+                but it cannot be shown or edited here. Update the app to work with it.
+                """)
         }
     }
 }
@@ -281,7 +284,7 @@ struct AnimatedImageLayerInspector: View {
         if let image = assets.image(for: layer.assetId) {
             Image(platformImage: image)
                 .resizable()
-                .aspectRatio(contentMode: .fit)
+                .scaledToFit()
                 .frame(width: 88, height: 88)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         } else {

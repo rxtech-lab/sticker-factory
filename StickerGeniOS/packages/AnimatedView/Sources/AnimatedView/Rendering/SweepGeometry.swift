@@ -22,7 +22,7 @@ enum SweepGeometry {
             (.clear, wipe.start - feather),
             (.white, wipe.start + feather),
             (.white, wipe.end - feather),
-            (.clear, wipe.end + feather),
+            (.clear, wipe.end + feather)
         ]
         return normalised(stops)
     }
@@ -37,7 +37,7 @@ enum SweepGeometry {
         let stops: [(Color, Double)] = [
             (.white.opacity(0), sheen.position - half),
             (.white.opacity(sheen.intensity), sheen.position),
-            (.white.opacity(0), sheen.position + half),
+            (.white.opacity(0), sheen.position + half)
         ]
         return normalised(stops)
     }

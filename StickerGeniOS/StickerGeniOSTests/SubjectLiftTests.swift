@@ -222,7 +222,7 @@ struct SubjectLiftTests {
         let frames = [
             frame(subjectAt: CGRect(x: 0.05, y: 0.4, width: 0.2, height: 0.2)),
             frame(subjectAt: CGRect(x: 0.40, y: 0.4, width: 0.2, height: 0.2)),
-            frame(subjectAt: CGRect(x: 0.75, y: 0.4, width: 0.2, height: 0.2)),
+            frame(subjectAt: CGRect(x: 0.75, y: 0.4, width: 0.2, height: 0.2))
         ]
         var settings = SubjectLiftSettings.default
         settings.frameCount = 3
@@ -265,7 +265,7 @@ struct SubjectLiftTests {
     func packsTilesUpright() throws {
         let source = frame(subjectsAt: [
             CGRect(x: 0.30, y: 0.10, width: 0.4, height: 0.2),
-            CGRect(x: 0.45, y: 0.70, width: 0.1, height: 0.1),
+            CGRect(x: 0.45, y: 0.70, width: 0.1, height: 0.1)
         ])
         #expect(try #require(SubjectSegmenter.describe(source)).centroid.y < 0.4)
 
@@ -397,7 +397,7 @@ struct SubjectLiftTests {
         let frames = [
             frame(subjectAt: CGRect(x: 0.05, y: 0.4, width: 0.2, height: 0.2)),
             frame(subjectAt: CGRect(x: 0.40, y: 0.4, width: 0.2, height: 0.2)),
-            frame(subjectAt: CGRect(x: 0.75, y: 0.4, width: 0.2, height: 0.2)),
+            frame(subjectAt: CGRect(x: 0.75, y: 0.4, width: 0.2, height: 0.2))
         ]
         var settings = SubjectLiftSettings.default
         settings.frameCount = 3
@@ -410,8 +410,14 @@ struct SubjectLiftTests {
         let plainSheet = try #require(UIImage(data: plain.data)?.cgImage)
 
         for index in 0..<outlined.metadata.frameCount {
-            #expect(containsWhite(try #require(cell(of: outlinedSheet, index: index, metadata: outlined.metadata))), "tile \(index) has no rim")
-            #expect(!containsWhite(try #require(cell(of: plainSheet, index: index, metadata: plain.metadata))), "tile \(index) has a rim it was not asked for")
+            #expect(
+                containsWhite(try #require(cell(of: outlinedSheet, index: index, metadata: outlined.metadata))),
+                "tile \(index) has no rim"
+            )
+            #expect(
+                !containsWhite(try #require(cell(of: plainSheet, index: index, metadata: plain.metadata))),
+                "tile \(index) has a rim it was not asked for"
+            )
         }
     }
 
@@ -450,7 +456,7 @@ struct SubjectLiftTests {
     func theRimIsNotVerticallyMirrored() throws {
         let source = frame(subjectsAt: [
             CGRect(x: 0.30, y: 0.10, width: 0.4, height: 0.2),
-            CGRect(x: 0.45, y: 0.70, width: 0.1, height: 0.1),
+            CGRect(x: 0.45, y: 0.70, width: 0.1, height: 0.1)
         ])
         let encoded = try FrameAtlasEncoder.encode(frames: [source], settings: .still)
         let sheet = try #require(UIImage(data: encoded.data)?.cgImage)
@@ -518,7 +524,7 @@ struct SubjectLiftTests {
         CGSize(width: 4032, height: 3024),
         CGSize(width: 3024, height: 4032),
         CGSize(width: 1024, height: 1024),
-        CGSize(width: 8000, height: 400),
+        CGSize(width: 8000, height: 400)
     ])
     func stageNeverExceedsWhatItIsOffered(imageSize: CGSize) {
         let proposal = ProposedViewSize(width: 361, height: 340)

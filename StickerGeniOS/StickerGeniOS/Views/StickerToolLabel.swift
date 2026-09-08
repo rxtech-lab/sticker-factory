@@ -28,7 +28,7 @@ nonisolated enum StickerToolLabel {
         "plan-sticker",
         "build-plan",
         "show-sticker",
-        "reply",
+        "reply"
     ]
 
     /// Whether this row is the turn's overall stage rather than one step inside it.
@@ -94,7 +94,7 @@ nonisolated enum StickerToolLabel {
         "render_attachments": String(localized: "Making the send sizes"),
         "render_webp": String(localized: "Making the compact copy"),
         "render_sizes": String(localized: "Fitting it for Messages"),
-        "save_renditions": String(localized: "Saving it"),
+        "save_renditions": String(localized: "Saving it")
     ]
 
     /// An unknown tool still has to read as English, because the server can ship a new one before

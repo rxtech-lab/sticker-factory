@@ -9,7 +9,8 @@ nonisolated enum SharedLogoutPurger {
         try? fileManager.removeItem(at: StickerVideoFrameLoader.directory)
         Task { await StickerVideoFrameLoader.shared.removeAll() }
 
-        guard let container = fileManager.containerURL(forSecurityApplicationGroupIdentifier: AppConfiguration.appGroupIdentifier) else { return }
+        let group = AppConfiguration.appGroupIdentifier
+        guard let container = fileManager.containerURL(forSecurityApplicationGroupIdentifier: group) else { return }
         for directory in ["StickerCache", "Exports", "Uploads"] {
             let url = container.appending(path: directory, directoryHint: .isDirectory)
             try? fileManager.removeItem(at: url)

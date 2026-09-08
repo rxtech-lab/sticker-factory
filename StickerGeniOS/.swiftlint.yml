@@ -1,0 +1,90 @@
+# SwiftLint configuration for the StickerGen iOS app, its extensions and its local packages.
+#
+# Run it with `scripts/ios-lint.sh` (or `swiftlint` from this directory); CI runs the same script
+# in `.github/workflows/ios-ci.yml`.
+
+included:
+  - StickerGeniOS
+  - StickerGeniOSTests
+  - StickerGeniOSUITests
+  - StickerAppClip
+  - StickerAppClipUITests
+  - StickerMessages
+  - StickerMessagesTests
+  - StickerQuickShared
+  - packages
+  - scripts
+
+excluded:
+  - build
+  - "**/.build"
+  - "**/DerivedData"
+
+# The project rule this configuration exists for: no source file over 800 lines. Comment-only
+# lines and blank lines do not count, so documenting a file is never what pushes it over.
+file_length:
+  warning: 800
+  error: 800
+  ignore_comment_only_lines: true
+
+# 140 leaves room for SwiftUI modifier chains without letting a line run off a split editor.
+# Function declarations are exempt: wrapping a long `async throws` signature hurts more than it
+# helps, and `function_parameter_count` already caps how wide one can get.
+line_length:
+  warning: 140
+  error: 140
+  ignores_urls: true
+  ignores_comments: true
+  ignores_function_declarations: true
+
+# Rendering and encoding code is full of `x`, `y`, `dx`, `r`, `g`, `b`, and the OAuth payloads are
+# decoded straight off the wire as `refresh_token` / `expires_in`.
+identifier_name:
+  min_length:
+    warning: 1
+    error: 1
+  max_length:
+    warning: 60
+    error: 60
+  allowed_symbols: ["_"]
+
+type_name:
+  min_length: 2
+
+# 4 so an RGBA pixel stays a tuple; anything wider has earned a name.
+large_tuple:
+  warning: 4
+  error: 4
+
+nesting:
+  type_level: 2
+
+function_parameter_count:
+  warning: 8
+  error: 8
+
+# `file_length` is the hard structural cap; these two are the same idea applied to a function and
+# to a branch count. They sit a little above what the codebase does today, so they act as a ratchet
+# against regressions — tighten them as the remaining hot spots get broken up.
+function_body_length:
+  warning: 120
+  error: 120
+
+cyclomatic_complexity:
+  warning: 30
+  error: 30
+
+disabled_rules:
+  # `file_length` already caps how much can live in one file, and every type here that would trip
+  # `type_body_length` is the only type in its file — so the rule can only ever restate the cap.
+  - type_body_length
+  # Misfires on Swift's implicit-return `switch`, which this codebase uses throughout: a case whose
+  # value is `flag ? String(localized: "a") : String(localized: "b")` reads to the rule as a
+  # statement calling two Void functions.
+  - void_function_in_ternary
+
+inclusive_language:
+  # `masterAssetId` and `AssetKind.master` are the server's wire names, decoded straight off the
+  # JSON; renaming them on this side would only hide the term the API actually uses.
+  override_allowed_terms:
+    - master

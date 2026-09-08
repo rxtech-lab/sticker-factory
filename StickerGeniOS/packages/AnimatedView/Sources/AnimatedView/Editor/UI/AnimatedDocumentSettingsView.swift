@@ -240,7 +240,7 @@ struct AnimatedCanvasPreset: Identifiable {
         .init(label: "512²", width: 512, height: 512),
         .init(label: "2048²", width: 2048, height: 2048),
         .init(label: "Wide", width: 1024, height: 384),
-        .init(label: "Tall", width: 384, height: 1024),
+        .init(label: "Tall", width: 384, height: 1024)
     ]
 }
 #endif

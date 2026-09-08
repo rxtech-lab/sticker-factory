@@ -38,11 +38,7 @@ public enum WebMReader {
 
         let (headerID, headerBody) = try readElement(bytes, &cursor)
         guard headerID == EBML.ID.header else { throw Failure(reason: "not an EBML file") }
-        var headerCursor = 0
-        while headerCursor < headerBody.count {
-            let (id, body) = try readElement(headerBody, &headerCursor)
-            if id == EBML.ID.docType { document.docType = String(decoding: body, as: UTF8.self) }
-        }
+        document.docType = try readDocType(headerBody)
 
         let (segmentID, segment) = try readElement(bytes, &cursor)
         guard segmentID == EBML.ID.segment else { throw Failure(reason: "no segment") }
@@ -50,89 +46,130 @@ public enum WebMReader {
         while segmentCursor < segment.count {
             let (id, body) = try readElement(segment, &segmentCursor)
             switch id {
-            case EBML.ID.info:
-                var infoCursor = 0
-                while infoCursor < body.count {
-                    let (infoID, value) = try readElement(body, &infoCursor)
-                    if infoID == EBML.ID.timecodeScale { document.timecodeScaleNanoseconds = unsigned(value) }
-                    if infoID == EBML.ID.duration { document.durationMilliseconds = float(value) }
-                }
-            case EBML.ID.tracks:
-                var tracksCursor = 0
-                while tracksCursor < body.count {
-                    let (entryID, entry) = try readElement(body, &tracksCursor)
-                    guard entryID == EBML.ID.trackEntry else { continue }
-                    var track = WebMDocument.Track(codecID: "", pixelWidth: 0, pixelHeight: 0, alphaMode: 0)
-                    var entryCursor = 0
-                    while entryCursor < entry.count {
-                        let (fieldID, value) = try readElement(entry, &entryCursor)
-                        switch fieldID {
-                        case EBML.ID.codecID: track.codecID = String(decoding: value, as: UTF8.self)
-                        case EBML.ID.video:
-                            var videoCursor = 0
-                            while videoCursor < value.count {
-                                let (videoID, videoValue) = try readElement(value, &videoCursor)
-                                switch videoID {
-                                case EBML.ID.pixelWidth: track.pixelWidth = Int(unsigned(videoValue))
-                                case EBML.ID.pixelHeight: track.pixelHeight = Int(unsigned(videoValue))
-                                case EBML.ID.alphaMode: track.alphaMode = Int(unsigned(videoValue))
-                                default: break
-                                }
-                            }
-                        default: break
-                        }
-                    }
-                    document.track = track
-                }
-            case EBML.ID.cluster:
-                var clusterCursor = 0
-                var clusterTimecode = 0
-                while clusterCursor < body.count {
-                    let (childID, child) = try readElement(body, &clusterCursor)
-                    switch childID {
-                    case EBML.ID.timecode: clusterTimecode = Int(unsigned(child))
-                    case EBML.ID.blockGroup:
-                        var block = WebMDocument.Block(timestampMilliseconds: 0, durationMilliseconds: nil, isKeyframe: true, color: Data(), alpha: nil)
-                        var groupCursor = 0
-                        while groupCursor < child.count {
-                            let (partID, part) = try readElement(child, &groupCursor)
-                            switch partID {
-                            case EBML.ID.block:
-                                var blockCursor = 0
-                                _ = try readVint(part, &blockCursor)
-                                guard part.count >= blockCursor + 3 else { throw Failure(reason: "truncated block") }
-                                let relative = Int(Int16(bitPattern: UInt16(part[blockCursor]) << 8 | UInt16(part[blockCursor + 1])))
-                                block.timestampMilliseconds = clusterTimecode + relative
-                                block.color = Data(part[(blockCursor + 3)...])
-                            case EBML.ID.blockDuration: block.durationMilliseconds = Int(unsigned(part))
-                            case EBML.ID.referenceBlock: block.isKeyframe = false
-                            case EBML.ID.blockAdditions:
-                                var additionsCursor = 0
-                                while additionsCursor < part.count {
-                                    let (moreID, more) = try readElement(part, &additionsCursor)
-                                    guard moreID == EBML.ID.blockMore else { continue }
-                                    var moreCursor = 0
-                                    var addID: UInt64 = 1
-                                    var additional: Data?
-                                    while moreCursor < more.count {
-                                        let (fieldID, value) = try readElement(more, &moreCursor)
-                                        if fieldID == EBML.ID.blockAddID { addID = unsigned(value) }
-                                        if fieldID == EBML.ID.blockAdditional { additional = Data(value) }
-                                    }
-                                    if addID == 1 { block.alpha = additional }
-                                }
-                            default: break
-                            }
-                        }
-                        document.blocks.append(block)
-                    default: break
-                    }
-                }
+            case EBML.ID.info: try readInfo(body, into: &document)
+            case EBML.ID.tracks: document.track = try readTrack(body) ?? document.track
+            case EBML.ID.cluster: document.blocks.append(contentsOf: try readCluster(body))
             default: break
             }
         }
         return document
     }
+
+    private static func readDocType(_ header: [UInt8]) throws -> String {
+        var docType = ""
+        var cursor = 0
+        while cursor < header.count {
+            let (id, body) = try readElement(header, &cursor)
+            if id == EBML.ID.docType { docType = utf8(body) }
+        }
+        return docType
+    }
+
+    private static func readInfo(_ info: [UInt8], into document: inout WebMDocument) throws {
+        var cursor = 0
+        while cursor < info.count {
+            let (id, value) = try readElement(info, &cursor)
+            if id == EBML.ID.timecodeScale { document.timecodeScaleNanoseconds = unsigned(value) }
+            if id == EBML.ID.duration { document.durationMilliseconds = float(value) }
+        }
+    }
+
+    /// The last track entry wins, which is all the encoder here ever writes.
+    private static func readTrack(_ tracks: [UInt8]) throws -> WebMDocument.Track? {
+        var found: WebMDocument.Track?
+        var cursor = 0
+        while cursor < tracks.count {
+            let (entryID, entry) = try readElement(tracks, &cursor)
+            guard entryID == EBML.ID.trackEntry else { continue }
+            var track = WebMDocument.Track(codecID: "", pixelWidth: 0, pixelHeight: 0, alphaMode: 0)
+            var entryCursor = 0
+            while entryCursor < entry.count {
+                let (fieldID, value) = try readElement(entry, &entryCursor)
+                switch fieldID {
+                case EBML.ID.codecID: track.codecID = utf8(value)
+                case EBML.ID.video: try readVideoSettings(value, into: &track)
+                default: break
+                }
+            }
+            found = track
+        }
+        return found
+    }
+
+    private static func readVideoSettings(_ video: [UInt8], into track: inout WebMDocument.Track) throws {
+        var cursor = 0
+        while cursor < video.count {
+            let (id, value) = try readElement(video, &cursor)
+            switch id {
+            case EBML.ID.pixelWidth: track.pixelWidth = Int(unsigned(value))
+            case EBML.ID.pixelHeight: track.pixelHeight = Int(unsigned(value))
+            case EBML.ID.alphaMode: track.alphaMode = Int(unsigned(value))
+            default: break
+            }
+        }
+    }
+
+    private static func readCluster(_ cluster: [UInt8]) throws -> [WebMDocument.Block] {
+        var blocks: [WebMDocument.Block] = []
+        var cursor = 0
+        var timecode = 0
+        while cursor < cluster.count {
+            let (childID, child) = try readElement(cluster, &cursor)
+            switch childID {
+            case EBML.ID.timecode: timecode = Int(unsigned(child))
+            case EBML.ID.blockGroup: blocks.append(try readBlockGroup(child, clusterTimecode: timecode))
+            default: break
+            }
+        }
+        return blocks
+    }
+
+    private static func readBlockGroup(_ group: [UInt8], clusterTimecode: Int) throws -> WebMDocument.Block {
+        var block = WebMDocument.Block(timestampMilliseconds: 0, durationMilliseconds: nil, isKeyframe: true, color: Data(), alpha: nil)
+        var cursor = 0
+        while cursor < group.count {
+            let (partID, part) = try readElement(group, &cursor)
+            switch partID {
+            case EBML.ID.block:
+                var blockCursor = 0
+                _ = try readVint(part, &blockCursor)
+                guard part.count >= blockCursor + 3 else { throw Failure(reason: "truncated block") }
+                let relative = Int(Int16(bitPattern: UInt16(part[blockCursor]) << 8 | UInt16(part[blockCursor + 1])))
+                block.timestampMilliseconds = clusterTimecode + relative
+                block.color = Data(part[(blockCursor + 3)...])
+            case EBML.ID.blockDuration: block.durationMilliseconds = Int(unsigned(part))
+            case EBML.ID.referenceBlock: block.isKeyframe = false
+            case EBML.ID.blockAdditions: block.alpha = try readAlphaAddition(part) ?? block.alpha
+            default: break
+            }
+        }
+        return block
+    }
+
+    /// Block addition id 1 is where this encoder puts the alpha plane; anything else is not ours.
+    private static func readAlphaAddition(_ additions: [UInt8]) throws -> Data? {
+        var alpha: Data?
+        var cursor = 0
+        while cursor < additions.count {
+            let (moreID, more) = try readElement(additions, &cursor)
+            guard moreID == EBML.ID.blockMore else { continue }
+            var moreCursor = 0
+            var addID: UInt64 = 1
+            var additional: Data?
+            while moreCursor < more.count {
+                let (fieldID, value) = try readElement(more, &moreCursor)
+                if fieldID == EBML.ID.blockAddID { addID = unsigned(value) }
+                if fieldID == EBML.ID.blockAdditional { additional = Data(value) }
+            }
+            if addID == 1 { alpha = additional }
+        }
+        return alpha
+    }
+
+    // An EBML string is raw UTF-8 bytes rather than `Data`, so `String(decoding:as:)` is the right
+    // initialiser: invalid bytes degrade to replacement characters instead of failing the parse.
+    // swiftlint:disable:next optional_data_string_conversion
+    private static func utf8(_ bytes: [UInt8]) -> String { String(decoding: bytes, as: UTF8.self) }
 
     private static func readElement(_ bytes: [UInt8], _ cursor: inout Int) throws -> ([UInt8], [UInt8]) {
         guard cursor < bytes.count else { throw Failure(reason: "unexpected end of data") }
@@ -212,7 +249,11 @@ public final class VP9Decoder {
             vpx_codec_decode(&context, buffer.baseAddress?.assumingMemoryBound(to: UInt8.self), UInt32(buffer.count), nil, 0)
         }
         guard status == VPX_CODEC_OK else {
-            throw VP9CodecError(operation: "decode", code: Int(status.rawValue), detail: cvpx_error_detail(&context).map { String(cString: $0) })
+            throw VP9CodecError(
+                operation: "decode",
+                code: Int(status.rawValue),
+                detail: cvpx_error_detail(&context).map { String(cString: $0) }
+            )
         }
         var iterator: vpx_codec_iter_t?
         guard let image = vpx_codec_get_frame(&context, &iterator) else {

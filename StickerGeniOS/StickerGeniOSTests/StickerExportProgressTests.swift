@@ -13,7 +13,7 @@ struct StickerExportProgressTests {
         let animation = animated
             ? AnimatedLayerAnimation(position: [
                 .init(timeSeconds: 0, x: 0, y: 0.5, easing: .linear),
-                .init(timeSeconds: 1, x: 1, y: 0.5, easing: .linear),
+                .init(timeSeconds: 1, x: 1, y: 0.5, easing: .linear)
             ])
             : AnimatedLayerAnimation()
         let layer = AnimatedLayer.shape(.init(
@@ -46,18 +46,18 @@ struct StickerExportProgressTests {
     func plannedStages() {
         let animated = revision(kind: .animated, animated: true)
         #expect(StickerExportProgress.stages(for: animated, selection: .both) == [
-            .prepare, .renderVideo, .renderAPNG, .renderSticker, .upload, .publish,
+            .prepare, .renderVideo, .renderAPNG, .renderSticker, .upload, .publish
         ])
         // Choosing Sticker skips the MP4 encode outright, so no row is drawn for it.
         #expect(StickerExportProgress.stages(for: animated, selection: .sticker) == [
-            .prepare, .renderAPNG, .renderSticker, .upload, .publish,
+            .prepare, .renderAPNG, .renderSticker, .upload, .publish
         ])
         #expect(StickerExportProgress.stages(for: revision(kind: .static, animated: false), selection: .both) == [
-            .prepare, .renderImage, .renderSticker, .upload, .publish,
+            .prepare, .renderImage, .renderSticker, .upload, .publish
         ])
         // An animated document with no motion cannot be published; it exports one still locally.
         #expect(StickerExportProgress.stages(for: revision(kind: .animated, animated: false), selection: .both) == [
-            .prepare, .renderImage,
+            .prepare, .renderImage
         ])
     }
 

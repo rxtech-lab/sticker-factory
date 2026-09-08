@@ -164,7 +164,10 @@ struct SubjectLiftView: View {
 
         let bounds = hit.descriptor.bounds
         SubjectLiftLog.logger.info(
-            "stage: press at (\(normalized.x, privacy: .public), \(normalized.y, privacy: .public)) selected area=\(hit.descriptor.areaFraction, privacy: .public)"
+            """
+            stage: press at (\(normalized.x, privacy: .public), \(normalized.y, privacy: .public)) \
+            selected area=\(hit.descriptor.areaFraction, privacy: .public)
+            """
         )
         Haptics.tap(.medium)
         selection = LiftedSubject(

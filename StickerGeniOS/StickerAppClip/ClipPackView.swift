@@ -31,7 +31,10 @@ struct ClipPackView: View {
                                 .posterChip(fill: AppColors.lime)
                                 .accessibilityLabel("\(pack.stickers.count) stickers")
                         }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 250 : 140), spacing: 16)], spacing: 18) {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 250 : 140), spacing: 16)],
+                            spacing: 18
+                        ) {
                             ForEach(Array(pack.stickers.enumerated()), id: \.element.id) { index, sticker in
                                 stickerTile(sticker, index: index)
                             }
@@ -117,7 +120,11 @@ struct ClipPackView: View {
                     if let url = sticker.previewURL {
                         AnimatedClipPreview(url: url).padding(8).accessibilityHidden(true)
                     } else {
-                        StickerBlobIcon(icon: PosterIcon.staticSticker, fill: colors[index % colors.count], tilt: index.isMultiple(of: 2) ? -6 : 6)
+                        StickerBlobIcon(
+                            icon: PosterIcon.staticSticker,
+                            fill: colors[index % colors.count],
+                            tilt: index.isMultiple(of: 2) ? -6 : 6
+                        )
                             .frame(width: 76, height: 80)
                             .accessibilityHidden(true)
                     }
@@ -149,7 +156,9 @@ struct ClipPackView: View {
         do {
             let base = try MessagesAPIConfiguration.baseURL()
             let (data, response) = try await packSession.data(from: base.appending(path: "api/v1/public/packs").appending(path: slug))
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw MessagesStickerCreationError.notPublished("This pack is no longer available.") }
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                throw MessagesStickerCreationError.notPublished("This pack is no longer available.")
+            }
             pack = try JSONDecoder().decode(PublicClipPack.self, from: data)
         } catch { self.error = error.localizedDescription }
     }
@@ -169,8 +178,15 @@ private struct AnimatedClipPreview: UIViewRepresentable {
     }
     func updateUIView(_ view: WKWebView, context: Context) {
         guard url.scheme == "https" else { return }
-        let escaped = url.absoluteString.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;")
-        view.loadHTMLString("<meta name='viewport' content='width=device-width,initial-scale=1'><style>body{margin:0}img{width:100%;height:100%;object-fit:contain;position:absolute}</style><img src=\"\(escaped)\">", baseURL: nil)
+        let escaped = url.absoluteString.replacingOccurrences(
+            of: "&",
+            with: "&amp;"
+        ).replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;")
+        view.loadHTMLString("""
+            <meta name='viewport' content='width=device-width,initial-scale=1'>\
+            <style>body{margin:0}img{width:100%;height:100%;object-fit:contain;position:absolute}</style>\
+            <img src="\(escaped)">
+            """, baseURL: nil)
     }
 }
 
@@ -182,8 +198,8 @@ private nonisolated final class ClipPackFixtureProtocol: URLProtocol, @unchecked
         configuration.protocolClasses = [ClipPackFixtureProtocol.self]
         return URLSession(configuration: configuration)
     }()
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         guard let url = request.url else { return }
         let packs = ["happy-cats": ("Happy Cats", "Waving cat"), "space-dogs": ("Space Dogs", "Moon dog")]
@@ -197,7 +213,8 @@ private nonisolated final class ClipPackFixtureProtocol: URLProtocol, @unchecked
         let response = HTTPURLResponse(url: url, statusCode: fixture == nil ? 404 : 200,
                                        httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body))
+        let payload = (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
+        client?.urlProtocol(self, didLoad: payload)
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}

@@ -37,7 +37,7 @@ struct EditorKeyframeTests {
     @Test func insertingSamplesTheInterpolatedStateSoNothingMoves() throws {
         let source = animation(opacity: [
             .init(timeSeconds: 0, value: 0),
-            .init(timeSeconds: 2, value: 1),
+            .init(timeSeconds: 2, value: 1)
         ])
         let before = AnimationInterpolator.state(for: layer(source), atDocumentTime: 1)
         let edited = try source.insertingKeyframe(on: .opacity, atTime: 1, sampledFrom: before)
@@ -72,7 +72,7 @@ struct EditorKeyframeTests {
     @Test func insertingInheritsTheEasingOfTheSegmentItSplits() throws {
         let source = animation(opacity: [
             .init(timeSeconds: 0, value: 0, easing: .linear),
-            .init(timeSeconds: 2, value: 1, easing: .springBouncy),
+            .init(timeSeconds: 2, value: 1, easing: .springBouncy)
         ])
         let split = try source.insertingKeyframe(on: .opacity, atTime: 1, sampledFrom: .resting)
         #expect(split.opacity[1].easing == .springBouncy)
@@ -166,7 +166,7 @@ struct EditorKeyframeTests {
         let subject = animation(opacity: [
             .init(timeSeconds: 0, value: 0),
             .init(timeSeconds: 0.5, value: 0.5),
-            .init(timeSeconds: 1, value: 1),
+            .init(timeSeconds: 1, value: 1)
         ])
         let moved = try subject.movingKeyframe(on: .opacity, index: 0, toTime: 0.75, clampedTo: 2)
         #expect(moved.times(on: .opacity) == [0.5, 0.75, 1])
@@ -177,7 +177,7 @@ struct EditorKeyframeTests {
     @Test func retimingOntoANeighbourIsRefused() {
         let subject = animation(opacity: [
             .init(timeSeconds: 0, value: 0),
-            .init(timeSeconds: 1, value: 1),
+            .init(timeSeconds: 1, value: 1)
         ])
         #expect(throws: AnimatedEditorError.duplicateKeyframeTime(.opacity, 1)) {
             try subject.movingKeyframe(on: .opacity, index: 0, toTime: 1, clampedTo: 2)
@@ -203,7 +203,7 @@ struct EditorKeyframeTests {
         let subject = animation(opacity: [
             .init(timeSeconds: 0, value: 0),
             .init(timeSeconds: 1, value: 0.5),
-            .init(timeSeconds: 2, value: 1),
+            .init(timeSeconds: 2, value: 1)
         ])
         #expect(try subject.removingKeyframe(on: .opacity, index: 1).times(on: .opacity) == [0, 2])
     }
@@ -215,7 +215,7 @@ struct EditorKeyframeTests {
     @Test func easingOnTheFirstKeyframeOfAChannelIsInert() throws {
         let base = animation(opacity: [
             .init(timeSeconds: 0, value: 0, easing: .linear),
-            .init(timeSeconds: 2, value: 1, easing: .linear),
+            .init(timeSeconds: 2, value: 1, easing: .linear)
         ])
         let bouncy = try base.settingEasing(.springBouncy, on: .opacity, index: 0)
         #expect(bouncy.opacity[0].easing == .springBouncy)
@@ -230,7 +230,7 @@ struct EditorKeyframeTests {
     @Test func easingOnALaterKeyframeDoesChangeTheRender() throws {
         let base = animation(opacity: [
             .init(timeSeconds: 0, value: 0, easing: .linear),
-            .init(timeSeconds: 2, value: 1, easing: .linear),
+            .init(timeSeconds: 2, value: 1, easing: .linear)
         ])
         let eased = try base.settingEasing(.easeInOut, on: .opacity, index: 1)
         let original = AnimationInterpolator.state(for: layer(base), atDocumentTime: 0.5)
@@ -322,7 +322,7 @@ struct EditorKeyframeTests {
     @Test func clampingPullsKeyframesInsideTheNewDuration() {
         let subject = AnimatedLayerAnimation(opacity: [
             .init(timeSeconds: 0, value: 0),
-            .init(timeSeconds: 3, value: 1),
+            .init(timeSeconds: 3, value: 1)
         ])
         #expect(subject.clampingTimes(to: 1).times(on: .opacity) == [0, 1])
     }
@@ -334,7 +334,7 @@ struct EditorKeyframeTests {
         let subject = AnimatedLayerAnimation(opacity: [
             .init(timeSeconds: 0, value: 0),
             .init(timeSeconds: 3, value: 0.5),
-            .init(timeSeconds: 4, value: 1),
+            .init(timeSeconds: 4, value: 1)
         ])
         let clamped = subject.clampingTimes(to: 1)
         #expect(clamped.times(on: .opacity) == [0, 1])
@@ -347,7 +347,7 @@ struct EditorKeyframeTests {
         let subject = AnimatedLayerAnimation(opacity: [
             .init(timeSeconds: 0, value: 0),
             .init(timeSeconds: 0.7, value: 0.5),
-            .init(timeSeconds: 1.9, value: 1),
+            .init(timeSeconds: 1.9, value: 1)
         ])
         let round = subject.rescalingTimes(by: 3).rescalingTimes(by: 1.0 / 3.0)
         for (original, restored) in zip(subject.times(on: .opacity), round.times(on: .opacity)) {
@@ -360,7 +360,7 @@ struct EditorKeyframeTests {
     @Test func shorteningRescalesHandAuthoredKeyframesAndStaysValid() throws {
         let subject = document(animation(opacity: [
             .init(timeSeconds: 0, value: 0),
-            .init(timeSeconds: 2, value: 1),
+            .init(timeSeconds: 2, value: 1)
         ]), duration: 2)
 
         let shortened = try subject.settingDuration(1)
@@ -372,7 +372,7 @@ struct EditorKeyframeTests {
     @Test func shorteningCanClampInsteadOfRescaling() throws {
         let subject = document(animation(opacity: [
             .init(timeSeconds: 0, value: 0),
-            .init(timeSeconds: 2, value: 1),
+            .init(timeSeconds: 2, value: 1)
         ]), duration: 2)
 
         let shortened = try subject.settingDuration(1, rescalingDetachedKeyframes: false)

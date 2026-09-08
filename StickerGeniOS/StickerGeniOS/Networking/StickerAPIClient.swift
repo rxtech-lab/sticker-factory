@@ -353,7 +353,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
         try await send(path: "api/v1/library/sections", query: [
             URLQueryItem(name: "status", value: status.rawValue),
-            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "q", value: query)
         ])
     }
 
@@ -393,7 +393,11 @@ actor StickerAPIClient: StickerAPIClientProtocol {
                 // policy allows. Record the response so none of those becomes a generic banner.
                 let body = String(data: uploadBody.prefix(1_024), encoding: .utf8) ?? "<\(uploadBody.count) bytes>"
                 Self.networkLog.error(
-                    "PUT storage → \(http.statusCode, privacy: .public) asset=\(intent.asset.id, privacy: .public) kind=\(kind.rawValue, privacy: .public) mime=\(mimeType, privacy: .public) bytes=\(data.count, privacy: .public), body: \(body, privacy: .public)"
+                    """
+                    PUT storage → \(http.statusCode, privacy: .public) asset=\(intent.asset.id, privacy: .public) \
+                    kind=\(kind.rawValue, privacy: .public) mime=\(mimeType, privacy: .public) \
+                    bytes=\(data.count, privacy: .public), body: \(body, privacy: .public)
+                    """
                 )
                 throw StickerAPIError.uploadFailed(status: http.statusCode)
             }
@@ -404,7 +408,11 @@ actor StickerAPIClient: StickerAPIClientProtocol {
             // verifies the stored size, checksum, and media before accepting it, so it is safe to
             // use that verification to recover an ambiguous transport result.
             Self.networkLog.error(
-                "PUT storage response lost asset=\(intent.asset.id, privacy: .public) kind=\(kind.rawValue, privacy: .public) bytes=\(data.count, privacy: .public): \(error.localizedDescription, privacy: .public); verifying object"
+                """
+                PUT storage response lost asset=\(intent.asset.id, privacy: .public) \
+                kind=\(kind.rawValue, privacy: .public) bytes=\(data.count, privacy: .public): \
+                \(error.localizedDescription, privacy: .public); verifying object
+                """
             )
             try await completeUpload(assetID: intent.asset.id, digest: digest, idempotencyKey: idempotencyKey)
             return intent.asset.id
@@ -462,7 +470,10 @@ actor StickerAPIClient: StickerAPIClientProtocol {
                         return
                     } catch {
                         failures += 1
-                        Self.log.error("event stream job=\(jobID, privacy: .public) attempt=\(failures) error=\(String(describing: error), privacy: .public)")
+                        Self.log.error("""
+                            event stream job=\(jobID, privacy: .public) attempt=\(failures) \
+                            error=\(String(describing: error), privacy: .public)
+                            """)
                         if failures >= 5 {
                             continuation.finish(throwing: error)
                             return
@@ -534,7 +545,10 @@ actor StickerAPIClient: StickerAPIClientProtocol {
                     receive(event)
                     if event.type == .completed || event.type == .failed { return .terminal }
                 } catch {
-                    Self.log.error("undecodable event job=\(jobID, privacy: .public) id=\(frameID ?? -1) error=\(String(describing: error), privacy: .public)")
+                    Self.log.error("""
+                        undecodable event job=\(jobID, privacy: .public) id=\(frameID ?? -1) \
+                        error=\(String(describing: error), privacy: .public)
+                        """)
                     if let frameID { advanceCursor(frameID) }
                 }
             } else if line.hasPrefix("data:") {
@@ -645,7 +659,12 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         guard (200...299).contains(response.statusCode) else {
             if let envelope = try? decoder.decode(APIErrorEnvelope.self, from: data) {
                 Self.networkLog.error(
-                    "\(context, privacy: .public) → \(response.statusCode, privacy: .public) \(envelope.error.code, privacy: .public): \(envelope.error.message, privacy: .public) [request \(envelope.error.requestId, privacy: .public)] details=\(String(describing: envelope.error.details), privacy: .public)"
+                    """
+                    \(context, privacy: .public) → \(response.statusCode, privacy: .public) \
+                    \(envelope.error.code, privacy: .public): \(envelope.error.message, privacy: .public) \
+                    [request \(envelope.error.requestId, privacy: .public)] \
+                    details=\(String(describing: envelope.error.details), privacy: .public)
+                    """
                 )
                 if let refusal = SubscriptionRefusal(code: envelope.error.code, details: envelope.error.details) {
                     onSubscriptionRefusal?(refusal)
@@ -655,17 +674,23 @@ actor StickerAPIClient: StickerAPIClientProtocol {
             // Not an envelope, so the raw body is the only account of what went wrong — usually a
             // proxy or an auth layer that never reached the app's error format.
             let body = String(data: data.prefix(2_048), encoding: .utf8) ?? "<\(data.count) bytes>"
-            Self.networkLog.error("\(context, privacy: .public) → \(response.statusCode, privacy: .public), body: \(body, privacy: .public)")
+            Self.networkLog.error("""
+                \(context, privacy: .public) → \(response.statusCode, privacy: .public), \
+                body: \(body, privacy: .public)
+                """)
             throw StickerAPIError.http(response.statusCode)
         }
-        if Response.self == EmptyResponse.self, data.isEmpty { return EmptyResponse() as! Response }
+        if Response.self == EmptyResponse.self, data.isEmpty, let empty = EmptyResponse() as? Response { return empty }
         do {
             return try decoder.decode(Response.self, from: data)
         } catch {
             // `DecodingError.localizedDescription` is "The data couldn't be read because it isn't in
             // the correct format" and never names the key. `String(describing:)` prints the coding
             // path, which is the entire answer to a contract drift.
-            Self.networkLog.error("\(context, privacy: .public): undecodable \(String(describing: Response.self), privacy: .public) — \(String(describing: error), privacy: .public)")
+            Self.networkLog.error("""
+                \(context, privacy: .public): undecodable \(String(describing: Response.self), privacy: .public) \
+                — \(String(describing: error), privacy: .public)
+                """)
             throw error
         }
     }

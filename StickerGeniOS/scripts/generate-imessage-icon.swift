@@ -78,7 +78,7 @@ let variants = [
     Variant(width: 27, height: 20, scale: 3, idiom: "universal", filename: "icon-27x20@3x.png"),
     Variant(width: 32, height: 24, scale: 2, idiom: "universal", filename: "icon-32x24@2x.png"),
     Variant(width: 32, height: 24, scale: 3, idiom: "universal", filename: "icon-32x24@3x.png"),
-    Variant(width: 1024, height: 768, scale: 1, idiom: "ios-marketing", filename: "icon-1024x768.png"),
+    Variant(width: 1024, height: 768, scale: 1, idiom: "ios-marketing", filename: "icon-1024x768.png")
 ]
 
 // MARK: - Render the square icon with Icon Composer's own renderer
@@ -95,7 +95,7 @@ render.arguments = [
     iconDocument.path, "--export-image",
     "--output-file", squareURL.path,
     "--platform", "iOS", "--rendition", "Default",
-    "--width", "1024", "--height", "1024", "--scale", "2",
+    "--width", "1024", "--height", "1024", "--scale", "2"
 ]
 render.standardOutput = FileHandle.nullDevice
 try render.run()
@@ -147,7 +147,7 @@ for variant in variants {
         "\"filename\" : \"\(variant.filename)\"",
         "\"idiom\" : \"\(variant.idiom)\"",
         "\"size\" : \"\(variant.width)x\(variant.height)\"",
-        "\"scale\" : \"\(variant.scale)x\"",
+        "\"scale\" : \"\(variant.scale)x\""
     ]
     if variant.idiom == "universal" || variant.idiom == "ios-marketing" {
         fields.append("\"platform\" : \"ios\"")

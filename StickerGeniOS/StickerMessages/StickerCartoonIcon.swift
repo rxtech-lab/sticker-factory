@@ -30,7 +30,7 @@ extension UIImage {
             }
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: font,
-                .foregroundColor: UIColor.black,
+                .foregroundColor: UIColor.black
             ]
             let measured = (art as NSString).size(withAttributes: attributes)
             let origin = CGPoint(

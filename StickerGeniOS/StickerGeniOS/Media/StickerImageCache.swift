@@ -74,7 +74,7 @@ nonisolated enum StickerImageCache {
             options: [
                 .processor(processor),
                 .backgroundDecode,
-                .waitForCache,
+                .waitForCache
             ]
         )
         return CachedStickerImage(image: result.image, isVerified: expectedSHA256 != nil)

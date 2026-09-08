@@ -122,9 +122,13 @@ nonisolated struct MessagesJobWatcher: Sendable {
                     continue
                 }
                 if line.hasPrefix(":") { continue }
-                if let value = line.dropPrefix("id: ") { cursor = Int(value) ?? cursor }
-                else if let value = line.dropPrefix("event: ") { event = value }
-                else if let value = line.dropPrefix("data: ") { data = value }
+                if let value = line.dropPrefix("id: ") {
+                    cursor = Int(value) ?? cursor
+                } else if let value = line.dropPrefix("event: ") {
+                    event = value
+                } else if let value = line.dropPrefix("data: ") {
+                    data = value
+                }
             }
             // The connection closed on the server's own window without a terminal frame. Reconnect
             // from `cursor`; nothing is replayed and nothing is lost.

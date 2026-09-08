@@ -87,7 +87,7 @@ public enum AnimatedShapeKind: Codable, Hashable, Sendable {
     /// Every case except `path` and `polygon`/`star` with non-default parameters, for previews and
     /// pickers that want to show the built-in vocabulary.
     public static let presets: [AnimatedShapeKind] = [
-        .circle, .roundedRectangle, .capsule, .triangle, .fivePointStar, .heart, .burst, .polygon(sides: 6),
+        .circle, .roundedRectangle, .capsule, .triangle, .fivePointStar, .heart, .burst, .polygon(sides: 6)
     ]
 }
 

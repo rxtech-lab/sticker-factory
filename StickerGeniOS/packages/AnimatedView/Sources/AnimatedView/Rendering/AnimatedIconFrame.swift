@@ -155,7 +155,7 @@ public struct AnimatedIconFrame: View {
                 .clipped()
                 .mask {
                     if let maskID = layer.maskAssetId, let mask = assets.image(for: maskID) {
-                        Image(platformImage: mask).resizable().aspectRatio(contentMode: .fit)
+                        Image(platformImage: mask).resizable().scaledToFit()
                     } else {
                         Rectangle()
                     }

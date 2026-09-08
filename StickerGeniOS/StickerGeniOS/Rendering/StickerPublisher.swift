@@ -368,8 +368,16 @@ nonisolated enum StickerPublishError: Error, LocalizedError {
             message ?? String(localized: "The sticker didn't finish publishing. Open it from your library and export it again.")
         case .systemRenditionUnavailable: String(localized: "The sticker rendition could not be rendered.")
         case .revisionNotAccepted: String(localized: "Accept this revision before publishing exports.")
-        case .animationRequired: String(localized: "Add motion before publishing this animated sticker. You can still export the current image locally.")
-        case .missingVerifiedAssets: String(localized: "All image and mask assets must finish verified download before export. Try again when the preview is ready.")
+        case .animationRequired:
+            String(localized: """
+                Add motion before publishing this animated sticker. \
+                You can still export the current image locally.
+                """)
+        case .missingVerifiedAssets:
+            String(localized: """
+                All image and mask assets must finish verified download before export. \
+                Try again when the preview is ready.
+                """)
         case .publishedExportsUnavailable: String(localized: "This version has no published files to share yet.")
         case .exportDownloadFailed: String(localized: "Couldn't fetch the published files. Check your connection and try again.")
         }

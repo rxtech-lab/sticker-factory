@@ -143,7 +143,10 @@ final class ClipAuthentication {
                 credentials = nil; signedIn = false
                 SecItemDelete(keychainQuery as CFDictionary)
             }
-            throw MessagesStickerCreationError.server(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 503, message: "Sign-in could not be refreshed. Please try again.")
+            throw MessagesStickerCreationError.server(
+                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 503,
+                message: "Sign-in could not be refreshed. Please try again."
+            )
         }
         let result = try JSONDecoder().decode(TokenResponse.self, from: data)
         let saved = Credentials(accessToken: result.access_token, refreshToken: result.refresh_token ?? credentials?.refreshToken,
@@ -164,7 +167,11 @@ final class ClipAuthentication {
         credentials = saved
     }
     private var keychainQuery: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "app.rxlab.stickerfactory.Clip.oauth", kSecAttrAccount as String: "session"]
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "app.rxlab.stickerfactory.Clip.oauth",
+            kSecAttrAccount as String: "session"
+        ]
     }
 }
 

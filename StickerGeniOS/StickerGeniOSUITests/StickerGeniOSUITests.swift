@@ -11,7 +11,7 @@ final class StickerGeniOSUITests: XCTestCase {
             "--ui-testing",
             "--reduce-motion",
             "-AppleLanguages", "(en)",
-            "-AppleLocale", "en_US",
+            "-AppleLocale", "en_US"
         ]
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 8))
@@ -111,7 +111,7 @@ final class StickerGeniOSUITests: XCTestCase {
             "--reduce-motion",
             "--ui-library-list-failure",
             "-AppleLanguages", "(en)",
-            "-AppleLocale", "en_US",
+            "-AppleLocale", "en_US"
         ]
         app.launch()
 
@@ -301,7 +301,7 @@ final class StickerGeniOSUITests: XCTestCase {
             "--reduce-motion",
             "--ui-insufficient-credits",
             "-AppleLanguages", "(en)",
-            "-AppleLocale", "en_US",
+            "-AppleLocale", "en_US"
         ]
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 8))
@@ -467,7 +467,7 @@ final class StickerGeniOSUITests: XCTestCase {
         app.launchArguments = [
             "--ui-testing", "--reduce-motion", "--ui-show-welcome",
             "--ui-show-feature-cards", "--ui-library-list-failure",
-            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US"
         ]
         app.launch()
 

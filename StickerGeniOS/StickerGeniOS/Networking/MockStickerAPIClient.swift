@@ -197,7 +197,12 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         ))
         return .init(
             message: .init(id: messageID, status: .streaming),
-            job: .init(id: "44444444-4444-4444-8444-444444444444", state: .queued, workflowRunId: "mock-compose", eventsUrl: "/api/v1/jobs/mock-compose/events")
+            job: .init(
+                id: "44444444-4444-4444-8444-444444444444",
+                state: .queued,
+                workflowRunId: "mock-compose",
+                eventsUrl: "/api/v1/jobs/mock-compose/events"
+            )
         )
     }
 
@@ -274,7 +279,12 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
 
     func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse {
         publishedExportRequests.append(request)
-        return .init(job: .init(id: UUID().uuidString, state: .queued, workflowRunId: "mock-export", eventsUrl: "/api/v1/jobs/mock-export/events"))
+        return .init(job: .init(
+            id: UUID().uuidString,
+            state: .queued,
+            workflowRunId: "mock-export",
+            eventsUrl: "/api/v1/jobs/mock-export/events"
+        ))
     }
 
     // MARK: - Marketplace
@@ -511,7 +521,16 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         return .init(
             url: url,
             expiresAt: Date().addingTimeInterval(3_600),
-            asset: .init(id: assetID, stickerId: PreviewFixtures.borrowedSticker.id, kind: .master, state: .ready, mimeType: "image/png", width: 256, height: 256, hasAlpha: true)
+            asset: .init(
+                id: assetID,
+                stickerId: PreviewFixtures.borrowedSticker.id,
+                kind: .master,
+                state: .ready,
+                mimeType: "image/png",
+                width: 256,
+                height: 256,
+                hasAlpha: true
+            )
         )
     }
 
@@ -542,7 +561,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
                     (.started, 0.2, "Generating one candidate"),
                     (.progress, 0.7, "Checking transparency"),
                     (.document, 0.9, "Streaming a valid preview"),
-                    (.candidate, 1, "Candidate ready"),
+                    (.candidate, 1, "Candidate ready")
                 ]
                 for (index, value) in events.enumerated() {
                     try? await Task.sleep(for: .milliseconds(180))

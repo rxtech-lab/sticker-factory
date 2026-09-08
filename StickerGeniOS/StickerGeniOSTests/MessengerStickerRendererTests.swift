@@ -25,7 +25,7 @@ struct MessengerStickerRendererTests {
             colorsSpace: CGColorSpaceCreateDeviceRGB(),
             colors: [
                 CGColor(red: 0.98, green: 0.4, blue: 0.35, alpha: 1),
-                CGColor(red: 0.2, green: 0.3, blue: 0.9, alpha: 0),
+                CGColor(red: 0.2, green: 0.3, blue: 0.9, alpha: 0)
             ] as CFArray,
             locations: [0, 1]
         )!
@@ -50,7 +50,10 @@ struct MessengerStickerRendererTests {
         CGImageDestinationSetProperties(destination, [kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGLoopCount: 0]] as CFDictionary)
         for index in 0..<count {
             CGImageDestinationAddImage(destination, frame(index: index, count: count, dimension: dimension), [
-                kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGDelayTime: 1.0 / Double(fps), kCGImagePropertyAPNGUnclampedDelayTime: 1.0 / Double(fps)],
+                kCGImagePropertyPNGDictionary: [
+                    kCGImagePropertyAPNGDelayTime: 1.0 / Double(fps),
+                    kCGImagePropertyAPNGUnclampedDelayTime: 1.0 / Double(fps)
+                ]
             ] as CFDictionary)
         }
         CGImageDestinationFinalize(destination)
@@ -58,24 +61,46 @@ struct MessengerStickerRendererTests {
     }
 
     private func sticker(kind: StickerKind) -> Sticker {
-        Sticker(id: "s-\(kind.rawValue)", title: "Test", kind: kind, status: .published, activeRevisionId: "r", createdAt: Date(), updatedAt: Date(), previewAsset: nil, systemSticker: nil)
+        Sticker(
+            id: "s-\(kind.rawValue)",
+            title: "Test",
+            kind: kind,
+            status: .published,
+            activeRevisionId: "r",
+            createdAt: Date(),
+            updatedAt: Date(),
+            previewAsset: nil,
+            systemSticker: nil
+        )
     }
 
-    private func properties(_ data: Data) -> (type: String, count: Int, width: Int, height: Int, hasAlpha: Bool) {
+    private struct ImageFacts {
+        let type: String
+        let count: Int
+        let width: Int
+        let height: Int
+        let hasAlpha: Bool
+    }
+
+    private func properties(_ data: Data) -> ImageFacts {
         let source = CGImageSourceCreateWithData(data as CFData, nil)!
-        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as! [CFString: Any]
-        return (
-            CGImageSourceGetType(source)! as String,
-            CGImageSourceGetCount(source),
-            properties[kCGImagePropertyPixelWidth] as! Int,
-            properties[kCGImagePropertyPixelHeight] as! Int,
-            properties[kCGImagePropertyHasAlpha] as? Bool ?? false
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
+        return ImageFacts(
+            type: CGImageSourceGetType(source)! as String,
+            count: CGImageSourceGetCount(source),
+            width: properties[kCGImagePropertyPixelWidth] as? Int ?? 0,
+            height: properties[kCGImagePropertyPixelHeight] as? Int ?? 0,
+            hasAlpha: properties[kCGImagePropertyHasAlpha] as? Bool ?? false
         )
     }
 
     @Test("A still becomes a transparent 512² WebP under WhatsApp's 100 KB")
     func whatsAppStill() throws {
-        let rendered = try MessengerStickerRenderer.render(sticker: sticker(kind: .static), artwork: png(frame(index: 0, count: 1, dimension: 1_024)), destination: .whatsapp)
+        let rendered = try MessengerStickerRenderer.render(
+            sticker: sticker(kind: .static),
+            artwork: png(frame(index: 0, count: 1, dimension: 1_024)),
+            destination: .whatsapp
+        )
         #expect(rendered.format == .webp)
         #expect(!rendered.isAnimated)
         #expect(rendered.byteCount <= 100 * 1024)
@@ -91,10 +116,22 @@ struct MessengerStickerRendererTests {
     @Test("A still becomes a 512² PNG under Telegram's 512 KB")
     func telegramStill() throws {
         // Non-square artwork is fitted, not stretched: the output is square and transparent.
-        let context = CGContext(data: nil, width: 800, height: 400, bitsPerComponent: 8, bytesPerRow: 3_200, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let context = CGContext(
+            data: nil,
+            width: 800,
+            height: 400,
+            bitsPerComponent: 8,
+            bytesPerRow: 3_200,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
         context.setFillColor(CGColor(red: 0.1, green: 0.8, blue: 0.4, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: 800, height: 400))
-        let rendered = try MessengerStickerRenderer.render(sticker: sticker(kind: .static), artwork: png(context.makeImage()!), destination: .telegram)
+        let rendered = try MessengerStickerRenderer.render(
+            sticker: sticker(kind: .static),
+            artwork: png(context.makeImage()!),
+            destination: .telegram
+        )
         #expect(rendered.format == .png)
         #expect(rendered.byteCount <= 512 * 1024)
         let facts = properties(rendered.data)
@@ -110,7 +147,11 @@ struct MessengerStickerRendererTests {
     @Test("A long animation reaches WhatsApp under 500 KB, within 10 s, sped up rather than cut")
     func whatsAppAnimation() throws {
         // 12 s at 12 fps: past the ceiling, so it must be accelerated.
-        let rendered = try MessengerStickerRenderer.render(sticker: sticker(kind: .animated), artwork: apng(dimension: 512, fps: 12, seconds: 12), destination: .whatsapp)
+        let rendered = try MessengerStickerRenderer.render(
+            sticker: sticker(kind: .animated),
+            artwork: apng(dimension: 512, fps: 12, seconds: 12),
+            destination: .whatsapp
+        )
         #expect(rendered.format == .webp)
         #expect(rendered.isAnimated)
         #expect(rendered.isAccelerated)
@@ -127,7 +168,11 @@ struct MessengerStickerRendererTests {
 
     @Test("A short animation reaches WhatsApp at its own speed")
     func whatsAppShortAnimation() throws {
-        let rendered = try MessengerStickerRenderer.render(sticker: sticker(kind: .animated), artwork: apng(dimension: 300, fps: 10, seconds: 2), destination: .whatsapp)
+        let rendered = try MessengerStickerRenderer.render(
+            sticker: sticker(kind: .animated),
+            artwork: apng(dimension: 300, fps: 10, seconds: 2),
+            destination: .whatsapp
+        )
         #expect(!rendered.isAccelerated)
         #expect(rendered.frameCount == 20)
         #expect(abs(rendered.durationMilliseconds - 2_000) <= 20)
@@ -137,7 +182,11 @@ struct MessengerStickerRendererTests {
 
     @Test("An animation reaches Telegram as transparent VP9 WebM under 256 KB and 3 s")
     func telegramAnimation() throws {
-        let rendered = try MessengerStickerRenderer.render(sticker: sticker(kind: .animated), artwork: apng(dimension: 512, fps: 24, seconds: 4.5), destination: .telegram)
+        let rendered = try MessengerStickerRenderer.render(
+            sticker: sticker(kind: .animated),
+            artwork: apng(dimension: 512, fps: 24, seconds: 4.5),
+            destination: .telegram
+        )
         #expect(rendered.format == .webm)
         #expect(rendered.isAccelerated)
         #expect(rendered.byteCount <= 256 * 1024)
@@ -168,7 +217,11 @@ struct MessengerStickerRendererTests {
 
     @Test("A single-frame rendition of an animated sticker still ships as an animation")
     func animatedStillFallback() throws {
-        let rendered = try MessengerStickerRenderer.render(sticker: sticker(kind: .animated), artwork: png(frame(index: 0, count: 1, dimension: 618)), destination: .whatsapp)
+        let rendered = try MessengerStickerRenderer.render(
+            sticker: sticker(kind: .animated),
+            artwork: png(frame(index: 0, count: 1, dimension: 618)),
+            destination: .whatsapp
+        )
         #expect(rendered.isAnimated)
         #expect(properties(rendered.data).count == 2)
     }
@@ -182,7 +235,11 @@ struct MessengerStickerRendererTests {
 
     @Test("The WhatsApp tray icon is a 96² PNG under 50 KB")
     func trayIcon() throws {
-        let rendered = try MessengerStickerRenderer.render(sticker: sticker(kind: .static), artwork: png(frame(index: 0, count: 1, dimension: 1_024)), destination: .whatsapp)
+        let rendered = try MessengerStickerRenderer.render(
+            sticker: sticker(kind: .static),
+            artwork: png(frame(index: 0, count: 1, dimension: 1_024)),
+            destination: .whatsapp
+        )
         let tray = try MessengerStickerRenderer.trayIconPNG(from: rendered.posterPNG)
         #expect(tray.count <= 50 * 1024)
         let facts = properties(tray)
@@ -209,7 +266,8 @@ private struct WAStickerImageFacts {
         frameDurationsMilliseconds = (0..<frameCount).map { index in
             let frame = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
             let webp = frame?[kCGImagePropertyWebPDictionary] as? [CFString: Any]
-            let seconds = (webp?[kCGImagePropertyWebPUnclampedDelayTime] as? Double) ?? (webp?[kCGImagePropertyWebPDelayTime] as? Double) ?? 0
+            let unclamped = webp?[kCGImagePropertyWebPUnclampedDelayTime] as? Double
+            let seconds = unclamped ?? (webp?[kCGImagePropertyWebPDelayTime] as? Double) ?? 0
             return Int((seconds * 1_000).rounded())
         }
     }

@@ -95,7 +95,11 @@ nonisolated struct AppConfiguration: Sendable {
             apiBaseURL: URL(string: configuredValue("StickerFactoryAPIBaseURL", bundle: bundle, fallback: defaultAPIBaseURL))!,
             oauthIssuer: URL(string: configuredValue("StickerFactoryOAuthIssuer", bundle: bundle, fallback: "https://auth.rxlab.app"))!,
             oauthTokenURL: URL(string: configuredValue("StickerFactoryAuthTokenURL", bundle: bundle, fallback: "https://auth.rxlab.app/api/oauth/token"))!,
-            oauthClientID: configuredValue("StickerFactoryIOSClientID", bundle: bundle, fallback: "client_1ce3e6efd6da4214a61df67949a71622"),
+            oauthClientID: configuredValue(
+                "StickerFactoryIOSClientID",
+                bundle: bundle,
+                fallback: "client_1ce3e6efd6da4214a61df67949a71622"
+            ),
             oauthRedirectURI: configuredValue("StickerFactoryOAuthRedirectURI", bundle: bundle, fallback: "stickerfactory://oauth/callback"),
             subscriptionBaseURL: optionalConfiguredValue("StickerFactorySubscriptionURL", bundle: bundle).flatMap(URL.init(string:)),
             subscriptionPublishableKeys: SubscriptionPublishableKeys(

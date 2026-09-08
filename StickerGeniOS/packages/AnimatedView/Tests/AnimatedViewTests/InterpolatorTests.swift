@@ -91,7 +91,7 @@ struct InterpolatorTests {
     @Test func valuesClampOutsideTheKeyframeRange() {
         let animation = AnimatedLayerAnimation(opacity: [
             .init(timeSeconds: 1, value: 0.2),
-            .init(timeSeconds: 2, value: 0.8),
+            .init(timeSeconds: 2, value: 0.8)
         ])
         let subject = layer(animation)
         #expect(AnimationInterpolator.state(for: subject, atDocumentTime: 0).opacity == 0.2)
@@ -103,7 +103,7 @@ struct InterpolatorTests {
         // put the midpoint at exactly 0.5 rather than on the ease-in curve.
         let animation = AnimatedLayerAnimation(opacity: [
             .init(timeSeconds: 0, value: 0, easing: .linear),
-            .init(timeSeconds: 1, value: 1, easing: .easeIn),
+            .init(timeSeconds: 1, value: 1, easing: .easeIn)
         ])
         let midpoint = AnimationInterpolator.state(for: layer(animation), atDocumentTime: 0.5).opacity
         #expect(abs(midpoint - AnimationInterpolator.easedProgress(0.5, easing: .easeIn)) < 1e-9)
@@ -114,7 +114,7 @@ struct InterpolatorTests {
         let animation = AnimatedLayerAnimation(rotation: [
             .init(timeSeconds: 2, degrees: 180),
             .init(timeSeconds: 0, degrees: 0),
-            .init(timeSeconds: 1, degrees: 90, easing: .linear),
+            .init(timeSeconds: 1, degrees: 90, easing: .linear)
         ])
         #expect(AnimationInterpolator.state(for: layer(animation), atDocumentTime: 1).rotationDegrees == 90)
     }
@@ -122,7 +122,7 @@ struct InterpolatorTests {
     @Test func trimChannelInterpolates() {
         let animation = AnimatedLayerAnimation(trim: [
             .init(timeSeconds: 0, start: 0, end: 0),
-            .init(timeSeconds: 2, start: 0, end: 1, easing: .linear),
+            .init(timeSeconds: 2, start: 0, end: 1, easing: .linear)
         ])
         let midpoint = AnimationInterpolator.state(for: layer(animation), atDocumentTime: 1).trim
         #expect(midpoint.start == 0)
@@ -132,7 +132,7 @@ struct InterpolatorTests {
     @Test func effectsBlendEveryComponent() {
         let animation = AnimatedLayerAnimation(effects: [
             .init(timeSeconds: 0, blurRadius: 10, hueDegrees: -100, saturation: 0),
-            .init(timeSeconds: 2, blurRadius: 0, hueDegrees: 100, saturation: 2, easing: .linear),
+            .init(timeSeconds: 2, blurRadius: 0, hueDegrees: 100, saturation: 2, easing: .linear)
         ])
         let midpoint = AnimationInterpolator.state(for: layer(animation), atDocumentTime: 1).effects
         #expect(abs(midpoint.blurRadius - 5) < 1e-9)

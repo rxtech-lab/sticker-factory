@@ -28,8 +28,8 @@ nonisolated final class BalanceRefreshFixture: URLProtocol, @unchecked Sendable 
         )
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
 
     override func startLoading() {
@@ -37,7 +37,7 @@ nonisolated final class BalanceRefreshFixture: URLProtocol, @unchecked Sendable 
         let attempt = Self.counts.next(path)
         let isBalance = path == "/api/v1/balances"
         let isLedger = path == "/api/v1/balances/ledger"
-        if (isBalance || isLedger), attempt == 2 {
+        if isBalance || isLedger, attempt == 2 {
             client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
             return
         }
@@ -49,11 +49,14 @@ nonisolated final class BalanceRefreshFixture: URLProtocol, @unchecked Sendable 
             """
         } else if isLedger {
             json = """
-            {"entries":[{"id":"grant","kind":"credit","unit":"points","delta":\(amount),"balanceAfter":\(amount),"description":"Refresh fixture grant \(amount)","createdAt":"2026-09-07T00:00:00Z"}],"total":1,"page":1,"pageSize":20,"pageCount":1}
+            {"entries":[{"id":"grant","kind":"credit","unit":"points","delta":\(amount),\
+            "balanceAfter":\(amount),"description":"Refresh fixture grant \(amount)",\
+            "createdAt":"2026-09-07T00:00:00Z"}],"total":1,"page":1,"pageSize":20,"pageCount":1}
             """
         } else if path == "/api/v1/entitlements" {
             json = """
-            {"user":{"id":"test","rxlabUserId":"balance-ui-test","level":0},"plans":[],"roles":[],"permissions":[],"features":{},"balances":[],"usage":[]}
+            {"user":{"id":"test","rxlabUserId":"balance-ui-test","level":0},"plans":[],"roles":[],"permissions":[],"features":{},\
+            "balances":[],"usage":[]}
             """
         } else {
             json = """

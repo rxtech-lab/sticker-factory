@@ -120,17 +120,26 @@ struct MessengerExportSheet: View {
                 lines.append(String(localized: "\(destination.label) keeps still and animated stickers in separate packs."))
             }
             if parts.contains(where: { $0.count > 1 }) {
-                lines.append(String(localized: "A \(destination.label) pack holds at most \(limits.maximumStickers) stickers, so larger groups are split evenly."))
+                lines.append(String(localized: """
+                    A \(destination.label) pack holds at most \(limits.maximumStickers) stickers, so \
+                    larger groups are split evenly.
+                    """))
             }
         } else {
             lines.append(String(localized: "Nothing in this pack can be sent to \(destination.label) yet."))
         }
-        lines.append(String(localized: "Each pack is handed over on its own. Finish adding it in \(destination.label), then come back for the next."))
+        lines.append(String(localized: """
+            Each pack is handed over on its own. \
+            Finish adding it in \(destination.label), then come back for the next.
+            """))
         return lines.joined(separator: " ")
     }
 
     private var notInstalled: some View {
-        NoticeBanner(message: String(localized: "You can prepare this export now. Install \(destination.label), then come back to add the pack."))
+        NoticeBanner(message: String(localized: """
+            You can prepare this export now. \
+            Install \(destination.label), then come back to add the pack.
+            """))
             .accessibilityIdentifier("messenger-not-installed")
     }
 
@@ -321,7 +330,10 @@ struct MessengerExportSheet: View {
     private func partFooter(_ part: MessengerPackPart) -> some View {
         let blockers = model.blockers(for: part)
         if model.handedOff.contains(part.id) {
-            NoticeBanner(message: String(localized: "Handed to \(destination.label). Finish adding it there; send it again if \(destination.label) did not pick it up."))
+            NoticeBanner(message: String(localized: """
+                Handed to \(destination.label). Finish adding it there; \
+                send it again if \(destination.label) did not pick it up.
+                """))
         }
         if !blockers.isEmpty, model.phase != .preparing {
             Text(blockers.count == 1

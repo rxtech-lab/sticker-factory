@@ -46,7 +46,7 @@ public enum AnimatedPreviewDocuments {
             background: background,
             layers: layers
         )
-        return try! document.compiled()
+        return (try? document.compiled()) ?? document
     }
 
     // MARK: - 1. Shapes and colors
@@ -102,7 +102,7 @@ public enum AnimatedPreviewDocuments {
             ),
             shape: .fivePointStar,
             stroke: .init(paint: .linearGradient("#6BC5FF", "#D77BFF", angleDegrees: 90), width: 0.035)
-        )),
+        ))
     ])
 
     // MARK: - 3. SVG draw-on
@@ -118,7 +118,7 @@ public enum AnimatedPreviewDocuments {
             source: .inline(markup: AnimatedPreviewSVG.strokeFace),
             renderMode: .vector,
             staggerSeconds: 0.45
-        )),
+        ))
     ])
 
     /// The simplest possible draw-on: one continuous stroke, no stagger.
@@ -127,7 +127,7 @@ public enum AnimatedPreviewDocuments {
             base: base("check", "Check", scale: .init(x: 0.7, y: 0.7), specs: [.drawOn(duration: 1.2, easing: .easeOut)]),
             source: .inline(markup: AnimatedPreviewSVG.strokeCheck),
             renderMode: .vector
-        )),
+        ))
     ])
 
     // MARK: - 4. SVG native
@@ -136,18 +136,26 @@ public enum AnimatedPreviewDocuments {
     /// both ways so the fidelity difference between the modes is visible side by side.
     public static let svgNative = animated(durationSeconds: 2.5, [
         .svg(.init(
-            base: base("badge", "Gradient badge", scale: .init(x: 0.86, y: 0.86), specs: [.float(amplitude: 0.03, cycles: 1, duration: 2.5)]),
+            base: base(
+                "badge", "Gradient badge",
+                scale: .init(x: 0.86, y: 0.86),
+                specs: [.float(amplitude: 0.03, cycles: 1, duration: 2.5)]
+            ),
             source: .inline(markup: AnimatedPreviewSVG.gradientBadge),
             renderMode: .native
-        )),
+        ))
     ])
 
     public static let svgVector = animated(durationSeconds: 2.5, [
         .svg(.init(
-            base: base("badge", "Gradient badge", scale: .init(x: 0.86, y: 0.86), specs: [.float(amplitude: 0.03, cycles: 1, duration: 2.5)]),
+            base: base(
+                "badge", "Gradient badge",
+                scale: .init(x: 0.86, y: 0.86),
+                specs: [.float(amplitude: 0.03, cycles: 1, duration: 2.5)]
+            ),
             source: .inline(markup: AnimatedPreviewSVG.gradientBadge),
             renderMode: .vector
-        )),
+        ))
     ])
 
     /// Contains a `<text>` node, which the flattener cannot reduce to a path — it is drawn natively
@@ -157,7 +165,7 @@ public enum AnimatedPreviewDocuments {
             base: base("badge", "Text badge", scale: .init(x: 0.9, y: 0.9), specs: [.popIn(duration: 0.6)]),
             source: .inline(markup: AnimatedPreviewSVG.textBadge),
             renderMode: .vector
-        )),
+        ))
     ])
 
     // MARK: - 5. Custom path
@@ -169,7 +177,7 @@ public enum AnimatedPreviewDocuments {
             shape: .path(d: AnimatedPreviewSVG.boltPathData),
             fill: .linearGradient("#FFD166", "#FF8A3D", angleDegrees: 90),
             stroke: .init(paint: .solid("#1B1B2F"), width: 0.018)
-        )),
+        ))
     ])
 
     /// A long curve with no fill at all: pure draw-on.
@@ -178,7 +186,7 @@ public enum AnimatedPreviewDocuments {
             base: base("sig", "Signature", scale: .init(x: 0.85, y: 0.85), specs: [.drawOn(duration: 2, easing: .easeInOut)]),
             shape: .path(d: AnimatedPreviewSVG.signaturePathData),
             stroke: .init(paint: .solid("#1B1B2F"), width: 0.02, lineCap: .round)
-        )),
+        ))
     ])
 
     // MARK: - 5b. Wipe, shine and bloom
@@ -196,7 +204,7 @@ public enum AnimatedPreviewDocuments {
                 scale: .init(x: 0.8, y: 0.34),
                 specs: [
                     .wipeIn(.right, softness: 0.08, duration: 1.1),
-                    .shine(angleDegrees: -30, width: 0.28, intensity: 0.85, cycles: 2, delay: 1.1, duration: 1.9),
+                    .shine(angleDegrees: -30, width: 0.28, intensity: 0.85, cycles: 2, delay: 1.1, duration: 1.9)
                 ]
             ),
             shape: .roundedRectangle,
@@ -222,12 +230,12 @@ public enum AnimatedPreviewDocuments {
                 // the corners: at the end the star has to be whole, not clipped.
                 specs: [
                     .init(.wipeTo(start: 0, end: 1, angleDegrees: 45, softness: 0.15), duration: 1.4),
-                    .bloomIn(radius: 0.07, intensity: 0.6, delay: 1.4, duration: 0.8),
+                    .bloomIn(radius: 0.07, intensity: 0.6, delay: 1.4, duration: 0.8)
                 ]
             ),
             shape: .star(points: 5, innerRatio: 0.45),
             fill: .solid("#FFD166")
-        )),
+        ))
     ])
 
     // MARK: - 6. Text
@@ -244,7 +252,7 @@ public enum AnimatedPreviewDocuments {
                     at: .init(x: 0.12 + Double(index) * 0.19, y: 0.5),
                     scale: .init(x: 0.2, y: 0.2),
                     specs: [
-                        .slideIn(.up, distance: 0.25, delay: Double(index) * 0.12, duration: 0.5, easing: .springBouncy),
+                        .slideIn(.up, distance: 0.25, delay: Double(index) * 0.12, duration: 0.5, easing: .springBouncy)
                     ]
                 ),
                 text: String(letter),
@@ -264,7 +272,7 @@ public enum AnimatedPreviewDocuments {
         .image(.init(
             base: base("hero", "Hero", specs: [.bounce(height: 0.1, bounces: 2, duration: 2)]),
             assetId: imageAssetID
-        )),
+        ))
     ])
 
     // MARK: - 8. Particles
@@ -335,7 +343,7 @@ public enum AnimatedPreviewDocuments {
             count: 22,
             paint: .solid("#FFFFFF"),
             seed: 42
-        )),
+        ))
     ])
 
     // MARK: - 10. Backgrounds
@@ -375,7 +383,7 @@ public enum AnimatedPreviewDocuments {
                 base: base("badge", "Badge", at: .init(x: 0.5, y: 0.5), scale: .init(x: 0.7, y: 0.7), specs: [.popIn(duration: 0.6)]),
                 source: .inline(markup: AnimatedPreviewSVG.textBadge),
                 renderMode: .vector
-            )),
+            ))
         ]
     )
 
@@ -395,7 +403,7 @@ public enum AnimatedPreviewDocuments {
                 base: base("caption", "Caption", scale: .init(x: 0.6, y: 0.3)),
                 text: "YES!",
                 paint: .solid("#FFFFFF")
-            )),
+            ))
         ]
     )
 
@@ -419,6 +427,6 @@ public enum AnimatedPreviewDocuments {
         ("Composite", composite),
         ("Gradient background", gradientBackground),
         ("Wide canvas", wideCanvas),
-        ("Static", staticDocument),
+        ("Static", staticDocument)
     ]
 }

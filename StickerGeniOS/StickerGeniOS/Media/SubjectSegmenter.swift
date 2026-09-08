@@ -81,7 +81,10 @@ nonisolated struct SubjectSegmenter {
     func detect(in image: CGImage) async throws -> [Detection] {
         let source = prepared(image)
         SubjectLiftLog.logger.info(
-            "segment: detecting in \(source.width, privacy: .public)x\(source.height, privacy: .public) (source \(image.width, privacy: .public)x\(image.height, privacy: .public))"
+            """
+            segment: detecting in \(source.width, privacy: .public)x\(source.height, privacy: .public) \
+            (source \(image.width, privacy: .public)x\(image.height, privacy: .public))
+            """
         )
         let handler = ImageRequestHandler(source)
         guard let observation = try await handler.perform(GenerateForegroundInstanceMaskRequest()) else {
@@ -102,7 +105,11 @@ nonisolated struct SubjectSegmenter {
             guard let mask = Self.hitMask(candidate.image) else { continue }
             let bounds = candidate.descriptor.bounds
             SubjectLiftLog.logger.debug(
-                "segment: candidate area=\(candidate.descriptor.areaFraction, privacy: .public) bounds=(\(bounds.minX, privacy: .public), \(bounds.minY, privacy: .public), \(bounds.width, privacy: .public), \(bounds.height, privacy: .public))"
+                """
+                segment: candidate area=\(candidate.descriptor.areaFraction, privacy: .public) \
+                bounds=(\(bounds.minX, privacy: .public), \(bounds.minY, privacy: .public), \
+                \(bounds.width, privacy: .public), \(bounds.height, privacy: .public))
+                """
             )
             detections.append(Detection(
                 cutout: candidate.image,

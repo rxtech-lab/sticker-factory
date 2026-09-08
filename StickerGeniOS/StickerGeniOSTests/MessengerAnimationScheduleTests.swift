@@ -72,7 +72,12 @@ struct MessengerAnimationScheduleTests {
 
     @Test("Empty input yields an empty schedule")
     func empty() {
-        let schedule = MessengerAnimationSchedule.plan(sourceDelaysMilliseconds: [], maximumDurationMilliseconds: 3_000, maximumFramesPerSecond: 30, minimumFrameDurationMilliseconds: 33)
+        let schedule = MessengerAnimationSchedule.plan(
+            sourceDelaysMilliseconds: [],
+            maximumDurationMilliseconds: 3_000,
+            maximumFramesPerSecond: 30,
+            minimumFrameDurationMilliseconds: 33
+        )
         #expect(schedule.frames.isEmpty)
     }
 }

@@ -29,15 +29,23 @@ struct FeatureAnnouncement: Identifiable, Equatable {
             icon: "💬",
             accent: MessengerDestination.whatsapp.accent,
             title: String(localized: "Your packs, in WhatsApp"),
-            message: String(localized: "Open any pack under Sticker Packs and tap Add to WhatsApp. Still and animated stickers become separate packs, and a big pack is split evenly, so every one fits WhatsApp's rules. Pick each sticker's emoji before you send.")
+            message: String(localized: """
+                Open any pack under Sticker Packs and tap Add to WhatsApp. \
+                Still and animated stickers become separate packs, and a big pack is split evenly, \
+                so every one fits WhatsApp's rules. Pick each sticker's emoji before you send.
+                """)
         ),
         .init(
             id: "telegram-sticker-import",
             icon: "✈️",
             accent: MessengerDestination.telegram.accent,
             title: String(localized: "Your packs, in Telegram"),
-            message: String(localized: "The same pack screen sends to Telegram: stills go as PNG, animations as transparent video, sped up when they run past Telegram's three seconds. Telegram asks for the pack's name when it opens.")
-        ),
+            message: String(localized: """
+                The same pack screen sends to Telegram: \
+                stills go as PNG, animations as transparent video, sped up when they run past Telegram's three seconds. \
+                Telegram asks for the pack's name when it opens.
+                """)
+        )
     ]
 }
 

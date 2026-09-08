@@ -271,7 +271,7 @@ struct EditorGeometryTests {
     @Test func hitTestFollowsAnimationToTheScrubbedTime() {
         let animation = AnimatedLayerAnimation(position: [
             .init(timeSeconds: 0, x: 0.5, y: 0.5),
-            .init(timeSeconds: 2, x: 0.5, y: 0.1),
+            .init(timeSeconds: 2, x: 0.5, y: 0.1)
         ])
         let moving = AnimatedLayer.shape(.init(
             base: .init(id: "mover", name: "Mover", animation: animation),

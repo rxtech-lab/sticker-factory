@@ -57,7 +57,7 @@ struct VideoRenderingTests {
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: side,
-            AVVideoHeightKey: side,
+            AVVideoHeightKey: side
         ])
         input.expectsMediaDataInRealTime = false
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
@@ -65,7 +65,7 @@ struct VideoRenderingTests {
             sourcePixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: side,
-                kCVPixelBufferHeightKey as String: side,
+                kCVPixelBufferHeightKey as String: side
             ]
         )
         writer.add(input)
@@ -168,7 +168,10 @@ struct VideoRenderingTests {
         for (x, y) in [(0, 0), (side / 2, side / 2), (side - 1, side - 1)] {
             let a = pixel(actual, x: x, y: y)
             let e = pixel(expected, x: x, y: y)
-            #expect(abs(a.a - e.a) <= 3 && abs(a.r - e.r) <= 3 && abs(a.g - e.g) <= 3 && abs(a.b - e.b) <= 3, "(\(x),\(y)) gpu=\(a) cpu=\(e)")
+            #expect(
+                abs(a.a - e.a) <= 3 && abs(a.r - e.r) <= 3 && abs(a.g - e.g) <= 3 && abs(a.b - e.b) <= 3,
+                "(\(x),\(y)) gpu=\(a) cpu=\(e)"
+            )
         }
     }
 

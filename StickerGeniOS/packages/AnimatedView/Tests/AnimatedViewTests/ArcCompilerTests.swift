@@ -108,7 +108,7 @@ struct ArcCompilerTests {
             try AnimationCompiler.compile(
                 [
                     .arcTo(x: 0.9, y: 0.5, delay: 0, duration: 1),
-                    .arcTo(x: 0.2, y: 0.5, delay: 1, duration: 1),
+                    .arcTo(x: 0.2, y: 0.5, delay: 1, duration: 1)
                 ],
                 timing: timing
             )

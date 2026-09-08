@@ -124,7 +124,7 @@ struct TrimCompilerTests {
             AnimationCompiler.LayerCompileInput(
                 layerId: "a",
                 specs: [.fadeIn(delay: 0, duration: 2), .fadeOut(delay: 1, duration: 2)]
-            ),
+            )
         ]
         // A channel conflict is invariant to the cycle cap; retrying at a lower cap would just loop.
         #expect(throws: AnimationCompileError.self) {

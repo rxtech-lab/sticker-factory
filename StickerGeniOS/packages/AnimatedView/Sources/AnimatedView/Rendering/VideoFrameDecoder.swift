@@ -74,7 +74,7 @@ public enum VideoFrameDecoder {
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: outputWidth,
-            kCVPixelBufferHeightKey as String: outputHeight,
+            kCVPixelBufferHeightKey as String: outputHeight
         ])
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else { throw VideoFrameDecoderError.unreadable }

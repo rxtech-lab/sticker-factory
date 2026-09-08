@@ -190,7 +190,10 @@ struct PackEditorView: View {
                 posterSymbol: "eye.slash"
             )
             .font(.footnote)
-            Text("Editing a sticker on device returns it to draft, and a draft cannot appear in a pack. Publish it again to bring it back — but saving the sticker list here drops it from the pack for good.")
+            Text("""
+                Editing a sticker on device returns it to draft, and a draft cannot appear in a pack. \
+                Publish it again to bring it back — but saving the sticker list here drops it from the pack for good.
+                """)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

@@ -11,7 +11,10 @@ enum StickerOnboarding {
             id: "welcome",
             icon: PosterIcon.welcome,
             title: String(localized: "Welcome to \(appName)"),
-            message: String(localized: "Turn an idea or a favorite photo into an expressive sticker you can keep, share, and use in Messages.")
+            message: String(localized: """
+                Turn an idea or a favorite photo into an expressive sticker \
+                you can keep, share, and use in Messages.
+                """)
         ),
         .init(
             id: "generate",
@@ -29,7 +32,10 @@ enum StickerOnboarding {
             id: "versions",
             icon: PosterIcon.versions,
             title: String(localized: "3. Keep every version"),
-            message: String(localized: "Accepted changes stay in version history, where you can compare results and restore an earlier sticker.")
+            message: String(localized: """
+                Accepted changes stay in version history, \
+                where you can compare results and restore an earlier sticker.
+                """)
         ),
         .init(
             id: "publish",
@@ -41,8 +47,11 @@ enum StickerOnboarding {
             id: "use",
             icon: PosterIcon.chat,
             title: String(localized: "5. Use it"),
-            message: String(localized: "Open \(appName) from the Messages app drawer to send published stickers, or share the exported files anywhere.")
-        ),
+            message: String(localized: """
+                Open \(appName) from the Messages app drawer to send published stickers, \
+                or share the exported files anywhere.
+                """)
+        )
     ]
 
     static func shouldPresentWelcome(
@@ -57,7 +66,7 @@ enum StickerOnboarding {
         guard !isUITesting else { return }
         try? Tips.configure([
             .datastoreLocation(.applicationDefault),
-            .displayFrequency(.immediate),
+            .displayFrequency(.immediate)
         ])
     }
 }
@@ -94,7 +103,7 @@ struct StickerWelcomeSheet: View {
         AppColors.peach,
         AppColors.mint,
         AppColors.highlight,
-        AppColors.sky,
+        AppColors.sky
     ]
 
     @State private var index = 0
@@ -199,7 +208,12 @@ struct GenerateStickerTip: Tip {
 struct LiftSubjectTip: Tip {
     var id: String { "sticker-factory.onboarding.lift-subject.v1" }
     var title: Text { Text("Lift the subject out") }
-    var message: Text? { Text("Tap a photo you attached to cut its subject away from the background, so only the part you want reaches the sticker.") }
+    var message: Text? {
+        Text("""
+            Tap a photo you attached to cut its subject away from the background, \
+            so only the part you want reaches the sticker.
+            """)
+    }
     var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
@@ -256,7 +270,10 @@ struct UseStickerTip: Tip {
     var id: String { "sticker-factory.onboarding.use.v1" }
     var title: Text { Text("Use it in Messages") }
     var message: Text? {
-        Text(String(localized: "Open \(AppConfiguration.defaultAppName) in the Messages app drawer to send this sticker. You can also share the exported files below."))
+        Text(String(localized: """
+            Open \(AppConfiguration.defaultAppName) in the Messages app drawer to send this sticker. \
+            You can also share the exported files below.
+            """))
     }
     var image: Image? { Image("PosterSignIn") }
     var rules: [Rule] {
@@ -270,7 +287,12 @@ struct UseStickerTip: Tip {
 struct MessengerExportTip: Tip {
     var id: String { "sticker-factory.onboarding.messenger-export.v1" }
     var title: Text { Text("Send the pack to WhatsApp or Telegram") }
-    var message: Text? { Text("Every pack works in both. Stickers are converted for you, and a pack too big for one messenger is split into parts it accepts.") }
+    var message: Text? {
+        Text("""
+            Every pack works in both. Stickers are converted for you, \
+            and a pack too big for one messenger is split into parts it accepts.
+            """)
+    }
     var image: Image? { Image("FeatureWhatsApp") }
     var rules: [Rule] {
         #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }

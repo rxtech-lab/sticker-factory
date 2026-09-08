@@ -131,7 +131,7 @@ nonisolated final class SharedKeychainTokenVault: SharedTokenVaultProtocol, @unc
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrSynchronizable as String: false,
+            kSecAttrSynchronizable as String: false
         ]
         if let accessGroup { query[kSecAttrAccessGroup as String] = accessGroup }
         return query

@@ -34,7 +34,7 @@ struct SequenceRenderingTests {
             (CGRect(x: 0, y: tile, width: tile, height: tile), CGColor(red: 1, green: 0, blue: 0, alpha: 1)),
             (CGRect(x: tile, y: tile, width: tile, height: tile), CGColor(red: 0, green: 1, blue: 0, alpha: 1)),
             (CGRect(x: 0, y: 0, width: tile, height: tile), CGColor(red: 0, green: 0, blue: 1, alpha: 1)),
-            (CGRect(x: tile, y: 0, width: tile, height: tile), CGColor(red: 1, green: 1, blue: 1, alpha: 1)),
+            (CGRect(x: tile, y: 0, width: tile, height: tile), CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         ]
         for (rect, colour) in colours {
             context.setFillColor(colour)
@@ -111,7 +111,7 @@ struct SequenceRenderingTests {
         let assets = AnimatedAssetDictionary(images: [assetID: atlas()])
         let sequence = layer()
         let swatches: [(name: String, rgb: (r: Double, g: Double, b: Double))] = [
-            ("red", (1, 0, 0)), ("green", (0, 1, 0)), ("blue", (0, 0, 1)), ("white", (1, 1, 1)),
+            ("red", (1, 0, 0)), ("green", (0, 1, 0)), ("blue", (0, 0, 1)), ("white", (1, 1, 1))
         ]
         for index in 0..<4 {
             let tile = FrameAtlasCache.shared.tile(for: sequence, index: index, assets: assets)

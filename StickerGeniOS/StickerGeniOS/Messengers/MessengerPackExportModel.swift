@@ -215,7 +215,10 @@ final class MessengerPackExportModel {
                         case .failure(let error) where error is CancellationError:
                             break
                         case .failure(let error):
-                            Self.log.error("fetch failed sticker=\(stickerID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                            Self.log.error("""
+                                fetch failed sticker=\(stickerID, privacy: .public) \
+                                error=\(error.localizedDescription, privacy: .public)
+                                """)
                             failures[stickerID] = error.localizedDescription
                         }
                         completed += 1
@@ -311,7 +314,10 @@ final class MessengerPackExportModel {
             case .whatsapp: try sendToWhatsApp(part, stickers: stickers)
             case .telegram: try sendToTelegram(part, stickers: stickers)
             }
-            AppTelemetry.event("share", parameters: ["method": destination.rawValue, "content_type": "sticker_pack", "item_count": stickers.count])
+            AppTelemetry.event(
+                "share",
+                parameters: ["method": destination.rawValue, "content_type": "sticker_pack", "item_count": stickers.count]
+            )
             handedOff.insert(part.id)
             Haptics.success()
         } catch {

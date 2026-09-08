@@ -126,7 +126,7 @@ struct StickerFactoryTabView: View {
             presentLaunchFlowIfNeeded()
             defersLibraryErrors = launchFlow != nil
         }
-        .sheet(item: $launchFlow, onDismiss: { defersLibraryErrors = false }) { flow in
+        .sheet(item: $launchFlow, onDismiss: { defersLibraryErrors = false }, content: { flow in
             LaunchFlowView(
                 steps: flow.steps,
                 onWelcomeSeen: {
@@ -137,7 +137,7 @@ struct StickerFactoryTabView: View {
                 onCardAcknowledged: { featureStore.markRead($0) },
                 onFinished: { launchFlow = nil }
             )
-        }
+        })
         // Hosted once, at the root. A refusal can come from a chat turn, an export, or a publish —
         // all on different screens, some of them already inside their own sheet — and presenting
         // from each of them would mean a paywall that cannot open over whatever is in the way.
@@ -228,9 +228,21 @@ private struct SharedPackEntry: View {
     @State private var loaded = false
     var body: some View {
         Group {
-            if let packID { PackDetailView(store: store, packID: packID) }
-            else if loaded { ContentUnavailableView("Pack unavailable", systemImage: "photo", description: Text(store.errorMessage ?? "This pack is no longer available.")) }
-            else { ProgressView("Loading pack…") }
-        }.task(id: slug) { packID = await store.loadDetail(packID: slug)?.id; loaded = true }
+            if let packID {
+                PackDetailView(store: store, packID: packID)
+            } else if loaded {
+                ContentUnavailableView(
+                    "Pack unavailable",
+                    systemImage: "photo",
+                    description: Text(store.errorMessage ?? "This pack is no longer available.")
+                )
+            } else {
+                ProgressView("Loading pack…")
+            }
+        }
+        .task(id: slug) {
+            packID = await store.loadDetail(packID: slug)?.id
+            loaded = true
+        }
     }
 }

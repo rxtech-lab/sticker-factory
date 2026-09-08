@@ -13,7 +13,7 @@ import Testing
 struct StickerToolLabelTests {
     @Test("Workflow phases drive the subtitle", arguments: [
         "plan-sticker", "build-plan", "animate-sticker", "generate-sticker",
-        "generate-image", "edit-sticker", "show-sticker", "reply",
+        "generate-image", "edit-sticker", "show-sticker", "reply"
     ])
     func phasesAreRecognised(_ toolName: String) {
         #expect(StickerToolLabel.isPhase(toolName))
@@ -23,7 +23,7 @@ struct StickerToolLabelTests {
         "create_plan", "update_plan", "show_plan", "finalize_plan",
         "create_animation", "update_animation", "edit_layer_animation", "finalize_animation",
         "edit_layers", "edit_image_layer", "add_image_layer", "create_video", "finalize_edit",
-        "view_plan_image", "view_sticker",
+        "view_plan_image", "view_sticker"
     ])
     func toolCallsAreNotPhases(_ toolName: String) {
         #expect(!StickerToolLabel.isPhase(toolName))

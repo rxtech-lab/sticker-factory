@@ -28,7 +28,7 @@ nonisolated enum PreviewFixtures {
             mp4Background: .linearGradient("#FFE7A3", "#FF8FA3", angleDegrees: 35),
             layers: [
                 .shape(.init(base: .init(id: "backdrop", name: "Backdrop"), shape: .burst, fill: .solid("#FFE7A3"))),
-                .image(.init(base: .init(id: "hero", name: "Hero"), assetId: imageAssetID)),
+                .image(.init(base: .init(id: "hero", name: "Hero"), assetId: imageAssetID))
             ]
         )
         document.canvas = .init(square: 1024)
@@ -66,10 +66,19 @@ nonisolated enum PreviewFixtures {
         activeRevisionId: "revision-borrowed",
         createdAt: Date().addingTimeInterval(-7_200),
         updatedAt: Date().addingTimeInterval(-600),
-        previewAsset: .init(id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .master, state: .ready, mimeType: "image/png", width: 256, height: 256, hasAlpha: true),
+        previewAsset: .init(
+            id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .master,
+            state: .ready, mimeType: "image/png", width: 256, height: 256, hasAlpha: true
+        ),
         systemSticker: nil,
-        whatsappAsset: .init(id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .messengerWhatsApp, state: .ready, mimeType: "image/webp", width: 512, height: 512, hasAlpha: true),
-        telegramAsset: .init(id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .messengerTelegram, state: .ready, mimeType: "image/png", width: 512, height: 512, hasAlpha: true)
+        whatsappAsset: .init(
+            id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .messengerWhatsApp,
+            state: .ready, mimeType: "image/webp", width: 512, height: 512, hasAlpha: true
+        ),
+        telegramAsset: .init(
+            id: borrowedAssetID, stickerId: "sticker-borrowed", kind: .messengerTelegram,
+            state: .ready, mimeType: "image/png", width: 512, height: 512, hasAlpha: true
+        )
     )
 
     static let creator = PackCreator(
@@ -218,6 +227,6 @@ nonisolated enum PreviewFixtures {
             status: .complete,
             createdAt: Date().addingTimeInterval(-40),
             attachments: []
-        ),
+        )
     ]
 }

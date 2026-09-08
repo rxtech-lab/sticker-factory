@@ -204,7 +204,7 @@ struct SharedKeychainTokenStorage: SharedTokenStorageProtocol, @unchecked Sendab
         let data = try JSONEncoder().encode(bundle)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
         let updateStatus = SecItemUpdate(baseQuery as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess {
@@ -235,7 +235,7 @@ struct SharedKeychainTokenStorage: SharedTokenStorageProtocol, @unchecked Sendab
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecAttrAccessGroup as String: accessGroup,
-            kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+            kSecAttrSynchronizable as String: kCFBooleanFalse as Any
         ]
     }
 }
@@ -256,7 +256,7 @@ struct URLSessionSharedOAuthRefreshTransport: SharedOAuthRefreshTransport {
         components.queryItems = [
             URLQueryItem(name: "grant_type", value: "refresh_token"),
             URLQueryItem(name: "refresh_token", value: refreshToken),
-            URLQueryItem(name: "client_id", value: clientID),
+            URLQueryItem(name: "client_id", value: clientID)
         ]
 
         var request = URLRequest(url: tokenURL)

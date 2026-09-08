@@ -112,11 +112,27 @@ The iOS client is public and must never contain an OAuth client secret. User OAu
 
 ## Verification
 
-From `server/`:
+Both linters run from the repository root, the same way CI runs them:
+
+```sh
+make lint       # SwiftLint over the iOS sources, then ESLint over the server
+make lint-fix   # apply what either linter can correct on its own
+```
+
+Both are configured with the same structural rule: **no source file over 800 lines**, counting
+neither blank lines nor comments — SwiftLint's `file_length` in `StickerGeniOS/.swiftlint.yml`, and
+ESLint's `max-lines` in `server/eslint.config.mjs`.
+
+SwiftLint's version is pinned in `StickerGeniOS/.swiftlint-version`, and `make lint-ios` refuses to
+run against any other one. Its rules and their options change between releases — 0.63 narrowed what
+`line_length`'s `ignores_function_declarations` exempts, and 0.65 added new rules — so an unpinned
+linter reports a different set of violations locally than it does in CI. To move to a newer release,
+bump that file and fix whatever it reports.
+
+The rest, from `server/`:
 
 ```sh
 bun run typecheck
-bun run lint
 bun run test
 bun run build
 ```

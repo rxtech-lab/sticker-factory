@@ -219,7 +219,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             child.view.leadingAnchor.constraint(equalTo: surfaceContainer.leadingAnchor),
             child.view.trailingAnchor.constraint(equalTo: surfaceContainer.trailingAnchor),
             child.view.topAnchor.constraint(equalTo: surfaceContainer.topAnchor),
-            child.view.bottomAnchor.constraint(equalTo: surfaceContainer.bottomAnchor),
+            child.view.bottomAnchor.constraint(equalTo: surfaceContainer.bottomAnchor)
         ])
         child.didMove(toParent: self)
     }
@@ -249,7 +249,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             surfaceContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             surfaceContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             surfaceContainer.topAnchor.constraint(equalTo: modeControl.bottomAnchor, constant: 6),
-            surfaceContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            surfaceContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
 
@@ -285,7 +285,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             modeControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             // Short of the trailing edge, where the offline badge sits.
             modeControl.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -124),
-            modeControlHeight,
+            modeControlHeight
         ])
     }
 
@@ -342,7 +342,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             stack.leadingAnchor.constraint(equalTo: statusContainer.contentView.leadingAnchor, constant: 24),
             stack.trailingAnchor.constraint(equalTo: statusContainer.contentView.trailingAnchor, constant: -24),
             stack.topAnchor.constraint(equalTo: statusContainer.contentView.topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(equalTo: statusContainer.contentView.bottomAnchor, constant: -20),
+            stack.bottomAnchor.constraint(equalTo: statusContainer.contentView.bottomAnchor, constant: -20)
         ])
     }
 
@@ -364,7 +364,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         NSLayoutConstraint.activate([
             createButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             createButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
-            createButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            createButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
         ])
     }
 
@@ -451,7 +451,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             offlineLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
             offlineLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             offlineLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 104),
-            offlineLabel.heightAnchor.constraint(equalToConstant: 24),
+            offlineLabel.heightAnchor.constraint(equalToConstant: 24)
         ])
     }
 
@@ -475,7 +475,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             hintLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             hintLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 16),
             hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
-            hintLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 28),
+            hintLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 28)
         ])
     }
 

@@ -12,7 +12,7 @@ let package = Package(
     name: "VP9Encoder",
     platforms: [.iOS(.v17)],
     products: [
-        .library(name: "VP9Encoder", targets: ["VP9Encoder"]),
+        .library(name: "VP9Encoder", targets: ["VP9Encoder"])
     ],
     targets: [
         .binaryTarget(name: "libvpx", path: "libvpx.xcframework"),
@@ -30,6 +30,6 @@ let package = Package(
             name: "VP9EncoderTests",
             dependencies: ["VP9Encoder"],
             swiftSettings: [.swiftLanguageMode(.v6)]
-        ),
+        )
     ]
 )

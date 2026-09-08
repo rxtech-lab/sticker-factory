@@ -49,7 +49,8 @@ struct DocumentTests {
     /// defaults, so these have to be explicit — and this is what proves they are.
     @Test func decodesAMinimalDocument() throws {
         let json = """
-        {"kind":"animated","layers":[{"type":"shape","id":"a","name":"A","shape":{"kind":"circle"},"fill":{"type":"solid","color":"#FF0000"}}]}
+        {"kind":"animated","layers":[{"type":"shape","id":"a","name":"A","shape":{"kind":"circle"},"fill":{"type":"solid",\
+        "color":"#FF0000"}}]}
         """
         let document = try JSONDecoder().decode(AnimatedDocument.self, from: Data(json.utf8))
         #expect(document.version == AnimatedDocument.currentVersion)
@@ -152,7 +153,7 @@ struct DocumentTests {
         #"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div/></foreignObject></svg>"#,
         #"<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.com/a.png"/></svg>"#,
         ##"<svg xmlns="http://www.w3.org/2000/svg"><use href="//example.com/a.svg#x"/></svg>"##,
-        #"<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)"><rect/></a></svg>"#,
+        #"<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)"><rect/></a></svg>"#
     ])
     func rejectsHostileSVGMarkup(_ markup: String) {
         #expect(AnimatedSVGSource.inline(markup: markup).isValid == false)
@@ -170,7 +171,11 @@ struct DocumentTests {
             .solid("#123456"),
             .solid("#12345678"),
             .linearGradient("#000000", "#FFFFFF", angleDegrees: 45),
-            .radialGradient(stops: [.init(color: "#FF0000", location: 0), .init(color: "#00FF00", location: 1)], center: .center, radius: 0.4),
+            .radialGradient(
+                stops: [.init(color: "#FF0000", location: 0), .init(color: "#00FF00", location: 1)],
+                center: .center,
+                radius: 0.4
+            )
         ]
         for paint in paints {
             #expect(paint.isValid)
@@ -190,7 +195,7 @@ struct DocumentTests {
             .none,
             .solid("#FFFFFF"),
             .linearGradient("#FFE7A3", "#FF8FA3", angleDegrees: 35),
-            .image(assetId: AnimatedPreviewDocuments.imageAssetID, contentMode: .fill),
+            .image(assetId: AnimatedPreviewDocuments.imageAssetID, contentMode: .fill)
         ]
         for background in backgrounds {
             #expect(background.isValid)
@@ -203,7 +208,7 @@ struct DocumentTests {
         let kinds: [AnimatedShapeKind] = AnimatedShapeKind.presets + [
             .star(points: 9, innerRatio: 0.3),
             .polygon(sides: 12),
-            .path(d: AnimatedPreviewSVG.boltPathData),
+            .path(d: AnimatedPreviewSVG.boltPathData)
         ]
         for kind in kinds {
             #expect(kind.isValid)
