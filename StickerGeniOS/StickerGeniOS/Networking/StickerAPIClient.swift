@@ -17,6 +17,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage
+    func planVersions(stickerID: String) async throws -> Page<PlanRecord>
     func sendChatMessage(stickerID: String, request: SendChatMessageRequest, idempotencyKey: String) async throws -> SendChatMessageResponse
     func retryChatMessage(stickerID: String, messageID: String, idempotencyKey: String) async throws -> RetryChatMessageResponse
     func confirmPlan(stickerID: String, planID: String, idempotencyKey: String) async throws -> ConfirmPlanResponse
@@ -152,6 +153,10 @@ actor StickerAPIClient: StickerAPIClientProtocol {
             path: "api/v1/stickers/\(stickerID)/chat/messages",
             query: beforeSequence.map { [URLQueryItem(name: "beforeSequence", value: String($0))] } ?? []
         )
+    }
+
+    func planVersions(stickerID: String) async throws -> Page<PlanRecord> {
+        try await send(path: "api/v1/stickers/\(stickerID)/plans")
     }
 
     func sendChatMessage(stickerID: String, request: SendChatMessageRequest, idempotencyKey: String) async throws -> SendChatMessageResponse {

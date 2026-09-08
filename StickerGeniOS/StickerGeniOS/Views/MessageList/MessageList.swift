@@ -71,16 +71,8 @@ struct MessageList<
 
     @State private var pinning = MessageListPinningController<Message.MessageID>()
     @State private var scrollPhase: ScrollPhase = .idle
-    /// The height the turn actually gets to occupy — `ScrollGeometry.bounds`, the
-    /// visible region *inside* the content insets, and the same region `scrollTo`
-    /// aligns into.
-    ///
-    /// Two nearby values are both wrong here. The scroll view's frame height counts
-    /// the strip the floating composer and the navigation bar cover (the transcript
-    /// is full-bleed and holds that space with `contentMargins`/safe area), so
-    /// reserving against it pushes the turn off the top by the inset total. And
-    /// `containerSize` is already inset-adjusted — subtracting the insets from it
-    /// double-counts them, which collapses the reservation to nothing.
+    /// Usable viewport after scroll content insets (including the floating composer).
+    /// `bounds` and `containerSize` both include those strips; subtract them once.
     @State private var visibleContentHeight: CGFloat = 0
     /// The active turn — the pinned user message and everything under it — measured
     /// as ONE view.
@@ -135,7 +127,7 @@ struct MessageList<
                 .coordinateSpace(.named(MessageListConstants.coordinateSpaceName))
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.bounds.height
+                max(0, geometry.containerSize.height - geometry.contentInsets.top - geometry.contentInsets.bottom)
             } action: { _, height in
                 updateVisibleContentHeight(height)
             }

@@ -9,6 +9,9 @@ import UIKit
 /// that is otherwise still live. Such a card is a record of what was proposed, not a button.
 struct PlanCard: View {
     let record: PlanRecord
+    /// All saved plans in chronological order. Draft edits within one plan share its version.
+    var versions: [PlanRecord] = []
+    var onSelectVersion: (String) -> Void = { _ in }
     let referenceImage: UIImage?
     let isBusy: Bool
     let onConfirm: () -> Void
@@ -81,6 +84,7 @@ struct PlanCard: View {
         .padding(.trailing, Poster.mediumShadow.width)
         .padding(.bottom, Poster.mediumShadow.height)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("composition-plan-card")
         .confirmationDialog("Build this plan?", isPresented: $confirming, titleVisibility: .visible) {
             Button("Build") {
@@ -117,10 +121,11 @@ struct PlanCard: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .posterCapsule(fill: AppColors.lime, lineWidth: 1, offset: .zero)
-                if record.revision > 1 {
-                    Text("v\(record.revision)")
-                        .font(.posterLabel(9))
-                        .foregroundStyle(AppColors.ink.opacity(0.7))
+                versionPicker
+                if !record.actionable {
+                    Text("Preview only")
+                        .posterLabelStyle(9, color: AppColors.muted)
+                        .accessibilityIdentifier("plan-preview-only")
                 }
             }
             Text(plan.title)
@@ -131,6 +136,43 @@ struct PlanCard: View {
                 .foregroundStyle(AppColors.ink.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var versionNumber: Int {
+        (versions.firstIndex(where: { $0.id == record.id }) ?? 0) + 1
+    }
+
+    private var versionPicker: some View {
+        Menu {
+            Picker("Plan version", selection: Binding(
+                get: { record.id },
+                set: { onSelectVersion($0) }
+            )) {
+                ForEach(Array(versions.enumerated().reversed()), id: \.element.id) { index, version in
+                    Text("Version \(index + 1): \(version.plan.title)")
+                        .tag(version.id)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text("Version \(versionNumber)")
+                if record.id == versions.last?.id {
+                    Text("Current")
+                }
+                if versions.count > 1 {
+                    Image(systemName: "chevron.down")
+                }
+            }
+            .font(.posterLabel(9))
+            .foregroundStyle(AppColors.ink)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .posterCapsule(fill: AppColors.card, lineWidth: 1, offset: .zero)
+        }
+        .disabled(versions.count < 2)
+        .accessibilityLabel("Plan version")
+        .accessibilityValue("Version \(versionNumber)")
+        .accessibilityIdentifier("plan-version-picker")
     }
 
     private var layerList: some View {
@@ -307,7 +349,7 @@ struct PlanCard: View {
     private var statusNote: String {
         switch record.state {
         case .draft: String(localized: "Still being drafted.")
-        case .finalized: String(localized: "Superseded by a newer revision of this plan.")
+        case .finalized: String(localized: "Use the current plan card to build.")
         case .confirmed: String(localized: "Building.")
         case .superseded: String(localized: "Superseded by a newer plan.")
         case .cancelled:

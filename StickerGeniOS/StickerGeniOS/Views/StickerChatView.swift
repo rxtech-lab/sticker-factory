@@ -42,6 +42,8 @@ struct StickerChatView: View {
     @State var showingCandidate = false
     @State var isDeciding = false
     @State var isConfirmingPlan = false
+    @State private var savedPlanVersions: [PlanRecord] = []
+    @State private var selectedPlanIDs: [String: String] = [:]
     /// A retry is in flight. Held here rather than read off the job, because the job only stops
     /// looking failed once the replacement stream opens — well after the tap.
     @State var isRetrying = false
@@ -92,6 +94,19 @@ struct StickerChatView: View {
     /// newest on top of that keeps scrolled-up history inert even if two cards ever both qualify.
     private var actionablePlanID: String? {
         messages.compactMap(\.plan).last(where: \.actionable)?.id
+    }
+    private var planVersions: [PlanRecord] {
+        // Transcript updates can arrive before the history request completes. Keep their latest
+        // contents, while retaining older plans outside the currently loaded message page.
+        var versions = savedPlanVersions
+        for record in messages.compactMap(\.plan) {
+            if let index = versions.firstIndex(where: { $0.id == record.id }) {
+                if record.revision >= versions[index].revision { versions[index] = record }
+            } else {
+                versions.append(record)
+            }
+        }
+        return versions
     }
     private var mediaPreloadToken: String {
         let revisionIDs = messages.compactMap(\.revisionId)
@@ -206,6 +221,17 @@ struct StickerChatView: View {
         }
         .onDisappear { store.stopReconciliationPolling(stickerID: stickerID) }
         .task(id: mediaPreloadToken) { await preloadMessageMedia() }
+        .task(id: messages.compactMap(\.plan)) {
+            guard messages.contains(where: { $0.plan != nil }) else { return }
+            do {
+                let page = try await store.api.planVersions(stickerID: stickerID)
+                try Task.checkCancellation()
+                savedPlanVersions = page.data
+            } catch {
+                guard !Task.isCancelled else { return }
+                localError = error.localizedDescription
+            }
+        }
         .task(id: workingDocument) {
             if let document = workingDocument { await assetStore.preload(document: document, api: store.api) }
         }
@@ -471,9 +497,19 @@ struct StickerChatView: View {
                 }
             }
         } else if let record = message.plan {
+            let selected = planVersions.first(where: {
+                $0.id == (selectedPlanIDs[message.id] ?? record.id)
+            }) ?? record
+            // Browsing history must never grant permission to act. Only the original live card
+            // may expose its actions, and only while it displays that same current plan.
+            let canAct = selected.id == record.id && record.actionable
+                && selected.revision == record.revision
+                && record.id == actionablePlanID && record.id == planVersions.last?.id
             PlanCard(
-                record: record.id == actionablePlanID ? record : record.readOnly,
-                referenceImage: record.conceptAssetId.flatMap { assetStore.images[$0] },
+                record: canAct ? record : selected.readOnly,
+                versions: planVersions,
+                onSelectVersion: { selectedPlanIDs[message.id] = $0 },
+                referenceImage: selected.conceptAssetId.flatMap { assetStore.images[$0] },
                 isBusy: isConfirmingPlan || isComputing,
                 onConfirm: { Task { await confirmPlan(record) } },
                 onReject: { reason in Task { await rejectPlan(record, reason: reason) } },
@@ -485,12 +521,18 @@ struct StickerChatView: View {
                     Task { await savePlanImageToPhotoLibrary(image) }
                 }
             )
+            .task(id: selected.conceptAssetId) {
+                if let assetID = selected.conceptAssetId {
+                    await assetStore.load(assetID: assetID, api: store.api)
+                }
+            }
         } else {
             ChatBubble(
                 message: message,
                 sticker: revisionDocument(for: message),
                 assets: assetStore.images,
                 videos: assetStore.videos,
+                toolAPI: store.api,
                 onOpenSticker: {
                     Haptics.tap(.light)
                     presentedDocument = .init(document: $0, revisionID: message.revisionId)

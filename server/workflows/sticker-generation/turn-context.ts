@@ -13,7 +13,8 @@ import { appendGenerationEvent } from "@/lib/services/events";
 import { serializeChatMessage } from "@/lib/services/stickers";
 import { referencedAssetIds, renderSticker } from "@/lib/render/sticker-render";
 import type { RenderAssets } from "@/lib/render/document-svg";
-import { getObjectStore } from "@/lib/storage/r2";
+import { getObjectStore, inspectImage } from "@/lib/storage/r2";
+import { derivedAssetId } from "@/lib/services/assets";
 
 /**
  * How long a summarized name may be. Shorter than the 100 the create request allows: this one has to
@@ -237,6 +238,29 @@ export async function finishToolCall(
   )).returning({ id: chatMessages.id, toolName: chatMessages.content });
   const tool = changed[0];
   if (!tool) return;
+  // Keep the exact review pixels out of JSON/model history, but retain an owned asset
+  // so both a live event and a reopened transcript can display this call's snapshot.
+  if (status === "complete" && tool.toolName.startsWith("view") && details && typeof details === "object"
+      && "bytes" in details && details.bytes instanceof Uint8Array) {
+    try {
+      const bytes = details.bytes;
+      const inspection = await inspectImage(bytes);
+      const previewAssetId = derivedAssetId(tool.id, "tool-preview");
+      const r2Key = `${job.ownerId}/${job.stickerId}/tool-previews/${previewAssetId}`;
+      await getObjectStore().put(r2Key, { bytes, contentType: inspection.mimeType });
+      await db.insert(assets).values({
+        id: previewAssetId, ownerId: job.ownerId, stickerId: job.stickerId,
+        kind: "preview", state: "ready", r2Key, mimeType: inspection.mimeType,
+        byteSize: inspection.byteSize, width: inspection.width, height: inspection.height,
+        sha256: inspection.sha256, frameCount: inspection.frameCount, hasAlpha: inspection.hasAlpha,
+        readyAt: new Date(),
+      }).onConflictDoNothing();
+      details = { ...details, previewAssetId };
+    } catch (error) {
+      // Saving a transcript preview must not turn a successful model review into a failure.
+      traceEvent("tool-preview:fail", { toolCallId, error: describeError(error) });
+    }
+  }
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
     toolCallId: tool.id,
     toolName: tool.toolName,

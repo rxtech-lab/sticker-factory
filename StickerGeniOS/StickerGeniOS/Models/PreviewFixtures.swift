@@ -2,7 +2,32 @@ import AnimatedView
 import Foundation
 
 nonisolated enum PreviewFixtures {
+    static let planVersions: [PlanRecord] = [planVersion(1), planVersion(2)]
+
+    private static func planVersion(_ version: Int) -> PlanRecord {
+        let layer = PlanLayer(
+            layerId: "hero", name: version == 1 ? "Waving character" : "Bouncing character",
+            source: .generate(prompt: "A friendly character"),
+            x: 0.5, y: 0.5, scaleX: 0.8, scaleY: 0.8, rotationDegrees: 0, animations: []
+        )
+        let plan = Plan(
+            version: 1, title: version == 1 ? "Original wave" : "Revised bounce",
+            summary: version == 1 ? "A gentle wave." : "A cheerful bounce.", kind: .animated,
+            timing: .init(durationSeconds: Double(version), fps: 30, loop: .loop),
+            layers: [layer]
+        )
+        return PlanRecord(
+            id: "plan-\(version)", messageId: "message-plan-\(version)",
+            state: version == 1 ? .superseded : .finalized,
+            revision: 1, conceptAssetId: version == 1 ? planHistoryAssetID : borrowedAssetID,
+            supersedesId: version == 2 ? "plan-1" : nil,
+            actionable: version == 2, generationCount: 1,
+            plan: plan
+        )
+    }
+
     static let imageAssetID = "11111111-1111-4111-8111-111111111111"
+    static let planHistoryAssetID = "33333333-3333-4333-8333-333333333333"
 
     /// A moving, multi-layer sticker.
     ///

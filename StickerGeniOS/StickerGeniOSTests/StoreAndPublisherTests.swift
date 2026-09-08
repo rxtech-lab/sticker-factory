@@ -9,6 +9,19 @@ import UIKit
 @Suite("Store and publisher regressions")
 @MainActor
 struct StoreAndPublisherTests {
+    @Test("Publishing overlaps uploads and registers only verified files")
+    func concurrentPublishUploads() async throws {
+        var revision = PreviewFixtures.accepted
+        revision.document = PreviewFixtures.staticDocument
+        let api = ConcurrentPublishProbe()
+        let result = try await StickerPublisher(api: api).publish(
+            stickerID: "publish-test", revision: revision, assets: .init(), verifiedAssetIDs: []
+        )
+        defer { result.localExports.forEach { try? FileManager.default.removeItem(at: $0.url) } }
+        #expect(await api.maximumInFlight >= 2)
+        #expect(await api.registeredAfterUploads)
+    }
+
     @Test("Refreshing an older failed chat preserves the publish failure")
     func transcriptPreservesPublishFailure() async throws {
         let api = FailedTranscriptAPI()
@@ -680,5 +693,28 @@ struct StoreAndPublisherTests {
         await store.loadDetail(stickerID: PreviewFixtures.sticker.id)
         try await store.transition(stickerID: PreviewFixtures.sticker.id, revisionID: PreviewFixtures.candidate.id, action: .accept)
         #expect(store.details[PreviewFixtures.sticker.id]?.activeRevisionId == PreviewFixtures.candidate.id)
+    }
+}
+
+private actor ConcurrentPublishProbe: StickerAPIClientProtocol {
+    var inFlight = 0
+    var maximumInFlight = 0
+    var completed: Set<String> = []
+    var registeredAfterUploads = false
+
+    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String {
+        inFlight += 1
+        maximumInFlight = max(maximumInFlight, inFlight)
+        defer { inFlight -= 1 }
+        try await Task.sleep(for: .milliseconds(100))
+        let id = UUID().uuidString
+        completed.insert(id)
+        return id
+    }
+
+    func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse {
+        let required = [request.pngAssetId, request.systemAssetId].compactMap { $0 }
+        registeredAfterUploads = inFlight == 0 && required.count == 2 && required.allSatisfy { completed.contains($0) }
+        return .init(job: .init(id: "published", state: .queued, eventsUrl: "/events"))
     }
 }

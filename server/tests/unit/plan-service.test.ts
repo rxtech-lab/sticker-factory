@@ -9,6 +9,7 @@ import {
   createPlan,
   currentDraftPlan,
   finalizePlan,
+  listPlans,
   recentlyRejectedPlans,
   serializePlan,
   updatePlan,
@@ -79,6 +80,20 @@ describe("plan service", () => {
     expect(created.supersededPlanId).toBeNull();
     const row = await db.select().from(plans).where(eq(plans.id, created.planId)).then(firstRow);
     expect(row?.state).toBe("draft");
+  });
+
+  it("lists saved plan versions with their own contents only for their owner", async () => {
+    const first = await create(plan("Original"));
+    await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: first.planId });
+    const second = await create(plan("Revised", 3));
+    await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: second.planId });
+
+    const history = (await listPlans(db, "owner-a", stickerId)).reverse().map((row) => serializePlan(row));
+    expect(history.map((entry) => entry.id)).toEqual([first.planId, second.planId]);
+    expect(history.map((entry) => entry.plan.title)).toEqual(["Original", "Revised"]);
+    expect(history.map((entry) => entry.plan.layers.length)).toEqual([2, 3]);
+    expect(history.map((entry) => entry.actionable)).toEqual([false, true]);
+    expect(await listPlans(db, "another-owner", stickerId)).toEqual([]);
   });
 
   it("bumps the revision on every update without changing the plan id", async () => {
