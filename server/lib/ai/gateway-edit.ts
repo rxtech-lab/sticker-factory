@@ -1,6 +1,7 @@
 // The edit turn, and the guards that keep a model's operations inside what it is allowed to
 // change.
 
+import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
@@ -46,6 +47,7 @@ export async function editSticker(
   };
 
   const tools = {
+    ...createWebTools(),
     view_sticker: viewStickerTool(session, {
       animated: input.document?.kind === "animated",
     }),
@@ -184,6 +186,7 @@ export async function editSticker(
   const generation = await generateText({
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      WEB_RESEARCH_PROMPT,
       "You change an existing sticker. It is a stack of layers, and you own all of it: you can",
       "redraw artwork, draw new artwork, and add, remove, reorder, rename, restyle, and move any",
       "layer of any type. Finish by calling finalize_edit.",

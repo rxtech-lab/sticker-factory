@@ -1,5 +1,6 @@
 // The animation turn: keyframing a document the user has already accepted.
 
+import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
@@ -51,6 +52,7 @@ export async function animateSticker(
   };
 
   const tools = {
+    ...createWebTools(),
     view_sticker: viewStickerTool(session, { animated: true }),
     create_animation: tool({
       description:
@@ -169,6 +171,7 @@ export async function animateSticker(
   const generation = await generateText({
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      WEB_RESEARCH_PROMPT,
       "You add motion to an existing sticker by applying operations to its document.",
       "Work in this order: call create_animation once with your first operations, refine with",
       "update_animation or edit_layer_animation as many times as you need, and finish by calling",

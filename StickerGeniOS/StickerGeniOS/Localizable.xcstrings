@@ -2162,6 +2162,22 @@
         }
       }
     },
+    "Copy" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製"
+          }
+        }
+      }
+    },
     "Create" : {
       "localizations" : {
         "zh-CN" : {

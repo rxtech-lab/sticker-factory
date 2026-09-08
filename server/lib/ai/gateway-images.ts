@@ -1,8 +1,10 @@
 // The turns that produce artwork: picking which references a model sees, then drawing a
 // sticker, a concept, or a clip.
 
+import { createWebTools, isWebTool, WEB_RESEARCH_PROMPT } from "./web-tools";
+import { researchGenerationPrompt } from "./generation-research";
 import { gateway } from "@ai-sdk/gateway";
-import { experimental_generateVideo as generateVideo, generateImage, generateText, tool } from "ai";
+import { experimental_generateVideo as generateVideo, generateImage, generateText, hasToolCall, stepCountIs, tool } from "ai";
 import sharp from "sharp";
 import { z } from "zod";
 import { recordImageApiCost, recordTextApiCost, recordVideoApiCost } from "@/lib/ai/cost";
@@ -43,6 +45,7 @@ export async function selectImageReferences(
   const result = await generateText({
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      WEB_RESEARCH_PROMPT,
       "You select reference images for a separate image-generation model.",
       "Inspect every candidate and call select_references exactly once.",
       "Choose only images that materially help this exact draw: likeness, exact approved design, style, pose, or source pixels to edit.",
@@ -58,6 +61,7 @@ export async function selectImageReferences(
       `Exact image-generation instruction:\n${input.instruction}`,
     ].join("\n\n"), visible.map(({ image }) => image)),
     tools: {
+      ...createWebTools(),
       select_references: tool({
         description: "Select the candidate reference images that the image model should receive.",
         inputSchema: z.object({
@@ -66,16 +70,18 @@ export async function selectImageReferences(
         }).strict(),
       }),
     },
-    toolChoice: { type: "tool", toolName: "select_references" },
+    toolChoice: "required",
+    stopWhen: [hasToolCall("select_references"), stepCountIs(8)],
     maxRetries: 2,
     abortSignal: AbortSignal.timeout(90_000),
   });
   await recordTextApiCost(result);
-  if (result.toolCalls.length !== 1 || result.toolCalls[0].toolName !== "select_references") {
+  const actionCalls = result.toolCalls.filter((call) => !isWebTool(call.toolName));
+  if (actionCalls.length !== 1 || actionCalls[0].toolName !== "select_references") {
     throw new Error("Reference selector must call select_references exactly once");
   }
   const selected = z.object({ indices: z.array(z.number().int()) })
-    .parse(result.toolCalls[0].input).indices;
+    .parse(actionCalls[0].input).indices;
   return [...new Set([...required, ...selected])]
     .filter((index) => index >= 0 && index < input.candidates.length)
     .slice(0, input.maxReferences);
@@ -118,6 +124,7 @@ export async function generateStickerImage(input: AiImageInput): Promise<AiImage
   // model has no equivalent for, and the alpha the mask is drawn in is exactly what a chroma
   // backdrop replaces. Masked edits come from the main app's brush anyway, never from Messages,
   // so this is a guard rather than a fallback anyone actually hits.
+  input = { ...input, prompt: await researchGenerationPrompt(input.prompt) };
   if (input.quick && !input.mask) return generateKeyedStickerImage(input);
 
   const first = await traceSpan(
@@ -170,6 +177,12 @@ export async function generateStickerImage(input: AiImageInput): Promise<AiImage
 }
 
 export async function generateStickerVideo(input: AiVideoInput): Promise<AiVideoOutput> {
+  // Sticker plans allow 2-4s, but Seedance 2.0 requires at least 4s, including i2v.
+  // Normalize before building the prompt so request timing, traces and cost agree.
+  if (/(?:^|\/)(?:dreamina-)?seedance-v?2[.-]0(?:-|$)/i.test(VIDEO_MODEL)) {
+    input = { ...input, durationSeconds: Math.max(4, input.durationSeconds) };
+  }
+  input = { ...input, motion: await researchGenerationPrompt(input.motion) };
   const trace = {
     model: VIDEO_MODEL,
     resolution: VIDEO_RESOLUTION,
@@ -226,6 +239,7 @@ export async function generateConceptImage(input: {
       keepFrame: true,
     });
   }
+  input = { ...input, prompt: await researchGenerationPrompt(input.prompt) };
   // Opaque on purpose. The reference is a picture *of* the complete sticker, not one of the
   // transparent parts later extracted from it, so it skips the part-generation alpha gate.
   const result = await generateImage({
