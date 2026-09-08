@@ -32,6 +32,17 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         self.failCreationAsUpload = failCreationAsUpload
         self.failChatSendAsInsufficientCredits = failChatSendAsInsufficientCredits
         self.failLibraryListing = failLibraryListing
+        if ProcessInfo.processInfo.arguments.contains("--ui-plan-versions") {
+            // Only the latest card is loaded; the older version comes from the history endpoint.
+            var message = PreviewFixtures.messages[0]
+            message.id = "message-plan-current"
+            message.role = .assistant
+            message.kind = .plan
+            message.jobId = nil
+            message.plan = PreviewFixtures.planVersions[1]
+            messages = [message]
+            detail.revisions = []
+        }
     }
 
     func listStickers(cursor: String?) async throws -> Page<Sticker> {
@@ -131,7 +142,47 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
+    func planVersions(stickerID: String) async throws -> Page<PlanRecord> {
+        if ProcessInfo.processInfo.arguments.contains("--ui-plan-versions") {
+            return .init(data: PreviewFixtures.planVersions, nextCursor: nil)
+        }
+        return .init(data: messages.compactMap(\.plan), nextCursor: nil)
+    }
+
+    func selectPlanVersion(stickerID: String, versionID: String, request: SelectPlanVersionRequest, idempotencyKey: String) async throws -> SelectPlanVersionResponse {
+        guard let index = messages.lastIndex(where: { $0.plan != nil }),
+              messages[index].plan?.id == request.currentPlanId,
+              messages[index].plan?.revision == request.currentRevision,
+              var selected = PreviewFixtures.planVersions.first(where: { $0.id == versionID }) else {
+            throw StickerAPIError.http(409)
+        }
+        selected.sourceVersionId = selected.id
+        selected.id = UUID().uuidString
+        selected.messageId = messages[index].id
+        selected.state = .finalized
+        selected.actionable = true
+        selected.jobId = nil
+        messages[index].plan = selected
+        return .init(messageId: messages[index].id, plan: selected)
+    }
+
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
+        if ProcessInfo.processInfo.arguments.contains("--ui-tool-preview") {
+            let arguments = ProcessInfo.processInfo.arguments
+            let toolName: String
+            if arguments.contains("--ui-compose-preview") {
+                toolName = "compose-part:0 Heart"
+            } else if arguments.contains("--ui-layout-preview") {
+                toolName = "adjust_layout"
+            } else {
+                toolName = "view_sticker"
+            }
+            return .init(data: [ChatMessage(
+                id: "tool-preview", role: .system, kind: .status, content: toolName,
+                imagePlacement: .replace, sequence: 1, status: .complete, createdAt: Date(),
+                attachments: [], toolDetails: "{\"previewAssetId\":\"\(PreviewFixtures.borrowedAssetID)\"}"
+            )], nextBeforeSequence: nil)
+        }
         let eligible = beforeSequence.map { sequence in messages.filter { $0.sequence < sequence } } ?? messages
         return .init(data: eligible, nextBeforeSequence: nil)
     }
@@ -516,8 +567,10 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     /// directory and served as a file URL, which `URLSession` reads like any other. Everything
     /// else is 404, as it always was.
     func assetDownload(assetID: String) async throws -> AssetDownload {
-        guard assetID == PreviewFixtures.borrowedAssetID else { throw StickerAPIError.http(404) }
-        let url = try Self.fixtureArtworkURL()
+        guard assetID == PreviewFixtures.borrowedAssetID || assetID == PreviewFixtures.planHistoryAssetID else {
+            throw StickerAPIError.http(404)
+        }
+        let url = try Self.fixtureArtworkURL(isHistoricalPlan: assetID == PreviewFixtures.planHistoryAssetID)
         return .init(
             url: url,
             expiresAt: Date().addingTimeInterval(3_600),
@@ -534,8 +587,9 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
-    private static func fixtureArtworkURL() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appending(path: "mock-borrowed-sticker.png")
+    private static func fixtureArtworkURL(isHistoricalPlan: Bool = false) throws -> URL {
+        let filename = isHistoricalPlan ? "mock-historical-plan.png" : "mock-borrowed-sticker.png"
+        let url = FileManager.default.temporaryDirectory.appending(path: filename)
         if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) { return url }
         let side = 256
         guard let context = CGContext(
@@ -543,7 +597,9 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { throw StickerAPIError.http(500) }
         context.clear(CGRect(x: 0, y: 0, width: side, height: side))
-        context.setFillColor(CGColor(red: 0.85, green: 1, blue: 0.33, alpha: 1))
+        context.setFillColor(isHistoricalPlan
+            ? CGColor(red: 1, green: 0.55, blue: 0.33, alpha: 1)
+            : CGColor(red: 0.85, green: 1, blue: 0.33, alpha: 1))
         context.fillEllipse(in: CGRect(x: 24, y: 40, width: 208, height: 176))
         context.setFillColor(CGColor(red: 0.1, green: 0.09, blue: 0.09, alpha: 1))
         context.fillEllipse(in: CGRect(x: 84, y: 130, width: 20, height: 20))

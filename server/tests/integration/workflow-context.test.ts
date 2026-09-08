@@ -470,12 +470,15 @@ describe("durable sticker workflow: agent context", () => {
     expect((await stickerGenerationWorkflow(rebuilt.jobId)).workflowStatus).toBe("succeeded");
 
     // Re-planning creates one new static reference for the new decision. Building it creates no new
-    // master images, and the document still points at exactly the artwork previously approved.
+    // master images, and the document still points at exactly the artwork previously approved. The
+    // rows added on top of that reference are all preview-kind: the snapshot every completed tool
+    // call keeps so a reopened transcript can show what the model was looking at.
     const finalAssets = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
     expect(finalAssets.filter((asset) => asset.kind === "master").map((asset) => asset.id).sort())
       .toEqual(originalAssets.filter((asset) => asset.kind === "master").map((asset) => asset.id).sort());
-    expect(finalAssets.map((asset) => asset.id).sort())
-      .toEqual([...originalAssetIds, revised.conceptAssetId!].sort());
+    const addedAssets = finalAssets.filter((asset) => !originalAssetIds.includes(asset.id));
+    expect(addedAssets.map((asset) => asset.id)).toContain(revised.conceptAssetId!);
+    expect(addedAssets.every((asset) => asset.kind === "preview")).toBe(true);
     const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, rebuilt.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     expect(document.layers.flatMap((layer) => (layer.type === "image" ? [layer.assetId] : [])).sort())

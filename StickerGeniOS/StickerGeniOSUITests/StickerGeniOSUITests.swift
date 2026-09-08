@@ -18,6 +18,67 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testPlanVersionPickerActivatesSelectedVersionInLatestCard() {
+        app.terminate()
+        app.launchArguments.append("--ui-plan-versions")
+        app.launch()
+        element("library-sticker-sticker-demo").tap()
+
+        let picker = element("plan-version-picker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 8))
+        app.scrollViews.firstMatch.swipeDown()
+        XCTAssertEqual(picker.value as? String, "Version 2")
+        XCTAssertTrue(app.staticTexts["Revised bounce"].exists)
+        let currentScreenshot = XCTAttachment(screenshot: app.screenshot())
+        currentScreenshot.name = "Current plan version"
+        currentScreenshot.lifetime = .keepAlways
+        add(currentScreenshot)
+        XCTAssertTrue(picker.isEnabled)
+        app.scrollViews.firstMatch.swipeUp()
+        picker.tap()
+        XCTAssertTrue(element("plan-versions-sheet").waitForExistence(timeout: 3))
+        let carousel = element("plan-version-carousel")
+        XCTAssertTrue(carousel.exists)
+        carousel.swipeRight()
+        let sheetScreenshot = XCTAttachment(screenshot: app.screenshot())
+        sheetScreenshot.name = "Horizontal plan version selector"
+        sheetScreenshot.lifetime = .keepAlways
+        add(sheetScreenshot)
+        element("select-plan-version-1").tap()
+        XCTAssertTrue(element("plan-versions-sheet").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Original wave"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Waving character"].exists)
+        XCTAssertFalse(element("plan-preview-only").exists)
+        XCTAssertEqual(picker.value as? String, "Version 1")
+        let historyScreenshot = XCTAttachment(screenshot: app.screenshot())
+        historyScreenshot.name = "Historical plan preview"
+        historyScreenshot.lifetime = .keepAlways
+        add(historyScreenshot)
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(element("composition-plan-generate").exists)
+        XCTAssertTrue(element("composition-plan-dismiss").exists)
+        let generate = app.buttons["composition-plan-generate"]
+        XCTAssertTrue(generate.isEnabled)
+        generate.tap()
+        XCTAssertTrue(app.buttons["Build"].waitForExistence(timeout: 3))
+        // Compact confirmation popovers can omit Cancel; tapping outside dismisses them.
+        app.navigationBars.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["Build"].waitForNonExistence(timeout: 3))
+
+        picker.tap()
+        XCTAssertTrue(element("plan-versions-sheet").waitForExistence(timeout: 3))
+        carousel.swipeLeft()
+        element("select-plan-version-2").tap()
+        XCTAssertTrue(element("plan-versions-sheet").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Revised bounce"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Bouncing character"].exists)
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(element("composition-plan-generate").exists)
+        XCTAssertTrue(element("composition-plan-dismiss").exists)
+        XCTAssertFalse(element("plan-preview-only").exists)
+    }
+
+    @MainActor
     func testBalanceRefreshCancellationPreservesDataAndCanRefreshAgain() {
         app.terminate()
         app.launchArguments.append("--ui-balance-refresh")
@@ -263,6 +324,68 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testViewToolSheetShowsSavedImage() {
+        app.terminate()
+        app.launchArguments.append("--ui-tool-preview")
+        app.launch()
+        element("library-sticker-sticker-demo").tap()
+        let tool = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Tool view_sticker,")).firstMatch
+        XCTAssertTrue(tool.waitForExistence(timeout: 8))
+        tool.tap()
+        XCTAssertTrue(element("tool-result-image").waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "previewAssetId")).firstMatch.exists)
+    }
+
+    @MainActor
+    func testComposePartToolSheetShowsSavedImage() {
+        assertToolPreview(argument: "--ui-compose-preview", name: "compose-part:0 Heart")
+    }
+
+    @MainActor
+    func testAdjustLayoutToolSheetShowsSavedImage() {
+        assertToolPreview(argument: "--ui-layout-preview", name: "adjust_layout")
+    }
+
+    @MainActor
+    private func assertToolPreview(argument: String, name: String) {
+        app.terminate()
+        app.launchArguments += ["--ui-tool-preview", argument]
+        app.launch()
+        element("library-sticker-sticker-demo").tap()
+        let tool = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Tool \(name),")).firstMatch
+        XCTAssertTrue(tool.waitForExistence(timeout: 8))
+        tool.tap()
+        XCTAssertTrue(element("tool-result-image").waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "previewAssetId")).firstMatch.exists)
+    }
+
+    @MainActor
+    func testSendingBelowPlanPinsMessageToTop() {
+        XCUIDevice.shared.orientation = .portrait
+        app.terminate()
+        app.launchArguments.append("--ui-plan-versions")
+        app.launch()
+        element("library-sticker-sticker-demo").tap()
+        XCTAssertTrue(element("plan-version-picker").waitForExistence(timeout: 8))
+        let composer = element("chat-composer")
+        composer.tap()
+        composer.typeText("add text hi")
+        element("send-chat-message").tap()
+        let sent = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "add text hi")).firstMatch
+        XCTAssertTrue(sent.waitForExistence(timeout: 8))
+        let atTop = NSPredicate { _, _ in
+            return sent.exists && sent.frame.minY >= self.app.navigationBars.firstMatch.frame.maxY
+                && sent.frame.minY < self.app.navigationBars.firstMatch.frame.maxY + 60
+        }
+        expectation(for: atTop, evaluatedWith: sent)
+        waitForExpectations(timeout: 5)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "New message above plan history"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testComposerClearsWhenTheMessageIsSent() {
         // The transcript is read below, and in landscape the keyboard covers it. The simulator keeps
         // whatever orientation the last run left it in, so this asks for one rather than assuming.
@@ -285,6 +408,11 @@ final class StickerGeniOSUITests: XCTestCase {
         // substring: a message row's label is the whole bubble, speaker prefix and all.
         let sent = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Try again")).firstMatch
         XCTAssertTrue(sent.waitForExistence(timeout: 10), "the draft never reached the transcript")
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(sent.isHittable, "sent text is outside the visible transcript with the keyboard open")
+        XCTAssertGreaterThanOrEqual(sent.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+        XCTAssertLessThanOrEqual(sent.frame.maxY, composer.frame.minY)
+
         // A focused field that has been emptied reports an empty value, not its placeholder. The
         // draft belongs to the tap, so it is gone from the moment the send starts — not when the
         // turn it started comes back.

@@ -28,6 +28,7 @@ struct ChatBubble: View {
     let sticker: AnimatedDocument?
     let assets: [String: UIImage]
     var videos: [String: KeyedVideoFrames] = [:]
+    var toolAPI: (any StickerAPIClientProtocol)?
     let onOpenSticker: (AnimatedDocument) -> Void
 
     @ViewBuilder
@@ -35,7 +36,7 @@ struct ChatBubble: View {
         if message.role == .system && message.kind == .status {
             // Phase rows never reach here — `conversation` filters those out and the title chip
             // shows the live one. What is left is the model's own tool calls.
-            ToolCallRow(message: message)
+            ToolCallRow(message: message, api: toolAPI)
         } else if message.role == .user {
             HStack {
                 Spacer(minLength: 44)
@@ -191,6 +192,9 @@ struct TranscriptDivider: View {
 
 private struct ToolCallRow: View {
     let message: ChatMessage
+    let api: (any StickerAPIClientProtocol)?
+    @State private var previewAssets = StickerAssetStore()
+    @State private var previewFinished = false
     @State private var showingDetails = false
 
     private var color: Color {
@@ -218,13 +222,35 @@ private struct ToolCallRow: View {
                         Text(message.content).font(.headline)
                         Label(message.status.label, systemImage: message.status == .failed ? "exclamationmark.circle" : "info.circle")
                             .foregroundStyle(AppColors.muted)
-                        Text(message.toolDetails ?? fallbackDetails)
-                            .font(.body.monospaced())
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let assetID = message.toolPreviewAssetID, let api {
+                            if let image = previewAssets.images[assetID] {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .accessibilityIdentifier("tool-result-image")
+                            } else if previewFinished {
+                                ContentUnavailableView("Preview unavailable", systemImage: "photo")
+                                Button("Retry") {
+                                    Task {
+                                        previewFinished = false
+                                        await previewAssets.load(assetID: assetID, api: api)
+                                        previewFinished = true
+                                    }
+                                }
+                            } else {
+                                ProgressView("Loading preview…")
+                            }
+                        } else {
+                            Text(message.toolDetails ?? fallbackDetails)
+                                .font(.body.monospaced())
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AppColors.paper)
                 .navigationTitle(message.status == .failed ? "Tool Error" : "Tool Result")
                 .navigationBarTitleDisplayMode(.inline)
@@ -234,8 +260,15 @@ private struct ToolCallRow: View {
                     }
                 }
             }
+            .task(id: message.toolPreviewAssetID) {
+                guard let assetID = message.toolPreviewAssetID, let api else { return }
+                previewFinished = false
+                await previewAssets.load(assetID: assetID, api: api)
+                previewFinished = true
+            }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+            .presentationBackground(AppColors.paper)
         }
     }
 
@@ -441,5 +474,16 @@ struct ComposerMediaChip: View {
         .padding(6)
         .padding(.trailing, 4)
         .posterCapsule(offset: CGSize(width: 2, height: 2))
+    }
+}
+
+nonisolated extension ChatMessage {
+    var toolPreviewAssetID: String? {
+        guard status == .complete,
+              let data = toolDetails?.data(using: .utf8),
+              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let assetID = result["previewAssetId"] as? String, !assetID.isEmpty
+        else { return nil }
+        return assetID
     }
 }

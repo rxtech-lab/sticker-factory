@@ -14,7 +14,7 @@ import { traceEvent } from "@/lib/observability/trace";
 import { appendGenerationEvent } from "@/lib/services/events";
 import { createCandidateRevision } from "@/lib/services/stickers";
 import { downscaleForModelInput, getObjectStore } from "@/lib/storage/r2";
-import { documentFromPlan, generateAndStoreAsset, generateAndStoreVideoAsset, generatedLayers, selectImageReferences } from "./asset-generation";
+import { documentFromPlan, generateAndStoreAsset, generateAndStoreVideoAsset, generatedLayers, loadStoredGeneratedImage, selectImageReferences } from "./asset-generation";
 import type { StoredVideoTiming } from "./asset-generation";
 import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, finishToolCall, insertAssistantMessage, renderWorkingDocument, showStickerThroughTool, toolCallLabeller, turnResult } from "./turn-context";
 import type { AiTurnResult, StickerToolName } from "./turn-context";
@@ -225,7 +225,10 @@ export async function executePlanBuildTurn(
   }
   if (!planRow) throw new Error("Plan not found for this job");
   const plan = PlanV1Schema.parse(planRow.planJson);
-  const generated = generatedLayers(plan, job.id);
+  // A user retry has a fresh job, but the confirmed plan and its generation slots are immutable.
+  // Keep the original namespace so both stills and clips survive any number of failed attempts.
+  const assetJobId = planRow.jobId ?? job.id;
+  const generated = generatedLayers(plan, assetJobId);
   const visualReference = planRequiresConcept(plan)
     ? await loadPlanVisualReference(planRow, job.ownerId, sticker.id)
     : undefined;
@@ -278,14 +281,14 @@ export async function executePlanBuildTurn(
           image,
         })),
       ].slice(0, 8);
-      const selectedReferences = await selectImageReferences(prompt, history, candidates);
-      const { subject } = await generateAndStoreAsset(job, sticker.id, {
+      const stored = await loadStoredGeneratedImage(job, sticker.id, item.assetId);
+      const { subject } = stored ?? await generateAndStoreAsset(job, sticker.id, {
         assetId: item.assetId,
         prompt,
         // The approved concept is mandatory because it is the exact design being separated. The
         // orchestrator sees every remaining candidate and decides which originals materially help
         // this particular layer; only its selected full-resolution images reach the image model.
-        references: selectedReferences,
+        references: await selectImageReferences(prompt, history, candidates),
         conversationContext: history,
         // This is an edit of the approved pixels, not a fresh generation inspired by them. The GPT
         // Image edit path is instructed to remove every other part while preserving this one; the
@@ -297,7 +300,7 @@ export async function executePlanBuildTurn(
       await finishToolCall(job, partToolCallId, "failed", error);
       throw error;
     }
-    await finishToolCall(job, partToolCallId);
+    await finishToolCall(job, partToolCallId, "complete", { previewAssetId: item.assetId });
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "composing_part",
       progress: 0.05 + stillSpan * ((index + 1) / Math.max(generated.length, 1)),
@@ -321,7 +324,7 @@ export async function executePlanBuildTurn(
       await finishToolCall(job, videoToolCallId, "failed", error);
       throw error;
     }
-    await finishToolCall(job, videoToolCallId);
+    await finishToolCall(job, videoToolCallId, "complete", { previewAssetId: item.assetId });
     videosDone += 1;
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "composing_video",
@@ -332,7 +335,7 @@ export async function executePlanBuildTurn(
     });
   }
 
-  let document = documentFromPlan(plan, job.id, videoTimings);
+  let document = documentFromPlan(plan, assetJobId, videoTimings);
   // The reference is the picture the user approved, so a part measured in it outranks the position
   // the planner guessed before that picture existed. Parts whose measurement is implausible keep
   // the plan's layout, and the review below still looks at the whole.

@@ -623,6 +623,20 @@ final class StickerStore {
         }
     }
 
+    func selectPlanVersion(stickerID: String, versionID: String, current: PlanRecord) async throws {
+        guard !computingStickerIDs.contains(stickerID) else { throw StickerStoreError.turnAlreadyComputing }
+        let response = try await api.selectPlanVersion(
+            stickerID: stickerID, versionID: versionID,
+            request: .init(currentPlanId: current.id, currentRevision: current.revision),
+            idempotencyKey: UUID().uuidString
+        )
+        if let index = messages[stickerID]?.firstIndex(where: { $0.id == response.messageId }) {
+            messages[stickerID]?[index].plan = response.plan
+        } else {
+            await loadMessages(stickerID: stickerID)
+        }
+    }
+
     /// Rejects a plan. The reason is optional but worth asking for: given one, the server keeps the
     /// conversation going — it posts the reason as the next message and the agent redrafts against
     /// it, which is why this attaches to the turn that comes back.

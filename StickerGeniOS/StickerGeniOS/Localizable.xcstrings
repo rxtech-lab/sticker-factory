@@ -33,9 +33,6 @@
         }
       }
     },
-    "Uploading…" : {
-
-    },
     "—" : {
       "localizations" : {
         "zh-CN" : {
@@ -2050,6 +2047,22 @@
         }
       }
     },
+    "Copy" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製"
+          }
+        }
+      }
+    },
     "Could not append a frame" : {
       "localizations" : {
         "zh-CN" : {
@@ -2158,22 +2171,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法準備新貼圖。請重試。"
-          }
-        }
-      }
-    },
-    "Copy" : {
-      "localizations" : {
-        "zh-CN" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "複製"
           }
         }
       }
@@ -4328,6 +4325,9 @@
         }
       }
     },
+    "Loading preview…" : {
+
+    },
     "Loading reference…" : {
       "localizations" : {
         "zh-CN" : {
@@ -5766,6 +5766,38 @@
     "Plan allowance: %lld generations" : {
 
     },
+    "Plan version" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案版本"
+          }
+        }
+      }
+    },
+    "Plan versions" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案版本"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方案版本"
+          }
+        }
+      }
+    },
     "Planning sticker" : {
       "localizations" : {
         "zh-CN" : {
@@ -5966,6 +5998,25 @@
 
     },
     "Preparing stickers" : {
+
+    },
+    "Preview only" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅供预览"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅供預覽"
+          }
+        }
+      }
+    },
+    "Preview unavailable" : {
 
     },
     "Privacy Policy" : {
@@ -6443,6 +6494,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "參考相片。輕點以從中提取主體。"
+          }
+        }
+      }
+    },
+    "Reference unavailable" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考图不可用"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "參考圖片無法使用"
           }
         }
       }
@@ -7131,6 +7198,38 @@
         }
       }
     },
+    "Select" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇"
+          }
+        }
+      }
+    },
+    "Selected" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选择"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已選擇"
+          }
+        }
+      }
+    },
     "Send" : {
       "localizations" : {
         "zh-CN" : {
@@ -7180,6 +7279,7 @@
       }
     },
     "Sending the animation" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -7196,6 +7296,7 @@
       }
     },
     "Sending the compact copy" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -7229,6 +7330,7 @@
       }
     },
     "Sending the image" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -7245,6 +7347,7 @@
       }
     },
     "Sending the sticker" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -7260,7 +7363,11 @@
         }
       }
     },
+    "Sending the sticker files" : {
+
+    },
     "Sending the video" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -8134,6 +8241,7 @@
       }
     },
     "Superseded by a newer revision of this plan." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -9652,6 +9760,9 @@
         }
       }
     },
+    "Uploading…" : {
+
+    },
     "Use it in Messages" : {
       "localizations" : {
         "zh-CN" : {
@@ -9696,6 +9807,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用主體"
+          }
+        }
+      }
+    },
+    "Use the current plan card to build." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请使用当前方案卡片进行制作。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請使用目前方案卡片進行製作。"
           }
         }
       }
@@ -9749,6 +9876,7 @@
       }
     },
     "v%lld" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -9776,6 +9904,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "版本"
+          }
+        }
+      }
+    },
+    "Version %lld" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %lld"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %lld"
+          }
+        }
+      }
+    },
+    "Version %lld: %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %lld：%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %lld：%@"
           }
         }
       }

@@ -4,7 +4,7 @@
 
 import { and, eq, inArray, max } from "drizzle-orm";
 import { compactTranscript, type TranscriptOptions } from "@/lib/ai/compaction";
-import { applyStickerOperationsV1, layerImageAssetIds, layerVideoAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
+import { applyStickerOperationsV1, StickerDocumentSchema, layerImageAssetIds, layerVideoAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, chatMessages, chatThreads, generationEvents, generationJobs } from "@/lib/db/schema";
 import { getAiProvider } from "@/lib/ai/gateway";
@@ -13,7 +13,8 @@ import { appendGenerationEvent } from "@/lib/services/events";
 import { serializeChatMessage } from "@/lib/services/stickers";
 import { referencedAssetIds, renderSticker } from "@/lib/render/sticker-render";
 import type { RenderAssets } from "@/lib/render/document-svg";
-import { getObjectStore } from "@/lib/storage/r2";
+import { getObjectStore, inspectImage } from "@/lib/storage/r2";
+import { derivedAssetId } from "@/lib/services/assets";
 
 /**
  * How long a summarized name may be. Shorter than the 100 the create request allows: this one has to
@@ -218,7 +219,15 @@ function formatToolDetails(details: unknown): string | undefined {
     if (value?.type === "Buffer" && Array.isArray(value.data)) return `[Image/media: ${value.data.length} bytes]`;
     return value;
   }, 2);
-  return text && text.length > 16000 ? text.slice(0, 16000) + "\n… (truncated)" : text;
+  if (text && text.length > 16000) {
+    const truncated = text.slice(0, 16000) + "\n… (truncated)";
+    // Keep the preview reference parseable even for large layout documents.
+    if (details && typeof details === "object" && "previewAssetId" in details) {
+      return JSON.stringify({ previewAssetId: details.previewAssetId, details: truncated });
+    }
+    return truncated;
+  }
+  return text;
 }
 
 export async function finishToolCall(
@@ -237,6 +246,35 @@ export async function finishToolCall(
   )).returning({ id: chatMessages.id, toolName: chatMessages.content });
   const tool = changed[0];
   if (!tool) return;
+  // Keep the exact review pixels out of JSON/model history, but retain an owned asset
+  // so both a live event and a reopened transcript can display this call's snapshot.
+  if (status === "complete" && details && typeof details === "object"
+      && ("bytes" in details || "document" in details)) {
+    try {
+      const rendered = "bytes" in details && details.bytes instanceof Uint8Array
+        ? { bytes: details.bytes }
+        : "document" in details
+          ? await renderWorkingDocument(StickerDocumentSchema.parse(details.document), job.ownerId)
+          : undefined;
+      if (!rendered) throw new Error("Tool result has no renderable image");
+      const bytes = rendered.bytes;
+      const inspection = await inspectImage(bytes);
+      const previewAssetId = derivedAssetId(tool.id, "tool-preview");
+      const r2Key = `${job.ownerId}/${job.stickerId}/tool-previews/${previewAssetId}`;
+      await getObjectStore().put(r2Key, { bytes, contentType: inspection.mimeType });
+      await db.insert(assets).values({
+        id: previewAssetId, ownerId: job.ownerId, stickerId: job.stickerId,
+        kind: "preview", state: "ready", r2Key, mimeType: inspection.mimeType,
+        byteSize: inspection.byteSize, width: inspection.width, height: inspection.height,
+        sha256: inspection.sha256, frameCount: inspection.frameCount, hasAlpha: inspection.hasAlpha,
+        readyAt: new Date(),
+      }).onConflictDoNothing();
+      details = { ...details, previewAssetId };
+    } catch (error) {
+      // Saving a transcript preview must not turn a successful tool call into a failure.
+      traceEvent("tool-preview:fail", { toolCallId, error: describeError(error) });
+    }
+  }
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
     toolCallId: tool.id,
     toolName: tool.toolName,

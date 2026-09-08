@@ -76,7 +76,10 @@ export async function publishExportsStep(jobId: string, request: PublishExportsR
   if (!job || job.kind !== "export") throw new Error("Export job not found");
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "verifying_exports", progress: 0.5 });
   try {
-    return await bindExports(db, job.ownerId, job.stickerId, request, job.id);
+    const startedAt = Date.now();
+    const result = await bindExports(db, job.ownerId, job.stickerId, request, job.id);
+    traceEvent("publishExportsStep:bound", { jobId, ms: Date.now() - startedAt });
+    return result;
   } catch (error) {
     // A rejected rendition is a verdict on bytes that are already uploaded: the same file fails the
     // same way on every attempt, so retrying spends twenty seconds arriving back here. Fail once,

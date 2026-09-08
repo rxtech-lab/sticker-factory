@@ -36,6 +36,13 @@
       "when": 1789200000000,
       "tag": "0004_messenger_renditions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789200000001,
+      "tag": "0005_plan_version_selection",
+      "breakpoints": true
     }
   ]
 }

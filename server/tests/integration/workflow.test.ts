@@ -789,9 +789,11 @@ describe("durable sticker workflow: motion", () => {
     const document = StickerDocumentSchema.parse(edited!.documentJson);
     expect(document.layers.map((layer) => [layer.id, layer.type, layer.name]))
       .toEqual([["caption", "text", "Caption"], ["hero", "image", "Cloud"]]);
-    // Nothing was drawn, so the sticker still carries the artwork the base revision paid for.
+    // Nothing was drawn, so the sticker still carries the artwork the base revision paid for. The
+    // only other rows are the previews each completed tool call saves for the transcript.
     expect(edited).toMatchObject({ candidateState: "candidate", masterAssetId: baseTurn.jobId });
-    expect(await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId))).toHaveLength(1);
+    const stickerAssets = await db.select().from(assets).where(eq(assets.stickerId, sticker.stickerId));
+    expect(stickerAssets.filter((asset) => asset.kind !== "preview")).toHaveLength(1);
     await close();
   }, 30_000);
 });

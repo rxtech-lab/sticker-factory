@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, max, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, max, ne } from "drizzle-orm";
 import {
   isActionablePlanState,
   isEditablePlanState,
@@ -25,6 +25,7 @@ export type SerializedPlan = {
   conceptAssetId: string | null;
   decisionReason: string | null;
   supersedesId: string | null;
+  sourceVersionId: string | null;
   /** True when the user can act on this card. Older cards for the same plan render read-only. */
   actionable: boolean;
   generationCount: number;
@@ -49,18 +50,80 @@ export function serializePlan(
     conceptAssetId: row.conceptAssetId,
     decisionReason: row.decisionReason,
     supersedesId: row.supersedesId,
+    sourceVersionId: row.restoredFromId,
     actionable: isActionablePlanState(row.state) && isCurrentRevision,
     generationCount: planGenerationCount(plan),
     plan,
   };
 }
 
-/** Every plan attached to a sticker's transcript, newest first. */
+/** Saved versions, newest first. Active restoration copies retain their source version's identity. */
 export async function listPlans(db: Database, ownerId: string, stickerId: string) {
   return db.select().from(plans).where(and(
     eq(plans.ownerId, ownerId),
     eq(plans.stickerId, stickerId),
+    isNull(plans.restoredFromId),
   )).orderBy(desc(plans.createdAt));
+}
+
+/** Activate a saved version in the latest card without rewriting a plan used by an earlier job. */
+export async function selectPlanVersion(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  versionId: string,
+  currentPlanId: string,
+  currentRevision: number,
+) {
+  return db.transaction(async (tx) => {
+    const sticker = await tx.select().from(stickers).where(and(
+      eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId),
+    )).for("update").then(firstRow);
+    if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
+    if (sticker.status === "deleting") throw new ApiError(409, "STICKER_DELETING", "Sticker deletion is in progress");
+    const activeJob = await tx.select({ id: generationJobs.id }).from(generationJobs).where(and(
+      eq(generationJobs.stickerId, stickerId),
+      inArray(generationJobs.state, ["queued", "running", "waiting"]),
+    )).limit(1).then(firstRow);
+    if (activeJob) throw new ApiError(409, "AI_TURN_IN_PROGRESS", "Wait for the current turn to finish before selecting a plan");
+
+    const selected = await loadPlan(tx, ownerId, stickerId, versionId);
+    const source = selected.restoredFromId
+      ? await loadPlan(tx, ownerId, stickerId, selected.restoredFromId)
+      : selected;
+    const current = await loadPlan(tx, ownerId, stickerId, currentPlanId);
+    const card = await tx.select().from(chatMessages).where(and(
+      eq(chatMessages.threadId, current.threadId),
+      eq(chatMessages.kind, "plan"),
+      isNotNull(chatMessages.planId),
+    )).orderBy(desc(chatMessages.sequence)).limit(1).then(firstRow);
+    if (!card || card.planId !== currentPlanId || current.revision !== currentRevision) {
+      throw new ApiError(409, "PLAN_CHANGED", "The latest plan changed. Reload it before selecting a version");
+    }
+    if (source.state === "draft") throw new ApiError(409, "PLAN_NOT_READY", "This plan is still being drafted");
+    if ((current.restoredFromId ?? current.id) === source.id && current.state === "finalized") {
+      return { messageId: card.id, plan: serializePlan(current) };
+    }
+    const now = new Date();
+    await tx.update(plans).set({ state: "superseded", updatedAt: now, decidedAt: now }).where(and(
+      eq(plans.stickerId, stickerId),
+      inArray(plans.state, ["draft", "finalized"]),
+    ));
+    const restored = await tx.insert(plans).values({
+      id: crypto.randomUUID(), ownerId, stickerId, threadId: current.threadId,
+      messageId: card.id, planJson: source.planJson, revision: source.revision,
+      conceptAssetId: source.conceptAssetId, restoredFromId: source.id,
+      supersedesId: current.id, state: "finalized", createdAt: now, updatedAt: now,
+    }).returning().then(firstRow);
+    if (!restored) throw new Error("Failed to activate selected plan");
+    const claimed = await tx.update(chatMessages).set({
+      planId: restored.id, planRevision: restored.revision,
+    }).where(and(eq(chatMessages.id, card.id), eq(chatMessages.planId, currentPlanId)))
+      .returning({ id: chatMessages.id });
+    if (claimed.length === 0) throw new ApiError(409, "PLAN_CHANGED", "The latest plan changed while selecting a version");
+    await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
+    return { messageId: card.id, plan: serializePlan(restored) };
+  });
 }
 
 export async function loadPlansByIds(db: Database, planIds: string[]) {

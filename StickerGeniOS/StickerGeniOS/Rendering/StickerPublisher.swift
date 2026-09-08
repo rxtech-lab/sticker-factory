@@ -3,9 +3,11 @@ import CryptoKit
 import Foundation
 import UniformTypeIdentifiers
 import UIKit
+import os
 
 @MainActor
 final class StickerPublisher {
+    private static let log = Logger(subsystem: "app.rxlab.sticker-factory", category: "publish-timing")
     private let exporter: StickerExporter
     private let api: StickerAPIClientProtocol
 
@@ -111,6 +113,7 @@ final class StickerPublisher {
         progress: StickerExportProgress? = nil
     ) async throws -> (jobID: String, localExports: [RenderedStickerExport], compromise: SystemStickerCompromise?) {
         guard revision.canPublishExports else { throw StickerPublishError.animationRequired }
+        let renderStarted = Date()
         let rendered = try await renderExports(
             revision: revision,
             assets: assets,
@@ -119,44 +122,34 @@ final class StickerPublisher {
             sharing: sharing,
             progress: progress
         )
+        Self.log.info("render seconds=\(Date().timeIntervalSince(renderStarted))")
         let document = revision.document
 
+        let uploadStarted = Date()
         progress?.begin(.upload)
         // The last point a Cancel press can still leave the server untouched: past the register
         // call below the export exists whether or not this app is still watching it.
         try Task.checkCancellation()
-        var pngAssetID: String?
-        var apngAssetID: String?
-        var mp4AssetID: String?
-        if let png = rendered.png {
-            progress?.report(String(localized: "Sending the image"), for: .upload)
-            pngAssetID = try await upload(png, stickerID: stickerID, kind: .master)
-        }
-        if let apng = rendered.apng {
-            progress?.report(String(localized: "Sending the animation"), for: .upload)
-            apngAssetID = try await upload(apng, stickerID: stickerID, kind: .apng)
-        }
-        if let mp4 = rendered.mp4 {
-            progress?.report(String(localized: "Sending the video"), for: .upload)
-            mp4AssetID = try await upload(mp4, stickerID: stickerID, kind: .mp4)
-        }
-        var webpAssetID: String?
-        if let webp = rendered.webp {
-            progress?.report(String(localized: "Sending the compact copy"), for: .upload)
-            // Optional all the way through, so a failure here is swallowed for the same reason the
-            // encode's is: the sticker publishes without it, and the only thing lost is the smaller
-            // file WinkySticker would have attached. Anything that fails the *whole* upload — an
-            // expired session, no network — will fail the required renditions immediately after,
-            // and that is the error the person sees.
-            webpAssetID = try? await upload(webp, stickerID: stickerID, kind: .webp)
-        }
         guard let system = rendered.system else { throw StickerPublishError.systemRenditionUnavailable }
-        progress?.report(String(localized: "Sending the sticker"), for: .upload)
-        let systemAssetID = try await upload(system, stickerID: stickerID, kind: .system)
+        progress?.report(String(localized: "Sending the sticker files"), for: .upload)
+        // Each rendition has its own upload/verification transaction. Overlap the network waits;
+        // registration still waits for every required rendition to be verified.
+        async let pngUpload = uploadIfPresent(rendered.png, stickerID: stickerID, kind: .master)
+        async let apngUpload = uploadIfPresent(rendered.apng, stickerID: stickerID, kind: .apng)
+        async let mp4Upload = uploadIfPresent(rendered.mp4, stickerID: stickerID, kind: .mp4)
+        async let systemUpload = upload(system, stickerID: stickerID, kind: .system)
+        async let webpUpload = optionalWebPUpload(rendered.webp, stickerID: stickerID)
+        let (pngAssetID, apngAssetID, mp4AssetID, systemAssetID, webpAssetID) = try await (
+            pngUpload, apngUpload, mp4Upload, systemUpload, webpUpload
+        )
+
+        Self.log.info("upload seconds=\(Date().timeIntervalSince(uploadStarted))")
 
         // The rest of the publish happens on the server; `StickerExportProgress` keeps this step
         // running until the job it returns reaches a terminal state.
+        try Task.checkCancellation()
         progress?.begin(.publish)
+        let registerStarted = Date()
         let response = try await api.registerExport(
             stickerID: stickerID,
             request: .init(
@@ -177,6 +170,7 @@ final class StickerPublisher {
             ),
             idempotencyKey: UUID().uuidString
         )
+        Self.log.info("register seconds=\(Date().timeIntervalSince(registerStarted)) job=\(response.job.id, privacy: .public)")
         return (response.job.id, rendered.files(for: selection, sharing: sharing), system.compromise)
     }
 
@@ -326,6 +320,15 @@ final class StickerPublisher {
         missing.formUnion(requiredVideoIDs.filter { assets.videos[$0] == nil || !verifiedAssetIDs.contains($0) })
         guard missing.isEmpty else { throw StickerPublishError.missingVerifiedAssets(missing.sorted()) }
         return document
+    }
+
+    private func uploadIfPresent(_ export: RenderedStickerExport?, stickerID: String, kind: AssetKind) async throws -> String? {
+        guard let export else { return nil }
+        return try await upload(export, stickerID: stickerID, kind: kind)
+    }
+
+    private func optionalWebPUpload(_ export: RenderedStickerExport?, stickerID: String) async -> String? {
+        try? await uploadIfPresent(export, stickerID: stickerID, kind: .webp)
     }
 
     private func upload(_ export: RenderedStickerExport, stickerID: String, kind: AssetKind) async throws -> String {
