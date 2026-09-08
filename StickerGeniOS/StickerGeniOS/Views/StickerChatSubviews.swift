@@ -51,6 +51,15 @@ struct ChatBubble: View {
                     // Room for the bubble's own shadow, which is drawn outside its box.
                     .padding(.trailing, Poster.smallShadow.width)
                     .padding(.bottom, Poster.smallShadow.height)
+                    .contextMenu {
+                        if !message.content.isEmpty {
+                            Button {
+                                UIPasteboard.general.string = message.content
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                        }
+                    }
             }
             .accessibilityLabel("user: \(message.content)")
         } else {

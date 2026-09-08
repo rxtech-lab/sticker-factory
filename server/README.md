@@ -31,6 +31,8 @@ bun run dev
 
 For a local AI-free environment, set `STICKER_FACTORY_MOCK_SERVICES=true`; jobs still run through the local Vercel Workflow runtime. Never enable mock services in production. Missing OAuth, AI, database, or R2 secrets do not prevent a production build; the corresponding runtime operation returns a configuration error.
 
+Set server-only `FIRECRAWL_API_KEY` to enable Firecrawl web research. Chat, planning, layout, editing, animation, and generation share `web_search`, `web_scrape`, `web_crawl`, and `web_crawl_status`. Image and video generation research runs through the orchestrator before the media API call; when configured, this adds a model call even if no research is needed. Search/crawl requests are limited to five pages and time out after 30 seconds per API request. Crawl status is scoped to the agent invocation that started it. Without the key, web tools report a configuration error and image/video generation skips research. Firecrawl usage is billed by Firecrawl and is not included in AI Gateway point accounting. API contracts: [search](https://docs.firecrawl.dev/api-reference/endpoint/search), [crawl](https://docs.firecrawl.dev/api-reference/endpoint/crawl-post), and [crawl status](https://docs.firecrawl.dev/api-reference/endpoint/crawl-get).
+
 Set `APP_STORE_URL=https://apps.apple.com/app/id6805825708` to show the home page's App Store download badge. Leave it unset or blank to hide the badge. The unmodified SVG in `public/images/home/download-on-the-app-store.svg` comes from [Apple's official badge artwork](https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg).
 
 Production needs separate RxLab OAuth clients:

@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CHROMA_GREEN } from "@/lib/ai/chroma-key";
 
 const { requests, recordVideoApiCost } = vi.hoisted(() => ({
@@ -35,7 +35,40 @@ vi.mock("@ai-sdk/gateway", async (importOriginal) => {
   };
 });
 
+beforeEach(() => {
+  vi.resetModules();
+  requests.length = 0;
+  recordVideoApiCost.mockClear();
+  vi.stubEnv("FIRECRAWL_API_KEY", "");
+});
+
 afterEach(() => vi.unstubAllEnvs());
+
+it.each([
+  ["bytedance/dreamina-seedance-2-0-mini", 3, 4],
+  ["bytedance/dreamina-seedance-2-0-mini", 2, 4],
+  ["bytedance/dreamina-seedance-2-0-mini", 4, 4],
+  ["bytedance/seedance-v2.0-mini", 3, 4],
+  ["bytedance/dreamina-seedance-2-0-mini-260615", 3, 4],
+  ["bytedance/seedance-v1.0-pro-fast", 3, 3],
+])("sends a supported duration for %s (%s seconds)", async (model, requested, expected) => {
+  vi.stubEnv("AI_VIDEO_MODEL", model);
+  vi.stubEnv("NODE_ENV", "production");
+  const { getAiProvider } = await import("@/lib/ai/gateway");
+  await getAiProvider().generateStickerVideo({
+    imageUrl: "https://assets.test/approved-still.png",
+    motion: "rotate while eating",
+    durationSeconds: requested,
+    keyColor: CHROMA_GREEN,
+  });
+
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ model, body: { duration: expected } });
+  expect(recordVideoApiCost).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+    modelId: model,
+    durationSeconds: expected,
+  }));
+});
 
 it("generates MiniMax video through the synchronous Gateway endpoint using the real SDK", async () => {
   vi.stubEnv("AI_VIDEO_MODEL", "minimax/minimax-h3-max");

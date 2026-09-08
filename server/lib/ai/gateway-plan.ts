@@ -1,5 +1,6 @@
 // Planning a composition and settling where its parts sit.
 
+import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
@@ -40,6 +41,7 @@ export async function refineStickerLayout(
   };
 
   const tools = {
+    ...createWebTools(),
     ...(session.viewPlanImage
       ? { view_plan_image: viewPlanImageTool(() => session.viewPlanImage!()) }
       : {}),
@@ -75,6 +77,7 @@ export async function refineStickerLayout(
   const generation = await generateText({
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      WEB_RESEARCH_PROMPT,
       "You are the final composition reviewer for a multi-layer sticker. The individual assets",
       "are already approved-quality: never redraw, replace, remove, rename, or restyle them, and",
       "never change their animation timing. Your only job is layout.",
@@ -151,6 +154,7 @@ export async function planSticker(
   };
 
   const tools = {
+    ...createWebTools(),
     create_plan: tool({
       description:
         "Create the first draft of the plan. Call this exactly once, before any other plan tool.",
@@ -211,6 +215,7 @@ export async function planSticker(
   const generation = await generateText({
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      WEB_RESEARCH_PROMPT,
       "You design stickers as a set of independent layers, then hand the design to the user.",
       "Work in this order: call create_plan once, revise with update_plan as many times as you need,",
       "optionally call show_plan, and finish by calling finalize_plan. Never call create_plan twice.",

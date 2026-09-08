@@ -1,8 +1,9 @@
 // The conversational turns: routing what the user asked for, and the short replies that
 // narrate a turn once it is done.
 
+import { createWebTools, isWebTool, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { gateway } from "@ai-sdk/gateway";
-import { generateText, tool, type LanguageModel } from "ai";
+import { generateText, hasToolCall, stepCountIs, tool, type LanguageModel } from "ai";
 import { z } from "zod";
 import { recordTextApiCost } from "@/lib/ai/cost";
 import { resolveChatAction } from "./gateway-contracts";
@@ -22,6 +23,7 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
     durationSeconds: z.number().int().min(2).max(4).default(3),
   }).strict();
   const tools = {
+    ...createWebTools(),
     ...(videoLayers.length > 0 ? {
       "generate-video": tool({
         description: [
@@ -168,8 +170,9 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
   const result = await generateText({
     model: chatModel ?? gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      WEB_RESEARCH_PROMPT,
       "You are Sticker Factory's tool-routing agent.",
-      "Choose exactly one tool from the user's natural-language request; the app has no edit mode, animation mode, or layer picker.",
+      "Research first when needed, then choose exactly one action tool from the user's request. Carry relevant findings and source URLs into the final reply or action instruction.",
       // Every other rule here selects between mutations, which on its own reads as "the user always
       // wants a change". Questions are a large share of real turns, so the not-a-change case has to
       // come first and be stated as strongly as the rest.
@@ -243,13 +246,18 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
     ].filter(Boolean).join("\n\n"), [...priorArt.map((visual) => visual.image), ...viewable]),
     tools,
     toolChoice: "required",
+    stopWhen: [
+      hasToolCall("reply", "generate-sticker", "generate-image", "generate-video", "edit-sticker", "animate-sticker", "plan-sticker", "show-sticker"),
+      stepCountIs(8),
+    ],
     maxRetries: 2,
     abortSignal: AbortSignal.timeout(90_000),
   });
   await recordTextApiCost(result);
-  if (result.toolCalls.length !== 1)
+  const actionCalls = result.toolCalls.filter((call) => call && !isWebTool(call.toolName));
+  if (actionCalls.length !== 1)
     throw new Error("Sticker chat agent must return exactly one tool call");
-  const call = result.toolCalls[0];
+  const call = actionCalls[0];
   if (!call) throw new Error("Sticker chat agent returned no tool call");
   switch (call.toolName) {
     case "generate-video": {
@@ -324,6 +332,7 @@ export async function showSticker(
   history: string,
 ): Promise<string> {
   const tools = {
+    ...createWebTools(),
     "show-sticker": tool({
       description:
         "Attach the completed sticker revision to the assistant's next chat message.",
@@ -336,17 +345,19 @@ export async function showSticker(
   const result = await generateText({
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system:
-      "A sticker revision is ready. Call show-sticker exactly once with a concise caption that says what changed and invites further natural-language refinement.",
+      WEB_RESEARCH_PROMPT + " A sticker revision is ready. Call show-sticker exactly once with a concise caption that says what changed and invites further natural-language refinement.",
     prompt: `Revision id: ${revisionId}\nSticker kind: ${kind}\nUser request: ${instruction}\nRecoverable chat history:\n${history}`,
     tools,
-    toolChoice: { type: "tool", toolName: "show-sticker" },
+    toolChoice: "required",
+    stopWhen: [hasToolCall("show-sticker"), stepCountIs(8)],
     maxRetries: 2,
     abortSignal: AbortSignal.timeout(60_000),
   });
   await recordTextApiCost(result);
-  if (result.toolCalls.length !== 1)
+  const actionCalls = result.toolCalls.filter((call) => call && !isWebTool(call.toolName));
+  if (actionCalls.length !== 1)
     throw new Error("Sticker agent must call show-sticker exactly once");
-  const call = result.toolCalls[0];
+  const call = actionCalls[0];
   if (call.toolName !== "show-sticker")
     throw new Error("Sticker agent did not call show-sticker");
   return z.object({ caption: z.string() }).parse(call.input).caption;
@@ -356,8 +367,10 @@ export async function reply(instruction: string, history: string): Promise<strin
   const result = await generateText({
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system:
-      "You are Sticker Factory's concise creative assistant. Help refine the user's private sticker project. Never claim an edit was made unless an image or animation revision was actually created.",
+      WEB_RESEARCH_PROMPT + " You are Sticker Factory's concise creative assistant. Help refine the user's private sticker project. Never claim an edit was made unless an image or animation revision was actually created.",
     prompt: `Recoverable project transcript:\n${history}\n\nLatest user message:\n${instruction}`,
+    tools: createWebTools(),
+    stopWhen: stepCountIs(8),
     maxRetries: 2,
     abortSignal: AbortSignal.timeout(90_000),
   });
@@ -375,12 +388,15 @@ export async function summarizeStickerTitle(input: AiTitleContext): Promise<stri
         "openai/gpt-5.6",
     ),
     system: [
+      WEB_RESEARCH_PROMPT,
       "Name a sticker project from its chat transcript. Reply with the name alone:",
       "two to five words, title case, no quotes, no trailing punctuation, at most 48 characters.",
       "Name the sticker — its subject and its mood — not the conversation about it.",
       "If the current name still describes the sticker, repeat it back unchanged.",
     ].join(" "),
     prompt: `Current name: ${input.currentTitle}\nSticker kind: ${input.stickerKind}\nProject transcript:\n${input.history}`,
+    tools: createWebTools(),
+    stopWhen: stepCountIs(3),
     // One attempt over again: the turn is already finished and waiting on this, and the caller
     // keeps the old name when it fails.
     maxRetries: 1,
