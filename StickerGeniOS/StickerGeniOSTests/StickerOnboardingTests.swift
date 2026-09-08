@@ -24,7 +24,7 @@ struct StickerOnboardingTests {
             "confirm",
             "versions",
             "publish",
-            "use",
+            "use"
         ])
     }
 }

@@ -162,7 +162,7 @@ struct MarketplaceView: View {
             guard let createdPackID else { return }
             self.createdPackID = nil
             path.append(PackRoute(packID: createdPackID))
-        }) {
+        }, content: {
             NavigationStack {
                 PackComposerView(store: store, onCreated: { detail in
                     createdPackID = detail.id
@@ -174,7 +174,7 @@ struct MarketplaceView: View {
                         }
                     }
             }
-        }
+        })
         .safeAreaInset(edge: .top) {
             if let error = store.errorMessage { ErrorBanner(message: error).padding(.horizontal) }
         }

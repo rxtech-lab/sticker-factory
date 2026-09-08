@@ -147,7 +147,7 @@ final class StickerGridViewController: UIViewController {
                 title: SharedStickerCache.mineSectionTitle,
                 subtitle: nil,
                 stickers: cachedStickers
-            ),
+            )
         ])
     }
 
@@ -359,7 +359,7 @@ final class StickerSectionHeaderView: UICollectionReusableView {
             titleLabel.leadingAnchor.constraint(equalTo: titleBadge.leadingAnchor, constant: 8),
             titleLabel.trailingAnchor.constraint(equalTo: titleBadge.trailingAnchor, constant: -8),
             titleLabel.topAnchor.constraint(equalTo: titleBadge.topAnchor, constant: 4),
-            titleLabel.bottomAnchor.constraint(equalTo: titleBadge.bottomAnchor, constant: -4),
+            titleLabel.bottomAnchor.constraint(equalTo: titleBadge.bottomAnchor, constant: -4)
         ])
 
         subtitleLabel.font = .preferredFont(forTextStyle: .caption2)
@@ -378,7 +378,7 @@ final class StickerSectionHeaderView: UICollectionReusableView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
         ])
 
         accessibilityIdentifier = "sticker-section-header"
@@ -402,7 +402,7 @@ final class StickerSectionHeaderView: UICollectionReusableView {
 private extension UIFont {
     func withWeight(_ weight: UIFont.Weight) -> UIFont {
         let descriptor = fontDescriptor.addingAttributes([
-            .traits: [UIFontDescriptor.TraitKey.weight: weight],
+            .traits: [UIFontDescriptor.TraitKey.weight: weight]
         ])
         return UIFont(descriptor: descriptor, size: pointSize)
     }
@@ -448,7 +448,7 @@ final class StickerCell: UICollectionViewCell {
         contentView.addSubview(spinner)
         NSLayoutConstraint.activate([
             spinner.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
         ])
 
         isAccessibilityElement = true

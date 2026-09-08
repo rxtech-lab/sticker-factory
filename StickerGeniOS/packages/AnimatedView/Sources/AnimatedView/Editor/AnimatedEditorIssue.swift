@@ -83,138 +83,183 @@ extension AnimatedDocument {
         return issues.sorted { $0.severity > $1.severity }
     }
 
-    private func layerIssues(_ layer: AnimatedLayer) -> [AnimatedEditorIssue] {
-        var issues: [AnimatedEditorIssue] = []
-        func add(_ suffix: String, _ severity: AnimatedEditorIssue.Severity, _ message: String) {
-            issues.append(.init(id: "\(layer.id)-\(suffix)", severity: severity, message: message, layerID: layer.id))
+    /// Gathers one layer's issues, stamping each with the layer it came from.
+    private struct LayerIssues {
+        let layer: AnimatedLayer
+        /// The layer's trimmed name, which every message reads back to the author.
+        let name: String
+        private(set) var issues: [AnimatedEditorIssue] = []
+
+        init(_ layer: AnimatedLayer) {
+            self.layer = layer
+            name = layer.name.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        let trimmedName = layer.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedName.isEmpty {
-            add("name", .blocking, "This layer needs a name.")
+        mutating func add(_ suffix: String, _ severity: AnimatedEditorIssue.Severity, _ message: String) {
+            issues.append(.init(id: "\(layer.id)-\(suffix)", severity: severity, message: message, layerID: layer.id))
+        }
+    }
+
+    private func layerIssues(_ layer: AnimatedLayer) -> [AnimatedEditorIssue] {
+        var found = LayerIssues(layer)
+        appendStructuralIssues(to: &found)
+        appendContentIssues(to: &found)
+        appendAdvisoryIssues(to: &found)
+        return found.issues
+    }
+
+    /// Identity, transform and animation limits — the checks that apply whatever the layer holds.
+    private func appendStructuralIssues(to found: inout LayerIssues) {
+        let layer = found.layer
+        if found.name.isEmpty {
+            found.add("name", .blocking, "This layer needs a name.")
         } else if layer.name.count > 80 {
-            add("name", .blocking, "“\(trimmedName.prefix(20))…” is longer than 80 characters.")
+            found.add("name", .blocking, "“\(found.name.prefix(20))…” is longer than 80 characters.")
         }
 
         if !layer.id.isAnimatedLayerID {
-            add("id", .blocking, "“\(layer.id)” is not a usable layer id.")
+            found.add("id", .blocking, "“\(layer.id)” is not a usable layer id.")
         }
         if !layer.anchor.isValid {
-            add("anchor", .blocking, "\(trimmedName) has a position, scale, or rotation outside the supported range.")
+            found.add("anchor", .blocking, "\(found.name) has a position, scale, or rotation outside the supported range.")
         }
         if !layer.animation.isValid {
-            add("animation", .blocking, "\(trimmedName) has keyframes outside the supported range.")
+            found.add("animation", .blocking, "\(found.name) has keyframes outside the supported range.")
         }
         if layer.animations.count > 12 {
-            add("animations", .blocking, "\(trimmedName) has more than 12 preset animations.")
+            found.add("animations", .blocking, "\(found.name) has more than 12 preset animations.")
         }
+    }
 
-        switch layer {
-        case .image(let image):
-            if !image.assetId.isAnimatedUUID { add("asset", .blocking, "\(trimmedName) has no valid image.") }
-            if let mask = image.maskAssetId, !mask.isAnimatedUUID {
-                add("mask", .blocking, "\(trimmedName)'s mask is not a valid image.")
-            }
-        case .text(let text):
-            if text.text.isEmpty {
-                add("text", .blocking, "\(trimmedName) has no text.")
-            } else if text.text.count > 160 {
-                add("text", .blocking, "\(trimmedName) is longer than 160 characters.")
-            }
-            if !text.paint.isValid { add("paint", .blocking, "\(trimmedName)'s colour is not valid.") }
-        case .shape(let shape):
-            // A shape with neither is not a subtle mistake — it renders as nothing at all.
-            if shape.fill == nil, shape.stroke == nil {
-                add("paint", .blocking, "\(trimmedName) needs a fill or a stroke to be visible.")
-            }
-            if let fill = shape.fill, !fill.isValid { add("fill", .blocking, "\(trimmedName)'s fill is not valid.") }
-            if let stroke = shape.stroke, !stroke.isValid { add("stroke", .blocking, "\(trimmedName)'s stroke is not valid.") }
-            if !shape.shape.isValid { add("shape", .blocking, "\(trimmedName)'s shape settings are out of range.") }
-            if !(0...0.5).contains(shape.cornerRadius) {
-                add("corner", .blocking, "\(trimmedName)'s corner radius must be between 0 and 0.5.")
-            }
-        case .svg(let svg):
-            if !svg.source.isValid {
-                add("source", .blocking, "\(trimmedName)'s artwork is empty, too large, or references a script or remote URL.")
-            }
-            if !(0...4).contains(svg.staggerSeconds) {
-                add("stagger", .blocking, "\(trimmedName)'s stagger must be between 0 and 4 seconds.")
-            }
-            // Trim and tint are silently ignored in native mode, so a layer set up for a draw-on
-            // that will never happen is worth flagging even though it is perfectly valid.
-            if svg.renderMode == .native, !layer.animation.trim.isEmpty {
-                add("render-mode", .warning, "\(trimmedName) draws in Native mode, which ignores its trim keyframes.")
-            }
-        case .particle(let particle):
-            if !(1...64).contains(particle.count) {
-                add("count", .blocking, "\(trimmedName) must have between 1 and 64 particles.")
-            }
-            if !particle.paint.isValid { add("paint", .blocking, "\(trimmedName)'s colour is not valid.") }
-        case .sequence(let sequence):
-            if !sequence.assetId.isAnimatedUUID {
-                add("asset", .blocking, "\(trimmedName) has no valid capture.")
-            }
-            if let poster = sequence.posterAssetId, !poster.isAnimatedUUID {
-                add("poster", .blocking, "\(trimmedName)'s still frame is not a valid image.")
-            }
-            if sequence.frameCount > sequence.rows * sequence.columns || sequence.frameCount < 1 {
-                add("frames", .blocking, "\(trimmedName) claims more frames than its capture holds.")
-            }
-            if !(1...60).contains(sequence.frameRate) {
-                add("rate", .blocking, "\(trimmedName) must play between 1 and 60 frames per second.")
-            }
-            // Advisory rather than blocking, unlike the server's identical rule: someone lowering
-            // the document's frame rate mid-edit should be told what it costs, not stopped dead.
-            if kind == .animated, Double(fps) < sequence.frameRate {
-                add(
-                    "rate-mismatch",
-                    .warning,
-                    "\(trimmedName) was captured at \(Int(sequence.frameRate)) fps but this sticker "
-                        + "renders at \(fps), so some frames will be dropped."
-                )
-            }
-        case .video(let video):
-            if !video.assetId.isAnimatedUUID {
-                add("asset", .blocking, "\(trimmedName) has no valid clip.")
-            }
-            if !video.posterAssetId.isAnimatedUUID {
-                add("poster", .blocking, "\(trimmedName)'s still frame is not a valid image.")
-            }
-            if !(1...600).contains(video.frameCount) {
-                add("frames", .blocking, "\(trimmedName) must have between 1 and 600 frames.")
-            }
-            if !(1...60).contains(video.frameRate) {
-                add("rate", .blocking, "\(trimmedName) must play between 1 and 60 frames per second.")
-            }
-            if kind == .animated, Double(fps) < video.frameRate {
-                add(
-                    "rate-mismatch",
-                    .warning,
-                    "\(trimmedName) was generated at \(Int(video.frameRate)) fps but this sticker "
-                        + "renders at \(fps), so some frames will be dropped."
-                )
-            }
+    private func appendContentIssues(to found: inout LayerIssues) {
+        switch found.layer {
+        case .image(let image): appendImageIssues(image, to: &found)
+        case .text(let text): appendTextIssues(text, to: &found)
+        case .shape(let shape): appendShapeIssues(shape, to: &found)
+        case .svg(let svg): appendSVGIssues(svg, to: &found)
+        case .particle(let particle): appendParticleIssues(particle, to: &found)
+        case .sequence(let sequence): appendSequenceIssues(sequence, to: &found)
+        case .video(let video): appendVideoIssues(video, to: &found)
         case .unsupported:
-            add(
+            found.add(
                 "unsupported",
                 .blocking,
-                "\(trimmedName) was made with a newer version of Sticker Factory and cannot be shown here. "
+                "\(found.name) was made with a newer version of Sticker Factory and cannot be shown here. "
                     + "Update the app to edit this sticker."
             )
         }
+    }
 
-        // Warnings: legal documents that almost certainly are not what the author meant.
+    private func appendImageIssues(_ image: AnimatedImageLayer, to found: inout LayerIssues) {
+        if !image.assetId.isAnimatedUUID { found.add("asset", .blocking, "\(found.name) has no valid image.") }
+        if let mask = image.maskAssetId, !mask.isAnimatedUUID {
+            found.add("mask", .blocking, "\(found.name)'s mask is not a valid image.")
+        }
+    }
+
+    private func appendTextIssues(_ text: AnimatedTextLayer, to found: inout LayerIssues) {
+        if text.text.isEmpty {
+            found.add("text", .blocking, "\(found.name) has no text.")
+        } else if text.text.count > 160 {
+            found.add("text", .blocking, "\(found.name) is longer than 160 characters.")
+        }
+        if !text.paint.isValid { found.add("paint", .blocking, "\(found.name)'s colour is not valid.") }
+    }
+
+    private func appendShapeIssues(_ shape: AnimatedShapeLayer, to found: inout LayerIssues) {
+        // A shape with neither is not a subtle mistake — it renders as nothing at all.
+        if shape.fill == nil, shape.stroke == nil {
+            found.add("paint", .blocking, "\(found.name) needs a fill or a stroke to be visible.")
+        }
+        if let fill = shape.fill, !fill.isValid { found.add("fill", .blocking, "\(found.name)'s fill is not valid.") }
+        if let stroke = shape.stroke, !stroke.isValid { found.add("stroke", .blocking, "\(found.name)'s stroke is not valid.") }
+        if !shape.shape.isValid { found.add("shape", .blocking, "\(found.name)'s shape settings are out of range.") }
+        if !(0...0.5).contains(shape.cornerRadius) {
+            found.add("corner", .blocking, "\(found.name)'s corner radius must be between 0 and 0.5.")
+        }
+    }
+
+    private func appendSVGIssues(_ svg: AnimatedSVGLayer, to found: inout LayerIssues) {
+        if !svg.source.isValid {
+            found.add("source", .blocking, "\(found.name)'s artwork is empty, too large, or references a script or remote URL.")
+        }
+        if !(0...4).contains(svg.staggerSeconds) {
+            found.add("stagger", .blocking, "\(found.name)'s stagger must be between 0 and 4 seconds.")
+        }
+        // Trim and tint are silently ignored in native mode, so a layer set up for a draw-on
+        // that will never happen is worth flagging even though it is perfectly valid.
+        if svg.renderMode == .native, !found.layer.animation.trim.isEmpty {
+            found.add("render-mode", .warning, "\(found.name) draws in Native mode, which ignores its trim keyframes.")
+        }
+    }
+
+    private func appendParticleIssues(_ particle: AnimatedParticleLayer, to found: inout LayerIssues) {
+        if !(1...64).contains(particle.count) {
+            found.add("count", .blocking, "\(found.name) must have between 1 and 64 particles.")
+        }
+        if !particle.paint.isValid { found.add("paint", .blocking, "\(found.name)'s colour is not valid.") }
+    }
+
+    private func appendSequenceIssues(_ sequence: AnimatedSequenceLayer, to found: inout LayerIssues) {
+        if !sequence.assetId.isAnimatedUUID {
+            found.add("asset", .blocking, "\(found.name) has no valid capture.")
+        }
+        if let poster = sequence.posterAssetId, !poster.isAnimatedUUID {
+            found.add("poster", .blocking, "\(found.name)'s still frame is not a valid image.")
+        }
+        if sequence.frameCount > sequence.rows * sequence.columns || sequence.frameCount < 1 {
+            found.add("frames", .blocking, "\(found.name) claims more frames than its capture holds.")
+        }
+        if !(1...60).contains(sequence.frameRate) {
+            found.add("rate", .blocking, "\(found.name) must play between 1 and 60 frames per second.")
+        }
+        // Advisory rather than blocking, unlike the server's identical rule: someone lowering
+        // the document's frame rate mid-edit should be told what it costs, not stopped dead.
+        if kind == .animated, Double(fps) < sequence.frameRate {
+            found.add(
+                "rate-mismatch",
+                .warning,
+                "\(found.name) was captured at \(Int(sequence.frameRate)) fps but this sticker "
+                    + "renders at \(fps), so some frames will be dropped."
+            )
+        }
+    }
+
+    private func appendVideoIssues(_ video: AnimatedVideoLayer, to found: inout LayerIssues) {
+        if !video.assetId.isAnimatedUUID {
+            found.add("asset", .blocking, "\(found.name) has no valid clip.")
+        }
+        if !video.posterAssetId.isAnimatedUUID {
+            found.add("poster", .blocking, "\(found.name)'s still frame is not a valid image.")
+        }
+        if !(1...600).contains(video.frameCount) {
+            found.add("frames", .blocking, "\(found.name) must have between 1 and 600 frames.")
+        }
+        if !(1...60).contains(video.frameRate) {
+            found.add("rate", .blocking, "\(found.name) must play between 1 and 60 frames per second.")
+        }
+        if kind == .animated, Double(fps) < video.frameRate {
+            found.add(
+                "rate-mismatch",
+                .warning,
+                "\(found.name) was generated at \(Int(video.frameRate)) fps but this sticker "
+                    + "renders at \(fps), so some frames will be dropped."
+            )
+        }
+    }
+
+    /// Warnings: legal documents that almost certainly are not what the author meant.
+    private func appendAdvisoryIssues(to found: inout LayerIssues) {
+        let layer = found.layer
         if !layer.hidden, layer.animation.opacity.isEmpty, layer.anchor.opacity == 0 {
-            add("invisible", .warning, "\(trimmedName) is fully transparent.")
+            found.add("invisible", .warning, "\(found.name) is fully transparent.")
         }
         if !layer.hidden, layer.animation.position.isEmpty, isOffCanvas(layer.anchor.position) {
-            add("off-canvas", .warning, "\(trimmedName) sits outside the canvas.")
+            found.add("off-canvas", .warning, "\(found.name) sits outside the canvas.")
         }
         if !layer.supportsTrim, !layer.animation.trim.isEmpty {
-            add("trim", .warning, "\(trimmedName) is a \(layer.type.rawValue) layer, which has no outline to trim.")
+            found.add("trim", .warning, "\(found.name) is a \(layer.type.rawValue) layer, which has no outline to trim.")
         }
-
-        return issues
     }
 
     /// Whether a resting position puts a layer's centre beyond the canvas edge.

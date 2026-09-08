@@ -11,9 +11,9 @@ let package = Package(
     name: "WASticker",
     platforms: [.iOS(.v17)],
     products: [
-        .library(name: "WASticker", targets: ["WASticker"]),
+        .library(name: "WASticker", targets: ["WASticker"])
     ],
     targets: [
-        .target(name: "WASticker", swiftSettings: [.swiftLanguageMode(.v6)]),
+        .target(name: "WASticker", swiftSettings: [.swiftLanguageMode(.v6)])
     ]
 )

@@ -59,7 +59,7 @@ public enum WAStickerInteroperability {
             [[pasteboardStickerPackDataType: data]],
             options: [
                 .localOnly: true,
-                .expirationDate: Date(timeIntervalSinceNow: pasteboardExpirationSeconds),
+                .expirationDate: Date(timeIntervalSinceNow: pasteboardExpirationSeconds)
             ]
         )
         UIApplication.shared.open(whatsAppURL)

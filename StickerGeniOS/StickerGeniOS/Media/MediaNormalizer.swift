@@ -11,7 +11,10 @@ nonisolated enum MediaNormalizationError: Error, LocalizedError {
         switch self {
         case .unreadableImage: String(localized: "That image format could not be read.")
         case .imageTooLarge: String(localized: "The normalized image is still larger than 25 MB.")
-        case .maskRequiresTransparency: String(localized: "Choose a PNG mask with transparent and painted areas. Regular opaque photos cannot be used as masks.")
+        case .maskRequiresTransparency: String(localized: """
+            Choose a PNG mask with transparent and painted areas. \
+            Regular opaque photos cannot be used as masks.
+            """)
         case .liftProducedNoSubject: String(localized: "No subject could be lifted out of that photo. Try one with a clearer foreground.")
         }
     }

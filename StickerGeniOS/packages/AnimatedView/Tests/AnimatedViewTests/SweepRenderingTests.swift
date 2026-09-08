@@ -64,7 +64,7 @@ struct SweepRenderingTests {
                     shape: .roundedRectangle,
                     fill: .solid("#3366FF"),
                     cornerRadius: 0
-                )),
+                ))
             ]
         ).compiled()
     }
@@ -106,7 +106,7 @@ struct SweepRenderingTests {
     /// test that fails if `sweepUnitPoint` is ever swapped back for it.
     @Test func adiagonalWipeStillRevealsTheCorners() throws {
         let openEverywhere = try square([
-            .init(.wipeTo(start: 0, end: 1, angleDegrees: 45, softness: 0), duration: 1, easing: .linear),
+            .init(.wipeTo(start: 0, end: 1, angleDegrees: 45, softness: 0), duration: 1, easing: .linear)
         ])
         let plain = try square([])
         #expect(
@@ -195,7 +195,7 @@ struct SweepRenderingTests {
         let document = try square([
             .wipeIn(.right, softness: 0.1, duration: 2, easing: .linear),
             .shine(width: 0.3, intensity: 0.8, duration: 2),
-            .bloomIn(radius: 0.08, intensity: 0.6, duration: 2),
+            .bloomIn(radius: 0.08, intensity: 0.6, duration: 2)
         ])
         #expect(coverage(try image(document, at: 0)).alpha == 0)
         #expect(coverage(try image(document, at: 2.5)).alpha > 0)
@@ -206,7 +206,7 @@ struct SweepRenderingTests {
     @Test func sweepsRenderDeterministically() throws {
         let document = try square([
             .wipeIn(.down, softness: 0.2, duration: 2, easing: .linear),
-            .shine(width: 0.3, intensity: 0.9, duration: 2),
+            .shine(width: 0.3, intensity: 0.9, duration: 2)
         ])
         #expect(bytes(try image(document, at: 1.3)) == bytes(try image(document, at: 1.3)))
     }

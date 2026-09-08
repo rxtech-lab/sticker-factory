@@ -45,7 +45,10 @@ struct CreateStickerView: View {
 
                             if kind == .animated {
                                 PosterSymbolLabel(
-                                    "You’ll review a static visual reference, confirm it, then we’ll separate the artwork into parts and animate them.",
+                                    """
+                                        You’ll review a static visual reference, confirm it, then we’ll \
+                                        separate the artwork into parts and animate them.
+                                        """,
                                     posterSymbol: "list.number"
                                 )
                                 .font(.system(size: 14, design: .rounded))
@@ -114,7 +117,10 @@ struct CreateStickerView: View {
                             }
 
                             PosterSymbolLabel(
-                                "Personal photos are uploaded privately to create or edit this sticker. Sources, chat, and revisions remain until you delete the project.",
+                                """
+                                    Personal photos are uploaded privately to create or edit this sticker. \
+                                    Sources, chat, and revisions remain until you delete the project.
+                                    """,
                                 posterSymbol: "hand.raised.fill"
                             )
                             .font(.system(size: 12, design: .rounded))
@@ -280,7 +286,11 @@ private struct ReferenceThumbnail: View {
             .buttonStyle(.plain)
             .disabled(lift == nil)
             .popoverTip(tip, arrowEdge: .top)
-            .accessibilityLabel(isCapture ? "Lifted subject. Tap to choose a different one." : "Reference photo. Tap to lift a subject out of it.")
+            .accessibilityLabel(
+                isCapture
+                    ? "Lifted subject. Tap to choose a different one."
+                    : "Reference photo. Tap to lift a subject out of it."
+            )
 
             Button(action: remove) {
                 PosterSymbol("xmark.circle.fill")

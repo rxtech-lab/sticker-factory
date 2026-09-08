@@ -13,7 +13,20 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "app/.well-known/workflow/**",
+    // Build and tooling output that is git-ignored but still on disk locally.
+    ".next-e2e/**",
+    ".swc/**",
+    "coverage/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
+  {
+    // The same structural cap the iOS side enforces with SwiftLint's `file_length`: no source
+    // file over 800 lines, counting neither blank lines nor comments.
+    rules: {
+      "max-lines": ["error", { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
 ]);
 
 export default eslintConfig;

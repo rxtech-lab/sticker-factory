@@ -26,6 +26,21 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      # Pinned rather than "whatever the runner has": the runner image ships its own SwiftLint,
+      # and its rules disagree with the pinned one about what counts as a violation.
+      - name: Install SwiftLint
+        run: |
+          version="$(cat StickerGeniOS/.swiftlint-version)"
+          if [ "$(swiftlint version 2>/dev/null)" != "$version" ]; then
+            curl -fsSL -o "$RUNNER_TEMP/swiftlint.zip" \
+              "https://github.com/realm/SwiftLint/releases/download/$version/portable_swiftlint.zip"
+            unzip -oq "$RUNNER_TEMP/swiftlint.zip" -d "$RUNNER_TEMP/swiftlint"
+            echo "$RUNNER_TEMP/swiftlint" >> "$GITHUB_PATH"
+          fi
+
+      - name: Lint
+        run: make lint-ios
+
       - name: Prepare simulators
         run: |
           xcrun simctl shutdown all 2>/dev/null || true

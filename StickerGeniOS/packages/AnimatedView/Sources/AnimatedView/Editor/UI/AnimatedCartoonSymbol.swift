@@ -13,44 +13,58 @@ struct AnimatedCartoonSymbol: View {
             .accessibilityHidden(true)
     }
 
+    /// SF Symbol name → the cartoon glyph drawn in its place.
+    private nonisolated static let glyphs: [String: String] = [
+        "plus": "+",
+        "plus.circle": "+",
+        "plus.circle.fill": "+",
+        "minus": "−",
+        "minus.circle": "−",
+        "checkmark": "✓",
+        "diamond": "◆",
+        "diamond.fill": "◆",
+        "trash": "🗑️",
+        "eye": "👁️",
+        "eye.slash": "🙈",
+        "photo": "🖼️",
+        "camera.filters": "🖼️",
+        "video": "🎞️",
+        "livephoto": "🎞️",
+        "textformat": "✍️",
+        "scribble.variable": "✍️",
+        "circle": "●",
+        "ellipse": "●",
+        "rectangle": "▰",
+        "rectangle.lefthalf.filled": "▰",
+        "capsule": "▬",
+        "star": "★",
+        "heart": "♥",
+        "theatermasks": "🎭",
+        "circle.lefthalf.filled": "🎭",
+        "wand.and.stars": "🪄",
+        "plus.square.on.square": "🗂️",
+        "doc.on.clipboard": "📋",
+        "shuffle": "🔀",
+        "play.fill": "▶",
+        "pause.fill": "Ⅱ",
+        "arrow.uturn.backward": "↶",
+        "arrow.uturn.forward": "↷",
+        "rotate.right": "↻",
+        "arrow.up.and.down.and.arrow.left.and.right": "✥",
+        "arrow.up.left.and.arrow.down.right": "⤢",
+        "slider.horizontal.3": "🎛️",
+        "square.grid.2x2": "▦",
+        "sun.max": "☀",
+        "moon": "☾",
+        "square.dashed": "?",
+        "questionmark.square.dashed": "?",
+        "exclamationmark.circle": "!",
+        "exclamationmark.triangle.fill": "!",
+        "info.circle": "i"
+    ]
+
     private nonisolated static func art(for name: String) -> String {
-        switch name {
-        case "plus", "plus.circle", "plus.circle.fill": "+"
-        case "minus", "minus.circle": "−"
-        case "checkmark": "✓"
-        case "diamond", "diamond.fill": "◆"
-        case "trash": "🗑️"
-        case "eye": "👁️"
-        case "eye.slash": "🙈"
-        case "photo", "camera.filters": "🖼️"
-        case "video", "livephoto": "🎞️"
-        case "textformat", "scribble.variable": "✍️"
-        case "circle", "ellipse": "●"
-        case "rectangle", "rectangle.lefthalf.filled": "▰"
-        case "capsule": "▬"
-        case "star": "★"
-        case "heart": "♥"
-        case "theatermasks", "circle.lefthalf.filled": "🎭"
-        case "wand.and.stars": "🪄"
-        case "plus.square.on.square": "🗂️"
-        case "doc.on.clipboard": "📋"
-        case "shuffle": "🔀"
-        case "play.fill": "▶"
-        case "pause.fill": "Ⅱ"
-        case "arrow.uturn.backward": "↶"
-        case "arrow.uturn.forward": "↷"
-        case "rotate.right": "↻"
-        case "arrow.up.and.down.and.arrow.left.and.right": "✥"
-        case "arrow.up.left.and.arrow.down.right": "⤢"
-        case "slider.horizontal.3": "🎛️"
-        case "square.grid.2x2": "▦"
-        case "sun.max": "☀"
-        case "moon": "☾"
-        case "square.dashed", "questionmark.square.dashed": "?"
-        case "exclamationmark.circle", "exclamationmark.triangle.fill": "!"
-        case "info.circle": "i"
-        default: "✦"
-        }
+        glyphs[name] ?? "✦"
     }
 }
 

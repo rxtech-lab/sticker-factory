@@ -32,7 +32,7 @@ nonisolated struct URLSessionOAuthRefreshTransport: OAuthRefreshTransport {
         components.queryItems = [
             URLQueryItem(name: "grant_type", value: "refresh_token"),
             URLQueryItem(name: "refresh_token", value: refreshToken),
-            URLQueryItem(name: "client_id", value: clientID),
+            URLQueryItem(name: "client_id", value: clientID)
         ]
         request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
 

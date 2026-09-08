@@ -26,7 +26,7 @@ struct WebPEncoderTests {
             colorsSpace: CGColorSpaceCreateDeviceRGB(),
             colors: [
                 CGColor(red: 0.98, green: 0.4, blue: 0.35, alpha: 1),
-                CGColor(red: 0.2, green: 0.3, blue: 0.9, alpha: 0),
+                CGColor(red: 0.2, green: 0.3, blue: 0.9, alpha: 0)
             ] as CFArray,
             locations: [0, 1]
         )!
@@ -118,7 +118,7 @@ struct WebPEncoderTests {
         ))
         for image in frames {
             CGImageDestinationAddImage(destination, image, [
-                kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGDelayTime: 0.1],
+                kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGDelayTime: 0.1]
             ] as CFDictionary)
         }
         #expect(CGImageDestinationFinalize(destination))
@@ -129,7 +129,7 @@ struct WebPEncoderTests {
     func mismatchedFramesAreRefused() {
         let frames: [WebPEncoder.Frame] = [
             .init(image: frame(index: 0, frameCount: 2, dimension: 128), delayMilliseconds: 100),
-            .init(image: frame(index: 1, frameCount: 2, dimension: 256), delayMilliseconds: 100),
+            .init(image: frame(index: 1, frameCount: 2, dimension: 256), delayMilliseconds: 100)
         ]
         #expect(throws: WebPEncoder.Failure.mismatchedFrameSize) {
             try WebPEncoder.encodeAnimation(frames: frames, loops: 0)

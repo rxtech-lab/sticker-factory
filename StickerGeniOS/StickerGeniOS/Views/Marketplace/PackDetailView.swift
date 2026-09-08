@@ -74,7 +74,7 @@ struct PackDetailView: View {
         }
         // Popping happens on the sheet's way out rather than the moment the delete lands: dismissing
         // a sheet and its presenter in the same turn drops the animation halfway.
-        .sheet(isPresented: $isEditing, onDismiss: { if wasDeleted { dismiss() } }) {
+        .sheet(isPresented: $isEditing, onDismiss: { if wasDeleted { dismiss() } }, content: {
             if let detail {
                 NavigationStack {
                     PackEditorView(store: store, detail: detail) {
@@ -83,7 +83,7 @@ struct PackDetailView: View {
                     }
                 }
             }
-        }
+        })
         .task(id: packID) { await store.loadDetail(packID: packID) }
         .telemetryScreen("pack_detail")
     }

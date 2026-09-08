@@ -21,13 +21,13 @@ struct SequenceFrameIndexParityTests {
             var name: String
             var layer: Layer
             var expected: [Int]
+        }
 
-            struct Layer: Decodable {
-                var frameCount: Int
-                var frameRate: Double
-                var playback: AnimatedSequencePlayback
-                var startSeconds: Double
-            }
+        struct Layer: Decodable {
+            var frameCount: Int
+            var frameRate: Double
+            var playback: AnimatedSequencePlayback
+            var startSeconds: Double
         }
     }
 
@@ -41,7 +41,7 @@ struct SequenceFrameIndexParityTests {
         return try! JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
     }()
 
-    private static func layer(_ raw: Fixture.Case.Layer) -> AnimatedSequenceLayer {
+    private static func layer(_ raw: Fixture.Layer) -> AnimatedSequenceLayer {
         .init(
             base: .init(id: "hero", name: "Live capture"),
             assetId: "33333333-3333-4333-8333-333333333333",

@@ -46,7 +46,7 @@ nonisolated struct SystemStickerPreset: Equatable, Sendable {
         .init(dimension: 300, fps: 10),
         .init(dimension: 300, fps: 8),
         .init(dimension: 300, fps: 6),
-        .init(dimension: 300, fps: 4),
+        .init(dimension: 300, fps: 4)
     ]
 
     /// A palette size, and whether it is dithered.
@@ -72,7 +72,7 @@ nonisolated struct SystemStickerPreset: Equatable, Sendable {
         .init(count: 64, dithered: true),
         .init(count: 64, dithered: false),
         .init(count: 16, dithered: true),
-        .init(count: 16, dithered: false),
+        .init(count: 16, dithered: false)
     ]
 }
 
@@ -431,7 +431,7 @@ final class StickerExporter {
     /// whose dither costs it a rung of size, exactly as in `SystemStickerPreset.paletteLadder`.
     private static let sharingPaletteLadder: [SystemStickerPreset.PaletteAttempt] = [
         .init(count: 256, dithered: true),
-        .init(count: 256, dithered: false),
+        .init(count: 256, dithered: false)
     ]
 
     /// A static sticker's WebP: the still twin of the copy `exportSharingRenditions` makes.
@@ -606,7 +606,7 @@ final class StickerExporter {
             data, UTType.gif.identifier as CFString, frameCount, nil
         ) else { throw StickerExportError.destinationFailed }
         CGImageDestinationSetProperties(destination, [
-            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: document.loop == .once ? 1 : 0],
+            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: document.loop == .once ? 1 : 0]
         ] as CFDictionary)
 
         for index in 0..<frameCount {
@@ -621,8 +621,8 @@ final class StickerExporter {
             CGImageDestinationAddImage(destination, image, [
                 kCGImagePropertyGIFDictionary: [
                     kCGImagePropertyGIFDelayTime: delays[index],
-                    kCGImagePropertyGIFUnclampedDelayTime: delays[index],
-                ],
+                    kCGImagePropertyGIFUnclampedDelayTime: delays[index]
+                ]
             ] as CFDictionary)
         }
         guard CGImageDestinationFinalize(destination) else { throw StickerExportError.destinationFailed }
@@ -647,8 +647,8 @@ final class StickerExporter {
             AVVideoHeightKey: dimension,
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: 5_000_000,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-            ],
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+            ]
         ]
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
@@ -657,7 +657,7 @@ final class StickerExporter {
             sourcePixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: dimension,
-                kCVPixelBufferHeightKey as String: dimension,
+                kCVPixelBufferHeightKey as String: dimension
             ]
         )
         guard writer.canAdd(input) else {
@@ -1067,7 +1067,7 @@ final class StickerExporter {
     /// as the image rather than as texture on it.
     private static let stillPaletteLadder = SystemStickerPreset.paletteLadder + [
         .init(count: 4, dithered: false),
-        .init(count: 2, dithered: false),
+        .init(count: 2, dithered: false)
     ]
 
     /// Enough of the cycle to find its colours; more samples stop changing the palette.

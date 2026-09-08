@@ -45,7 +45,8 @@ private final class ClipLibraryModel {
         guard download.url.scheme == "https" else { throw MessagesStickerCreationError.invalidResponse }
         let (data, response) = try await URLSession.shared.data(from: download.url)
         guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 12 * 1024 * 1024,
-              let image = UIImage(data: data), let thumbnail = await image.byPreparingThumbnail(ofSize: CGSize(width: 320, height: 320)) else {
+              let image = UIImage(data: data),
+              let thumbnail = await image.byPreparingThumbnail(ofSize: CGSize(width: 320, height: 320)) else {
             throw MessagesStickerCreationError.invalidResponse
         }
         thumbnails.setObject(thumbnail, forKey: assetID as NSString)
@@ -127,7 +128,10 @@ struct ClipLibraryView: View {
                         }
                         .accessibilityIdentifier("clip-library-empty")
                     } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 260 : 140), spacing: 16)], spacing: 20) {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 260 : 140), spacing: 16)],
+                            spacing: 20
+                        ) {
                             ForEach(library.stickers) { sticker in
                                 Button {
                                     destination = Detail(id: sticker.id, model: makeModel())
@@ -193,7 +197,7 @@ struct ClipLibraryView: View {
                 destination = completedDestination
                 self.completedDestination = nil
             }
-        }) {
+        }, content: {
             NavigationStack {
                 QuickModeView(model: generation, presentation: .composer)
                     .toolbar {
@@ -204,7 +208,7 @@ struct ClipLibraryView: View {
                     }
             }
             .presentationDragIndicator(.visible)
-        }
+        })
         .navigationDestination(item: $destination) { detail in
             QuickModeView(model: detail.model, presentation: .detail)
                 .task {
@@ -266,8 +270,7 @@ private struct ClipStickerTile: View {
             thumbnail = nil
             failed = false
             guard let id = sticker.previewAsset?.id else { return }
-            do { thumbnail = try await library.thumbnail(assetID: id, using: client) }
-            catch { failed = true }
+            do { thumbnail = try await library.thumbnail(assetID: id, using: client) } catch { failed = true }
         }
     }
 }
@@ -276,8 +279,8 @@ private struct ClipStickerTile: View {
 /// Deterministic HTTP fixtures for the App Clip interaction tests. The production model,
 /// request decoding, job watcher, image download, and completion navigation still run normally.
 nonisolated final class ClipLibraryFixtureProtocol: URLProtocol, @unchecked Sendable {
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     private var delivery: DispatchWorkItem?
 
@@ -325,8 +328,13 @@ nonisolated final class ClipLibraryFixtureProtocol: URLProtocol, @unchecked Send
         } else if path.hasPrefix("/api/v1/stickers/") {
             let id = url.lastPathComponent
             let title = id == "new-sticker" ? "Skateboarding cat" : id == "older-sticker" ? "Sleepy moon" : "Happy cat"
-            payload = ["id": id, "title": title, "status": "published", "activeRevisionId": "revision-1",
-                       "revisions": [["id": "revision-1", "candidateState": "published", "previewAssetId": "cat-preview", "document": ["kind": "static"]]]]
+            payload = [
+                "id": id, "title": title, "status": "published", "activeRevisionId": "revision-1",
+                "revisions": [[
+                    "id": "revision-1", "candidateState": "published",
+                    "previewAssetId": "cat-preview", "document": ["kind": "static"]
+                ]]
+            ]
         } else {
             status = 404
             payload = ["error": ["message": "No fixture for this request."]]

@@ -231,7 +231,10 @@ private struct SubscriptionSection: View {
         } header: {
             PosterListHeader("Subscription")
         } footer: {
-            Text("Manage Subscription opens Apple's own sheet, where a plan can be changed or cancelled. Changes can take a moment to reach this screen.")
+            Text("""
+                Manage Subscription opens Apple's own sheet, where a plan can be changed or cancelled. \
+                Changes can take a moment to reach this screen.
+                """)
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(AppColors.faint)
         }

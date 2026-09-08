@@ -1,8 +1,8 @@
 import Foundation
 import SwiftUI
 
-/// Markdown parsing for `MarkdownText`, kept apart from the views because it is the part with
-/// behaviour worth testing: block structure and inline runs, no layout.
+// Markdown parsing for `MarkdownText`, kept apart from the views because it is the part with
+// behaviour worth testing: block structure and inline runs, no layout.
 
 // MARK: - Inline
 

@@ -366,14 +366,14 @@ public enum AnimationCompiler {
         case .popIn(let from):
             try merge(&out.scale, [
                 scale(start, anchorScale.x * from, anchorScale.y * from, .linear),
-                scale(end, anchorScale.x, anchorScale.y, ease),
+                scale(end, anchorScale.x, anchorScale.y, ease)
             ], .scale)
             try merge(&out.opacity, [opacity(start, 0, .linear), opacity(end, anchorOpacity, ease)], .opacity)
 
         case .popOut(let to):
             try merge(&out.scale, [
                 scale(start, anchorScale.x, anchorScale.y, .linear),
-                scale(end, anchorScale.x * to, anchorScale.y * to, ease),
+                scale(end, anchorScale.x * to, anchorScale.y * to, ease)
             ], .scale)
             try merge(&out.opacity, [opacity(start, anchorOpacity, .linear), opacity(end, 0, ease)], .opacity)
 
@@ -387,17 +387,17 @@ public enum AnimationCompiler {
                     : position(start, anchorPosition.x, anchorPosition.y, .linear),
                 entering
                     ? position(end, anchorPosition.x, anchorPosition.y, ease)
-                    : position(end, away.x, away.y, ease),
+                    : position(end, away.x, away.y, ease)
             ], .position)
             try merge(&out.opacity, [
                 opacity(start, entering ? 0 : anchorOpacity, .linear),
-                opacity(end, entering ? anchorOpacity : 0, ease),
+                opacity(end, entering ? anchorOpacity : 0, ease)
             ], .opacity)
 
         case .moveTo(let x, let y):
             try merge(&out.position, [
                 position(start, anchorPosition.x, anchorPosition.y, .linear),
-                position(end, x, y, ease),
+                position(end, x, y, ease)
             ], .position)
 
         case .arcTo(let x, let y, let arcHeight):
@@ -432,19 +432,19 @@ public enum AnimationCompiler {
         case .scaleTo(let x, let y):
             try merge(&out.scale, [
                 scale(start, anchorScale.x, anchorScale.y, .linear),
-                scale(end, x, y, ease),
+                scale(end, x, y, ease)
             ], .scale)
 
         case .rotateTo(let degrees):
             try merge(&out.rotation, [
                 rotation(start, anchorRotation, .linear),
-                rotation(end, degrees, ease),
+                rotation(end, degrees, ease)
             ], .rotation)
 
         case .spin(let turns, let direction):
             try merge(&out.rotation, [
                 rotation(start, anchorRotation, .linear),
-                rotation(end, anchorRotation + 360 * turns * (direction == .cw ? 1 : -1), ease),
+                rotation(end, anchorRotation + 360 * turns * (direction == .cw ? 1 : -1), ease)
             ], .rotation)
 
         case .wiggle(let amplitudeDegrees, let requestedCycles):
@@ -495,26 +495,26 @@ public enum AnimationCompiler {
         case .blurIn(let radius):
             try merge(&out.effects, [
                 effect(start, blurRadius: radius, .linear),
-                effect(end, blurRadius: 0, ease),
+                effect(end, blurRadius: 0, ease)
             ], .effects)
 
         case .blurOut(let radius):
             try merge(&out.effects, [
                 effect(start, blurRadius: 0, .linear),
-                effect(end, blurRadius: radius, ease),
+                effect(end, blurRadius: radius, ease)
             ], .effects)
 
         case .hueShift(let degrees):
             try merge(&out.effects, [
                 effect(start, hueDegrees: 0, .linear),
-                effect(end, hueDegrees: degrees, ease),
+                effect(end, hueDegrees: degrees, ease)
             ], .effects)
 
         case .drawOn(let from):
             // Only `end` moves: the stroke grows from its own beginning to its full length.
             try merge(&out.trim, [
                 trim(start, anchorTrim.start, from, .linear),
-                trim(end, anchorTrim.start, anchorTrim.end, ease),
+                trim(end, anchorTrim.start, anchorTrim.end, ease)
             ], .trim)
 
         case .drawOff(let to):
@@ -522,13 +522,13 @@ public enum AnimationCompiler {
             // rather than as un-drawing backwards.
             try merge(&out.trim, [
                 trim(start, anchorTrim.start, anchorTrim.end, .linear),
-                trim(end, to, anchorTrim.end, ease),
+                trim(end, to, anchorTrim.end, ease)
             ], .trim)
 
         case .trimTo(let trimStart, let trimEnd):
             try merge(&out.trim, [
                 trim(start, anchorTrim.start, anchorTrim.end, .linear),
-                trim(end, trimStart, trimEnd, ease),
+                trim(end, trimStart, trimEnd, ease)
             ], .trim)
 
         case .wipeIn(let direction, let softness):
@@ -536,7 +536,7 @@ public enum AnimationCompiler {
             let angle = wipeDirectionAngle(direction)
             try merge(&out.wipe, [
                 wipe(start, 0, 0, angle, softness, .linear),
-                wipe(end, 0, 1, angle, softness, ease),
+                wipe(end, 0, 1, angle, softness, ease)
             ], .wipe)
 
         case .wipeOut(let direction, let softness):
@@ -545,13 +545,13 @@ public enum AnimationCompiler {
             let angle = wipeDirectionAngle(direction)
             try merge(&out.wipe, [
                 wipe(start, 0, 1, angle, softness, .linear),
-                wipe(end, 1, 1, angle, softness, ease),
+                wipe(end, 1, 1, angle, softness, ease)
             ], .wipe)
 
         case .wipeTo(let wipeStart, let wipeEnd, let angleDegrees, let softness):
             try merge(&out.wipe, [
                 wipe(start, 0, 1, angleDegrees, softness, .linear),
-                wipe(end, wipeStart, wipeEnd, angleDegrees, softness, ease),
+                wipe(end, wipeStart, wipeEnd, angleDegrees, softness, ease)
             ], .wipe)
 
         case .shine(let angleDegrees, let width, let intensity, let specCycles):
@@ -585,13 +585,13 @@ public enum AnimationCompiler {
         case .bloomIn(let radius, let intensity):
             try merge(&out.glow, [
                 glow(start, 0, radius, .linear),
-                glow(end, intensity, radius, ease),
+                glow(end, intensity, radius, ease)
             ], .glow)
 
         case .bloomOut(let radius, let intensity):
             try merge(&out.glow, [
                 glow(start, intensity, radius, .linear),
-                glow(end, 0, radius, ease),
+                glow(end, 0, radius, ease)
             ], .glow)
 
         case .bloomPulse(let radius, let intensity, let specCycles):

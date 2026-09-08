@@ -137,7 +137,7 @@ struct StickerLibraryClient: Sendable {
         )
         var queryItems = [
             URLQueryItem(name: "status", value: "published"),
-            URLQueryItem(name: "limit", value: "100"),
+            URLQueryItem(name: "limit", value: "100")
         ]
         if let cursor { queryItems.append(URLQueryItem(name: "cursor", value: cursor)) }
         components?.queryItems = queryItems

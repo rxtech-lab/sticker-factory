@@ -92,11 +92,13 @@ nonisolated enum MessengerRenderError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .noArtwork: String(localized: "This sticker has no published artwork to send.")
-        case .undecodable: String(localized: "This sticker's artwork could not be read.")
-        case .renderFailed: String(localized: "This sticker could not be drawn at the messenger's size.")
+        case .noArtwork: return String(localized: "This sticker has no published artwork to send.")
+        case .undecodable: return String(localized: "This sticker's artwork could not be read.")
+        case .renderFailed: return String(localized: "This sticker could not be drawn at the messenger's size.")
         case .tooLarge(let bytes, let limit):
-            String(localized: "Even the smallest encoding is \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)), over the \(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file)) limit.")
+            let reached = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+            let allowed = ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .file)
+            return String(localized: "Even the smallest encoding is \(reached), over the \(allowed) limit.")
         }
     }
 }
@@ -126,7 +128,7 @@ nonisolated struct MessengerFrameSource {
             let seconds = [
                 png?[kCGImagePropertyAPNGUnclampedDelayTime], png?[kCGImagePropertyAPNGDelayTime],
                 gif?[kCGImagePropertyGIFUnclampedDelayTime], gif?[kCGImagePropertyGIFDelayTime],
-                webp?[kCGImagePropertyWebPUnclampedDelayTime], webp?[kCGImagePropertyWebPDelayTime],
+                webp?[kCGImagePropertyWebPUnclampedDelayTime], webp?[kCGImagePropertyWebPDelayTime]
             ].compactMap { $0 as? Double }.first { $0 > 0 } ?? 0.1
             return max(1, Int((seconds * 1_000).rounded()))
         }
@@ -206,9 +208,23 @@ nonisolated enum MessengerStickerRenderer {
             let attempt: (data: Data, format: MessengerStickerFormat)?
             switch destination {
             case .whatsapp:
-                attempt = try encodeAnimatedWebP(schedule: schedule, frame: frame, limit: limits.animatedByteLimit, side: limits.dimension, rung: rung, progress: progress)
+                attempt = try encodeAnimatedWebP(
+                    schedule: schedule,
+                    frame: frame,
+                    limit: limits.animatedByteLimit,
+                    side: limits.dimension,
+                    rung: rung,
+                    progress: progress
+                )
             case .telegram:
-                attempt = try encodeWebM(schedule: schedule, frame: frame, limit: limits.animatedByteLimit, side: limits.dimension, rung: rung, progress: progress)
+                attempt = try encodeWebM(
+                    schedule: schedule,
+                    frame: frame,
+                    limit: limits.animatedByteLimit,
+                    side: limits.dimension,
+                    rung: rung,
+                    progress: progress
+                )
             }
             if let attempt {
                 let poster = try posterPNG(schedule: schedule, frame: frame)
@@ -255,20 +271,41 @@ nonisolated enum MessengerStickerRenderer {
         switch destination {
         case .whatsapp:
             var best = 0
-            let ladder: [(color: Float, alpha: Int)] = [(92, 100), (85, 90), (78, 80), (70, 70), (60, 60), (50, 50), (40, 40), (30, 30), (20, 20)]
+            let ladder: [(color: Float, alpha: Int)] = [
+                (92, 100), (85, 90), (78, 80), (70, 70), (60, 60),
+                (50, 50), (40, 40), (30, 30), (20, 20)
+            ]
             for quality in ladder {
                 try Task.checkCancellation()
                 let data = try WebPEncoder.encodeStill(square, quality: quality.color, alphaQuality: quality.alpha)
                 best = data.count
                 if data.count <= limit {
-                    return .init(stickerID: sticker.id, kind: .static, format: .webp, data: data, frameCount: 1, durationMilliseconds: 0, speedFactor: 1, posterPNG: poster)
+                    return .init(
+                        stickerID: sticker.id,
+                        kind: .static,
+                        format: .webp,
+                        data: data,
+                        frameCount: 1,
+                        durationMilliseconds: 0,
+                        speedFactor: 1,
+                        posterPNG: poster
+                    )
                 }
             }
             throw MessengerRenderError.tooLarge(bytes: best, limit: limit)
         case .telegram:
             guard let full = UIImage(cgImage: square).pngData() else { throw MessengerRenderError.renderFailed }
             if full.count <= limit {
-                return .init(stickerID: sticker.id, kind: .static, format: .png, data: full, frameCount: 1, durationMilliseconds: 0, speedFactor: 1, posterPNG: poster)
+                return .init(
+                    stickerID: sticker.id,
+                    kind: .static,
+                    format: .png,
+                    data: full,
+                    frameCount: 1,
+                    durationMilliseconds: 0,
+                    speedFactor: 1,
+                    posterPNG: poster
+                )
             }
             // A 512² PNG over 512 KB is dense photography; a palette brings it under without
             // touching the dimensions Telegram checks.
@@ -277,10 +314,23 @@ nonisolated enum MessengerStickerRenderer {
             var best = full.count
             for count in [256, 64, 16] {
                 try Task.checkCancellation()
-                guard let data = IndexedPNGEncoder.encodeStill(square, palette: census.palette(limit: count, dithered: true), dimension: limits.dimension) else { continue }
+                guard let data = IndexedPNGEncoder.encodeStill(
+                    square,
+                    palette: census.palette(limit: count, dithered: true),
+                    dimension: limits.dimension
+                ) else { continue }
                 best = min(best, data.count)
                 if data.count <= limit {
-                    return .init(stickerID: sticker.id, kind: .static, format: .png, data: data, frameCount: 1, durationMilliseconds: 0, speedFactor: 1, posterPNG: poster)
+                    return .init(
+                        stickerID: sticker.id,
+                        kind: .static,
+                        format: .png,
+                        data: data,
+                        frameCount: 1,
+                        durationMilliseconds: 0,
+                        speedFactor: 1,
+                        posterPNG: poster
+                    )
                 }
             }
             throw MessengerRenderError.tooLarge(bytes: best, limit: limit)
@@ -306,7 +356,13 @@ nonisolated enum MessengerStickerRenderer {
             : [(50, 60), (35, 45), (20, 30)]
         for quality in qualities {
             try Task.checkCancellation()
-            guard let stream = WebPEncoder.AnimationStream(width: side, height: side, loops: 0, quality: quality.color, alphaQuality: quality.alpha) else {
+            guard let stream = WebPEncoder.AnimationStream(
+                width: side,
+                height: side,
+                loops: 0,
+                quality: quality.color,
+                alphaQuality: quality.alpha
+            ) else {
                 throw MessengerRenderError.renderFailed
             }
             for (index, entry) in schedule.frames.enumerated() {
@@ -349,7 +405,13 @@ nonisolated enum MessengerStickerRenderer {
                     throw MessengerRenderError.renderFailed
                 }
                 try encoder.append(
-                    RGBAFrame(width: raster.width, height: raster.height, bytesPerRow: raster.width * 4, pixels: raster.pixels, isPremultiplied: false),
+                    RGBAFrame(
+                        width: raster.width,
+                        height: raster.height,
+                        bytesPerRow: raster.width * 4,
+                        pixels: raster.pixels,
+                        isPremultiplied: false
+                    ),
                     durationMilliseconds: entry.durationMilliseconds
                 )
             }

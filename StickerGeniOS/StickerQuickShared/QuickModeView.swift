@@ -50,7 +50,11 @@ final class QuickModeModel {
         self.baseURL = baseURL
         self.appClip = appClip
         self.token = token
-        client = MessagesStickerCreationClient(baseURL: baseURL, transport: URLSessionStickerHTTPTransport(session: .shared), useQuickModeAllowance: appClip)
+        client = MessagesStickerCreationClient(
+            baseURL: baseURL,
+            transport: URLSessionStickerHTTPTransport(session: .shared),
+            useQuickModeAllowance: appClip
+        )
         storagePrefix = "quick-pending-\(appClip ? "clip" : "app")"
         defaultsKey = storagePrefix
     }
@@ -63,8 +67,11 @@ final class QuickModeModel {
     }
 
     func addPhoto(_ data: Data) {
-        do { references = [try MessagesReferenceImageNormalizer.normalize(data, index: 0)] }
-        catch { self.error = error.localizedDescription }
+        do {
+            references = [try MessagesReferenceImageNormalizer.normalize(data, index: 0)]
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     func start(revising: Bool = false) {
@@ -82,9 +89,18 @@ final class QuickModeModel {
                 } else {
                     var ids: [String] = []
                     for reference in references {
-                        let intent = try await client.createUploadIntent(reference: reference, accessToken: accessToken, idempotencyKey: UUID().uuidString)
+                        let intent = try await client.createUploadIntent(
+                            reference: reference,
+                            accessToken: accessToken,
+                            idempotencyKey: UUID().uuidString
+                        )
                         try await client.upload(reference: reference, to: intent.upload)
-                        try await client.completeUpload(assetID: intent.assetID, digest: intent.digest, accessToken: accessToken, idempotencyKey: UUID().uuidString)
+                        try await client.completeUpload(
+                            assetID: intent.assetID,
+                            digest: intent.digest,
+                            accessToken: accessToken,
+                            idempotencyKey: UUID().uuidString
+                        )
                         ids.append(intent.assetID)
                     }
                     try await submit(PendingRequest(key: UUID().uuidString, stickerID: nil, text: prompt, referenceIDs: ids))
@@ -97,8 +113,7 @@ final class QuickModeModel {
     }
 
     func resume() async {
-        do { try selectStorage(try await token(false)) }
-        catch { self.error = error.localizedDescription; return }
+        do { try selectStorage(try await token(false)) } catch { self.error = error.localizedDescription; return }
         await refreshAllowance()
         guard !busy else { return }
         let pending = UserDefaults.standard.stringArray(forKey: defaultsKey)
@@ -113,8 +128,7 @@ final class QuickModeModel {
                 stickerID = pending[0]; jobID = pending[1]
             }
             try await finish()
-        }
-        catch { self.error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription }
         await refreshAllowance()
     }
 
@@ -138,9 +152,20 @@ final class QuickModeModel {
                 let accessToken = try await token(attempt == 1)
                 if let id = request.stickerID {
                     stickerID = id
-                    jobID = try await client.revise(stickerID: id, prompt: request.text, accessToken: accessToken, idempotencyKey: request.key)
+                    jobID = try await client.revise(
+                        stickerID: id,
+                        prompt: request.text,
+                        accessToken: accessToken,
+                        idempotencyKey: request.key
+                    )
                 } else {
-                    let created = try await client.createSticker(kind: .staticSticker, prompt: request.text, referenceAssetIDs: request.referenceIDs, accessToken: accessToken, idempotencyKey: request.key)
+                    let created = try await client.createSticker(
+                        kind: .staticSticker,
+                        prompt: request.text,
+                        referenceAssetIDs: request.referenceIDs,
+                        accessToken: accessToken,
+                        idempotencyKey: request.key
+                    )
                     stickerID = created.stickerID; jobID = created.jobID
                 }
                 persist()
@@ -192,7 +217,11 @@ final class QuickModeModel {
         // App Clip publication belongs to its generation job; normal app quick mode uses paid publish.
         if !appClip && (!snapshot.isPublished || snapshot.displayRevision?.candidateState == "candidate") {
             message = "Preparing your sticker to share…"
-            let publishJob = try await client.publish(stickerID: stickerID, accessToken: token(false), idempotencyKey: "quick-publish-\(jobID)")
+            let publishJob = try await client.publish(
+                stickerID: stickerID,
+                accessToken: token(false),
+                idempotencyKey: "quick-publish-\(jobID)"
+            )
             self.jobID = publishJob; persist()
             try await watch(publishJob)
             snapshot = try await client.fetchSticker(stickerID: stickerID, accessToken: token(false))
@@ -234,7 +263,10 @@ final class QuickModeModel {
             if http.statusCode == 401 && attempt == 0 { continue }
             guard (200..<300).contains(http.statusCode) else {
                 struct Failure: Decodable { struct Body: Decodable { let message: String }; let error: Body }
-                throw MessagesStickerCreationError.server(statusCode: http.statusCode, message: (try? JSONDecoder().decode(Failure.self, from: data))?.error.message)
+                throw MessagesStickerCreationError.server(
+                    statusCode: http.statusCode,
+                    message: (try? JSONDecoder().decode(Failure.self, from: data))?.error.message
+                )
             }
             return data
         }
@@ -293,17 +325,23 @@ struct QuickModeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(presentation == .detail && model.busy)
         .task {
-            if presentation == .standalone { await model.resume() }
-            else if presentation == .composer { await model.refreshAllowance() }
+            if presentation == .standalone { await model.resume() } else if presentation == .composer { await model.refreshAllowance() }
         }
         .task(id: model.allowance?.resetsAt) {
             guard let reset = model.allowance?.resetDate else { return }
             let delay = max(1, reset.timeIntervalSinceNow + 1)
-            do { try await Task.sleep(for: .seconds(delay)); await model.refreshAllowance() }
-            catch { /* The view closed or the server supplied a new reset time. */ }
+            // A thrown error means the view closed or the server supplied a new reset time.
+            do {
+                try await Task.sleep(for: .seconds(delay))
+                await model.refreshAllowance()
+            } catch {}
         }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await model.refreshAllowance() } } }
-        .onChange(of: photo) { _, value in Task { if let data = try? await value?.loadTransferable(type: Data.self) { model.addPhoto(data) } } }
+        .onChange(of: photo) { _, value in
+            Task {
+                if let data = try? await value?.loadTransferable(type: Data.self) { model.addPhoto(data) }
+            }
+        }
     }
 
     private var introduction: some View {

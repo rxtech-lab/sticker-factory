@@ -76,7 +76,7 @@ private struct ClipQuickEntry: View {
         .onChange(of: authentication.signedIn) { _, signedIn in
             if signedIn { showingSignIn = false }
         }
-        .sheet(isPresented: $showingSignIn, onDismiss: { authentication.endSignIn() }) {
+        .sheet(isPresented: $showingSignIn, onDismiss: { authentication.endSignIn() }, content: {
             NavigationStack {
                 if let manager = authentication.signInManager {
                     RxSignInView(
@@ -110,7 +110,7 @@ private struct ClipQuickEntry: View {
             }
             .interactiveDismissDisabled()
             .presentationDragIndicator(.hidden)
-        }
+        })
     }
 
     private var welcome: some View {

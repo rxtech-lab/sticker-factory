@@ -174,7 +174,7 @@ struct EditorDetachTests {
     @Test func anAnchorIsInertOnceItsChannelHasKeyframes() throws {
         let document = handAuthoredDocument(.init(opacity: [
             .init(timeSeconds: 0, value: 0.2),
-            .init(timeSeconds: 2, value: 0.9),
+            .init(timeSeconds: 2, value: 0.9)
         ]))
         var anchor = AnimatedAnchor.default
         anchor.opacity = 0.05
@@ -201,7 +201,7 @@ struct EditorDetachTests {
     @Test func theResolverSnapsToAKeyframeUnderThePlayhead() throws {
         let document = handAuthoredDocument(.init(position: [
             .init(timeSeconds: 0, x: 0.5, y: 0.5),
-            .init(timeSeconds: 1, x: 0.2, y: 0.2),
+            .init(timeSeconds: 1, x: 0.2, y: 0.2)
         ]))
         let layer = document.layers[0]
         #expect(AnimatedEditTargetResolver.target(channel: .position, layer: layer, atDocumentTime: 1) == .keyframe(index: 1))
@@ -212,7 +212,7 @@ struct EditorDetachTests {
     @Test func theResolverProposesANewKeyframeAwayFromExistingOnes() throws {
         let document = handAuthoredDocument(.init(position: [
             .init(timeSeconds: 0, x: 0.5, y: 0.5),
-            .init(timeSeconds: 2, x: 0.2, y: 0.2),
+            .init(timeSeconds: 2, x: 0.2, y: 0.2)
         ]))
         let target = AnimatedEditTargetResolver.target(channel: .position, layer: document.layers[0], atDocumentTime: 1)
         #expect(target == .newKeyframe(atTime: 1))
@@ -241,7 +241,7 @@ struct EditorDetachTests {
     @Test func draggingOnAKeyframeEditsThatKeyframeInPlace() throws {
         let document = handAuthoredDocument(.init(position: [
             .init(timeSeconds: 0, x: 0.5, y: 0.5),
-            .init(timeSeconds: 1, x: 0.2, y: 0.2),
+            .init(timeSeconds: 1, x: 0.2, y: 0.2)
         ]))
         let moved = try document.applyingPosition(AnimatedPoint(x: 0.9, y: 0.1), toLayer: "hero", atDocumentTime: 1)
         #expect(moved.layers[0].animation.count(of: .position) == 2, "no keyframe was added")
@@ -254,7 +254,7 @@ struct EditorDetachTests {
     @Test func draggingBetweenKeyframesInsertsOneAtThePlayhead() throws {
         let document = handAuthoredDocument(.init(position: [
             .init(timeSeconds: 0, x: 0.5, y: 0.5),
-            .init(timeSeconds: 2, x: 0.5, y: 0.5),
+            .init(timeSeconds: 2, x: 0.5, y: 0.5)
         ]))
         let moved = try document.applyingPosition(AnimatedPoint(x: 0.1, y: 0.9), toLayer: "hero", atDocumentTime: 1)
         let track = moved.layers[0].animation
@@ -304,7 +304,7 @@ struct EditorDetachTests {
     @Test func convertingToStaticDropsEffects() throws {
         let document = handAuthoredDocument(.init(effects: [
             .init(timeSeconds: 0, blurRadius: 10),
-            .init(timeSeconds: 2, blurRadius: 10),
+            .init(timeSeconds: 2, blurRadius: 10)
         ]))
         let flattened = try document.settingKind(.static, bakingAtDocumentTime: 1)
         #expect(flattened.layers[0].animation.effects.isEmpty)

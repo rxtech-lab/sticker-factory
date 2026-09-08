@@ -140,211 +140,241 @@ struct AnimatedEditorKeyframeInspector: View {
                 )
 
             case .effects:
-                let effect = animation.effects[index]
-                AnimatedValueSlider(
-                    title: "Blur",
-                    value: Binding(
-                        get: { effect.blurRadius },
-                        set: { value in
-                            edit(selection) {
-                                try $0.settingEffects(effect.value.with(blurRadius: value), index: index)
-                            }
-                        }
-                    ),
-                    range: 0...20,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "Hue",
-                    value: Binding(
-                        get: { effect.hueDegrees },
-                        set: { value in
-                            edit(selection) {
-                                try $0.settingEffects(effect.value.with(hueDegrees: value), index: index)
-                            }
-                        }
-                    ),
-                    range: -180...180,
-                    step: 1,
-                    format: "%.0f\u{00B0}",
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "Saturation",
-                    value: Binding(
-                        get: { effect.saturation },
-                        set: { value in
-                            edit(selection) {
-                                try $0.settingEffects(effect.value.with(saturation: value), index: index)
-                            }
-                        }
-                    ),
-                    range: 0...2,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-
+                effectsValue(selection, animation)
             case .trim:
-                let trim = animation.trim[index]
-                AnimatedValueSlider(
-                    title: "Start",
-                    value: Binding(
-                        get: { trim.start },
-                        set: { value in
-                            edit(selection) { try $0.settingTrim(.init(start: value, end: trim.end), index: index) }
-                        }
-                    ),
-                    range: 0...1,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "End",
-                    value: Binding(
-                        get: { trim.end },
-                        set: { value in
-                            edit(selection) { try $0.settingTrim(.init(start: trim.start, end: value), index: index) }
-                        }
-                    ),
-                    range: 0...1,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-
+                trimValue(selection, animation)
             case .wipe:
-                let wipe = animation.wipe[index]
-                AnimatedValueSlider(
-                    title: "Start",
-                    value: Binding(
-                        get: { wipe.start },
-                        set: { value in
-                            edit(selection) { try $0.settingWipe(wipe.value.with(start: value), index: index) }
-                        }
-                    ),
-                    range: 0...1,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "End",
-                    value: Binding(
-                        get: { wipe.end },
-                        set: { value in
-                            edit(selection) { try $0.settingWipe(wipe.value.with(end: value), index: index) }
-                        }
-                    ),
-                    range: 0...1,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "Angle",
-                    value: Binding(
-                        get: { wipe.angleDegrees },
-                        set: { value in
-                            edit(selection) { try $0.settingWipe(wipe.value.with(angleDegrees: value), index: index) }
-                        }
-                    ),
-                    range: -360...360,
-                    step: 1,
-                    format: "%.0f\u{00B0}",
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "Softness",
-                    value: Binding(
-                        get: { wipe.softness },
-                        set: { value in
-                            edit(selection) { try $0.settingWipe(wipe.value.with(softness: value), index: index) }
-                        }
-                    ),
-                    range: 0...0.5,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-
+                wipeValue(selection, animation)
             case .sheen:
-                let sheen = animation.sheen[index]
-                AnimatedValueSlider(
-                    title: "Position",
-                    value: Binding(
-                        get: { sheen.position },
-                        set: { value in
-                            edit(selection) { try $0.settingSheen(sheen.value.with(position: value), index: index) }
-                        }
-                    ),
-                    // Wider than the layer on purpose: the band has to be parkable off both edges.
-                    range: -1...2,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "Width",
-                    value: Binding(
-                        get: { sheen.width },
-                        set: { value in
-                            edit(selection) { try $0.settingSheen(sheen.value.with(width: value), index: index) }
-                        }
-                    ),
-                    range: 0.02...1,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "Angle",
-                    value: Binding(
-                        get: { sheen.angleDegrees },
-                        set: { value in
-                            edit(selection) { try $0.settingSheen(sheen.value.with(angleDegrees: value), index: index) }
-                        }
-                    ),
-                    range: -360...360,
-                    step: 1,
-                    format: "%.0f\u{00B0}",
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "Intensity",
-                    value: Binding(
-                        get: { sheen.intensity },
-                        set: { value in
-                            edit(selection) { try $0.settingSheen(sheen.value.with(intensity: value), index: index) }
-                        }
-                    ),
-                    range: 0...1,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-
+                sheenValue(selection, animation)
             case .glow:
-                let glow = animation.glow[index]
-                AnimatedValueSlider(
-                    title: "Amount",
-                    value: Binding(
-                        get: { glow.amount },
-                        set: { value in
-                            edit(selection) { try $0.settingGlow(.init(amount: value, radius: glow.radius), index: index) }
-                        }
-                    ),
-                    range: 0...1,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
-                AnimatedValueSlider(
-                    title: "Radius",
-                    value: Binding(
-                        get: { glow.radius },
-                        set: { value in
-                            edit(selection) { try $0.settingGlow(.init(amount: glow.amount, radius: value), index: index) }
-                        }
-                    ),
-                    range: 0.01...0.5,
-                    step: nil,
-                    onEditingChanged: gesture(selection)
-                )
+                glowValue(selection, animation)
             }
         }
+    }
+
+    @ViewBuilder
+    private func effectsValue(_ selection: AnimatedKeyframeSelection, _ animation: AnimatedLayerAnimation) -> some View {
+        let index = selection.index
+        let effect = animation.effects[index]
+        AnimatedValueSlider(
+            title: "Blur",
+            value: Binding(
+                get: { effect.blurRadius },
+                set: { value in
+                    edit(selection) {
+                        try $0.settingEffects(effect.value.with(blurRadius: value), index: index)
+                    }
+                }
+            ),
+            range: 0...20,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "Hue",
+            value: Binding(
+                get: { effect.hueDegrees },
+                set: { value in
+                    edit(selection) {
+                        try $0.settingEffects(effect.value.with(hueDegrees: value), index: index)
+                    }
+                }
+            ),
+            range: -180...180,
+            step: 1,
+            format: "%.0f\u{00B0}",
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "Saturation",
+            value: Binding(
+                get: { effect.saturation },
+                set: { value in
+                    edit(selection) {
+                        try $0.settingEffects(effect.value.with(saturation: value), index: index)
+                    }
+                }
+            ),
+            range: 0...2,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+
+    }
+
+    @ViewBuilder
+    private func trimValue(_ selection: AnimatedKeyframeSelection, _ animation: AnimatedLayerAnimation) -> some View {
+        let index = selection.index
+        let trim = animation.trim[index]
+        AnimatedValueSlider(
+            title: "Start",
+            value: Binding(
+                get: { trim.start },
+                set: { value in
+                    edit(selection) { try $0.settingTrim(.init(start: value, end: trim.end), index: index) }
+                }
+            ),
+            range: 0...1,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "End",
+            value: Binding(
+                get: { trim.end },
+                set: { value in
+                    edit(selection) { try $0.settingTrim(.init(start: trim.start, end: value), index: index) }
+                }
+            ),
+            range: 0...1,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+
+    }
+
+    @ViewBuilder
+    private func wipeValue(_ selection: AnimatedKeyframeSelection, _ animation: AnimatedLayerAnimation) -> some View {
+        let index = selection.index
+        let wipe = animation.wipe[index]
+        AnimatedValueSlider(
+            title: "Start",
+            value: Binding(
+                get: { wipe.start },
+                set: { value in
+                    edit(selection) { try $0.settingWipe(wipe.value.with(start: value), index: index) }
+                }
+            ),
+            range: 0...1,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "End",
+            value: Binding(
+                get: { wipe.end },
+                set: { value in
+                    edit(selection) { try $0.settingWipe(wipe.value.with(end: value), index: index) }
+                }
+            ),
+            range: 0...1,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "Angle",
+            value: Binding(
+                get: { wipe.angleDegrees },
+                set: { value in
+                    edit(selection) { try $0.settingWipe(wipe.value.with(angleDegrees: value), index: index) }
+                }
+            ),
+            range: -360...360,
+            step: 1,
+            format: "%.0f\u{00B0}",
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "Softness",
+            value: Binding(
+                get: { wipe.softness },
+                set: { value in
+                    edit(selection) { try $0.settingWipe(wipe.value.with(softness: value), index: index) }
+                }
+            ),
+            range: 0...0.5,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+
+    }
+
+    @ViewBuilder
+    private func sheenValue(_ selection: AnimatedKeyframeSelection, _ animation: AnimatedLayerAnimation) -> some View {
+        let index = selection.index
+        let sheen = animation.sheen[index]
+        AnimatedValueSlider(
+            title: "Position",
+            value: Binding(
+                get: { sheen.position },
+                set: { value in
+                    edit(selection) { try $0.settingSheen(sheen.value.with(position: value), index: index) }
+                }
+            ),
+            // Wider than the layer on purpose: the band has to be parkable off both edges.
+            range: -1...2,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "Width",
+            value: Binding(
+                get: { sheen.width },
+                set: { value in
+                    edit(selection) { try $0.settingSheen(sheen.value.with(width: value), index: index) }
+                }
+            ),
+            range: 0.02...1,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "Angle",
+            value: Binding(
+                get: { sheen.angleDegrees },
+                set: { value in
+                    edit(selection) { try $0.settingSheen(sheen.value.with(angleDegrees: value), index: index) }
+                }
+            ),
+            range: -360...360,
+            step: 1,
+            format: "%.0f\u{00B0}",
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "Intensity",
+            value: Binding(
+                get: { sheen.intensity },
+                set: { value in
+                    edit(selection) { try $0.settingSheen(sheen.value.with(intensity: value), index: index) }
+                }
+            ),
+            range: 0...1,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+
+    }
+
+    @ViewBuilder
+    private func glowValue(_ selection: AnimatedKeyframeSelection, _ animation: AnimatedLayerAnimation) -> some View {
+        let index = selection.index
+        let glow = animation.glow[index]
+        AnimatedValueSlider(
+            title: "Amount",
+            value: Binding(
+                get: { glow.amount },
+                set: { value in
+                    edit(selection) { try $0.settingGlow(.init(amount: value, radius: glow.radius), index: index) }
+                }
+            ),
+            range: 0...1,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
+        AnimatedValueSlider(
+            title: "Radius",
+            value: Binding(
+                get: { glow.radius },
+                set: { value in
+                    edit(selection) { try $0.settingGlow(.init(amount: glow.amount, radius: value), index: index) }
+                }
+            ),
+            range: 0.01...0.5,
+            step: nil,
+            onEditingChanged: gesture(selection)
+        )
     }
 
     /// Routes a channel edit through the editor so it lands in the undo history like any other.

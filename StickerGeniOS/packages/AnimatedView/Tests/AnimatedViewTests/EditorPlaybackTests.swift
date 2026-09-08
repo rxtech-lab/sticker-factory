@@ -158,7 +158,7 @@ struct EditorPlaybackTests {
     @Test func advancingChangesWhatTheCanvasWouldDraw() {
         let animation = AnimatedLayerAnimation(opacity: [
             .init(timeSeconds: 0, value: 0),
-            .init(timeSeconds: 2, value: 1),
+            .init(timeSeconds: 2, value: 1)
         ])
         let layer = AnimatedLayer.shape(.init(
             base: .init(id: "dot", name: "Dot", animation: animation),

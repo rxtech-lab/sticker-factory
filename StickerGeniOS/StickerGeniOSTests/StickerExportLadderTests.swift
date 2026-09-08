@@ -30,7 +30,7 @@ struct StickerExportLadderTests {
             colorsSpace: CGColorSpaceCreateDeviceRGB(),
             colors: [
                 CGColor(red: 0.98, green: 0.71, blue: 0.2, alpha: 1),
-                CGColor(red: 0.36, green: 0.28, blue: 0.92, alpha: 1),
+                CGColor(red: 0.36, green: 0.28, blue: 0.92, alpha: 1)
             ] as CFArray,
             locations: [0, 1]
         )!
@@ -115,7 +115,7 @@ struct StickerExportLadderTests {
         ))
         for image in frames {
             CGImageDestinationAddImage(destination, image, [
-                kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGDelayTime: 0.125],
+                kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGDelayTime: 0.125]
             ] as CFDictionary)
         }
         #expect(CGImageDestinationFinalize(destination))
@@ -403,7 +403,7 @@ struct StickerExportLadderTests {
         var document = PreviewFixtures.animatedBaseDocument
         document.layers = [
             .shape(.init(base: .init(id: "backdrop", name: "Backdrop"), shape: .burst, fill: .solid("#FFE7A3"))),
-            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF")))
         ]
         document.durationSeconds = 1
         document.fps = 12
@@ -442,7 +442,7 @@ struct StickerExportLadderTests {
     func sharingRenditionsComeFromOnePass() async throws {
         var document = PreviewFixtures.animatedBaseDocument
         document.layers = [
-            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF")))
         ]
         document.durationSeconds = 1
         document.fps = 8
@@ -478,7 +478,7 @@ struct StickerExportLadderTests {
         var document = PreviewFixtures.animatedBaseDocument
         document.layers = [
             .shape(.init(base: .init(id: "backdrop", name: "Backdrop"), shape: .burst, fill: .solid("#FFE7A3"))),
-            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF")))
         ]
         document.durationSeconds = 1
         document.fps = 8
@@ -526,7 +526,7 @@ struct StickerExportLadderTests {
         var document = PreviewFixtures.animatedBaseDocument
         document.layers = [
             .shape(.init(base: .init(id: "backdrop", name: "Backdrop"), shape: .burst, fill: .solid("#FFE7A3"))),
-            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF")))
         ]
         document.durationSeconds = 1
         document.fps = 12
@@ -562,7 +562,6 @@ struct StickerExportLadderTests {
         #expect(master.metadata.hasAlpha)
         #expect(master.metadata.fps == nil)
     }
-
 
     @MainActor
     @Test("Exporting as video renders the video and nothing else")
@@ -678,7 +677,7 @@ struct StickerExportLadderTests {
     func mp4CarriesTheLoopHold() async throws {
         var document = PreviewFixtures.animatedBaseDocument
         document.layers = [
-            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF"))),
+            .shape(.init(base: .init(id: "hero", name: "Hero"), shape: .circle, fill: .solid("#A88BFF")))
         ]
         document.durationSeconds = 1
         document.fps = 8
@@ -709,7 +708,7 @@ struct StickerExportLadderTests {
     func staticSystemSticker() async throws {
         var document = PreviewFixtures.staticDocument
         document.layers = [
-            .shape(.init(base: .init(id: "base", name: "Base"), shape: .roundedRectangle, fill: .solid("#A88BFF"))),
+            .shape(.init(base: .init(id: "base", name: "Base"), shape: .roundedRectangle, fill: .solid("#A88BFF")))
         ]
         let rendition = try await StickerExporter().exportSystemSticker(document: document, assets: .init(), size: .large)
         defer { try? FileManager.default.removeItem(at: rendition.url) }

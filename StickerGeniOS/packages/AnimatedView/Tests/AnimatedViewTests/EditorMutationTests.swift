@@ -162,7 +162,7 @@ struct EditorMutationTests {
     @Test func duplicatingMintsAUniqueIDAndKeepsKeyframes() throws {
         let animation = AnimatedLayerAnimation(opacity: [
             .init(timeSeconds: 0, value: 0),
-            .init(timeSeconds: 1, value: 1),
+            .init(timeSeconds: 1, value: 1)
         ])
         let original = AnimatedLayer.shape(.init(
             base: .init(id: "star", name: "Star", animation: animation),

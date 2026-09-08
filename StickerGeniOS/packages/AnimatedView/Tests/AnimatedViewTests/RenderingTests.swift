@@ -210,7 +210,7 @@ struct RenderingTests {
             .svg(.init(
                 base: .init(id: "icon", name: "Icon"),
                 source: .asset(assetId: AnimatedPreviewDocuments.imageAssetID)
-            )),
+            ))
         ])
         let image = try #require(AnimatedIconRenderer(document: document).cgImage(at: 0, dimension: 32))
         #expect(coverage(image).pixels == 0)

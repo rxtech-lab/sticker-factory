@@ -13,8 +13,7 @@ nonisolated enum StickerShareRoute: Hashable {
         let encodedPath = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath.lowercased() ?? ""
         guard !encodedPath.contains("%2f"), !encodedPath.contains("%5c") else { return nil }
         let parts = url.path.split(separator: "/").map(String.init)
-        if parts == ["share", "ios"] { self = .quick }
-        else if parts.count == 4, Array(parts.prefix(3)) == ["share", "ios", "packs"],
+        if parts == ["share", "ios"] { self = .quick } else if parts.count == 4, Array(parts.prefix(3)) == ["share", "ios", "packs"],
                 parts[3].range(of: "^[a-z0-9-]+$", options: .regularExpression) != nil {
             self = .pack(parts[3])
         } else { return nil }

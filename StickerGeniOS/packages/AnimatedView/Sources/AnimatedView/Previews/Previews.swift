@@ -31,7 +31,7 @@ import SwiftUI
     AnimatedIconStrip("Draw-on", items: [
         ("stagger", AnimatedPreviewDocuments.svgDrawOn),
         ("single stroke", AnimatedPreviewDocuments.svgDrawOnSimple),
-        ("path d=", AnimatedPreviewDocuments.signature),
+        ("path d=", AnimatedPreviewDocuments.signature)
     ])
 }
 
@@ -41,7 +41,7 @@ import SwiftUI
     AnimatedIconStrip("Same markup, both render modes", items: [
         ("native", AnimatedPreviewDocuments.svgNative),
         ("vector", AnimatedPreviewDocuments.svgVector),
-        ("vector + text", AnimatedPreviewDocuments.svgWithText),
+        ("vector + text", AnimatedPreviewDocuments.svgWithText)
     ])
 }
 
@@ -94,7 +94,7 @@ import SwiftUI
         ("none", AnimatedPreviewDocuments.transparent),
         ("solid", AnimatedPreviewDocuments.solidBackground),
         ("linear", AnimatedPreviewDocuments.gradientBackground),
-        ("radial", AnimatedPreviewDocuments.radialBackground),
+        ("radial", AnimatedPreviewDocuments.radialBackground)
     ], size: 120)
 }
 
@@ -104,7 +104,7 @@ import SwiftUI
     AnimatedIconStrip("Identical keyframes, different speed", items: [
         ("0.5×", AnimatedPreviewDocuments.atSpeed(0.5)),
         ("1×", AnimatedPreviewDocuments.atSpeed(1)),
-        ("2×", AnimatedPreviewDocuments.atSpeed(2)),
+        ("2×", AnimatedPreviewDocuments.atSpeed(2))
     ])
 }
 
@@ -134,7 +134,7 @@ import SwiftUI
 #Preview("13 · Canvas & static") {
     AnimatedIconStrip("Non-square canvas, and a static document", items: [
         ("1024×384", AnimatedPreviewDocuments.wideCanvas),
-        ("static", AnimatedPreviewDocuments.staticDocument),
+        ("static", AnimatedPreviewDocuments.staticDocument)
     ], size: 200)
 }
 

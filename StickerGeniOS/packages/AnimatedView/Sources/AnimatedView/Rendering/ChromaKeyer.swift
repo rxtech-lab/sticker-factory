@@ -157,7 +157,7 @@ public final class CoreImageChromaKeyer: ChromaKeyer, @unchecked Sendable {
                 input,
                 Float(keyColor.channel),
                 Float(ChromaKeyDominance.opaque),
-                Float(ChromaKeyDominance.keyed),
+                Float(ChromaKeyDominance.keyed)
             ]
         ) else { return nil }
         return context.createCGImage(keyed, from: input.extent)

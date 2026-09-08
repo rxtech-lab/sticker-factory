@@ -15,7 +15,7 @@ struct PlanLayerSourceTests {
         .existing(assetId: "asset"),
         .sequence(assetId: "atlas", frameCount: 12),
         .video(prompt: "A cat waving", motion: "wave", durationSeconds: 2),
-        .text(text: "HI", color: "#FF0055"),
+        .text(text: "HI", color: "#FF0055")
     ])
     func fittedSourcesAreLocked(_ source: PlanLayerSource) {
         #expect(source.isAspectLocked)
@@ -24,7 +24,7 @@ struct PlanLayerSourceTests {
     @Test("Primitives may fill a non-square box", arguments: [
         PlanLayerSource.shape(shape: "roundedRectangle", fill: "#FF8800"),
         .particle(preset: "sparkles", color: "#FFD400"),
-        .unknown(kind: "hologram"),
+        .unknown(kind: "hologram")
     ])
     func primitivesAreFree(_ source: PlanLayerSource) {
         #expect(!source.isAspectLocked)

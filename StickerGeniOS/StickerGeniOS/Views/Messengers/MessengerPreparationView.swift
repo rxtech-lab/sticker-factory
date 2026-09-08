@@ -85,7 +85,11 @@ struct MessengerPreparationView: View {
                     .font(.posterDisplay(20, weight: .heavy))
                     .foregroundStyle(AppColors.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Each sticker is encoded once per messenger and saved with the pack, so nobody who adds it has to do this again. Keep the app open; stop now and the rest is prepared the next time you save this pack.")
+                Text("""
+                    Each sticker is encoded once per messenger and saved with the pack, \
+                    so nobody who adds it has to do this again. \
+                    Keep the app open; stop now and the rest is prepared the next time you save this pack.
+                    """)
                     .font(.system(size: 14, design: .rounded))
                     .foregroundStyle(AppColors.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -142,8 +146,14 @@ struct MessengerPreparationView: View {
         } else {
             ErrorBanner(message: failed > 0
                 ? (failed == 1
-                    ? String(localized: "1 sticker could not be prepared for every messenger. The reason is beside it; the rest can be sent.")
-                    : String(localized: "\(failed) stickers could not be prepared for every messenger. The reasons are beside them; the rest can be sent."))
+                    ? String(localized: """
+                        1 sticker could not be prepared for every messenger. \
+                        The reason is beside it; the rest can be sent.
+                        """)
+                    : String(localized: """
+                        \(failed) stickers could not be prepared for every messenger. \
+                        The reasons are beside them; the rest can be sent.
+                        """))
                 : String(localized: "Not every sticker was prepared. Save this pack again to finish the rest."))
                 .accessibilityIdentifier("messenger-preparation-incomplete")
         }

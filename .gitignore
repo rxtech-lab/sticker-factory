@@ -12,3 +12,4 @@ StickerGeniOS/build
 server/test-results
 tether-full.png
 output
+**/.build

@@ -12,7 +12,7 @@ struct EditorFrameTimeTests {
     private func document(speed: Double, loop: AnimatedLoop = .loop, duration: Double = 2) -> AnimatedDocument {
         let animation = AnimatedLayerAnimation(opacity: [
             .init(timeSeconds: 0, value: 0),
-            .init(timeSeconds: duration, value: 1),
+            .init(timeSeconds: duration, value: 1)
         ])
         let layer = AnimatedLayer.shape(.init(
             base: .init(id: "hero", name: "Hero", animation: animation),
@@ -70,4 +70,3 @@ struct EditorFrameTimeTests {
         #expect(AnimatedIconFrame(document: subject, time: 3).documentTime == 1)
     }
 }
-

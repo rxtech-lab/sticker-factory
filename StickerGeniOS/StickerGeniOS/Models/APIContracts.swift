@@ -162,9 +162,9 @@ nonisolated struct AssetRecord: Codable, Identifiable, Hashable, Sendable {
     var byteSize: Int?
     var width: Int?
     var height: Int?
-    var frameCount: Int? = nil
-    var durationSeconds: Double? = nil
-    var fps: Double? = nil
+    var frameCount: Int?
+    var durationSeconds: Double?
+    var fps: Double?
     var sha256: String?
     var hasAlpha: Bool?
     var createdAt: Date?
@@ -213,13 +213,6 @@ nonisolated struct SequenceMetadata: Codable, Hashable, Sendable {
     var rows: Int
     var frameCount: Int
     var frameRate: Double
-
-    init(columns: Int, rows: Int, frameCount: Int, frameRate: Double) {
-        self.columns = columns
-        self.rows = rows
-        self.frameCount = frameCount
-        self.frameRate = frameRate
-    }
 }
 nonisolated enum AssetState: String, Codable, Hashable, Sendable { case pending, ready, failed, deleted }
 
@@ -245,8 +238,8 @@ nonisolated struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
     var createdAt: Date
     var attachments: [ChatAttachment]
     /// Present on `.plan` messages: the design the user is being asked to confirm.
-    var plan: PlanRecord? = nil
-    var toolDetails: String? = nil
+    var plan: PlanRecord?
+    var toolDetails: String?
 }
 
 nonisolated enum ChatRole: String, Codable, Hashable, Sendable { case user, assistant, system }
@@ -602,13 +595,19 @@ nonisolated enum JSONValue: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if container.decodeNil() { self = .null }
-        else if let value = try? container.decode(Bool.self) { self = .bool(value) }
-        else if let value = try? container.decode(Double.self) { self = .number(value) }
-        else if let value = try? container.decode(String.self) { self = .string(value) }
-        else if let value = try? container.decode([JSONValue].self) { self = .array(value) }
-        else if let value = try? container.decode([String: JSONValue].self) { self = .object(value) }
-        else {
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([JSONValue].self) {
+            self = .array(value)
+        } else if let value = try? container.decode([String: JSONValue].self) {
+            self = .object(value)
+        } else {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported JSON value")
         }
     }
@@ -860,18 +859,18 @@ nonisolated extension GenerationEvent {
 }
 
 nonisolated struct GenerationEventData: Codable, Hashable, Sendable {
-    var message: String? = nil
-    var progress: Double? = nil
-    var messageId: String? = nil
-    var revisionId: String? = nil
-    var document: AnimatedDocument? = nil
-    var toolCallId: String? = nil
-    var toolName: String? = nil
-    var toolStatus: ChatMessageStatus? = nil
-    var toolDetails: String? = nil
-    var cancelled: Bool? = nil
+    var message: String?
+    var progress: Double?
+    var messageId: String?
+    var revisionId: String?
+    var document: AnimatedDocument?
+    var toolCallId: String?
+    var toolName: String?
+    var toolStatus: ChatMessageStatus?
+    var toolDetails: String?
+    var cancelled: Bool?
     /// The assistant turn, shipped inline so the chat can render it without a refetch.
-    var assistantMessage: ChatMessage? = nil
+    var assistantMessage: ChatMessage?
 
     enum CodingKeys: String, CodingKey {
         case message, progress, messageId, revisionId, document

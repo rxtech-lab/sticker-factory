@@ -234,7 +234,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
             header.heightAnchor.constraint(greaterThanOrEqualToConstant: 40),
             // Balances the back button so the title stays optically centred. Activated here, once
             // both views share `header` as an ancestor — pairing two orphan anchors throws.
-            trailingSpacer.widthAnchor.constraint(equalTo: backButton.widthAnchor),
+            trailingSpacer.widthAnchor.constraint(equalTo: backButton.widthAnchor)
         ])
     }
 
@@ -281,11 +281,14 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
             referenceStack.trailingAnchor.constraint(equalTo: referenceScrollView.contentLayoutGuide.trailingAnchor),
             referenceStack.topAnchor.constraint(equalTo: referenceScrollView.contentLayoutGuide.topAnchor),
             referenceStack.bottomAnchor.constraint(equalTo: referenceScrollView.contentLayoutGuide.bottomAnchor),
-            referenceStack.heightAnchor.constraint(equalTo: referenceScrollView.frameLayoutGuide.heightAnchor),
+            referenceStack.heightAnchor.constraint(equalTo: referenceScrollView.frameLayoutGuide.heightAnchor)
         ])
         formStack.addArrangedSubview(referenceScrollView)
 
-        privacyLabel.text = String(localized: "Selected photos are uploaded privately as generation references. New stickers are added to your library so you can send them straight away.")
+        privacyLabel.text = String(localized: """
+            Selected photos are uploaded privately as generation references. \
+            New stickers are added to your library so you can send them straight away.
+            """)
         privacyLabel.font = .preferredFont(forTextStyle: .caption1)
         privacyLabel.textColor = .secondaryLabel
         privacyLabel.numberOfLines = 0
@@ -320,7 +323,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
             formStack.trailingAnchor.constraint(equalTo: formScrollView.contentLayoutGuide.trailingAnchor, constant: -16),
             formStack.topAnchor.constraint(equalTo: formScrollView.contentLayoutGuide.topAnchor, constant: 12),
             formStack.bottomAnchor.constraint(equalTo: formScrollView.contentLayoutGuide.bottomAnchor, constant: -20),
-            formStack.widthAnchor.constraint(equalTo: formScrollView.frameLayoutGuide.widthAnchor, constant: -32),
+            formStack.widthAnchor.constraint(equalTo: formScrollView.frameLayoutGuide.widthAnchor, constant: -32)
         ])
     }
 
@@ -343,7 +346,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         NSLayoutConstraint.activate([
             promptPlaceholder.leadingAnchor.constraint(equalTo: promptTextView.leadingAnchor, constant: 15),
             promptPlaceholder.trailingAnchor.constraint(equalTo: promptTextView.trailingAnchor, constant: -15),
-            promptPlaceholder.topAnchor.constraint(equalTo: promptTextView.topAnchor, constant: 12),
+            promptPlaceholder.topAnchor.constraint(equalTo: promptTextView.topAnchor, constant: 12)
         ])
 
         promptCountLabel.font = .preferredFont(forTextStyle: .caption1)
@@ -398,7 +401,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         workingSteps.accessibilityIdentifier = "messages-create-steps"
 
         let stack = UIStackView(arrangedSubviews: [
-            workingIndicator, workingLabel, workingProgress, workingSteps, hint, workingCancelButton,
+            workingIndicator, workingLabel, workingProgress, workingSteps, hint, workingCancelButton
         ])
         stack.axis = .vertical
         stack.alignment = .fill
@@ -413,7 +416,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
             workingView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: workingView.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: workingView.trailingAnchor),
-            stack.centerYAnchor.constraint(equalTo: workingView.centerYAnchor),
+            stack.centerYAnchor.constraint(equalTo: workingView.centerYAnchor)
         ])
     }
 
@@ -477,7 +480,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         actions.spacing = 10
 
         let stack = UIStackView(arrangedSubviews: [
-            resultArtwork, resultStatusLabel, reviseTextView, actions, openAppButton, doneButton,
+            resultArtwork, resultStatusLabel, reviseTextView, actions, openAppButton, doneButton
         ])
         stack.axis = .vertical
         stack.alignment = .fill
@@ -499,7 +502,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
             resultImageView.topAnchor.constraint(equalTo: resultArtwork.topAnchor),
             resultImageView.bottomAnchor.constraint(equalTo: resultArtwork.bottomAnchor),
             sendButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
-            reviseButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
+            reviseButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 48)
         ])
     }
 
@@ -522,7 +525,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         NSLayoutConstraint.activate([
             revisePlaceholder.leadingAnchor.constraint(equalTo: reviseTextView.leadingAnchor, constant: 13),
             revisePlaceholder.trailingAnchor.constraint(equalTo: reviseTextView.trailingAnchor, constant: -13),
-            revisePlaceholder.topAnchor.constraint(equalTo: reviseTextView.topAnchor, constant: 10),
+            revisePlaceholder.topAnchor.constraint(equalTo: reviseTextView.topAnchor, constant: 10)
         ])
     }
 
@@ -645,7 +648,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
             referenceStack.addArrangedSubview(button)
             NSLayoutConstraint.activate([
                 button.widthAnchor.constraint(equalToConstant: 80),
-                button.heightAnchor.constraint(equalToConstant: 80),
+                button.heightAnchor.constraint(equalToConstant: 80)
             ])
         }
         referenceScrollView.isHidden = references.isEmpty
@@ -774,7 +777,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
                 stickerView.leadingAnchor.constraint(equalTo: resultArtwork.leadingAnchor),
                 stickerView.trailingAnchor.constraint(equalTo: resultArtwork.trailingAnchor),
                 stickerView.topAnchor.constraint(equalTo: resultArtwork.topAnchor),
-                stickerView.bottomAnchor.constraint(equalTo: resultArtwork.bottomAnchor),
+                stickerView.bottomAnchor.constraint(equalTo: resultArtwork.bottomAnchor)
             ])
             stickerView.startAnimating()
             resultStickerView = stickerView

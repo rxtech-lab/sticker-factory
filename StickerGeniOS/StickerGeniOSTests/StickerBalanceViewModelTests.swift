@@ -81,7 +81,8 @@ final class StickerBalanceViewModelTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(LedgerPage.self, from: Data("""
-        {"entries":[{"id":"entry-\(page)","kind":"credit","unit":"points","delta":100,"balanceAfter":100,"description":"Grant","createdAt":"2026-09-07T00:00:00Z"}],"total":2,"page":\(page),"pageSize":1,"pageCount":2}
+        {"entries":[{"id":"entry-\(page)","kind":"credit","unit":"points","delta":100,"balanceAfter":100,"description":"Grant",\
+        "createdAt":"2026-09-07T00:00:00Z"}],"total":2,"page":\(page),"pageSize":1,"pageCount":2}
         """.utf8))
     }
 }

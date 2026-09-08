@@ -57,7 +57,10 @@ enum SubjectLiftPipeline {
         }
         let encoded = try FrameAtlasEncoder.encode(frames: lifted, settings: effective)
         SubjectLiftLog.logger.info(
-            "pipeline: atlas \(encoded.metadata.columns, privacy: .public)x\(encoded.metadata.rows, privacy: .public) frames=\(encoded.metadata.frameCount, privacy: .public) bytes=\(encoded.data.count, privacy: .public)"
+            """
+            pipeline: atlas \(encoded.metadata.columns, privacy: .public)x\(encoded.metadata.rows, privacy: .public) \
+            frames=\(encoded.metadata.frameCount, privacy: .public) bytes=\(encoded.data.count, privacy: .public)
+            """
         )
         return .init(
             data: encoded.data,

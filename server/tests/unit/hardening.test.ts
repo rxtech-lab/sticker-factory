@@ -5,7 +5,7 @@ import { CreateUploadRequestSchema, PostChatMessageRequestSchema } from "@/lib/c
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { validateAnimatedRenditionTiming } from "@/lib/services/stickers";
 import { downscaleForModelInput, inspectImage } from "@/lib/storage/r2";
-import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation/steps";
+import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation/turn-context";
 import { spliceApngControlChunks } from "@/tests/helpers/apng";
 
 describe("media and animation hardening", () => {

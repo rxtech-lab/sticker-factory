@@ -32,7 +32,13 @@ struct MessengerPackSplitterTests {
             activeRevisionId: "revision-\(index)",
             createdAt: Date(),
             updatedAt: Date(),
-            previewAsset: published ? .init(id: "asset-\(index)", stickerId: nil, kind: kind == .static ? .master : .apng, state: .ready, mimeType: "image/png") : nil,
+            previewAsset: published ? .init(
+                id: "asset-\(index)",
+                stickerId: nil,
+                kind: kind == .static ? .master : .apng,
+                state: .ready,
+                mimeType: "image/png"
+            ) : nil,
             systemSticker: nil,
             whatsappAsset: rendition(.whatsapp),
             telegramAsset: rendition(.telegram)
@@ -40,7 +46,13 @@ struct MessengerPackSplitterTests {
     }
 
     private func split(_ stickers: [Sticker], _ destination: MessengerDestination, excluding: Set<String> = []) -> MessengerSplitOutcome {
-        MessengerPackSplitter.split(packID: "pack", packTitle: "Cozy Cats", stickers: stickers, destination: destination, excluding: excluding)
+        MessengerPackSplitter.split(
+            packID: "pack",
+            packTitle: "Cozy Cats",
+            stickers: stickers,
+            destination: destination,
+            excluding: excluding
+        )
     }
 
     @Test("A small single-kind pack becomes one part with the pack's own name")

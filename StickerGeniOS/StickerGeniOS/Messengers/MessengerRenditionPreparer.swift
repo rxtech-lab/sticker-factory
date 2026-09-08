@@ -93,7 +93,13 @@ final class MessengerRenditionPreparer {
             guard let self else { return }
             for (index, sticker) in pending.enumerated() {
                 guard !Task.isCancelled else { break }
-                progress = .init(completed: index, total: pending.count, stickerID: sticker.id, stickerTitle: sticker.title, destination: nil)
+                progress = .init(
+                    completed: index,
+                    total: pending.count,
+                    stickerID: sticker.id,
+                    stickerTitle: sticker.title,
+                    destination: nil
+                )
                 await prepareOne(sticker, index: index, total: pending.count)
             }
             progress = nil
@@ -146,14 +152,25 @@ final class MessengerRenditionPreparer {
         // between whole stickers.
         let missing = sticker.missingMessengerDestinations
         let steps = Double(1 + missing.count)
-        progress = .init(completed: index, total: total, stickerID: sticker.id, stickerTitle: sticker.title, destination: nil, stepFraction: 0, detail: String(localized: "Downloading artwork…"))
+        progress = .init(
+            completed: index,
+            total: total,
+            stickerID: sticker.id,
+            stickerTitle: sticker.title,
+            destination: nil,
+            stepFraction: 0,
+            detail: String(localized: "Downloading artwork…")
+        )
 
         let artwork: Data
         do {
             artwork = try await StickerAssetData.load(assetID: source.id, expectedSHA256: source.sha256, api: api)
         } catch {
             guard !Task.isCancelled else { return }
-            Self.log.error("artwork download failed sticker=\(sticker.id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.log.error("""
+                artwork download failed sticker=\(sticker.id, privacy: .public) \
+                error=\(error.localizedDescription, privacy: .public)
+                """)
             for destination in sticker.missingMessengerDestinations {
                 outcome.failures[destination] = error.localizedDescription
             }
@@ -168,7 +185,15 @@ final class MessengerRenditionPreparer {
         var telegramAssetID: String?
         for (step, destination) in missing.enumerated() {
             guard !Task.isCancelled else { return }
-            progress = .init(completed: index, total: total, stickerID: sticker.id, stickerTitle: sticker.title, destination: destination, stepFraction: Double(step + 1) / steps, detail: nil)
+            progress = .init(
+                completed: index,
+                total: total,
+                stickerID: sticker.id,
+                stickerTitle: sticker.title,
+                destination: destination,
+                stepFraction: Double(step + 1) / steps,
+                detail: nil
+            )
             do {
                 let assetID = try await encodeAndUpload(sticker: sticker, artwork: artwork, destination: destination)
                 switch destination {
@@ -184,7 +209,11 @@ final class MessengerRenditionPreparer {
                 // Deliberately not fatal to the sticker. WhatsApp gives an animation 500 KB and
                 // Telegram 256 KB, so artwork that comfortably clears one routinely misses the
                 // other — and a pack that can go to one messenger is not a failed pack.
-                Self.log.error("encode failed sticker=\(sticker.id, privacy: .public) destination=\(destination.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                Self.log.error("""
+                    encode failed sticker=\(sticker.id, privacy: .public) \
+                    destination=\(destination.rawValue, privacy: .public) \
+                    error=\(error.localizedDescription, privacy: .public)
+                    """)
                 outcome.failures[destination] = error.localizedDescription
             }
         }

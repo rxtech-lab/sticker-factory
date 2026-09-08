@@ -280,16 +280,28 @@ struct PlanCard: View {
     private var baseConfirmationMessage: String {
         if plan.kind == .animated {
             return generationCount == 0
-                ? String(localized: "This uses the approved static reference to assemble \(plan.layers.count) existing layers and add motion.")
+                ? String(localized: """
+                    This uses the approved static reference to \
+                    assemble \(plan.layers.count) existing layers and add motion.
+                    """)
                 : generationCount == 1
-                    ? String(localized: "This uses the approved static reference to generate 1 matching transparent part, assembles the layers, and adds motion.")
-                    : String(localized: "This uses the approved static reference to generate \(generationCount) matching transparent parts, assembles the layers, and adds motion.")
+                    ? String(localized: """
+                        This uses the approved static reference to \
+                        generate 1 matching transparent part, assembles the layers, and adds motion.
+                        """)
+                    : String(localized: """
+                        This uses the approved static reference to \
+                        generate \(generationCount) matching transparent parts, assembles the layers, and adds motion.
+                        """)
         }
         return generationCount == 0
             ? String(localized: "This assembles \(plan.layers.count) layers. No images need to be generated.")
             : generationCount == 1
                 ? String(localized: "This generates 1 separate image and assembles it. It takes longer than a single sticker.")
-                : String(localized: "This generates \(generationCount) separate images and assembles them. It takes longer than a single sticker.")
+                : String(localized: """
+                    This generates \(generationCount) separate images and \
+                    assembles them. It takes longer than a single sticker.
+                    """)
     }
 
     private var statusNote: String {

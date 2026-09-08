@@ -31,7 +31,14 @@ struct RevisionComparisonView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                             if revision.id != store.details[stickerID]?.activeRevisionId && revision.state != .candidate {
                                 Button("Revert to this") {
-                                    Task { if (try? await store.transition(stickerID: stickerID, revisionID: revision.id, action: .revert)) != nil { dismiss() } }
+                                    Task {
+                                        let reverted = (try? await store.transition(
+                                            stickerID: stickerID,
+                                            revisionID: revision.id,
+                                            action: .revert
+                                        )) != nil
+                                        if reverted { dismiss() }
+                                    }
                                 }
                                 .buttonStyle(.poster)
                             }
