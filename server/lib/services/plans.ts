@@ -1,3 +1,4 @@
+import { currentBillingEnvironment } from "@/lib/subscription/client";
 import { and, desc, eq, inArray, isNotNull, isNull, max, ne } from "drizzle-orm";
 import {
   isActionablePlanState,
@@ -361,6 +362,7 @@ export async function confirmPlan(
           kind: "compose",
           state: "queued",
           reservationId,
+          billingEnvironment: await currentBillingEnvironment(),
           reservationAmount: reservationId ? creditHold : 0,
           createdAt: now,
           updatedAt: now,
@@ -477,6 +479,7 @@ export async function cancelPlan(
           kind: "plan",
           state: "queued",
           reservationId,
+          billingEnvironment: await currentBillingEnvironment(),
           reservationAmount: reservationId ? creditHold : 0,
           createdAt: now,
           updatedAt: now,

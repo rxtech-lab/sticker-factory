@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/http/errors";
-import { subscriptionConfig, type SubscriptionConfig } from "./config";
+import { requestBillingEnvironment } from "./environment";
+import { subscriptionConfig, type SubscriptionConfig, type BillingEnvironment } from "./config";
 
 /**
  * The slice of the RxSubscription `/api/v1` surface this server uses.
@@ -132,8 +133,12 @@ async function call<T>(
 }
 
 /** Throws when billing is unconfigured — callers must check `subscriptionEnabled()` first. */
-function requireConfig(): SubscriptionConfig {
-  const config = subscriptionConfig();
+export async function currentBillingEnvironment(): Promise<BillingEnvironment | null> {
+  return subscriptionConfig(await requestBillingEnvironment())?.environment ?? null;
+}
+
+async function requireConfig(environment?: BillingEnvironment | null): Promise<SubscriptionConfig> {
+  const config = subscriptionConfig(environment === undefined ? await requestBillingEnvironment() : environment);
   if (!config) {
     throw new ApiError(
       503,
@@ -145,7 +150,7 @@ function requireConfig(): SubscriptionConfig {
 }
 
 export async function fetchEntitlements(rxlabUserId: string): Promise<Entitlements> {
-  return call<Entitlements>(requireConfig(), "GET", "entitlements", {
+  return call<Entitlements>(await requireConfig(), "GET", "entitlements", {
     query: { rxlabUserId },
   });
 }
@@ -160,7 +165,7 @@ export async function reserveCredits(input: {
   expiresInSeconds?: number;
 }): Promise<Reservation> {
   return call<Reservation>(
-    requireConfig(),
+    await requireConfig(),
     "POST",
     "balances/reserve",
     { body: input },
@@ -173,8 +178,8 @@ export async function settleReservation(input: {
   idempotencyKey: string;
   description?: string;
   metadata?: Record<string, unknown>;
-}): Promise<ReservationSettlement> {
-  return call<ReservationSettlement>(requireConfig(), "POST", `balances/reservations/${input.reservationId}/settle`, {
+}, environment?: BillingEnvironment | null): Promise<ReservationSettlement> {
+  return call<ReservationSettlement>(await requireConfig(environment), "POST", `balances/reservations/${input.reservationId}/settle`, {
     body: {
       amount: input.amount,
       idempotencyKey: input.idempotencyKey,
@@ -189,8 +194,8 @@ export async function releaseReservation(input: {
   reservationId: string;
   idempotencyKey: string;
   reason?: string;
-}): Promise<void> {
-  await call(requireConfig(), "POST", `balances/reservations/${input.reservationId}/release`, {
+}, environment?: BillingEnvironment | null): Promise<void> {
+  await call(await requireConfig(environment), "POST", `balances/reservations/${input.reservationId}/release`, {
     body: { idempotencyKey: input.idempotencyKey, reason: input.reason },
   });
 }
@@ -201,12 +206,12 @@ export interface UsageAllowance {
   remaining: number | null; resetsAt: string | null;
 }
 export const QUICK_MODE_USAGE_ITEM = "quick_mode_allowance";
-export function fetchUsage(rxlabUserId: string) {
-  return call<{ usage: UsageAllowance[] }>(requireConfig(), "GET", "usage", { query: { rxlabUserId } });
+export async function fetchUsage(rxlabUserId: string) {
+  return call<{ usage: UsageAllowance[] }>(await requireConfig(), "GET", "usage", { query: { rxlabUserId } });
 }
 /** The deployed usage API records one attempt and enforces the server's allowance. */
-export function recordGenerationUsage(rxlabUserId: string, jobId: string) {
-  return call<{ allowed: boolean; reason?: string }>(requireConfig(), "POST", "usage", { body: {
+export async function recordGenerationUsage(rxlabUserId: string, jobId: string) {
+  return call<{ allowed: boolean; reason?: string }>(await requireConfig(), "POST", "usage", { body: {
     rxlabUserId, item: QUICK_MODE_USAGE_ITEM, amount: 1, idempotencyKey: jobId, metadata: { jobId },
   } });
 }

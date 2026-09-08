@@ -6,7 +6,7 @@ import { and, eq, inArray, max } from "drizzle-orm";
 import { compactTranscript, type TranscriptOptions } from "@/lib/ai/compaction";
 import { applyStickerOperationsV1, StickerDocumentSchema, layerImageAssetIds, layerVideoAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase } from "@/lib/db/client";
-import { assets, chatMessages, chatThreads, generationEvents, generationJobs } from "@/lib/db/schema";
+import { assets, chatMessages, chatThreads, generationJobs } from "@/lib/db/schema";
 import { getAiProvider } from "@/lib/ai/gateway";
 import { describeError, traceEvent } from "@/lib/observability/trace";
 import { appendGenerationEvent } from "@/lib/services/events";
@@ -22,33 +22,6 @@ import { derivedAssetId } from "@/lib/services/assets";
  * opening words the client sent.
  */
 export const MAX_SUMMARIZED_TITLE_LENGTH = 48;
-
-export async function beginJob(jobId: string): Promise<void> {
-  const db = await getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
-  traceEvent("beginJobStep", { jobId, kind: job?.kind, state: job?.state, attempts: job?.attempts });
-  if (!job) throw new Error("Generation job not found");
-  // A step the runtime is re-running: the first attempt already claimed the job and then died
-  // without reaching a terminal state, which is what a turn stuck on "Running…" looks like here.
-  if (job.state === "running") {
-    traceEvent("beginJobStep:reentered", { jobId, attempts: job.attempts });
-    return;
-  }
-  if (job.state !== "queued") throw new Error(`Job cannot start from state ${job.state}`);
-  await db.transaction(async (tx) => {
-    const now = new Date();
-    const changed = await tx.update(generationJobs).set({ state: "running", attempts: job.attempts + 1, updatedAt: now })
-      .where(and(eq(generationJobs.id, jobId), eq(generationJobs.state, "queued"))).returning({ id: generationJobs.id });
-    if (changed.length === 0) throw new Error("Job was cancelled before it started");
-    await tx.insert(generationEvents).values({
-      jobId,
-      ownerId: job.ownerId,
-      type: "started",
-      dataJson: { attempt: job.attempts + 1 },
-      createdAt: now,
-    });
-  });
-}
 
 export async function insertAssistantMessage(
   job: typeof generationJobs.$inferSelect,

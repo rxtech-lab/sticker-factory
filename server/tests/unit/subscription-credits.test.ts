@@ -301,9 +301,9 @@ describe("settling and releasing", () => {
     await expect(refundJobCredits(db, job(), "generation_failed")).resolves.toBeUndefined();
 
     expect(errors).toHaveBeenCalled();
-    // The hold reference survives a failed settle, so nothing is silently
+    // The hold reference survives a failed settle or release, so nothing is silently
     // forgotten; the reservation's own expiry returns the credits.
-    expect(cleared).toHaveLength(1);
+    expect(cleared).toHaveLength(0);
   });
 
   it("releases a hold whose job never made it into the database", async () => {

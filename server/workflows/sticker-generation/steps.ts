@@ -1,20 +1,21 @@
 import { and, desc, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
 import { withAiApiCostRecorder } from "@/lib/ai/cost";
-import { firstRow, getDatabase, type Database } from "@/lib/db/client";
-import { assets, chatMessages, chatThreads, generationEvents, generationJobs, stickers, type GenerationJobRow } from "@/lib/db/schema";
+import { firstRow, getDatabase } from "@/lib/db/client";
+import { assets, chatMessages, chatThreads, generationJobs, stickers } from "@/lib/db/schema";
 import { getAiProvider } from "@/lib/ai/gateway";
-import { isNotifiableJobKind, notifyGenerationFinished, type GenerationOutcome } from "@/lib/notifications/generation";
 import { describeError, traceEvent, traceSpan } from "@/lib/observability/trace";
 import { appendGenerationEvent } from "@/lib/services/events";
+import { exportRejectionReason } from "@/lib/services/export-publish";
+import { beginJob, completeJob, failJob } from "@/lib/services/job-lifecycle";
 import { acceptRevision, bindExports, rejectRevision, revertRevision } from "@/lib/services/stickers";
 import { quickPublishSticker } from "@/lib/services/quick-publish";
 import { getObjectStore } from "@/lib/storage/r2";
 import { ApiError } from "@/lib/http/errors";
-import { chargeJobCredits, recordJobApiCost, refundJobCredits } from "@/lib/subscription/credits";
+import { recordJobApiCost } from "@/lib/subscription/credits";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 import { executeAiJob } from "./ai-turn";
-import { MAX_SUMMARIZED_TITLE_LENGTH, beginJob, boundedTranscript } from "./turn-context";
+import { MAX_SUMMARIZED_TITLE_LENGTH, boundedTranscript } from "./turn-context";
 import type { AiTurnResult } from "./turn-context";
 
 // Every step boundary the workflow crosses. The bodies live in the sibling modules; what has
@@ -88,26 +89,6 @@ export async function publishExportsStep(jobId: string, request: PublishExportsR
     if (!(error instanceof ApiError) || error.status >= 500) throw error;
     await failJob(db, jobId, error.message, exportRejectionReason(error));
     throw new FatalError(error.message);
-  }
-}
-
-/**
- * What the export sheet says when the server refuses a rendition.
- *
- * Only the timing codes get their own sentence, because only they describe a file the app produced
- * wrongly rather than something the person did: nothing about the sticker is broken, the build that
- * rendered it is. Everything else falls back to the server's own words, which is already more than
- * the client had.
- */
-function exportRejectionReason(error: ApiError): string {
-  switch (error.code) {
-    case "EXPORT_TIMING_UNVERIFIED":
-    case "EXPORT_FPS_MISMATCH":
-    case "EXPORT_FRAME_COUNT_MISMATCH":
-    case "EXPORT_DURATION_MISMATCH":
-      return "The exported animation's timing doesn't match this version of the sticker. Update the app, then publish again.";
-    default:
-      return error.message;
   }
 }
 
@@ -188,62 +169,9 @@ export async function summarizeStickerTitleStep(jobId: string): Promise<string |
   }
 }
 
-/**
- * Sends the "this turn is over" banner, from the side that watched the turn.
- *
- * Called only after the terminal transition has actually committed, so a step that re-runs over an
- * already-finished job cannot announce it twice. Awaited rather than fired and forgotten: the
- * workflow step is the process, and a promise left dangling past its return is a push that never
- * leaves. `notifyGenerationFinished` swallows its own failures, so awaiting it is free of risk.
- */
-async function announceJobEnded(
-  db: Database,
-  job: GenerationJobRow,
-  outcome: GenerationOutcome,
-): Promise<void> {
-  if (!isNotifiableJobKind(job.kind)) return;
-  const sticker = await db.select({ id: stickers.id, title: stickers.title, status: stickers.status })
-    .from(stickers).where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).then(firstRow);
-  // A sticker the user has since deleted has nothing to open.
-  if (!sticker || sticker.status === "deleting") return;
-  await notifyGenerationFinished(db, {
-    ownerId: job.ownerId,
-    jobId: job.id,
-    stickerId: sticker.id,
-    // Read after `summarizeStickerTitleStep`, so the banner uses the name the library will show
-    // rather than the first sentence the user happened to type.
-    stickerTitle: sticker.title,
-    outcome,
-  });
-}
-
 export async function completeJobStep(jobId: string, result: Record<string, unknown>): Promise<void> {
   "use step";
   return completeJob(jobId, result);
-}
-
-async function completeJob(jobId: string, result: Record<string, unknown>): Promise<void> {
-  const db = await getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
-  traceEvent("completeJobStep", { jobId, state: job?.state });
-  if (!job) return;
-  if (job.state === "succeeded") return;
-  await db.transaction(async (tx) => {
-    const now = new Date();
-    const changed = await tx.update(generationJobs).set({ state: "succeeded", updatedAt: now, completedAt: now })
-      .where(and(eq(generationJobs.id, jobId), eq(generationJobs.state, "running"))).returning({ id: generationJobs.id });
-    if (changed.length === 0) throw new Error("Job is no longer running");
-    if (job.sourceMessageId) {
-      await tx.update(chatMessages).set({ status: "complete" }).where(and(
-        eq(chatMessages.id, job.sourceMessageId),
-        eq(chatMessages.jobId, job.id),
-      ));
-    }
-    await tx.insert(generationEvents).values({ jobId, ownerId: job.ownerId, type: "completed", dataJson: result, createdAt: now });
-  });
-  // The one path that actually charges. Everything else returns the hold.
-  await chargeJobCredits(db, job);
-  await announceJobEnded(db, job, "ready");
 }
 
 export async function failJobStep(jobId: string, message: string): Promise<void> {
@@ -272,66 +200,6 @@ export async function quickGenerationStep(jobId: string): Promise<{
   const result = await executeAiJob(jobId);
   await completeJob(jobId, result);
   return { workflowStatus: "succeeded", result };
-}
-
-/**
- * Ends a job as failed.
- *
- * Separate from `failJobStep` so a step that already knows *why* it is about to fail can say so
- * before it throws — a step cannot call another step, and by the time the workflow's catch runs the
- * original error has been wrapped in the runtime's own "failed after N retries" message.
- *
- * @param publicReason what the client shows. Left out, the client is told only that generation
- *   failed and that retrying is worth a try, which is the right answer for a provider that timed
- *   out and the wrong one for a request that will be refused the same way every time.
- */
-async function failJob(db: Database, jobId: string, message: string, publicReason?: string): Promise<void> {
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
-  traceEvent("failJobStep", { jobId, state: job?.state, message: message.slice(0, 200) });
-  if (!job) return;
-  if (job.state === "failed") return;
-  const safeMessage = message.slice(0, 500);
-  const failed = await db.transaction(async (tx) => {
-    const now = new Date();
-    const changed = await tx.update(generationJobs).set({
-      state: "failed",
-      errorCode: "GENERATION_FAILED",
-      errorMessage: safeMessage,
-      updatedAt: now,
-      completedAt: now,
-    }).where(and(eq(generationJobs.id, jobId), eq(generationJobs.state, "running"))).returning({ id: generationJobs.id });
-    if (changed.length === 0) return false;
-    if (job.sourceMessageId) {
-      await tx.update(chatMessages).set({ status: "failed" }).where(and(
-        eq(chatMessages.id, job.sourceMessageId),
-        eq(chatMessages.jobId, job.id),
-      ));
-    }
-    await tx.update(chatMessages).set({ status: "failed" }).where(and(
-      eq(chatMessages.jobId, job.id),
-      eq(chatMessages.role, "system"),
-      eq(chatMessages.kind, "status"),
-      eq(chatMessages.status, "streaming"),
-    ));
-    await tx.insert(generationEvents).values({
-      jobId,
-      ownerId: job.ownerId,
-      type: "failed",
-      dataJson: {
-        code: "GENERATION_FAILED",
-        message: publicReason ?? "Generation failed. You can retry this request.",
-      },
-      createdAt: now,
-    });
-    return true;
-  });
-  // Only the transition that actually happened announces itself — a late second call, or a job
-  // something else already finished, stays silent. The refund is guarded the same way, so a
-  // repeated call cannot release a hold that a different ending already settled.
-  if (failed) {
-    await refundJobCredits(db, job, "generation_failed");
-    await announceJobEnded(db, job, "failed");
-  }
 }
 
 export async function purgeStickerStep(jobId: string): Promise<string[]> {

@@ -133,6 +133,8 @@ export const generationJobs = pgTable("generation_jobs", {
    * when billing is unconfigured.
    */
   reservationId: text("reservation_id"),
+  /** Environment that created the hold; workers/refunds must never infer it from a later request. */
+  billingEnvironment: text("billing_environment", { enum: ["xcode", "sandbox", "production"] }),
   reservationAmount: integer("reservation_amount").notNull().default(0),
   /** Text USD is rounded once for the turn; each image is rounded before entering apiImagePoints. */
   apiTextCostNanodollars: counter("api_text_cost_nanodollars").notNull().default(0),
@@ -155,6 +157,7 @@ export const generationJobs = pgTable("generation_jobs", {
     .where(sql`${table.state} IN ('queued', 'running', 'waiting')`),
   check("generation_jobs_kind_check", sql`${table.kind} IN (${oneOf(jobKinds)})`),
   check("generation_jobs_state_check", sql`${table.state} IN (${oneOf(jobStates)})`),
+  check("generation_jobs_billing_environment_check", sql`${table.billingEnvironment} IN ('xcode', 'sandbox', 'production')`),
 ]);
 
 export const chatMessages = pgTable("chat_messages", {
