@@ -511,6 +511,29 @@ function formatToMime(format?: string): ImageInspection["mimeType"] {
   throw new ApiError(422, "UNSUPPORTED_IMAGE", "The uploaded file is not a supported image");
 }
 
+/**
+ * The largest single frame this will inspect — and the only pixel bound there is.
+ *
+ * Frame *count* is deliberately unbounded. It used to be capped at 240, which was below the app's
+ * own contracts and so rejected legal work: a sharing APNG is admitted at up to
+ * `MAX_RENDITION_SECONDS` (8.6 s) at 30 FPS, which is 258 frames, and the client saw
+ * `TOO_MANY_IMAGE_FRAMES` for a file the validator that owns that decision would have accepted.
+ * Any fixed replacement has the same failure mode one product decision later, so there is no
+ * replacement — what bounds an animation is the rule that describes it, not a number here.
+ *
+ * That is safe because nothing in this file decodes an animation whole, and neither does anything
+ * downstream: `metadata()` reads headers, `readApngTiming` walks chunks without touching a pixel,
+ * the stats pass below composites exactly one frame, and `downscaleForModelInput` opens page 0. So
+ * the cost of a frame count is its delay array and its chunk walk, both linear in a file the upload
+ * contract already caps at 25 MB. Per-frame area is the one thing that reaches a decoder, which is
+ * what this bounds — matching the 4096-per-side rule `validateImageForKind` holds every kind to.
+ *
+ * The bounds that actually shape a rendition live in `lib/services/assets.ts`, per kind, and every
+ * animated one of them is stricter than anything this could say: duration, frame rate, dimensions
+ * and byte size, each measured against the document the export came from.
+ */
+const MAX_FRAME_PIXELS = 4096 * 4096;
+
 export async function inspectImage(bytes: Uint8Array): Promise<ImageInspection> {
   let metadata: Metadata;
   let stats: Stats;
@@ -523,10 +546,11 @@ export async function inspectImage(bytes: Uint8Array): Promise<ImageInspection> 
   const frameCount = apng?.frameCount ?? metadata.pages ?? 1;
   const frameHeight = metadata.pageHeight ?? metadata.height;
   if (!metadata.width || !frameHeight) throw new ApiError(422, "INVALID_IMAGE", "The image has no dimensions");
-  if (frameCount < 1 || frameCount > 240) throw new ApiError(422, "TOO_MANY_IMAGE_FRAMES", "Animated images may contain at most 240 frames");
-  const totalPixels = metadata.width * frameHeight * frameCount;
-  const maximumPixels = frameCount > 1 ? 1024 * 1024 * 240 : 4096 * 4096;
-  if (totalPixels > maximumPixels) throw new ApiError(422, "IMAGE_DECODE_TOO_LARGE", "The decoded image exceeds the safe pixel limit");
+  // Not a limit — a file whose `acTL` claims zero frames is malformed, not merely large.
+  if (frameCount < 1) throw new ApiError(422, "INVALID_IMAGE", "The image declares no frames");
+  if (metadata.width * frameHeight > MAX_FRAME_PIXELS) {
+    throw new ApiError(422, "IMAGE_DECODE_TOO_LARGE", "The decoded image exceeds the safe pixel limit");
+  }
   try {
     // Metadata above verifies the complete animation's dimensions, frame count, and timing. Pixel
     // stats only need to prove that the rendition contains transparency and painted pixels. Asking
