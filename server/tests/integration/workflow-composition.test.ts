@@ -82,7 +82,7 @@ describe("durable sticker workflow: composition", () => {
     return new Uint8Array(await sharp(pixels, { raw: { width: size, height: size, channels: 4 } }).png().toBuffer());
   }
 
-  it("places each separated part where it sat in the approved reference", async () => {
+  it("generates at most three parts together and preserves placement with out-of-order completion", async () => {
     const { db, close } = await createTestDatabase();
     const store = new MemoryObjectStore();
     setDatabaseForTests(db);
@@ -91,6 +91,10 @@ describe("durable sticker workflow: composition", () => {
     await db.insert(users).values({ id: "owner-place", createdAt: new Date(), updatedAt: new Date() });
     const mockProvider = getAiProvider();
     let drawn = 0;
+    let active = 0;
+    let peakActive = 0;
+    let releaseFirstBatch!: () => void;
+    const firstBatchReady = new Promise<void>((resolve) => { releaseFirstBatch = resolve; });
     setAiProviderForTests({
       ...unusedAiProvider,
       routeChatTurn: mockProvider.routeChatTurn.bind(mockProvider),
@@ -100,8 +104,16 @@ describe("durable sticker workflow: composition", () => {
       generateStickerImage: async () => {
         // What the real path does after the model answers: crop to the part, square it back up to
         // the frame size, and say where it was.
-        const { bytes, subject } = await normalizeTransparentPng(await separatedPart(drawn), { subjectCrop: true });
-        drawn += 1;
+        const index = drawn++;
+        active += 1;
+        peakActive = Math.max(peakActive, active);
+        if (drawn === 3) releaseFirstBatch();
+        // A sequential implementation cannot get past this barrier.
+        await firstBatchReady;
+        const { bytes, subject } = await normalizeTransparentPng(await separatedPart(index), { subjectCrop: true });
+        // Hold the first part back to exercise completion-based progress and stable placement.
+        if (index === 0) await new Promise((resolve) => setTimeout(resolve, 150));
+        active -= 1;
         return { bytes, mimeType: "image/png", subject };
       },
       refineStickerLayout: mockProvider.refineStickerLayout.bind(mockProvider),
@@ -119,12 +131,29 @@ describe("durable sticker workflow: composition", () => {
     expect((await stickerGenerationWorkflow(planTurn.jobId)).workflowStatus).toBe("succeeded");
     const [proposed] = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
     const plan = PlanV1Schema.parse(proposed.planJson);
+    // More than one batch exercises the cap as well as parallel execution.
+    const template = plan.layers.find((layer) => layer.source.kind === "generate")!;
+    while (plan.layers.length < 5) {
+      plan.layers.push({ ...template, layerId: `extra-${plan.layers.length}`, name: `Part ${plan.layers.length}` });
+    }
+    await db.update(planRows).set({ planJson: plan }).where(eq(planRows.id, proposed.id));
     const generateIds = plan.layers.filter((layer) => layer.source.kind === "generate").map((layer) => layer.layerId);
     expect(generateIds.length).toBeGreaterThanOrEqual(2);
 
     const confirmed = await confirmPlan(db, "owner-place", sticker.stickerId, proposed.id);
     expect((await stickerGenerationWorkflow(confirmed.jobId)).workflowStatus).toBe("succeeded");
 
+    expect(peakActive).toBe(3);
+    expect(active).toBe(0);
+    const progressEvents = await db.select().from(generationEvents)
+      .where(eq(generationEvents.jobId, confirmed.jobId)).orderBy(generationEvents.id);
+    const partProgress = progressEvents.map((event) => event.dataJson)
+      .filter((data) => data.stage === "composing_part");
+    expect(partProgress).toHaveLength(generateIds.length);
+    expect(partProgress[0].partIndex).not.toBe(0);
+    expect(partProgress.map((data) => data.progress)).toEqual(
+      generateIds.map((_, index) => 0.05 + 0.7 * ((index + 1) / generateIds.length)),
+    );
     const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, confirmed.jobId)).then(firstRow);
     const document = StickerDocumentSchema.parse(revision!.documentJson);
     for (const [index, layerId] of generateIds.entries()) {
@@ -313,7 +342,7 @@ describe("durable sticker workflow: composition", () => {
     // A user retry has a fresh job id while the immutable confirmed plan still names the original
     // confirmation job. The compose step must recover that plan through their shared source turn.
     expect(await stickerGenerationWorkflow(confirmed.jobId)).toEqual({ status: "failed" });
-    expect(generatedReferences).toHaveLength(1);
+    expect(generatedReferences).toHaveLength(Math.min(partCount, 3) - 1);
     const savedPart = await db.select().from(assets)
       .where(eq(assets.id, derivedAssetId(confirmed.jobId, 0))).then(firstRow);
     expect(savedPart?.state).toBe("ready");

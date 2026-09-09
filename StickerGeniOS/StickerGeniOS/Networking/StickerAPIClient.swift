@@ -20,6 +20,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage
     func planVersions(stickerID: String) async throws -> Page<PlanRecord>
     func selectPlanVersion(stickerID: String, versionID: String, request: SelectPlanVersionRequest, idempotencyKey: String) async throws -> SelectPlanVersionResponse
+    func editPlan(stickerID: String, planID: String, request: PlanEditRequest, idempotencyKey: String) async throws -> EditPlanResponse
     func sendChatMessage(stickerID: String, request: SendChatMessageRequest, idempotencyKey: String) async throws -> SendChatMessageResponse
     func retryChatMessage(stickerID: String, messageID: String, idempotencyKey: String) async throws -> RetryChatMessageResponse
     func confirmPlan(stickerID: String, planID: String, idempotencyKey: String) async throws -> ConfirmPlanResponse
@@ -172,6 +173,13 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     func selectPlanVersion(stickerID: String, versionID: String, request: SelectPlanVersionRequest, idempotencyKey: String) async throws -> SelectPlanVersionResponse {
         try await send(
             path: "api/v1/stickers/\(stickerID)/plans/\(versionID)/select",
+            method: "POST", body: request, idempotencyKey: idempotencyKey
+        )
+    }
+
+    func editPlan(stickerID: String, planID: String, request: PlanEditRequest, idempotencyKey: String) async throws -> EditPlanResponse {
+        try await send(
+            path: "api/v1/stickers/\(stickerID)/plans/\(planID)/edit",
             method: "POST", body: request, idempotencyKey: idempotencyKey
         )
     }

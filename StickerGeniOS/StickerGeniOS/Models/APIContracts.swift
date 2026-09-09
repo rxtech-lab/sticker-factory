@@ -498,6 +498,13 @@ nonisolated struct PlanAnimation: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey { case type, delay, duration }
 
+    /// Spelled out because the permissive `init(from:)` below suppresses the memberwise one.
+    init(type: String, delay: Double = 0, duration: Double = 0.5) {
+        self.type = type
+        self.delay = delay
+        self.duration = duration
+    }
+
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = (try? container.decode(String.self, forKey: .type)) ?? "effect"

@@ -13,7 +13,7 @@ import Testing
 struct StickerToolLabelTests {
     @Test("Workflow phases drive the subtitle", arguments: [
         "plan-sticker", "build-plan", "animate-sticker", "generate-sticker",
-        "generate-image", "edit-sticker", "show-sticker", "reply"
+        "generate-image", "generate-video", "edit-sticker", "show-sticker", "reply"
     ])
     func phasesAreRecognised(_ toolName: String) {
         #expect(StickerToolLabel.isPhase(toolName))
@@ -44,6 +44,7 @@ struct StickerToolLabelTests {
         #expect(StickerToolLabel.text(for: "view_plan_image") == "Reviewing the plan image")
         #expect(StickerToolLabel.text(for: "view_sticker") == "Reviewing the sticker")
         #expect(StickerToolLabel.text(for: "create_video") == "Filming a clip")
+        #expect(StickerToolLabel.text(for: "generate-video") == "Filming a clip")
     }
 
     /// The server distinguishes repeat calls within a turn with a `#N` suffix. Splitting it off
@@ -51,6 +52,8 @@ struct StickerToolLabelTests {
     @Test func aRepeatKeepsItsLabelAndGainsAnOrdinal() {
         #expect(StickerToolLabel.text(for: "build-plan #2") == "Building plan (2)")
         #expect(StickerToolLabel.isPhase("build-plan #2"))
+        #expect(StickerToolLabel.isPhase("generate-video #2"))
+        #expect(StickerToolLabel.text(for: "generate-video #2") == "Filming a clip (2)")
         #expect(StickerToolLabel.text(for: "update_plan #3") == "Revising the plan (3)")
     }
 

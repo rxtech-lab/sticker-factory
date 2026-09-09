@@ -52,6 +52,12 @@
     "·" : {
 
     },
+    "“%@” needs a description of how it moves." : {
+
+    },
+    "“%@” needs a description of what to draw." : {
+
+    },
     "@%@" : {
       "localizations" : {
         "zh-CN" : {
@@ -197,6 +203,9 @@
         }
       }
     },
+    "%@ seconds" : {
+
+    },
     "%@ Share Sticker Factory" : {
 
     },
@@ -232,6 +241,9 @@
           }
         }
       }
+    },
+    "%@s" : {
+
     },
     "%@s · %lld fps · %@" : {
       "extractionState" : "stale",
@@ -305,6 +317,9 @@
         }
       }
     },
+    "%lld fps" : {
+
+    },
     "%lld generations remaining" : {
 
     },
@@ -320,6 +335,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 個圖層"
+          }
+        }
+      }
+    },
+    "%lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
           }
         }
       }
@@ -650,6 +675,15 @@
         }
       }
     },
+    "A plan can have only one video layer." : {
+
+    },
+    "A plan holds at most %lld layers." : {
+
+    },
+    "A plan needs at least one layer." : {
+
+    },
     "A reference image could not be uploaded (HTTP %lld)." : {
 
     },
@@ -941,6 +975,12 @@
           }
         }
       }
+    },
+    "Add layer" : {
+
+    },
+    "Add motion" : {
+
     },
     "Add motion before publishing this animated sticker. You can still export the current image locally." : {
       "localizations" : {
@@ -1401,6 +1441,21 @@
         }
       }
     },
+    "Bloom in" : {
+
+    },
+    "Bloom out" : {
+
+    },
+    "Bloom pulse" : {
+
+    },
+    "Blur in" : {
+
+    },
+    "Blur out" : {
+
+    },
     "Both" : {
       "localizations" : {
         "zh-CN" : {
@@ -1416,6 +1471,9 @@
           }
         }
       }
+    },
+    "Bounce" : {
+
     },
     "Browse" : {
       "localizations" : {
@@ -1721,6 +1779,12 @@
         }
       }
     },
+    "Change how long this animation runs" : {
+
+    },
+    "Change the plan yourself" : {
+
+    },
     "Check the layers, layout, and image count. Build only when the plan matches what you want." : {
       "localizations" : {
         "zh-CN" : {
@@ -1854,6 +1918,9 @@
           }
         }
       }
+    },
+    "Clip length %llds" : {
+
     },
     "Close" : {
       "localizations" : {
@@ -2400,6 +2467,9 @@
         }
       }
     },
+    "Delay %@s" : {
+
+    },
     "Delete" : {
       "localizations" : {
         "zh-CN" : {
@@ -2659,6 +2729,9 @@
         }
       }
     },
+    "Down" : {
+
+    },
     "Downloading" : {
 
     },
@@ -2765,6 +2838,9 @@
     "Dream it up. We'll sticker it." : {
 
     },
+    "Duration" : {
+
+    },
     "Each pack is handed over on its own. Finish adding it in %@, then come back for the next." : {
       "localizations" : {
         "zh-CN" : {
@@ -2822,6 +2898,9 @@
         }
       }
     },
+    "Edit plan" : {
+
+    },
     "Edit Sticker" : {
       "localizations" : {
         "zh-CN" : {
@@ -2837,6 +2916,9 @@
           }
         }
       }
+    },
+    "Edit the layers of this plan" : {
+
     },
     "Editing a sticker on device returns it to draft, and a draft cannot appear in a pack. Publish it again to bring it back — but saving the sticker list here drops it from the pack for good." : {
       "localizations" : {
@@ -3062,6 +3144,9 @@
           }
         }
       }
+    },
+    "Every layer needs a name." : {
+
     },
     "Every pack works in both. Stickers are converted for you, and a pack too big for one messenger is split into parts it accepts." : {
       "localizations" : {
@@ -3370,6 +3455,12 @@
         }
       }
     },
+    "Fade in" : {
+
+    },
+    "Fade out" : {
+
+    },
     "Failed" : {
       "localizations" : {
         "zh-CN" : {
@@ -3498,6 +3589,12 @@
         }
       }
     },
+    "Float" : {
+
+    },
+    "For %@s" : {
+
+    },
     "Frame %lld of %lld" : {
       "localizations" : {
         "en" : {
@@ -3519,6 +3616,9 @@
           }
         }
       }
+    },
+    "Frame rate" : {
+
     },
     "Free" : {
       "localizations" : {
@@ -3796,6 +3896,15 @@
         }
       }
     },
+    "How it moves, e.g. a slow turntable spin" : {
+
+    },
+    "How long the animation runs" : {
+
+    },
+    "Image" : {
+
+    },
     "Image ready" : {
       "localizations" : {
         "zh-CN" : {
@@ -3973,6 +4082,9 @@
         }
       }
     },
+    "Kept as it is — %@. Switch it to an image to describe it yourself." : {
+
+    },
     "Large" : {
       "localizations" : {
         "zh-CN" : {
@@ -4005,6 +4117,15 @@
         }
       }
     },
+    "Layer name" : {
+
+    },
+    "Layer type" : {
+
+    },
+    "Layers" : {
+
+    },
     "Layout preview with %lld layers" : {
       "localizations" : {
         "zh-CN" : {
@@ -4020,6 +4141,9 @@
           }
         }
       }
+    },
+    "Left" : {
+
     },
     "Legal" : {
       "localizations" : {
@@ -4674,6 +4798,9 @@
     "More ideas? Come back after your allowance resets." : {
 
     },
+    "MOTION" : {
+
+    },
     "Move to draft" : {
       "localizations" : {
         "zh-CN" : {
@@ -4786,6 +4913,9 @@
           }
         }
       }
+    },
+    "New layer" : {
+
     },
     "New pack" : {
       "localizations" : {
@@ -4962,6 +5092,9 @@
           }
         }
       }
+    },
+    "No motion yet." : {
+
     },
     "No packs match “%@”." : {
       "localizations" : {
@@ -5894,6 +6027,12 @@
         }
       }
     },
+    "Pop in" : {
+
+    },
+    "Pop out" : {
+
+    },
     "Popular" : {
       "localizations" : {
         "zh-CN" : {
@@ -6291,6 +6430,9 @@
         }
       }
     },
+    "Pulse" : {
+
+    },
     "Purchase limit reached" : {
       "localizations" : {
         "zh-CN" : {
@@ -6609,6 +6751,9 @@
           }
         }
       }
+    },
+    "Remove layer %lld" : {
+
     },
     "Remove photo" : {
 
@@ -6938,6 +7083,9 @@
           }
         }
       }
+    },
+    "Right" : {
+
     },
     "Running…" : {
       "localizations" : {
@@ -7472,6 +7620,9 @@
         }
       }
     },
+    "Shine" : {
+
+    },
     "Showing the plan" : {
       "localizations" : {
         "zh-CN" : {
@@ -7638,6 +7789,12 @@
         }
       }
     },
+    "Slide in" : {
+
+    },
+    "Slide out" : {
+
+    },
     "Small" : {
       "localizations" : {
         "zh-CN" : {
@@ -7750,6 +7907,9 @@
           }
         }
       }
+    },
+    "Spin" : {
+
     },
     "Start with a prompt and optional photos. The assistant will propose a plan before it generates anything." : {
       "localizations" : {
@@ -8292,6 +8452,9 @@
         }
       }
     },
+    "Tap the layer count or the timing to edit layers, motion and duration. Every change is saved as a version you can switch back to." : {
+
+    },
     "Tap to view" : {
       "localizations" : {
         "zh-CN" : {
@@ -8736,6 +8899,12 @@
           }
         }
       }
+    },
+    "The plan needs a summary." : {
+
+    },
+    "The plan needs a title." : {
+
     },
     "The purchase is pending approval." : {
       "localizations" : {
@@ -9355,6 +9524,18 @@
     "Those reference images are too large together. Remove one and try again." : {
 
     },
+    "Timing" : {
+
+    },
+    "Timing, %@" : {
+
+    },
+    "Title" : {
+
+    },
+    "Title and summary" : {
+
+    },
     "Too many stickers for one Telegram set." : {
       "localizations" : {
         "zh-CN" : {
@@ -9711,6 +9892,9 @@
           }
         }
       }
+    },
+    "Up" : {
+
     },
     "Updated %@" : {
       "localizations" : {
@@ -10117,6 +10301,12 @@
         }
       }
     },
+    "What this layer shows" : {
+
+    },
+    "What this sticker is" : {
+
+    },
     "What's new" : {
       "localizations" : {
         "zh-CN" : {
@@ -10196,6 +10386,15 @@
           }
         }
       }
+    },
+    "Wiggle" : {
+
+    },
+    "Wipe in" : {
+
+    },
+    "Wipe out" : {
+
     },
     "Working" : {
       "localizations" : {

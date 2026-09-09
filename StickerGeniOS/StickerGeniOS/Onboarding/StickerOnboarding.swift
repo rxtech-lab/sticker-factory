@@ -232,6 +232,26 @@ struct ConfirmPlanTip: Tip {
     var options: [any TipOption] { Tips.MaxDisplayCount(1) }
 }
 
+/// Shown inside the plan card rather than as a popover.
+///
+/// The card already has a popover on its Build button, and two of them arriving together on one
+/// card would each cover the other's target. A mini tip sits in the flow instead, directly above
+/// the row it is describing.
+struct EditPlanTip: Tip {
+    var id: String { "sticker-factory.onboarding.edit-plan.v1" }
+    var title: Text { Text("Change the plan yourself") }
+    var message: Text? {
+        Text("""
+            Tap the layer count or the timing to edit layers, motion and duration. \
+            Every change is saved as a version you can switch back to.
+            """)
+    }
+    var rules: [Rule] {
+        #Rule(StickerOnboardingTips.$welcomeCompleted) { $0 }
+    }
+    var options: [any TipOption] { Tips.MaxDisplayCount(2) }
+}
+
 struct ReviewCandidateTip: Tip {
     var id: String { "sticker-factory.onboarding.review-candidate.v1" }
     var title: Text { Text("Choose the next version") }

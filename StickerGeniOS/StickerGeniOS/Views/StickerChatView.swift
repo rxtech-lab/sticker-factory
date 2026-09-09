@@ -35,6 +35,8 @@ struct StickerChatView: View {
     @State var exportModel = StickerExportModel()
     @State private var showingVersions = false
     @State private var planVersionMessage: ChatMessage?
+    /// The plan the user opened the editor on, and the row they tapped to get there.
+    @State private var planEditorTarget: PlanEditorTarget?
     @State private var showingExport = false
     @State private var showingComparison = false
     @State private var confirmingDelete = false
@@ -314,6 +316,13 @@ struct StickerChatView: View {
         .onChange(of: isComputing) { _, newValue in
             if newValue { showingCandidate = false }
         }
+        .sheet(item: $planEditorTarget) { target in
+            NavigationStack {
+                PlanEditorSheet(record: target.record, focus: target.focus) { edit in
+                    try await store.editPlan(stickerID: stickerID, current: target.record, edit: edit)
+                }
+            }
+        }
         .sheet(item: $planVersionMessage) { _ in
             NavigationStack {
                 PlanVersionsSheet(
@@ -520,6 +529,7 @@ struct StickerChatView: View {
                 versions: planVersions,
                 currentVersionID: latestPlanMessage?.plan?.versionID,
                 onShowVersions: { planVersionMessage = message },
+                onEdit: { focus in planEditorTarget = .init(record: record, focus: focus) },
                 referenceImage: record.conceptAssetId.flatMap { assetStore.images[$0] },
                 isBusy: isConfirmingPlan || isComputing,
                 onConfirm: { Task { await confirmPlan(record) } },
@@ -782,4 +792,14 @@ struct StickerChatView: View {
             }
         }
     }
+}
+
+/// The plan card the editor was opened from.
+///
+/// Carries the record itself rather than the message: the save is guarded on the revision the
+/// editor opened on, so a plan the agent rewrote in the meantime is refused rather than clobbered.
+nonisolated struct PlanEditorTarget: Identifiable, Sendable {
+    let record: PlanRecord
+    let focus: PlanEditorFocus
+    var id: String { "\(record.id):\(focus)" }
 }

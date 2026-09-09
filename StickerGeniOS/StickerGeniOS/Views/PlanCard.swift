@@ -13,6 +13,8 @@ struct PlanCard: View {
     var versions: [PlanRecord] = []
     var currentVersionID: String?
     var onShowVersions: () -> Void = {}
+    /// Opens the plan editor, scrolled to whichever part of the card was tapped.
+    var onEdit: (PlanEditorFocus) -> Void = { _ in }
     let referenceImage: UIImage?
     let isBusy: Bool
     let onConfirm: () -> Void
@@ -27,6 +29,7 @@ struct PlanCard: View {
     @State private var rejecting = false
     @State private var rejectionReason = ""
     private let confirmTip = ConfirmPlanTip()
+    private let editTip = EditPlanTip()
 
     private var plan: Plan { record.plan }
     private var generationCount: Int { record.generationCount }
@@ -153,7 +156,9 @@ struct PlanCard: View {
                     Text("Current")
                 }
                 if versions.count > 1 {
-                    Image(systemName: "chevron.down")
+                    // Sideways rather than down: this opens a screen of versions, it does not drop
+                    // a menu, and the chevron is the only thing on the chip saying it is tappable.
+                    Image(systemName: "chevron.right")
                 }
             }
             .font(.posterLabel(9))
@@ -170,8 +175,10 @@ struct PlanCard: View {
 
     private var layerList: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(layerHeading)
-                .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
+            if record.actionable {
+                TipView(editTip).tipViewStyle(.miniTip)
+            }
+            layerHeadingRow
             ForEach(Array(plan.layers.enumerated()), id: \.element.id) { index, layer in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("\(index + 1)")
@@ -236,12 +243,61 @@ struct PlanCard: View {
         }
     }
 
+    /// The layer count, and the way into the editor.
+    ///
+    /// It reads as a subtitle rather than a button, which is the point: the row is already the
+    /// sentence describing what will be built, so making it the place to change that costs the card
+    /// no extra chrome beyond the chevron.
+    @ViewBuilder
+    private var layerHeadingRow: some View {
+        if record.actionable {
+            Button {
+                Haptics.tap(.light)
+                editTip.invalidate(reason: .actionPerformed)
+                onEdit(.layers)
+            } label: {
+                HStack(spacing: 5) {
+                    Text(layerHeading)
+                    Image(systemName: "chevron.right")
+                }
+                .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(layerHeading)
+            .accessibilityHint("Edit the layers of this plan")
+            .accessibilityIdentifier("plan-edit-layers")
+        } else {
+            Text(layerHeading)
+                .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
+        }
+    }
+
+    private var timingSummary: String {
+        "\(formatted(plan.timing.durationSeconds))s · \(plan.timing.fps) fps · \(plan.timing.loop.label)"
+    }
+
+    @ViewBuilder
     private var timingNote: some View {
-        PosterSymbolLabel(
-            verbatim: "\(formatted(plan.timing.durationSeconds))s · \(plan.timing.fps) fps · \(plan.timing.loop.label)",
-            posterSymbol: "waveform.path"
-        )
-        .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
+        if record.actionable {
+            Button {
+                Haptics.tap(.light)
+                editTip.invalidate(reason: .actionPerformed)
+                onEdit(.timing)
+            } label: {
+                HStack(spacing: 5) {
+                    PosterSymbolLabel(verbatim: timingSummary, posterSymbol: "waveform.path")
+                    Image(systemName: "chevron.right")
+                }
+                .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Timing, \(timingSummary)")
+            .accessibilityHint("Change how long this animation runs")
+            .accessibilityIdentifier("plan-edit-timing")
+        } else {
+            PosterSymbolLabel(verbatim: timingSummary, posterSymbol: "waveform.path")
+                .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
+        }
     }
 
     private var actions: some View {

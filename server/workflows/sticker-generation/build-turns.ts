@@ -251,63 +251,84 @@ export async function executePlanBuildTurn(
   // Where each separated part came back in the reference frame. Only meaningful when there is a
   // reference: a part drawn from its prompt alone was drawn wherever the model liked.
   const separatedParts: Array<{ layerId: string; subject: SubjectBounds | undefined }> = [];
-  for (const [index, item] of generated.entries()) {
-    await assertJobStillRunning(job.id);
-    const label = `compose-part:${index} ${item.layer.name}`;
-    const partToolCallId = await beginToolCall(job, "build-plan", undefined, label);
-    try {
-      const prompt = visualReference
-        ? [
-            `Separate only the "${item.layer.name}" part from the approved static sticker reference.`,
-            "Copy it from the approved reference instead of redesigning or simplifying it.",
-            "Preserve its exact silhouette, design, colours, outlines, bevels, highlights,",
-            "shadows, texture, and proportions.",
-            "Return that one part isolated on a transparent background; omit every other part.",
-            // Where the part sits in the reference is where it belongs on the canvas, and the
-            // build reads that position off the pixels that come back. Moved or enlarged, the
-            // measurement is wrong and the layer lands somewhere the user did not approve.
-            "Keep the part exactly where it sits in the reference, at exactly the same size and",
-            "position within the 1024x1024 frame: do not move it, centre it, enlarge it, or crop",
-            "the frame. Make every other pixel fully transparent.",
-            `Part description: ${item.prompt}`,
-          ].join(" ")
-        : item.prompt;
-      const candidates: AiImageReferenceCandidate[] = [
-        ...(visualReference
-          ? [{ label: "approved plan image", image: visualReference, required: true }]
-          : []),
-        ...references.map((image, referenceIndex) => ({
-          label: `original or carried reference ${referenceIndex + 1}`,
-          image,
-        })),
-      ].slice(0, 8);
-      const stored = await loadStoredGeneratedImage(job, sticker.id, item.assetId);
-      const { subject } = stored ?? await generateAndStoreAsset(job, sticker.id, {
-        assetId: item.assetId,
-        prompt,
-        // The approved concept is mandatory because it is the exact design being separated. The
-        // orchestrator sees every remaining candidate and decides which originals materially help
-        // this particular layer; only its selected full-resolution images reach the image model.
-        references: await selectImageReferences(prompt, history, candidates),
-        conversationContext: history,
-        // This is an edit of the approved pixels, not a fresh generation inspired by them. The GPT
-        // Image edit path is instructed to remove every other part while preserving this one; the
-        // prompt still names the mode so tests and provider adapters can enforce that distinction.
-        mode: visualReference ? "conversation_edit" : "generate",
-      });
-      if (visualReference) separatedParts.push({ layerId: item.layer.layerId, subject });
-    } catch (error) {
-      await finishToolCall(job, partToolCallId, "failed", error);
-      throw error;
+  const partConcurrency = 3;
+  let partsDone = 0;
+  let progressWrites = Promise.resolve();
+  for (let offset = 0; offset < generated.length; offset += partConcurrency) {
+    // Allocate transcript sequences serially before starting this batch's independent AI calls.
+    const batch = [];
+    for (const [batchIndex, item] of generated.slice(offset, offset + partConcurrency).entries()) {
+      await assertJobStillRunning(job.id);
+      const index = offset + batchIndex;
+      const label = `compose-part:${index} ${item.layer.name}`;
+      const partToolCallId = await beginToolCall(job, "build-plan", undefined, label);
+      batch.push({ index, item, partToolCallId });
     }
-    await finishToolCall(job, partToolCallId, "complete", { previewAssetId: item.assetId });
-    await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
-      stage: "composing_part",
-      progress: 0.05 + stillSpan * ((index + 1) / Math.max(generated.length, 1)),
-      partIndex: index,
-      partName: item.layer.name,
-      partCount: generated.length,
-    });
+    const results = await Promise.allSettled(batch.map(async ({ index, item, partToolCallId }) => {
+      try {
+        const prompt = visualReference
+          ? [
+              `Separate only the "${item.layer.name}" part from the approved static sticker reference.`,
+              "Copy it from the approved reference instead of redesigning or simplifying it.",
+              "Preserve its exact silhouette, design, colours, outlines, bevels, highlights,",
+              "shadows, texture, and proportions.",
+              "Return that one part isolated on a transparent background; omit every other part.",
+              // Where the part sits in the reference is where it belongs on the canvas, and the
+              // build reads that position off the pixels that come back. Moved or enlarged, the
+              // measurement is wrong and the layer lands somewhere the user did not approve.
+              "Keep the part exactly where it sits in the reference, at exactly the same size and",
+              "position within the 1024x1024 frame: do not move it, centre it, enlarge it, or crop",
+              "the frame. Make every other pixel fully transparent.",
+              `Part description: ${item.prompt}`,
+            ].join(" ")
+          : item.prompt;
+        const candidates: AiImageReferenceCandidate[] = [
+          ...(visualReference
+            ? [{ label: "approved plan image", image: visualReference, required: true }]
+            : []),
+          ...references.map((image, referenceIndex) => ({
+            label: `original or carried reference ${referenceIndex + 1}`,
+            image,
+          })),
+        ].slice(0, 8);
+        const stored = await loadStoredGeneratedImage(job, sticker.id, item.assetId);
+        const { subject } = stored ?? await generateAndStoreAsset(job, sticker.id, {
+          assetId: item.assetId,
+          prompt,
+          // The approved concept is mandatory because it is the exact design being separated. The
+          // orchestrator sees every remaining candidate and decides which originals materially help
+          // this particular layer; only its selected full-resolution images reach the image model.
+          references: await selectImageReferences(prompt, history, candidates),
+          conversationContext: history,
+          // This is an edit of the approved pixels, not a fresh generation inspired by them. The GPT
+          // Image edit path is instructed to remove every other part while preserving this one; the
+          // prompt still names the mode so tests and provider adapters can enforce that distinction.
+          mode: visualReference ? "conversation_edit" : "generate",
+        });
+        if (visualReference) separatedParts[index] = { layerId: item.layer.layerId, subject };
+      } catch (error) {
+        await finishToolCall(job, partToolCallId, "failed", error);
+        throw error;
+      }
+      await finishToolCall(job, partToolCallId, "complete", { previewAssetId: item.assetId });
+      // Completions can arrive out of order. Serialize their progress writes so the displayed
+      // fraction follows completed work and never moves backwards.
+      progressWrites = progressWrites.then(async () => {
+        partsDone += 1;
+        await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+          stage: "composing_part",
+          progress: 0.05 + stillSpan * (partsDone / Math.max(generated.length, 1)),
+          partIndex: index,
+          partName: item.layer.name,
+          partCount: generated.length,
+        });
+      });
+      await progressWrites;
+    }));
+    // Let in-flight parts finish storing before failing the job, so a retry can reuse them.
+    // A failed batch never starts more parts or purchases any videos.
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
   }
 
   // Clips after every still, not interleaved: a clip is the slowest thing in the build, and a
