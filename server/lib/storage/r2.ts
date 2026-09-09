@@ -8,7 +8,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import sharp, { type Metadata, type Stats } from "sharp";
-import { MAX_RENDITION_SECONDS } from "@/lib/contracts/sticker";
+import { MAX_RENDITION_SECONDS, RENDITION_TIMING_EPSILON_SECONDS } from "@/lib/contracts/sticker";
 import { ApiError } from "@/lib/http/errors";
 import { cropPngToSubject, type SubjectBounds } from "@/lib/images/subject-bounds";
 
@@ -305,7 +305,7 @@ export function inspectMp4(bytes: Uint8Array): Mp4Inspection {
   // The ceiling is the longest cycle plus its loop hold, which an MP4 carries as repeated frames —
   // the same bound the sharing and system renditions are held to. A flat 8 here rejected the longest
   // stickers for being exactly as long as they are supposed to be.
-  if (timing.durationSeconds < 0.5 || timing.durationSeconds > MAX_RENDITION_SECONDS || timing.fps > 30.01) {
+  if (timing.durationSeconds < 0.5 - RENDITION_TIMING_EPSILON_SECONDS || timing.durationSeconds > MAX_RENDITION_SECONDS + RENDITION_TIMING_EPSILON_SECONDS || timing.fps > 30.01) {
     throw new ApiError(422, "INVALID_MP4_TIMING", `MP4 exports must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
   }
   return {
