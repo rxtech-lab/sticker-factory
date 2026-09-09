@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { resolveChatAction, validateEditOperation, validatePlannedAnimationOperation } from "@/lib/ai/gateway";
 import { CreateUploadRequestSchema, PostChatMessageRequestSchema } from "@/lib/contracts/api";
-import { MAX_RENDITION_SECONDS, StickerDocumentSchema } from "@/lib/contracts/sticker";
+import { EXPORT_LOOP_HOLD_SECONDS, MAX_RENDITION_SECONDS, StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { validateAnimatedRenditionTiming } from "@/lib/services/stickers";
 import { downscaleForModelInput, inspectImage } from "@/lib/storage/r2";
 import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation/turn-context";
@@ -83,10 +83,10 @@ describe("media and animation hardening", () => {
       spliceApngControlChunks(still, Array.from({ length: frameCount }, () => Math.round(1000 / 30)), frameCount, 1024),
     );
 
-    // The longest export the rendition contract admits, at the top of `SHARING_APNG_DIMENSIONS`.
-    const longest = await apngAt(Math.ceil(MAX_RENDITION_SECONDS * 30));
-    expect(longest).toMatchObject({ width: 1024, height: 1024, mimeType: "image/png" });
-    expect(longest.frameCount).toBe(Math.ceil(MAX_RENDITION_SECONDS * 30));
+    // The case that started this: 258 frames is an 8.6s cycle at 30 FPS, at the top of
+    // `SHARING_APNG_DIMENSIONS`. The old 240-frame cap refused it as too long.
+    const longest = await apngAt(258);
+    expect(longest).toMatchObject({ width: 1024, height: 1024, mimeType: "image/png", frameCount: 258 });
     expect(longest.fps).toBeCloseTo(30.3, 1);
 
     // And well past it: 4000 frames of 1024² is over four billion notional pixels, none of which
@@ -100,6 +100,34 @@ describe("media and animation hardening", () => {
       create: { width: 5_000, height: 5_000, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
     }).png().toBuffer();
     await expect(inspectImage(oversized)).rejects.toThrow(/pixel limit/);
+  });
+
+  it("accepts a correctly rendered export of a document slowed below 1x", async () => {
+    // `speed` scales wall-clock length without touching a keyframe, so a 4s ping-pong at 0.1x is a
+    // legitimate 80s cycle — and `MAX_RENDITION_SECONDS` used to be 8.6, written as though speed
+    // were always 1. The exporter rendered this file correctly and the server called it malformed.
+    const document = StickerDocumentSchema.parse({
+      version: 2, kind: "animated", durationSeconds: 4, fps: 30, loop: "pingPong", speed: 0.1,
+      canvas: { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true },
+      layers: [],
+    });
+    if (document.kind !== "animated") throw new Error("Expected animation");
+    const cycleSeconds = (document.durationSeconds / document.speed) * 2;
+    expect(cycleSeconds).toBeCloseTo(80, 5);
+    expect(cycleSeconds + EXPORT_LOOP_HOLD_SECONDS).toBeLessThanOrEqual(MAX_RENDITION_SECONDS);
+
+    // The coarse gate admits it, and the exact check confirms it against the document it came from.
+    const rendition = {
+      kind: "apng" as const,
+      frameCount: Math.ceil(cycleSeconds * document.fps),
+      durationSeconds: cycleSeconds + EXPORT_LOOP_HOLD_SECONDS,
+      fps: document.fps,
+    };
+    expect(() => validateAnimatedRenditionTiming(document, rendition)).not.toThrow();
+    // Loosening the gate did not loosen that: a file that does not match its document still fails,
+    // and a grid of 900 frames over an 80s cycle is caught as the wrong frame rate for it.
+    expect(() => validateAnimatedRenditionTiming(document, { ...rendition, frameCount: 900 })).toThrow(/FPS/);
+    expect(() => validateAnimatedRenditionTiming(document, { ...rendition, durationSeconds: 8.6 })).toThrow(/duration/);
   });
 
   it("shrinks an attachment to one tile before an agent is shown it", async () => {

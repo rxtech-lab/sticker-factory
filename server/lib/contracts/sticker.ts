@@ -361,6 +361,26 @@ const DocumentBaseSchema = z.object({
   mp4Background: Mp4BackgroundV1Schema.default({ type: "solid", color: "#FFFFFF" }),
 }).strict();
 
+/**
+ * The authored bounds of an animation, named because `MAX_RENDITION_SECONDS` is derived from them.
+ *
+ * They were literals inside the schema below, which is how the export ceiling came to disagree with
+ * the documents it was meant to describe: the ceiling was written against a 4-second document and
+ * stayed there when v2 widened this to 30. Anything that needs to reason about how long a sticker
+ * can be reads these, so the two cannot drift apart again.
+ */
+export const DOCUMENT_DURATION_SECONDS = { min: 0.1, max: 30 } as const;
+
+/**
+ * `speed` divides elapsed time on the way into the interpolator, so it scales wall-clock length
+ * without touching a keyframe: below 1 an animation plays *longer* than it was authored, and the
+ * floor of 0.1 is what makes the longest possible cycle ten times the longest authored one.
+ */
+export const DOCUMENT_SPEED = { min: 0.1, max: 8 } as const;
+
+/** A ping-ponged cycle plays its motion there and back, so it is twice its playback duration. */
+export const PING_PONG_CYCLE_MULTIPLIER = 2;
+
 const StaticDocumentV1Schema = DocumentBaseSchema.extend({
   kind: z.literal("static"),
   durationSeconds: z.literal(0),
@@ -371,7 +391,7 @@ const StaticDocumentV1Schema = DocumentBaseSchema.extend({
 
 const AnimatedDocumentV1Schema = DocumentBaseSchema.extend({
   kind: z.literal("animated"),
-  durationSeconds: z.number().min(0.1).max(30).default(2),
+  durationSeconds: z.number().min(DOCUMENT_DURATION_SECONDS.min).max(DOCUMENT_DURATION_SECONDS.max).default(2),
   fps: z.number().int().min(1).max(60).default(30),
   loop: z.enum(["once", "loop", "pingPong"]).default("loop"),
   /**
@@ -379,7 +399,7 @@ const AnimatedDocumentV1Schema = DocumentBaseSchema.extend({
    * into the interpolator — which is what lets speed change without recompiling, and what lets the
    * same compiled document be exported at two different speeds.
    */
-  speed: z.number().min(0.1).max(8).default(1),
+  speed: z.number().min(DOCUMENT_SPEED.min).max(DOCUMENT_SPEED.max).default(1),
 }).strict();
 
 /**
@@ -394,10 +414,23 @@ const AnimatedDocumentV1Schema = DocumentBaseSchema.extend({
 export const EXPORT_LOOP_HOLD_SECONDS = 0.6;
 
 /**
- * The longest an accepted rendition may run: a ping-ponged 4s document is an 8s cycle, plus the
- * hold that gets appended to it.
+ * The longest an accepted rendition may run, derived rather than declared.
+ *
+ * This used to be `8 + hold`, written as "a ping-ponged 4s document is an 8s cycle". Both halves of
+ * that had gone stale. The 4 was v1's authored maximum and v2 raised it to 30; and it assumed
+ * `speed` was 1, when the floor of 0.1 makes a cycle ten times its authored length. The exporter
+ * renders `renderedCycleDuration` — see `AnimatedDocument.swift` — so a perfectly ordinary 4s
+ * ping-pong slowed to 0.1x is an 80s file, and the server refused it as malformed.
+ *
+ * This is only the coarse gate, the one `validateImageForKind` can apply before it knows which
+ * document a rendition belongs to. The exact check is `validateAnimatedRenditionTiming`, which has
+ * the document and holds the file to *its* cycle within a frame. So this bound has no business
+ * being tight — its job is to reject the absurd, and the 25 MB upload ceiling is what makes a
+ * genuinely long sticker impractical rather than a number invented here.
  */
-export const MAX_RENDITION_SECONDS = 8 + EXPORT_LOOP_HOLD_SECONDS;
+export const MAX_RENDITION_SECONDS
+  = (DOCUMENT_DURATION_SECONDS.max / DOCUMENT_SPEED.min) * PING_PONG_CYCLE_MULTIPLIER
+  + EXPORT_LOOP_HOLD_SECONDS;
 
 /** Absorb floating-point frame-delay summation error without admitting an extra millisecond. */
 export const RENDITION_TIMING_EPSILON_SECONDS = 1e-9;

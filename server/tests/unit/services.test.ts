@@ -497,12 +497,18 @@ describe("Sticker Factory services", () => {
   });
 
   it.each([
-    { name: "one millisecond too long", delays: [4300, 4301] },
     { name: "one millisecond too short", delays: [249, 250] },
     { name: "above 30 FPS", delays: Array(31).fill(32) },
+    // 8.601s used to sit here as "one millisecond too long", which is what refused every export of
+    // a document playing below 1x. Only a file longer than the longest document that could have
+    // produced it is too long now — `validateAnimatedRenditionTiming` owns the exact length, and
+    // `hardening.test.ts` covers a slowed ping-pong passing both. An APNG delay is a uint16 over
+    // 1000, so 65.535s is one frame's most: 12 minutes-worth is 720s, past the contract's 600.6s.
+    { name: "longer than any document could be", delays: Array(12).fill(60_000) },
   ])("rejects a sharing APNG $name", async ({ delays }) => {
     await expect(uploadTimingApng(delays)).rejects.toMatchObject({ code: "INVALID_APNG_TIMING" });
   });
+
 
   it("rejects a sharing APNG at a size the export ladder never produces", async () => {
     const store = new MemoryObjectStore();
