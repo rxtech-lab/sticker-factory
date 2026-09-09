@@ -12,7 +12,7 @@ import {
   WHATSAPP_STATIC_BYTE_LIMIT,
   type CreateUploadRequest,
 } from "@/lib/contracts/api";
-import { MAX_RENDITION_SECONDS, SHARING_APNG_DIMENSIONS, type StickerDocument } from "@/lib/contracts/sticker";
+import { MAX_RENDITION_SECONDS, RENDITION_TIMING_EPSILON_SECONDS, SHARING_APNG_DIMENSIONS, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
 import { previewAssetIdSql } from "@/lib/db/columns";
 import { assets, stickerPackItems, stickerPacks, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -263,7 +263,7 @@ export function validateImageForKind(
     if (inspection.mimeType === "image/gif" && inspection.frameCount < 2) {
       throw new ApiError(422, "INVALID_SYSTEM_ANIMATION", "Animated system GIFs must contain multiple frames");
     }
-    if (inspection.frameCount > 1 && (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01)) {
+    if (inspection.frameCount > 1 && (inspection.durationSeconds < 0.5 - RENDITION_TIMING_EPSILON_SECONDS || inspection.durationSeconds > MAX_RENDITION_SECONDS + RENDITION_TIMING_EPSILON_SECONDS || inspection.fps > 30.01)) {
       throw new ApiError(422, "INVALID_SYSTEM_ANIMATION", `Animated system stickers must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
@@ -286,7 +286,7 @@ export function validateImageForKind(
         `Animated sharing renditions must be animated square APNGs at ${SHARING_APNG_DIMENSIONS.join(", ")} pixels`,
       );
     }
-    if (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01) {
+    if (inspection.durationSeconds < 0.5 - RENDITION_TIMING_EPSILON_SECONDS || inspection.durationSeconds > MAX_RENDITION_SECONDS + RENDITION_TIMING_EPSILON_SECONDS || inspection.fps > 30.01) {
       throw new ApiError(422, "INVALID_APNG_TIMING", `Animated sharing renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
@@ -305,7 +305,7 @@ export function validateImageForKind(
       );
     }
     if (inspection.frameCount > 1
-      && (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01)) {
+      && (inspection.durationSeconds < 0.5 - RENDITION_TIMING_EPSILON_SECONDS || inspection.durationSeconds > MAX_RENDITION_SECONDS + RENDITION_TIMING_EPSILON_SECONDS || inspection.fps > 30.01)) {
       throw new ApiError(422, "INVALID_WEBP_TIMING", `Animated WebP renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }
@@ -327,7 +327,7 @@ export function validateImageForKind(
     // They are rendered without the 500 KB ceiling, so — unlike the system sticker — they never
     // trade frame rate away and this bound is the document's own.
     if (inspection.frameCount > 1
-      && (inspection.durationSeconds < 0.5 || inspection.durationSeconds > MAX_RENDITION_SECONDS || inspection.fps > 30.01)) {
+      && (inspection.durationSeconds < 0.5 - RENDITION_TIMING_EPSILON_SECONDS || inspection.durationSeconds > MAX_RENDITION_SECONDS + RENDITION_TIMING_EPSILON_SECONDS || inspection.fps > 30.01)) {
       throw new ApiError(422, "INVALID_ATTACHMENT_TIMING", `Animated attachment renditions must be 0.5–${MAX_RENDITION_SECONDS} seconds at no more than 30 FPS`);
     }
   }

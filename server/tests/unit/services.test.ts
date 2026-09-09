@@ -476,6 +476,34 @@ describe("Sticker Factory services", () => {
       .toMatchObject({ state: "ready", width: 512, height: 512, frameCount: 4 });
   });
 
+  async function uploadTimingApng(delays: number[]) {
+    const store = new MemoryObjectStore();
+    setObjectStoreForTests(store);
+    const apng = spliceApngControlChunks(await transparentPng(256), delays, delays.length, 256);
+    const created = await createUpload(db, "owner-a", {
+      kind: "apng", mimeType: "image/png", byteSize: apng.byteLength, filename: "timing.png" });
+    const row = await db.select().from(assets).where(eq(assets.id, created.asset.id)).then(firstRow);
+    await store.put(row!.r2Key, { bytes: apng, contentType: "image/png" });
+    return completeUpload(db, "owner-a", row!.id);
+  }
+
+  it.each([12, 15, 20, 24, 30])("accepts an 8.6-second sharing APNG at %i FPS", async (fps) => {
+    // Match the iOS cumulative millisecond grid, including the final 600 ms loop hold.
+    const delays = Array.from({ length: 8 * fps }, (_, index) =>
+      Math.round((index + 1) * 1000 / fps) - Math.round(index * 1000 / fps));
+    delays[delays.length - 1] += 600;
+    expect(delays.reduce((sum, delay) => sum + delay, 0)).toBe(8600);
+    expect(await uploadTimingApng(delays)).toMatchObject({ state: "ready", frameCount: delays.length });
+  });
+
+  it.each([
+    { name: "one millisecond too long", delays: [4300, 4301] },
+    { name: "one millisecond too short", delays: [249, 250] },
+    { name: "above 30 FPS", delays: Array(31).fill(32) },
+  ])("rejects a sharing APNG $name", async ({ delays }) => {
+    await expect(uploadTimingApng(delays)).rejects.toMatchObject({ code: "INVALID_APNG_TIMING" });
+  });
+
   it("rejects a sharing APNG at a size the export ladder never produces", async () => {
     const store = new MemoryObjectStore();
     setObjectStoreForTests(store);

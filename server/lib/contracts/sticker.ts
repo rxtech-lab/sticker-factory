@@ -399,6 +399,9 @@ export const EXPORT_LOOP_HOLD_SECONDS = 0.6;
  */
 export const MAX_RENDITION_SECONDS = 8 + EXPORT_LOOP_HOLD_SECONDS;
 
+/** Absorb floating-point frame-delay summation error without admitting an extra millisecond. */
+export const RENDITION_TIMING_EPSILON_SECONDS = 1e-9;
+
 /**
  * The square sizes a sharing APNG may be written at, largest first.
  *
