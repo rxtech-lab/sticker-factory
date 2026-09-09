@@ -4,7 +4,12 @@ import {
   type AnimationTiming,
   type LayerCompileInput,
 } from "@/lib/animation/compile";
-import { AnimationSpecV1Schema, type AnimationAnchorV1 } from "@/lib/contracts/animation";
+import {
+  AnimationSpecV1Schema,
+  MAX_TIME_SECONDS,
+  type AnimationAnchorV1,
+  type AnimationSpecV1,
+} from "@/lib/contracts/animation";
 import {
   aspectLockedScale,
   layerScaleIsAspectLocked,
@@ -438,4 +443,208 @@ export function assertPlanReuseIsResolvable(
       : `These layers reuse artwork that does not exist: ${named}. The current sticker has no `
         + "image layers, so every drawn layer must use a generate source.",
   );
+}
+
+// --- user edits ------------------------------------------------------------------------------
+//
+// The plan card is editable in the app: the user can retype a layer's description, switch it
+// between drawn artwork and a video clip, add and remove layers and motion, and change the timing.
+//
+// The request is deliberately *not* a whole plan. A plan carries far more than the card shows —
+// a text layer's font and alignment, a capture's frame grid, every parameter of a `spin` or a
+// `shine` — and a client that posted back only what it renders would silently flatten all of it.
+// So an edit names what to keep (`from`) and states only what changed, and the server rebuilds the
+// plan from the stored one. Anything the editor cannot express survives untouched.
+
+/** The layer sources the app's plan editor can author. Everything else is kept, never written. */
+export const EditablePlanLayerSourceV1Schema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("generate"),
+    prompt: z.string().trim().min(1).max(2_000),
+  }).strict(),
+  z.object({
+    kind: z.literal("video"),
+    prompt: z.string().trim().min(1).max(2_000),
+    motion: z.string().trim().min(1).max(500),
+    durationSeconds: z.number().int().min(2).max(4).default(3),
+  }).strict(),
+]);
+
+/**
+ * The motion effects the editor offers, as a flat list a picker can render.
+ *
+ * A subset of `AnimationSpecV1Schema` on purpose: every type here is either parameterless or takes
+ * a direction, so it can be added with one tap and no numeric fields. The rest — `moveTo`,
+ * `scaleTo`, `hueShift`, the trim specs — need coordinates or a target only the planner has, and a
+ * plan that already carries one keeps it, because an edit that does not mention an animation never
+ * rewrites it.
+ */
+export const EDITABLE_ANIMATION_TYPES = [
+  "fadeIn", "fadeOut", "popIn", "popOut", "slideIn", "slideOut",
+  "spin", "wiggle", "pulse", "bounce", "float",
+  "blurIn", "blurOut", "wipeIn", "wipeOut",
+  "shine", "bloomIn", "bloomOut", "bloomPulse",
+] as const;
+
+/** Types from that list whose spec has a required `direction`. */
+export const DIRECTIONAL_ANIMATION_TYPES = ["slideIn", "slideOut", "wipeIn", "wipeOut"] as const;
+
+export const EditableAnimationSpecV1Schema = z.object({
+  type: z.enum(EDITABLE_ANIMATION_TYPES),
+  delay: z.number().min(0).max(MAX_TIME_SECONDS).default(0),
+  duration: z.number().min(0.05).max(MAX_TIME_SECONDS).default(0.5),
+  /** Required by the directional types above, rejected by the rest. */
+  direction: z.enum(["up", "down", "left", "right"]).optional(),
+}).strict();
+
+/**
+ * One motion effect in the edited layer: either one the plan already had, or a new one.
+ *
+ * `from` is an index into the *original* layer's animations rather than an id, because specs have
+ * no identity of their own. It is resolved against the stored plan, so removals and additions in
+ * the same request cannot shift each other's meaning.
+ */
+export const PlanAnimationEditV1Schema = z.object({
+  from: z.number().int().min(0).max(11).nullish().default(null),
+  spec: EditableAnimationSpecV1Schema.optional(),
+  /** Retimes a kept effect. Ignored for a new one, which carries its own timing in `spec`. */
+  delay: z.number().min(0).max(MAX_TIME_SECONDS).optional(),
+  duration: z.number().min(0.05).max(MAX_TIME_SECONDS).optional(),
+}).strict().superRefine((entry, context) => {
+  if (entry.from == null && !entry.spec) {
+    context.addIssue({ code: "custom", message: "A new animation needs a spec" });
+  }
+});
+
+/**
+ * One layer of the edited plan.
+ *
+ * `from` names the layer of the stored plan this entry keeps; every other field is an override on
+ * it, so an entry of `{ from: "part_0" }` is "leave this layer exactly as it is". A `from` of null
+ * is a layer the user added, and then the identity, name, and source are required.
+ */
+export const PlanLayerEditV1Schema = z.object({
+  from: LayerIdSchema.nullish().default(null),
+  layerId: LayerIdSchema.optional(),
+  name: z.string().trim().min(1).max(80).optional(),
+  source: EditablePlanLayerSourceV1Schema.optional(),
+  x: z.number().min(0).max(1).optional(),
+  y: z.number().min(0).max(1).optional(),
+  scaleX: z.number().min(0.05).max(1).optional(),
+  scaleY: z.number().min(0.05).max(1).optional(),
+  rotationDegrees: z.number().min(-180).max(180).optional(),
+  /** Present only when the motion changed: absent keeps the layer's effects untouched. */
+  animations: z.array(PlanAnimationEditV1Schema).max(12).optional(),
+}).strict().superRefine((entry, context) => {
+  if (entry.from != null) return;
+  if (!entry.layerId) context.addIssue({ code: "custom", path: ["layerId"], message: "A new layer needs a layerId" });
+  if (!entry.name) context.addIssue({ code: "custom", path: ["name"], message: "A new layer needs a name" });
+  if (!entry.source) context.addIssue({ code: "custom", path: ["source"], message: "A new layer needs a source" });
+});
+
+/**
+ * What the user changed about a plan. Every field is optional; an omitted one is unchanged.
+ *
+ * `layers`, when present, is the complete new list in order — that single shape covers reordering,
+ * removal, and addition without three operations that could contradict one another.
+ */
+export const PlanEditV1Schema = z.object({
+  title: z.string().trim().min(1).max(120).optional(),
+  summary: z.string().trim().min(1).max(1_000).optional(),
+  timing: z.object({
+    durationSeconds: z.number().min(0.5).max(4).optional(),
+    fps: z.number().int().min(1).max(30).optional(),
+    loop: z.enum(["once", "loop", "pingPong"]).optional(),
+  }).strict().optional(),
+  layers: z.array(PlanLayerEditV1Schema).min(1).max(8).optional(),
+}).strict();
+
+export type EditablePlanLayerSourceV1 = z.infer<typeof EditablePlanLayerSourceV1Schema>;
+export type PlanAnimationEditV1 = z.infer<typeof PlanAnimationEditV1Schema>;
+export type PlanLayerEditV1 = z.infer<typeof PlanLayerEditV1Schema>;
+export type PlanEditV1 = z.infer<typeof PlanEditV1Schema>;
+
+function resolveEditedAnimation(
+  base: readonly AnimationSpecV1[],
+  entry: PlanAnimationEditV1,
+  layerId: string,
+): AnimationSpecV1 {
+  if (entry.from == null) {
+    // Optional keys the client left out arrive as absent rather than undefined, but a client that
+    // sends `direction: undefined` explicitly would trip the strict spec schemas, so drop them.
+    const fields = Object.fromEntries(
+      Object.entries(entry.spec ?? {}).filter(([, value]) => value !== undefined),
+    );
+    return AnimationSpecV1Schema.parse(fields);
+  }
+  const existing = base[entry.from];
+  if (!existing) {
+    throw new Error(`Layer ${layerId} has no animation at index ${entry.from} to keep.`);
+  }
+  return {
+    ...existing,
+    ...(entry.delay === undefined ? {} : { delay: entry.delay }),
+    ...(entry.duration === undefined ? {} : { duration: entry.duration }),
+  };
+}
+
+/**
+ * Rebuilds a plan from the stored one plus the user's edit.
+ *
+ * Throws a plain `Error` for an edit that cannot be applied at all — a `from` naming a layer that
+ * is not there. An edit that applies but produces an invalid plan is caught by `PlanV1Schema`
+ * instead, whose messages already say what is wrong with a plan.
+ */
+export function applyPlanEdit(current: PlanV1, edit: PlanEditV1): PlanV1 {
+  const byId = new Map(current.layers.map((layer) => [layer.layerId, layer]));
+  const layers = edit.layers?.map((entry) => {
+    if (entry.from == null) {
+      return PlanLayerV1Schema.parse({
+        layerId: entry.layerId,
+        name: entry.name,
+        source: EditablePlanLayerSourceV1Schema.parse(entry.source),
+        x: entry.x ?? 0.5,
+        y: entry.y ?? 0.5,
+        scaleX: entry.scaleX ?? 0.4,
+        scaleY: entry.scaleY ?? 0.4,
+        rotationDegrees: entry.rotationDegrees ?? 0,
+        animations: (entry.animations ?? []).map((animation) => (
+          resolveEditedAnimation([], animation, entry.layerId ?? "new")
+        )),
+      });
+    }
+    const base = byId.get(entry.from);
+    if (!base) throw new Error(`This plan has no layer called ${entry.from} to edit.`);
+    return {
+      ...base,
+      name: entry.name ?? base.name,
+      source: entry.source ?? base.source,
+      x: entry.x ?? base.x,
+      y: entry.y ?? base.y,
+      scaleX: entry.scaleX ?? base.scaleX,
+      scaleY: entry.scaleY ?? base.scaleY,
+      rotationDegrees: entry.rotationDegrees ?? base.rotationDegrees,
+      animations: entry.animations
+        ? entry.animations.map((animation) => resolveEditedAnimation(base.animations, animation, base.layerId))
+        : base.animations,
+    };
+  }) ?? current.layers;
+
+  const summary = edit.summary ?? current.summary;
+  // `PlanV1Schema` requires the summary to mention a video layer, because the summary *is* the
+  // assistant's chat message and a clip costs more than drawn artwork. The model is told to write
+  // that sentence; a user who turns a layer into a clip cannot be, so it is added for them rather
+  // than bounced back as a validation error about prose they never wrote.
+  const mentionsVideo = /\bvideo\b/i.test(summary);
+  const hasVideo = layers.some((layer) => layer.source.kind === "video");
+
+  return PlanV1Schema.parse({
+    ...current,
+    title: edit.title ?? current.title,
+    summary: hasVideo && !mentionsVideo
+      ? `${summary} One layer is generated as a short video clip.`
+      : summary,
+    timing: { ...current.timing, ...edit.timing },
+    layers,
+  });
 }

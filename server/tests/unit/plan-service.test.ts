@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PlanV1Schema, type PlanV1 } from "@/lib/contracts/plan";
+import { PlanEditV1Schema, PlanV1Schema, type PlanV1 } from "@/lib/contracts/plan";
 import { firstRow, type Database } from "@/lib/db/client";
 import { assets, chatMessages, generationJobs, plans, users } from "@/lib/db/schema";
 import {
   cancelPlan,
   confirmPlan,
   createPlan,
+  editPlan,
   currentDraftPlan,
   finalizePlan,
   listPlans,
@@ -61,6 +62,9 @@ describe("plan service", () => {
   });
 
   afterEach(async () => { await close(); });
+
+  /** Edits arrive over the wire, so tests state them the way the app does and let zod fill the rest. */
+  const edit = (value: unknown) => PlanEditV1Schema.parse(value);
 
   const create = (value: PlanV1, planId?: string) =>
     createPlan(db, { ownerId: "owner-a", stickerId, threadId, messageId, plan: value, planId });
@@ -152,6 +156,98 @@ describe("plan service", () => {
       .rejects.toMatchObject({ code: "AI_TURN_IN_PROGRESS" });
     expect((await db.select().from(chatMessages).where(eq(chatMessages.id, "plan-card-1")).then(firstRow))?.planId)
       .toBe(second.planId);
+  });
+
+  it("saves a user edit as a new version and leaves the one it started from restorable", async () => {
+    const { first, second } = await readyHistory();
+    const edited = await editPlan(db, "owner-a", stickerId, second.planId, edit({
+      layers: [
+        { from: "part_0", name: "Head", source: { kind: "generate", prompt: "A rounder head" } },
+        { from: "part_2" },
+      ],
+      timing: { durationSeconds: 3 },
+    }), second.revision);
+
+    expect(edited.messageId).toBe("plan-card-1");
+    expect(edited.plan.id).not.toBe(second.planId);
+    expect(edited.plan).toMatchObject({ actionable: true, sourceVersionId: null, conceptAssetId: "reference-1" });
+    expect(edited.plan.plan.layers.map((layer) => layer.layerId)).toEqual(["part_0", "part_2"]);
+    expect(edited.plan.plan.layers[0]).toMatchObject({ name: "Head", source: { kind: "generate", prompt: "A rounder head" } });
+    // Untouched geometry survives an edit that never mentioned it.
+    expect(edited.plan.plan.layers[1]).toMatchObject({ name: "Part 2", x: 5 / 6 });
+    expect(edited.plan.plan.timing.durationSeconds).toBe(3);
+
+    const history = (await listPlans(db, "owner-a", stickerId)).reverse();
+    expect(history.map((row) => row.id)).toEqual([first.planId, second.planId, edited.plan.id]);
+    expect(history[1].planJson.layers).toHaveLength(3);
+    const back = await selectPlanVersion(db, "owner-a", stickerId, second.planId, edited.plan.id, edited.plan.revision);
+    expect(back.plan.plan.layers).toHaveLength(3);
+  });
+
+  it("keeps parameters the editor cannot express and applies the ones it can", async () => {
+    const animated = PlanV1Schema.parse({
+      ...plan("Motion", 1),
+      layers: [{
+        layerId: "part_0", name: "Part 0", source: { kind: "generate", prompt: "Element 0" },
+        x: 0.5, y: 0.5, scaleX: 0.4, scaleY: 0.4,
+        animations: [{ type: "spin", turns: 2, direction: "ccw", delay: 0.1, duration: 0.5 }],
+      }],
+    });
+    const created = await create(animated);
+    await finalizePlan(db, { ownerId: "owner-a", stickerId, planId: created.planId });
+    await db.insert(assets).values({
+      id: "motion-reference", ownerId: "owner-a", stickerId, kind: "reference",
+      state: "ready", r2Key: "motion-reference", mimeType: "image/png",
+    });
+    await db.update(plans).set({ conceptAssetId: "motion-reference" }).where(eq(plans.id, created.planId));
+    await db.insert(chatMessages).values({
+      id: "plan-card", ownerId: "owner-a", threadId, role: "assistant", kind: "plan",
+      content: "Plan", sequence: 2, planId: created.planId, planRevision: created.revision,
+    });
+    await settleFixtureTurn();
+
+    const edited = await editPlan(db, "owner-a", stickerId, created.planId, edit({
+      layers: [
+        { from: "part_0", animations: [{ from: 0, delay: 0.4 }, { spec: { type: "slideIn", direction: "up" } }] },
+        { layerId: "sparkles", name: "Sparkles", source: { kind: "generate", prompt: "Tiny sparkles" }, x: 0.2, y: 0.2 },
+      ],
+    }), created.revision);
+
+    const [kept, added] = edited.plan.plan.layers;
+    // The spec the picker has no field for is carried over whole, retimed but not rewritten.
+    expect(kept.animations[0]).toMatchObject({ type: "spin", turns: 2, direction: "ccw", delay: 0.4, duration: 0.5 });
+    expect(kept.animations[1]).toMatchObject({ type: "slideIn", direction: "up", delay: 0, duration: 0.5, distance: 0.3 });
+    expect(added).toMatchObject({ layerId: "sparkles", scaleX: 0.4, source: { kind: "generate" } });
+    expect(edited.plan.generationCount).toBe(2);
+  });
+
+  it("says in the summary when an edit turns a layer into a video clip", async () => {
+    const { second } = await readyHistory();
+    const edited = await editPlan(db, "owner-a", stickerId, second.planId, edit({
+      layers: [
+        { from: "part_0", source: { kind: "video", prompt: "The whole character", motion: "slow turntable" } },
+        { from: "part_1" },
+        { from: "part_2" },
+      ],
+    }), second.revision);
+    expect(edited.plan.plan.summary).toMatch(/video/i);
+    expect(edited.plan.plan.layers[0].source).toMatchObject({ kind: "video", durationSeconds: 3 });
+  });
+
+  it("refuses an edit against a stale revision, a decided plan, or an unknown layer", async () => {
+    const { second } = await readyHistory();
+    await expect(editPlan(db, "owner-a", stickerId, second.planId, edit({ title: "Nope" }), second.revision + 1))
+      .rejects.toMatchObject({ code: "PLAN_CHANGED" });
+    await expect(editPlan(db, "owner-a", stickerId, second.planId, edit({ layers: [{ from: "ghost" }] }), second.revision))
+      .rejects.toMatchObject({ code: "PLAN_EDIT_INVALID" });
+    // An edit that changes nothing is answered with the plan as it stands, not a duplicate version.
+    const unchanged = await editPlan(db, "owner-a", stickerId, second.planId, edit({}), second.revision);
+    expect(unchanged.plan.id).toBe(second.planId);
+    expect(await listPlans(db, "owner-a", stickerId)).toHaveLength(2);
+
+    await cancelPlan(db, "owner-a", stickerId, second.planId);
+    await expect(editPlan(db, "owner-a", stickerId, second.planId, edit({ title: "Too late" }), second.revision))
+      .rejects.toMatchObject({ code: "PLAN_NOT_ACTIONABLE" });
   });
 
   it("creates a draft at revision 1", async () => {

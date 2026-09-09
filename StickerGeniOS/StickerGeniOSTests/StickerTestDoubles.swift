@@ -114,6 +114,7 @@ actor VideoFrameCacheAPI: StickerAPIClientProtocol {}
 extension StickerAPIClientProtocol {
     func selectPlanVersion(stickerID: String, versionID: String, request: SelectPlanVersionRequest, idempotencyKey: String) async throws -> SelectPlanVersionResponse { throw TestFixtureError.stub }
     func planVersions(stickerID: String) async throws -> Page<PlanRecord> { throw TestFixtureError.stub }
+    func editPlan(stickerID: String, planID: String, request: PlanEditRequest, idempotencyKey: String) async throws -> EditPlanResponse { throw TestFixtureError.stub }
     func listStickers(cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
     func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }
     func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker> { throw TestFixtureError.stub }

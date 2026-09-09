@@ -1,12 +1,16 @@
 import { currentBillingEnvironment } from "@/lib/subscription/client";
 import { and, desc, eq, inArray, isNotNull, isNull, max, ne } from "drizzle-orm";
+import { ZodError } from "zod";
 import {
+  applyPlanEdit,
+  assertAnimatedPlanUsesReferenceBackedArtwork,
   isActionablePlanState,
   isEditablePlanState,
   planGenerationCount,
   planRequiresConcept,
   planVideoCount,
   PlanV1Schema,
+  type PlanEditV1,
   type PlanState,
   type PlanV1,
 } from "@/lib/contracts/plan";
@@ -67,6 +71,38 @@ export async function listPlans(db: Database, ownerId: string, stickerId: string
   )).orderBy(desc(plans.createdAt));
 }
 
+/**
+ * Takes the sticker's row and refuses to touch its plan while a turn is running.
+ *
+ * Shared by the two user-driven rewrites of the live plan card. Both replace the plan a queued job
+ * may be about to read, so both have to hold the sticker for the length of their transaction and
+ * both have to bounce while the agent is mid-turn.
+ */
+async function lockIdlePlanSurface(tx: Database, ownerId: string, stickerId: string, action: string) {
+  const sticker = await tx.select().from(stickers).where(and(
+    eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId),
+  )).for("update").then(firstRow);
+  if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
+  if (sticker.status === "deleting") throw new ApiError(409, "STICKER_DELETING", "Sticker deletion is in progress");
+  const activeJob = await tx.select({ id: generationJobs.id }).from(generationJobs).where(and(
+    eq(generationJobs.stickerId, stickerId),
+    inArray(generationJobs.state, ["queued", "running", "waiting"]),
+  )).limit(1).then(firstRow);
+  if (activeJob) {
+    throw new ApiError(409, "AI_TURN_IN_PROGRESS", `Wait for the current turn to finish before ${action}`);
+  }
+  return sticker;
+}
+
+/** The plan card at the foot of a thread — the only one the user can still act on. */
+async function latestPlanCard(tx: Database, threadId: string) {
+  return tx.select().from(chatMessages).where(and(
+    eq(chatMessages.threadId, threadId),
+    eq(chatMessages.kind, "plan"),
+    isNotNull(chatMessages.planId),
+  )).orderBy(desc(chatMessages.sequence)).limit(1).then(firstRow);
+}
+
 /** Activate a saved version in the latest card without rewriting a plan used by an earlier job. */
 export async function selectPlanVersion(
   db: Database,
@@ -77,27 +113,14 @@ export async function selectPlanVersion(
   currentRevision: number,
 ) {
   return db.transaction(async (tx) => {
-    const sticker = await tx.select().from(stickers).where(and(
-      eq(stickers.id, stickerId), eq(stickers.ownerId, ownerId),
-    )).for("update").then(firstRow);
-    if (!sticker || sticker.deletedAt) throw new ApiError(404, "STICKER_NOT_FOUND", "Sticker not found");
-    if (sticker.status === "deleting") throw new ApiError(409, "STICKER_DELETING", "Sticker deletion is in progress");
-    const activeJob = await tx.select({ id: generationJobs.id }).from(generationJobs).where(and(
-      eq(generationJobs.stickerId, stickerId),
-      inArray(generationJobs.state, ["queued", "running", "waiting"]),
-    )).limit(1).then(firstRow);
-    if (activeJob) throw new ApiError(409, "AI_TURN_IN_PROGRESS", "Wait for the current turn to finish before selecting a plan");
+    await lockIdlePlanSurface(tx, ownerId, stickerId, "selecting a plan");
 
     const selected = await loadPlan(tx, ownerId, stickerId, versionId);
     const source = selected.restoredFromId
       ? await loadPlan(tx, ownerId, stickerId, selected.restoredFromId)
       : selected;
     const current = await loadPlan(tx, ownerId, stickerId, currentPlanId);
-    const card = await tx.select().from(chatMessages).where(and(
-      eq(chatMessages.threadId, current.threadId),
-      eq(chatMessages.kind, "plan"),
-      isNotNull(chatMessages.planId),
-    )).orderBy(desc(chatMessages.sequence)).limit(1).then(firstRow);
+    const card = await latestPlanCard(tx, current.threadId);
     if (!card || card.planId !== currentPlanId || current.revision !== currentRevision) {
       throw new ApiError(409, "PLAN_CHANGED", "The latest plan changed. Reload it before selecting a version");
     }
@@ -125,6 +148,106 @@ export async function selectPlanVersion(
     await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
     return { messageId: card.id, plan: serializePlan(restored) };
   });
+}
+
+/**
+ * Saves the user's own edit of the live plan card as a new version.
+ *
+ * Deliberately a *new* plan row rather than an in-place rewrite, which is what makes editing safe:
+ * the version the user started from stays in `listPlans` untouched, so an edit is undone by picking
+ * the previous version out of the same picker that restores an agent draft. `updatePlan` — the
+ * agent's tool — still edits in place, because a draft nobody has seen is not a version.
+ *
+ * The concept reference is carried across. Editing a layer's wording does not invalidate the
+ * approved look, and dropping the reference would leave the edited plan permanently unconfirmable
+ * with no way for the user to render a new one.
+ */
+export async function editPlan(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  planId: string,
+  edit: PlanEditV1,
+  currentRevision: number,
+) {
+  return db.transaction(async (tx) => {
+    await lockIdlePlanSurface(tx, ownerId, stickerId, "editing a plan");
+
+    const current = await loadPlan(tx, ownerId, stickerId, planId);
+    if (!isActionablePlanState(current.state)) {
+      throw new ApiError(409, "PLAN_NOT_ACTIONABLE", `This plan is ${current.state} and can no longer be edited`);
+    }
+    const card = await latestPlanCard(tx, current.threadId);
+    if (!card || card.planId !== planId || current.revision !== currentRevision) {
+      throw new ApiError(409, "PLAN_CHANGED", "The latest plan changed. Reload it before editing");
+    }
+
+    const before = PlanV1Schema.parse(current.planJson);
+    let next: PlanV1;
+    try {
+      next = applyPlanEdit(before, edit);
+    } catch (error) {
+      // The plan schema's own refinements read as prose — "At most one video layer per plan" — so
+      // the first issue is the sentence to show. `ZodError.message` is the serialized issue list,
+      // which would reach the user's screen as JSON.
+      const reason = error instanceof ZodError
+        ? error.issues[0]?.message ?? "This edit does not describe a valid plan."
+        : error instanceof Error ? error.message : String(error);
+      throw new ApiError(422, "PLAN_EDIT_INVALID", reason);
+    }
+    if (JSON.stringify(next) === JSON.stringify(before)) {
+      // Nothing actually changed — saving a version identical to the one above it would only make
+      // the picker harder to read.
+      return { messageId: card.id, plan: serializePlan(current) };
+    }
+
+    // Only held against the user if their edit is what introduced it. A plan that already broke
+    // this rule is the agent's doing, and refusing to let its owner touch it would be a dead end.
+    if (violatesReferenceBackedArtwork(next) && !violatesReferenceBackedArtwork(before)) {
+      throw new ApiError(
+        422,
+        "PLAN_EDIT_INVALID",
+        "An animated plan's layers have to be drawn artwork or a video clip so they match the "
+          + "approved reference. Change the text, shape, or particle layers to images first.",
+      );
+    }
+    if (planRequiresConcept(next) && !current.conceptAssetId) {
+      throw new ApiError(
+        409,
+        "PLAN_REFERENCE_REQUIRED",
+        "Generated layers need an approved reference image. Ask the assistant to redraft this plan instead",
+      );
+    }
+
+    const now = new Date();
+    await tx.update(plans).set({ state: "superseded", updatedAt: now, decidedAt: now }).where(and(
+      eq(plans.stickerId, stickerId),
+      inArray(plans.state, ["draft", "finalized"]),
+    ));
+    const saved = await tx.insert(plans).values({
+      id: crypto.randomUUID(), ownerId, stickerId, threadId: current.threadId,
+      messageId: card.id, planJson: next, revision: 1,
+      conceptAssetId: current.conceptAssetId, supersedesId: current.id,
+      state: "finalized", createdAt: now, updatedAt: now,
+    }).returning().then(firstRow);
+    if (!saved) throw new Error("Failed to save the edited plan");
+    const claimed = await tx.update(chatMessages).set({
+      planId: saved.id, planRevision: saved.revision,
+    }).where(and(eq(chatMessages.id, card.id), eq(chatMessages.planId, planId)))
+      .returning({ id: chatMessages.id });
+    if (claimed.length === 0) throw new ApiError(409, "PLAN_CHANGED", "The latest plan changed while it was being edited");
+    await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
+    return { messageId: card.id, plan: serializePlan(saved) };
+  });
+}
+
+function violatesReferenceBackedArtwork(plan: PlanV1): boolean {
+  try {
+    assertAnimatedPlanUsesReferenceBackedArtwork(plan);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 export async function loadPlansByIds(db: Database, planIds: string[]) {

@@ -23,6 +23,7 @@ nonisolated enum StickerToolLabel {
     private static let phases: Set<String> = [
         "generate-sticker",
         "generate-image",
+        "generate-video",
         "edit-sticker",
         "animate-sticker",
         "plan-sticker",
@@ -65,6 +66,7 @@ nonisolated enum StickerToolLabel {
         "reply": String(localized: "Writing a reply"),
         "generate-sticker": String(localized: "Making your sticker"),
         "generate-image": String(localized: "Drawing artwork"),
+        "generate-video": String(localized: "Filming a clip"),
         "edit-sticker": String(localized: "Editing sticker"),
         "animate-sticker": String(localized: "Animating sticker"),
         "plan-sticker": String(localized: "Planning sticker"),

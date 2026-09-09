@@ -637,6 +637,25 @@ final class StickerStore {
         }
     }
 
+    /// Saves the user's own edit of the live plan card.
+    ///
+    /// The server keeps the version the edit started from, so this needs no undo of its own: an
+    /// unwanted change is reversed by picking the previous version out of the same picker that
+    /// restores an agent draft.
+    func editPlan(stickerID: String, current: PlanRecord, edit: PlanEdit) async throws {
+        guard !computingStickerIDs.contains(stickerID) else { throw StickerStoreError.turnAlreadyComputing }
+        let response = try await api.editPlan(
+            stickerID: stickerID, planID: current.id,
+            request: .init(currentRevision: current.revision, edit: edit),
+            idempotencyKey: UUID().uuidString
+        )
+        if let index = messages[stickerID]?.firstIndex(where: { $0.id == response.messageId }) {
+            messages[stickerID]?[index].plan = response.plan
+        } else {
+            await loadMessages(stickerID: stickerID)
+        }
+    }
+
     /// Rejects a plan. The reason is optional but worth asking for: given one, the server keeps the
     /// conversation going — it posts the reason as the next message and the agent redrafts against
     /// it, which is why this attaches to the turn that comes back.

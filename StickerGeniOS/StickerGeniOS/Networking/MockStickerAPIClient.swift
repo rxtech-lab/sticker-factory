@@ -166,6 +166,70 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         return .init(messageId: messages[index].id, plan: selected)
     }
 
+    func editPlan(stickerID: String, planID: String, request: PlanEditRequest, idempotencyKey: String) async throws -> EditPlanResponse {
+        guard let index = messages.lastIndex(where: { $0.plan != nil }),
+              var record = messages[index].plan,
+              record.id == planID, record.revision == request.currentRevision, record.actionable else {
+            throw StickerAPIError.http(409)
+        }
+        record.plan = Self.applying(request.edit, to: record.plan)
+        record.id = UUID().uuidString
+        record.supersedesId = planID
+        record.sourceVersionId = nil
+        record.revision = 1
+        record.generationCount = record.plan.layers.filter(\.source.isGenerated).count
+        messages[index].plan = record
+        return .init(messageId: messages[index].id, plan: record)
+    }
+
+    /// The server's `applyPlanEdit`, in miniature: keep what the edit did not mention.
+    private static func applying(_ edit: PlanEdit, to plan: Plan) -> Plan {
+        var next = plan
+        if let title = edit.title { next.title = title }
+        if let summary = edit.summary { next.summary = summary }
+        if let timing = edit.timing {
+            if let duration = timing.durationSeconds { next.timing.durationSeconds = duration }
+            if let fps = timing.fps { next.timing.fps = fps }
+            if let loop = timing.loop { next.timing.loop = loop }
+        }
+        guard let layers = edit.layers else { return next }
+        next.layers = layers.map { entry in
+            let base = entry.from.flatMap { id in plan.layers.first { $0.layerId == id } }
+            let animations = entry.animations.map { edits in
+                edits.compactMap { animation -> PlanAnimation? in
+                    if let index = animation.from {
+                        guard let existing = base?.animations, index < existing.count else { return nil }
+                        var kept = existing[index]
+                        if let delay = animation.delay { kept.delay = delay }
+                        if let duration = animation.duration { kept.duration = duration }
+                        return kept
+                    }
+                    return animation.spec.map { PlanAnimation(type: $0.type, delay: $0.delay, duration: $0.duration) }
+                }
+            }
+            return PlanLayer(
+                layerId: base?.layerId ?? entry.layerId ?? UUID().uuidString,
+                name: entry.name ?? base?.name ?? "Layer",
+                source: entry.source.map(Self.source) ?? base?.source ?? .generate(prompt: ""),
+                x: entry.x ?? base?.x ?? 0.5,
+                y: entry.y ?? base?.y ?? 0.5,
+                scaleX: entry.scaleX ?? base?.scaleX ?? 0.4,
+                scaleY: entry.scaleY ?? base?.scaleY ?? 0.4,
+                rotationDegrees: entry.rotationDegrees ?? base?.rotationDegrees ?? 0,
+                animations: animations ?? base?.animations ?? []
+            )
+        }
+        return next
+    }
+
+    private static func source(_ edit: PlanLayerSourceEdit) -> PlanLayerSource {
+        switch edit {
+        case .generate(let prompt): .generate(prompt: prompt)
+        case .video(let prompt, let motion, let durationSeconds):
+            .video(prompt: prompt, motion: motion, durationSeconds: durationSeconds)
+        }
+    }
+
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
         if ProcessInfo.processInfo.arguments.contains("--ui-tool-preview") {
             let arguments = ProcessInfo.processInfo.arguments
