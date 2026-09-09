@@ -159,14 +159,20 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
   failed because billing hiccuped, and an unreleased hold expires on its own.
 - Set `RX_SUBSCRIPTION_URL`, `RX_SUBSCRIPTION_SANDBOX_API_KEY`, and
   `RX_SUBSCRIPTION_PRODUCTION_API_KEY` to serve TestFlight and App Store users together. Both
-  keys are server-only secrets. The updated iOS client sends `X-StoreKit-App-Transaction` alongside
-  its OAuth token. Apple's official verifier checks its signature, certificate chain/revocation,
-  bundle ID, App Store app ID, and environment before selecting the matching key. Plain environment
-  headers never select a key, and Xcode-signed transactions are never accepted as Apple proof.
+  keys are server-only secrets. Every Apple surface that can spend credits sends
+  `X-StoreKit-App-Transaction` alongside its OAuth token: the full app, the Messages extension, and
+  the App Clip, the last two through the shared quick client. Apple's official verifier checks its
+  signature, certificate chain/revocation, bundle ID, App Store app ID, and environment before
+  selecting the matching key. Plain environment headers never select a key, and Xcode-signed
+  transactions are never accepted as Apple proof.
 - `APPLE_BUNDLE_ID` and `APPLE_APP_ID` optionally override the existing Sticker Factory identity
-  (`app.rxlab.stickerfactory`, `6805825708`). The authenticated web OAuth client uses production;
-  mobile clients with missing or invalid proof cannot perform billing operations. Reads and refunds
-  remain available without proof; refund routing comes from the saved job.
+  (`app.rxlab.stickerfactory`, `6805825708`). Apple stamps its own identifier into the App Clip's
+  transaction, so a Clip token also accepts `<bundle>.Clip`, and an iOS token also accepts the
+  Messages extension's `<bundle>.message` — one app record either way. The authenticated web OAuth
+  client uses production; mobile clients with missing or invalid proof cannot perform billing
+  operations. Reads and refunds remain available without proof; refund routing comes from the saved
+  job. The App Clip is the exception to "reads are free": its allowance endpoint reads the plan
+  through the billing service, so it needs proof like a write does.
 - Apply migration `0006_job_billing_environment` before deploying. New jobs store their billing
   environment next to the reservation. Background settlement, cancellation, and refunds use that
   saved environment even if the user later switches builds. Never copy a production key into the

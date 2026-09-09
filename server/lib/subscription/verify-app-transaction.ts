@@ -27,8 +27,12 @@ export async function verifyAppBillingEnvironment(proof: string, clientId: strin
   if (!Number.isSafeInteger(appAppleId) || appAppleId <= 0) {
     throw new ApiError(503, "SUBSCRIPTION_NOT_CONFIGURED", "The App Store app ID is invalid");
   }
+  // Apple stamps the App Clip's own identifier into its transaction. An app extension's copy of
+  // StoreKit reports the containing app, but the Messages extension's identifier is accepted too:
+  // both are this one app record, and a signed, Apple-issued proof should not be refused over
+  // which of the two Apple wrote into it.
   const bundleIds = clientId === process.env.APP_CLIP_OAUTH_CLIENT_ID?.trim()
-    ? [bundleId, `${bundleId}.Clip`] : [bundleId];
+    ? [bundleId, `${bundleId}.Clip`] : [bundleId, `${bundleId}.message`];
   // Try only real Apple environments. The library intentionally skips signature
   // verification for Xcode, so that environment must never be accepted here.
   for (const expectedBundle of bundleIds) {
