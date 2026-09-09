@@ -28,7 +28,8 @@ struct MessagesStickerCreationTests {
         let transport = CreationRequestTransport()
         let client = MessagesStickerCreationClient(
             baseURL: URL(string: "https://api.example/")!,
-            transport: transport
+            transport: transport,
+            appTransactionProvider: { nil }
         )
         let prompt = String(repeating: "A", count: 70)
         let created = try await client.createSticker(

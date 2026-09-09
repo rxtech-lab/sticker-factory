@@ -148,6 +148,17 @@ it.each(["Sandbox", "Production", "Xcode"])("rejects fabricated %s app transacti
   expect(calls).toHaveLength(0);
 });
 
+it("accepts a proof Apple stamped with the Messages extension's bundle identifier", async () => {
+  vi.mocked(SignedDataVerifier.prototype.verifyAndDecodeAppTransaction).mockImplementation(async function(this: SignedDataVerifier) {
+    const config = this as unknown as { environment: Environment; bundleId: string };
+    if (config.bundleId !== "app.rxlab.stickerfactory.message") throw new VerificationException(VerificationStatus.INVALID_APP_IDENTIFIER);
+    if (config.environment !== Environment.PRODUCTION) throw new VerificationException(VerificationStatus.INVALID_ENVIRONMENT);
+    await Promise.resolve();
+    return { receiptType: Environment.PRODUCTION };
+  });
+  expect(await withBillingRequest(request("production"), principal, hold)).toBe("hold-rxs_production_test");
+});
+
 it("reports transient Apple verification failures without trying another balance", async () => {
   vi.mocked(SignedDataVerifier.prototype.verifyAndDecodeAppTransaction).mockRejectedValue(new VerificationException(VerificationStatus.RETRYABLE_VERIFICATION_FAILURE));
   await expect(withBillingRequest(request("sandbox"), principal, hold)).rejects.toMatchObject({ status: 503 });

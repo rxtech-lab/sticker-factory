@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import StoreKit
 import UIKit
 
 nonisolated enum MessagesStickerKind: String, Codable, CaseIterable, Sendable {
@@ -144,6 +145,44 @@ nonisolated enum MessagesStickerCreationError: Error, LocalizedError, Equatable,
     }
 }
 
+/// Apple's signed proof of which App Store environment this build was installed from.
+///
+/// The server picks its sandbox or production billing key from this signature — a plain
+/// environment header is not proof — and refuses a billing operation without one
+/// (`BILLING_ENVIRONMENT_REQUIRED`). Every surface that can hold or settle credits therefore has
+/// to send it, which is all three users of this file: Messages, the App Clip, and the full app's
+/// quick screen.
+///
+/// Xcode-signed transactions are dropped rather than sent: the server never accepts one, because
+/// Apple's verifier skips signature checking for that environment.
+nonisolated enum QuickAppTransaction {
+    static let headerField = "X-StoreKit-App-Transaction"
+
+    /// Resolved once per process. StoreKit caches the transaction itself, but a quick turn makes
+    /// several calls in a row and an extension is the wrong place to pay for that repeatedly.
+    /// Only a resolved proof is kept, so a first attempt made offline can still succeed later.
+    private actor Cache {
+        private var proof: String?
+
+        func value(resolving resolve: @Sendable () async -> String?) async -> String? {
+            if let proof { return proof }
+            proof = await resolve()
+            return proof
+        }
+    }
+
+    private static let cache = Cache()
+
+    static func proof() async -> String? {
+        await cache.value {
+            guard let result = try? await AppTransaction.shared,
+                  case .verified(let transaction) = result,
+                  transaction.environment != .xcode else { return nil }
+            return result.jwsRepresentation
+        }
+    }
+}
+
 /// Where this build talks to, resolved once.
 ///
 /// Shared by the creation client and `MessagesJobWatcher` — the watcher needs the same host and the
@@ -218,19 +257,31 @@ nonisolated struct MessagesStickerCreationClient: Sendable {
     private let baseURL: URL
     private let transport: any StickerHTTPTransport
     private let useQuickModeAllowance: Bool
+    private let appTransactionProvider: @Sendable () async -> String?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(bundle: Bundle = .main, transport: any StickerHTTPTransport) throws {
+    init(
+        bundle: Bundle = .main,
+        transport: any StickerHTTPTransport,
+        appTransactionProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.proof
+    ) throws {
         baseURL = try MessagesAPIConfiguration.baseURL(bundle: bundle)
         self.transport = transport
+        self.appTransactionProvider = appTransactionProvider
         useQuickModeAllowance = false
     }
 
-    init(baseURL: URL, transport: any StickerHTTPTransport, useQuickModeAllowance: Bool = false) {
+    init(
+        baseURL: URL,
+        transport: any StickerHTTPTransport,
+        useQuickModeAllowance: Bool = false,
+        appTransactionProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.proof
+    ) {
         self.baseURL = baseURL
         self.transport = transport
         self.useQuickModeAllowance = useQuickModeAllowance
+        self.appTransactionProvider = appTransactionProvider
     }
 
     func createUploadIntent(
@@ -368,9 +419,13 @@ nonisolated struct MessagesStickerCreationClient: Sendable {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(await appTransactionProvider(), forHTTPHeaderField: QuickAppTransaction.headerField)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let result = try await transport.data(for: request)
-        if result.response.statusCode == 401 || result.response.statusCode == 403 {
+        // Only 401 is a token problem. A 403 — an unverified billing environment, a route the App
+        // Clip may not take — survives a refresh, and reporting it as a sign-in failure hides the
+        // one message that says what to do about it.
+        if result.response.statusCode == 401 {
             throw MessagesStickerCreationError.unauthorized
         }
         guard (200 ..< 300).contains(result.response.statusCode) else {
@@ -398,9 +453,11 @@ nonisolated struct MessagesStickerCreationClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        request.setValue(await appTransactionProvider(), forHTTPHeaderField: QuickAppTransaction.headerField)
 
         let result = try await transport.data(for: request)
-        if result.response.statusCode == 401 || result.response.statusCode == 403 {
+        // 401 only: see `get`.
+        if result.response.statusCode == 401 {
             throw MessagesStickerCreationError.unauthorized
         }
         guard (200 ..< 300).contains(result.response.statusCode) else {
