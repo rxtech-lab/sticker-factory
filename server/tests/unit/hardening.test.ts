@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { resolveChatAction, validateEditOperation, validatePlannedAnimationOperation } from "@/lib/ai/gateway";
 import { CreateUploadRequestSchema, PostChatMessageRequestSchema } from "@/lib/contracts/api";
-import { StickerDocumentSchema } from "@/lib/contracts/sticker";
+import { MAX_RENDITION_SECONDS, StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { validateAnimatedRenditionTiming } from "@/lib/services/stickers";
 import { downscaleForModelInput, inspectImage } from "@/lib/storage/r2";
 import { assertTargetedAnimationOperation } from "@/workflows/sticker-generation/turn-context";
@@ -69,6 +69,37 @@ describe("media and animation hardening", () => {
     // what it carries, so timing cannot be inflated by a lying header.
     const overclaimed = spliceApngControlChunks(still, [80, 80, 120], 240);
     expect((await inspectImage(overclaimed)).frameCount).toBe(3);
+  });
+
+  it("bounds an animation by its frame rather than by a frame count", async () => {
+    // `inspectImage` has no frame ceiling. The cap that used to be here sat below the app's own
+    // contracts and rejected legal work — a maximum-length sharing APNG is `MAX_RENDITION_SECONDS`
+    // at 30 FPS, which is more frames than the old limit of 240 allowed — and what bounds an
+    // animation now is the per-kind rule that describes it, not a number in the inspector.
+    const still = await sharp({
+      create: { width: 1024, height: 1024, channels: 4, background: { r: 20, g: 40, b: 60, alpha: 0.5 } },
+    }).png().toBuffer();
+    const apngAt = async (frameCount: number) => await inspectImage(
+      spliceApngControlChunks(still, Array.from({ length: frameCount }, () => Math.round(1000 / 30)), frameCount, 1024),
+    );
+
+    // The longest export the rendition contract admits, at the top of `SHARING_APNG_DIMENSIONS`.
+    const longest = await apngAt(Math.ceil(MAX_RENDITION_SECONDS * 30));
+    expect(longest).toMatchObject({ width: 1024, height: 1024, mimeType: "image/png" });
+    expect(longest.frameCount).toBe(Math.ceil(MAX_RENDITION_SECONDS * 30));
+    expect(longest.fps).toBeCloseTo(30.3, 1);
+
+    // And well past it: 4000 frames of 1024² is over four billion notional pixels, none of which
+    // are decoded. Only the frame reaches a decoder, and only the frame is bounded.
+    const absurd = await apngAt(4_000);
+    expect(absurd.frameCount).toBe(4_000);
+    expect(absurd.durationSeconds).toBeCloseTo(4_000 * 0.033, 1);
+
+    // The bound that does exist is per-frame area, which no frame count can talk its way past.
+    const oversized = await sharp({
+      create: { width: 5_000, height: 5_000, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
+    }).png().toBuffer();
+    await expect(inspectImage(oversized)).rejects.toThrow(/pixel limit/);
   });
 
   it("shrinks an attachment to one tile before an agent is shown it", async () => {
