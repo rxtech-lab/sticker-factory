@@ -84,7 +84,7 @@ private struct StickerTopUpView: View {
             }
         }
         .alert("Top Up", isPresented: $model.showingMessage) {
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) { Haptics.tap(.light) }
         } message: {
             Text(model.message ?? "")
         }

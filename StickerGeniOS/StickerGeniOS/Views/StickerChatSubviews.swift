@@ -16,7 +16,7 @@ struct ChatErrorAlert: ViewModifier {
 
     func body(content: Content) -> some View {
         content.alert("Couldn’t Complete Action", isPresented: isPresented) {
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) { Haptics.tap(.light) }
         } message: {
             Text(message ?? "")
         }
@@ -55,6 +55,7 @@ struct ChatBubble: View {
                     .contextMenu {
                         if !message.content.isEmpty {
                             Button {
+                                Haptics.tap(.light)
                                 UIPasteboard.general.string = message.content
                             } label: {
                                 Label("Copy", systemImage: "doc.on.doc")
@@ -102,7 +103,7 @@ struct ChatBubble: View {
                 Button { onOpenSticker(sticker) } label: {
                     StickerAttachment(document: sticker, assets: assets, videos: videos)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.posterPlain)
                 .accessibilityIdentifier("show-sticker-attachment")
             }
         }
@@ -207,12 +208,11 @@ private struct ToolCallRow: View {
 
     var body: some View {
         Button {
-            Haptics.tap(.light)
             showingDetails = true
         } label: {
             chip
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.posterPlain)
         .accessibilityLabel("Tool \(message.content), \(message.status.label)")
         .accessibilityHint("Shows the tool result or error")
         .sheet(isPresented: $showingDetails) {
@@ -231,6 +231,7 @@ private struct ToolCallRow: View {
                             } else if previewFinished {
                                 ContentUnavailableView("Preview unavailable", systemImage: "photo")
                                 Button("Retry") {
+                                    Haptics.tap(.light)
                                     Task {
                                         previewFinished = false
                                         await previewAssets.load(assetID: assetID, api: api)
@@ -256,7 +257,10 @@ private struct ToolCallRow: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showingDetails = false }
+                        Button("Done") {
+                            Haptics.tap(.light)
+                            showingDetails = false
+                        }
                     }
                 }
             }
@@ -453,7 +457,7 @@ struct ComposerMediaChip: View {
                         }
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.posterPlain)
             .disabled(lift == nil)
             // The chips sit directly above the keyboard, so the popover has to open upward.
             .popoverTip(tip, arrowEdge: .bottom)

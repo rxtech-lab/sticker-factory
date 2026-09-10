@@ -119,6 +119,24 @@ struct LibraryView: View {
         !filtered.isEmpty || !packSections.isEmpty || nextStickerCursor != nil
     }
 
+    /// Why there is nothing on screen, when the reason is that the request failed rather than that
+    /// the shelf is bare. Reading it from the store rather than from `errorMessage` is the point:
+    /// the alert is dismissed within a second of appearing, and what it leaves behind otherwise
+    /// looks exactly like a new account.
+    private var loadFailureMessage: String? {
+        isSearchActive ? store.librarySearchFailure : store.libraryLoadFailure
+    }
+
+    /// The one reload the screen has, wherever it is asked for — the grid's pull, the retry button
+    /// on the failure state, or the pull on the failure state itself.
+    private func reload() async {
+        if isSearchActive {
+            await store.searchLibrary(query: searchText, debounce: .zero)
+        } else {
+            await store.refresh()
+        }
+    }
+
     var body: some View {
         StickerBackground {
             Group {
@@ -127,16 +145,48 @@ struct LibraryView: View {
                 } else if isSearchActive && store.isSearchingLibrary && !hasAnything {
                     Color.clear
                 } else if !hasAnything {
-                    EmptyStateView(
-                        title: isSearchActive
-                            ? String(localized: "No matching stickers")
-                            : String(localized: "No stickers yet"),
-                        message: isSearchActive
-                            ? String(localized: "Try a different search or filter.")
-                            : filter == .all
-                            ? String(localized: "Create a static or animated sticker to get started.")
-                            : String(localized: "No \(filter.label.lowercased()) stickers match this filter.")
-                    )
+                    // Both of these scroll so that the pull-to-refresh the grid carries survives
+                    // the grid's absence. A library that failed to load is the one screen where a
+                    // user reaches for that gesture hardest, and the old empty state was the one
+                    // place it did not exist.
+                    ScrollView {
+                        Group {
+                            if let loadFailureMessage {
+                                EmptyStateView(
+                                    title: isSearchActive
+                                        ? String(localized: "Couldn’t search your library")
+                                        : String(localized: "Couldn’t load your library"),
+                                    message: loadFailureMessage,
+                                    icon: PosterIcon.offline,
+                                    accent: AppColors.coral
+                                ) {
+                                    Button {
+                                        Task { await reload() }
+                                    } label: {
+                                        Label("Try Again", systemImage: "arrow.clockwise")
+                                    }
+                                    .buttonStyle(.posterSecondary)
+                                    .accessibilityIdentifier("library-retry-button")
+                                }
+                            } else {
+                                EmptyStateView(
+                                    title: isSearchActive
+                                        ? String(localized: "No matching stickers")
+                                        : String(localized: "No stickers yet"),
+                                    message: isSearchActive
+                                        ? String(localized: "Try a different search or filter.")
+                                        : filter == .all
+                                        ? String(localized: "Create a static or animated sticker to get started.")
+                                        : String(localized: "No \(filter.label.lowercased()) stickers match this filter.")
+                                )
+                            }
+                        }
+                        .containerRelativeFrame(.vertical)
+                    }
+                    // A state shorter than the screen does not bounce on its own, and without a
+                    // bounce there is nothing to pull.
+                    .scrollBounceBehavior(.always)
+                    .refreshable { await reload() }
                 } else {
                     ScrollView {
                         // Headers scroll with their section rather than pinning. A pinned header
@@ -153,10 +203,14 @@ struct LibraryView: View {
                                                 NavigationLink(value: sticker.id) {
                                                     StickerLibraryCard(sticker: sticker, api: store.api)
                                                 }
-                                                .buttonStyle(.plain)
+                                                .buttonStyle(.posterPlain)
                                                 .accessibilityIdentifier("library-sticker-\(sticker.id)")
                                                 .contextMenu {
+                                                    // A menu row is drawn by UIKit, which never
+                                                    // sees the app's button styles — so anything
+                                                    // in here asks for its own tap.
                                                     Button {
+                                                        Haptics.tap(.light)
                                                         renamingSticker = sticker
                                                         renameTitle = sticker.title
                                                         showingRename = true
@@ -166,6 +220,7 @@ struct LibraryView: View {
                                                     .accessibilityIdentifier("rename-library-sticker-\(sticker.id)")
 
                                                     Button(role: .destructive) {
+                                                        Haptics.tap(.light)
                                                         deletionCandidate = sticker
                                                         confirmingDelete = true
                                                     } label: {
@@ -211,7 +266,7 @@ struct LibraryView: View {
                                                 } label: {
                                                     StickerLibraryCard(sticker: sticker, api: store.api, showsStatus: false)
                                                 }
-                                                .buttonStyle(.plain)
+                                                .buttonStyle(.posterPlain)
                                                 .accessibilityIdentifier("library-pack-sticker-\(sticker.id)")
                                             }
                                         }
@@ -228,13 +283,7 @@ struct LibraryView: View {
                         }
                         .padding(.vertical)
                     }
-                    .refreshable {
-                        if isSearchActive {
-                            await store.searchLibrary(query: searchText, debounce: .zero)
-                        } else {
-                            await store.refresh()
-                        }
-                    }
+                    .refreshable { await reload() }
                 }
             }
         }
@@ -320,8 +369,11 @@ struct LibraryView: View {
                 })
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") { showingCreation = false }
-                            .accessibilityIdentifier("dismiss-create-button")
+                        Button("Close") {
+                            Haptics.tap(.light)
+                            showingCreation = false
+                        }
+                        .accessibilityIdentifier("dismiss-create-button")
                     }
                 }
             }
@@ -334,7 +386,10 @@ struct LibraryView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { previewedSticker = nil }
+                            Button("Close") {
+                                Haptics.tap(.light)
+                                previewedSticker = nil
+                            }
                         }
                     }
             }
@@ -366,21 +421,33 @@ struct LibraryView: View {
                     deletionCandidate = nil
                 }
             }
-            Button("Cancel", role: .cancel) { deletionCandidate = nil }
+            Button("Cancel", role: .cancel) {
+                Haptics.tap(.light)
+                deletionCandidate = nil
+            }
         } message: { _ in
             Text("Deletion starts a durable purge of the private source images, transcript, revisions, and exports.")
         }
         .alert("Couldn’t Complete Action", isPresented: isShowingError) {
-            Button("OK") { store.errorMessage = nil }
+            Button("OK") {
+                Haptics.tap(.light)
+                store.errorMessage = nil
+            }
         } message: {
             Text(store.errorMessage ?? "")
         }
         .task {
             if store.stickers.isEmpty { await store.refresh() } else { await store.refreshSections() }
+            // The chip in this screen's toolbar is the only place the balance is shown, and credits
+            // are spent from other screens, other devices, and by the server while the app is away.
+            subscription.refresh()
         }
         .task(id: searchText) {
             await store.searchLibrary(query: searchText)
         }
+        // The filter lives in a UIKit menu, which the app's button styles never reach. Watching the
+        // value here catches it wherever it is changed from, and only when it actually changes.
+        .onChange(of: filter) { Haptics.selection() }
         .telemetryScreen("library")
     }
 }
@@ -461,9 +528,9 @@ private struct LibrarySectionHeader: View {
                             offset: Poster.noShadow
                         )
                 }
-                // `.plain`, or the link picks up the default button chrome and the chevron sits
-                // on a filled capsule.
-                .buttonStyle(.plain)
+                // Undecorated, or the link picks up the default button chrome and the chevron
+                // sits on a filled capsule.
+                .buttonStyle(.posterPlain)
                 .accessibilityLabel("Pack details")
                 .accessibilityIdentifier("library-pack-header-\(packID)")
             }

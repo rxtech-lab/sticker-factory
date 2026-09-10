@@ -35,6 +35,7 @@
 		C11F00000000000000000001 /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11F00000000000000000003 /* AppColors.swift */; };
 		C11F00000000000000000002 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11F00000000000000000004 /* DesignSystem.swift */; };
 		C11F00000000000000000005 /* PosterIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11F00000000000000000006 /* PosterIcons.swift */; };
+		C11F00000000000000000007 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11F00000000000000000008 /* Haptics.swift */; };
 		C26FB4EC37147EED5796B7E4 /* MessagesJobWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E443F41899805A0051CA539 /* MessagesJobWatcher.swift */; };
 		D3D7B0CC116B9ADEEFF9898A /* StickerAppClip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = 10CFC4A0F2BED0360644588B /* StickerAppClip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DB77A37020ABCB10B6443B08 /* MessagesJobWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E443F41899805A0051CA539 /* MessagesJobWatcher.swift */; };
@@ -146,6 +147,7 @@
 		C11F00000000000000000003 /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppColors.swift; path = StickerGeniOS/AppColors.swift; sourceTree = SOURCE_ROOT; };
 		C11F00000000000000000004 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DesignSystem.swift; path = StickerGeniOS/Views/DesignSystem.swift; sourceTree = SOURCE_ROOT; };
 		C11F00000000000000000006 /* PosterIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PosterIcons.swift; path = StickerGeniOS/Views/PosterIcons.swift; sourceTree = SOURCE_ROOT; };
+		C11F00000000000000000008 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Haptics.swift; path = StickerGeniOS/Haptics.swift; sourceTree = SOURCE_ROOT; };
 		D5064562E4FFA7578BD1B762 /* StickerAppClipUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerAppClipUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF2A3E15303C7709006910C8 /* StickerGeniOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StickerGeniOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF2A3E24303C770A006910C8 /* StickerGeniOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerGeniOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -174,6 +176,7 @@
 		A00000000000000000000040 /* Exceptions for "StickerGeniOS" folder in "StickerMessages" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Haptics.swift,
 				Views/StickerToolLabel.swift,
 			);
 			target = A00000000000000000000010 /* StickerMessages */;
@@ -313,6 +316,7 @@
 				C11F00000000000000000003 /* AppColors.swift */,
 				C11F00000000000000000004 /* DesignSystem.swift */,
 				C11F00000000000000000006 /* PosterIcons.swift */,
+				C11F00000000000000000008 /* Haptics.swift */,
 				213B6045E1ABC6942D35394F /* ClipAuthentication.swift */,
 				9B62E59B3EABE253D1AAE1BB /* ClipPackView.swift */,
 				C119B001A001A001A001A002 /* ClipLibraryView.swift */,
@@ -744,6 +748,7 @@
 				C11F00000000000000000001 /* AppColors.swift in Sources */,
 				C11F00000000000000000002 /* DesignSystem.swift in Sources */,
 				C11F00000000000000000005 /* PosterIcons.swift in Sources */,
+				C11F00000000000000000007 /* Haptics.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

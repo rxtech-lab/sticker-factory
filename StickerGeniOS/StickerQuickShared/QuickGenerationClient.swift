@@ -150,23 +150,44 @@ nonisolated enum MessagesStickerCreationError: Error, LocalizedError, Equatable,
 /// The server picks its sandbox or production billing key from this signature — a plain
 /// environment header is not proof — and refuses a billing operation without one
 /// (`BILLING_ENVIRONMENT_REQUIRED`). Every surface that can hold or settle credits therefore has
-/// to send it, which is all three users of this file: Messages, the App Clip, and the full app's
-/// quick screen.
+/// to send it: Messages, the App Clip, the full app's quick screen, and the full app's own
+/// `StickerAPIClient`, which shares this cache so one process reads StoreKit once.
 ///
 /// Xcode-signed transactions are dropped rather than sent: the server never accepts one, because
 /// Apple's verifier skips signature checking for that environment.
 nonisolated enum QuickAppTransaction {
     static let headerField = "X-StoreKit-App-Transaction"
 
-    /// Resolved once per process. StoreKit caches the transaction itself, but a quick turn makes
-    /// several calls in a row and an extension is the wrong place to pay for that repeatedly.
+    /// Resolved once per process, on a task of its own, and shared by everyone who asks at once.
+    ///
+    /// The isolation is the point, not tidiness. `AppTransaction.shared` is cancellable and the
+    /// proof is resolved while building *every* request, so a caller that goes away mid-resolve
+    /// hands back `nil` — and `nil` is not "no proof needed", it is a header the server refuses
+    /// the next billing write for. Stopping a turn cancels its live event stream while the chat
+    /// screen is still making calls, which is exactly that race, and is why sending again right
+    /// after a stop came back 403. A detached task cannot be cancelled by whoever is waiting on
+    /// it, so the answer arrives and is kept however the caller ends.
+    ///
     /// Only a resolved proof is kept, so a first attempt made offline can still succeed later.
-    private actor Cache {
+    /// Internal rather than private so its behaviour under cancellation and concurrent callers can
+    /// be tested directly. Nothing outside the tests builds one; everything shares `cache`.
+    actor Cache {
         private var proof: String?
+        private var resolution: Task<String?, Never>?
 
-        func value(resolving resolve: @Sendable () async -> String?) async -> String? {
+        func value(refreshing: Bool, resolving resolve: @escaping @Sendable () async -> String?) async -> String? {
+            if refreshing {
+                proof = nil
+                resolution = nil
+            }
             if let proof { return proof }
-            proof = await resolve()
+            let task = resolution ?? Task.detached(priority: .userInitiated) { await resolve() }
+            resolution = task
+            // Awaiting a non-throwing task cannot be interrupted by this caller's own cancellation,
+            // and cancelling a caller never reaches a detached task.
+            let resolved = await task.value
+            if resolution == task { resolution = nil }
+            if let resolved { proof = resolved }
             return proof
         }
     }
@@ -174,12 +195,23 @@ nonisolated enum QuickAppTransaction {
     private static let cache = Cache()
 
     static func proof() async -> String? {
-        await cache.value {
-            guard let result = try? await AppTransaction.shared,
-                  case .verified(let transaction) = result,
-                  transaction.environment != .xcode else { return nil }
-            return result.jwsRepresentation
-        }
+        await cache.value(refreshing: false, resolving: resolveFromStoreKit)
+    }
+
+    /// Drops the cached proof and asks StoreKit again.
+    ///
+    /// Called only by a request the server just refused for want of proof. That refusal is the one
+    /// piece of evidence worth re-reading StoreKit for, and re-reading it there is what turns a
+    /// message the user would have had to send a second time into a retry they never see.
+    static func refreshedProof() async -> String? {
+        await cache.value(refreshing: true, resolving: resolveFromStoreKit)
+    }
+
+    private static let resolveFromStoreKit: @Sendable () async -> String? = {
+        guard let result = try? await AppTransaction.shared,
+              case .verified(let transaction) = result,
+              transaction.environment != .xcode else { return nil }
+        return result.jwsRepresentation
     }
 }
 

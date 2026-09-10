@@ -87,7 +87,7 @@ struct MarketplaceView: View {
                                     PackCard(pack: pack, api: store.api)
                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.posterPlain)
                                 .accessibilityIdentifier("marketplace-pack-\(pack.id)")
                             }
                         }
@@ -126,6 +126,7 @@ struct MarketplaceView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    Haptics.tap(.light)
                     showingComposer = true
                 } label: {
                     PosterToolbarIcon(glyph: .add)
@@ -157,7 +158,13 @@ struct MarketplaceView: View {
                 }
             }
         }
-        .onChange(of: store.sort) { Task { await store.refresh() } }
+        // Both live in UIKit menus and segmented controls, which the app's button styles never
+        // reach. Watching the values catches them wherever they are changed from.
+        .onChange(of: tab) { Haptics.selection() }
+        .onChange(of: store.sort) {
+            Haptics.selection()
+            Task { await store.refresh() }
+        }
         .sheet(isPresented: $showingComposer, onDismiss: {
             guard let createdPackID else { return }
             self.createdPackID = nil
@@ -170,7 +177,10 @@ struct MarketplaceView: View {
                 })
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { showingComposer = false }
+                            Button("Close") {
+                                Haptics.tap(.light)
+                                showingComposer = false
+                            }
                         }
                     }
             }

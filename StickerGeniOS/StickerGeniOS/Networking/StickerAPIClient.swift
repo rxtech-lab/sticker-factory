@@ -1,7 +1,6 @@
 import AnimatedView
 import CryptoKit
 import Foundation
-import StoreKit
 import os
 
 nonisolated protocol StickerAPIClientProtocol: Sendable {
@@ -78,6 +77,9 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     private let appVersion: String?
     private let acceptLanguage: String?
     private let appTransactionProvider: @Sendable () async -> String?
+    /// Asks StoreKit again after the server has said the proof was missing. Separate from the
+    /// provider so the ordinary path stays a cache read and only a refusal pays for a new one.
+    private let appTransactionRefresher: @Sendable () async -> String?
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     /// Called when the server declines a request for want of credits or a plan.
@@ -96,12 +98,12 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         session: URLSession = .shared,
         appVersion: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
         acceptLanguage: String? = Locale.preferredLanguages.first,
-        appTransactionProvider: @escaping @Sendable () async -> String? = {
-            guard let result = try? await AppTransaction.shared,
-                  case .verified(let transaction) = result,
-                  transaction.environment != .xcode else { return nil }
-            return result.jwsRepresentation
-        }
+        // Resolved through the shared cache rather than by reading `AppTransaction.shared` here.
+        // This ran on the calling task, so anything that cancelled a caller — stopping a turn
+        // cancels its event stream — resolved to `nil`, and the next billing write went out with no
+        // proof and came back 403. See `QuickAppTransaction`.
+        appTransactionProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.proof,
+        appTransactionRefresher: @escaping @Sendable () async -> String? = QuickAppTransaction.refreshedProof
     ) {
         self.baseURL = baseURL
         self.tokenBroker = tokenBroker
@@ -109,6 +111,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         self.appVersion = appVersion
         self.acceptLanguage = acceptLanguage
         self.appTransactionProvider = appTransactionProvider
+        self.appTransactionRefresher = appTransactionRefresher
         encoder = JSONEncoder.api
         decoder = JSONDecoder.api
     }
@@ -645,7 +648,31 @@ actor StickerAPIClient: StickerAPIClientProtocol {
             let (retryData, retryResponse) = try await session.data(for: request)
             return try decode(retryData, response: retryResponse, context: "\(context) (retried after 401)")
         }
+        // A refusal for want of Apple's signed billing environment is recoverable, and recovering it
+        // here is the difference between a turn that goes through and a user retyping their message:
+        // the request never reached billing, so nothing was reserved and nothing was charged, and it
+        // still carries its idempotency key. The one thing that changed is that StoreKit was
+        // unreachable — or the resolving task was cancelled — when this request was built, so the
+        // only thing worth doing differently is asking StoreKit again.
+        if response.statusCode == 403,
+           Self.refusedForMissingBillingProof(data),
+           let refreshed = await appTransactionRefresher() {
+            request.setValue(refreshed, forHTTPHeaderField: "X-StoreKit-App-Transaction")
+            let (retryData, retryResponse) = try await session.data(for: request)
+            return try decode(retryData, response: retryResponse, context: "\(context) (retried with refreshed billing proof)")
+        }
         return try decode(data, response: response, context: context)
+    }
+
+    /// Whether a 403 is the server saying it never saw Apple's proof, rather than a refusal that
+    /// asking again cannot fix — a client id that may not use this API, or a proof Apple itself
+    /// declined to verify. Only the first is worth a second attempt.
+    private static func refusedForMissingBillingProof(_ data: Data) -> Bool {
+        struct Refusal: Decodable {
+            struct Body: Decodable { let code: String }
+            let error: Body
+        }
+        return (try? JSONDecoder().decode(Refusal.self, from: data))?.error.code == "BILLING_ENVIRONMENT_REQUIRED"
     }
 
     private func authorizedRequest(path: String, query: [URLQueryItem] = []) async throws -> URLRequest {
@@ -655,7 +682,8 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         request.setValue("Bearer \(try await tokenBroker.validAccessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         // Apple signs the environment; a plain sandbox/production header is not proof.
-        // Keep reads usable if StoreKit is unavailable. Billing writes fail closed on the server.
+        // Keep reads usable if StoreKit is unavailable. Billing writes fail closed on the server,
+        // and `send` retries one that failed only because this came back empty.
         request.setValue(await appTransactionProvider(), forHTTPHeaderField: "X-StoreKit-App-Transaction")
         Self.addClientMetadataHeaders(
             to: &request,

@@ -49,6 +49,7 @@ struct MessengerExportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {
+                        Haptics.tap(.light)
                         model.cancel()
                         dismiss()
                     }
@@ -69,8 +70,12 @@ struct MessengerExportSheet: View {
         .interactiveDismissDisabled()
         .alert("Edit emoji", isPresented: $isEditingEmoji) {
             TextField("Emoji", text: $emojiDraft)
-            Button("Cancel", role: .cancel) { editingStickerID = nil }
+            Button("Cancel", role: .cancel) {
+                Haptics.tap(.light)
+                editingStickerID = nil
+            }
             Button("Save") {
+                Haptics.tap(.light)
                 if let stickerID = editingStickerID {
                     model.emojis[stickerID] = MessengerEmojiStore.singleEmoji(emojiDraft)
                         ?? MessengerEmojiStore.defaultEmoji
@@ -317,7 +322,7 @@ struct MessengerExportSheet: View {
                 .frame(width: 44, height: 44)
                 .posterSurface(cornerRadius: Poster.chipRadius, fill: AppColors.card, lineWidth: Poster.hairline, offset: Poster.noShadow)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.posterPlain)
         .accessibilityLabel("Edit emoji for \(sticker.title)")
         .accessibilityIdentifier("messenger-emoji-\(sticker.id)")
     }
@@ -344,7 +349,6 @@ struct MessengerExportSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         Button {
-            Haptics.tap(.medium)
             for sticker in part.stickers { restoreDefaultIfEmpty(sticker.id) }
             model.send(part)
         } label: {

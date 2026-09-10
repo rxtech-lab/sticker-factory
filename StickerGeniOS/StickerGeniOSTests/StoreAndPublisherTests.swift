@@ -564,6 +564,46 @@ struct StoreAndPublisherTests {
         #expect(!store.isLoading)
     }
 
+    /// The alert is not the whole story. It is dismissed within a second of appearing, and what it
+    /// leaves behind on a dead network is an empty grid that reads as an empty account — with no
+    /// list on screen, and therefore no pull-to-refresh, to say otherwise.
+    @Test("A library that could not load says so after its alert is dismissed, and clears on retry")
+    func offlineLibraryKeepsItsFailureForTheRetry() async {
+        let api = OfflineLibraryAPI()
+        let store = StickerStore(api: api)
+
+        await store.refresh()
+        #expect(store.stickers.isEmpty)
+        #expect(store.errorMessage != nil)
+        #expect(store.libraryLoadFailure != nil)
+
+        // The alert's OK button, which must not take the reason for the empty screen with it.
+        store.errorMessage = nil
+        #expect(store.libraryLoadFailure != nil)
+
+        await store.refresh()
+        #expect(store.stickers.map(\.id) == [api.stickerID])
+        #expect(store.libraryLoadFailure == nil)
+    }
+
+    /// Credits are spent by the server, so nothing on the client knows the balance moved unless it
+    /// is told to look. Both ends of the turn are worth a look: the debit lands as it starts, and a
+    /// failure is refunded by the time it ends.
+    @Test("A generation asks for the credit balance at both ends of the turn")
+    func generationRefreshesTheCreditBalance() async throws {
+        let api = FailedTranscriptAPI()
+        let store = StickerStore(api: api)
+        var checks = 0
+        store.onCreditsMayHaveChanged = { checks += 1 }
+
+        store.observeExternalJob(jobID: "publish-job", stickerID: api.stickerID)
+        #expect(checks == 1)
+
+        try await waitUntil { store.jobs[api.stickerID]?.isTerminal == true }
+        #expect(checks > 1)
+        store.reset()
+    }
+
     @Test("Failed cleanup dispatch keeps the local sticker and surfaces retry")
     func failedDeletionKeepsSticker() async {
         let api = DeleteFailureAPI()

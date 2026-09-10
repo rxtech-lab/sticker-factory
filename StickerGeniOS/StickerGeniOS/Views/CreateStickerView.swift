@@ -137,7 +137,6 @@ struct CreateStickerView: View {
                                                     // so opening a lift from any photo retires the
                                                     // tip, not only from the one showing it.
                                                     liftTip.invalidate(reason: .actionPerformed)
-                                                    Haptics.tap(.light)
                                                     Task { pendingLift = await SubjectLiftPresenter.lift(from: reference) }
                                                 } : nil,
                                                 tip: reference.id == liftTipTarget ? liftTip : nil,
@@ -158,7 +157,6 @@ struct CreateStickerView: View {
                     if let error = localError ?? store.errorMessage { ErrorBanner(message: error) }
 
                     Button {
-                        Haptics.tap(.medium)
                         Task { await generate() }
                     } label: {
                         HStack(spacing: 8) {
@@ -283,7 +281,7 @@ private struct ReferenceThumbnail: View {
                     }
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.posterPlain)
             .disabled(lift == nil)
             .popoverTip(tip, arrowEdge: .top)
             .accessibilityLabel(

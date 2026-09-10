@@ -68,7 +68,10 @@ struct SubjectLiftSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button("Close") {
+                        Haptics.tap(.light)
+                        dismiss()
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) { footer }
@@ -100,7 +103,6 @@ struct SubjectLiftSheet: View {
         GeometryReader { proxy in
             if let selection, !isPressing, !isWorking {
                 Button {
-                    Haptics.tap(.medium)
                     Task { await use() }
                 } label: {
                     Label {
@@ -116,7 +118,9 @@ struct SubjectLiftSheet: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                 }
-                .buttonStyle(.plain)
+                // Weightier than the app's default tap: this is the decision the whole screen
+                // exists to take, and it draws its own capsule rather than wearing a poster pill.
+                .buttonStyle(PosterPlainButtonStyle(feedback: .medium))
                 .foregroundStyle(.black)
                 .background(.white, in: .capsule)
                 .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
@@ -140,7 +144,6 @@ struct SubjectLiftSheet: View {
     /// is already drawing the rim it describes, at the width the atlas will bake.
     private var outlineToggle: some View {
         Button {
-            Haptics.tap(.light)
             isOutlined.toggle()
         } label: {
             Label("White outline", systemImage: isOutlined ? "checkmark.circle.fill" : "circle")
@@ -148,7 +151,7 @@ struct SubjectLiftSheet: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.posterPlain)
         .foregroundStyle(.white)
         .background(.white.opacity(isOutlined ? 0.22 : 0.08), in: .capsule)
         .accessibilityIdentifier("subject-lift-outline-toggle")

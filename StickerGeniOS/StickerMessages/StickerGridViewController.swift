@@ -530,6 +530,9 @@ final class StickerCell: UICollectionViewCell {
 
     @objc
     private func handleTap() {
+        // The tile is the extension's most-pressed control and draws no chrome of its own, so the
+        // tap is the only thing that says it registered before the sticker reaches the field.
+        Haptics.tap(.light)
         onTap?()
     }
 }

@@ -43,7 +43,7 @@ struct CreatorPacksView: View {
                                     NavigationLink(value: PackRoute(packID: pack.id)) {
                                         PackCard(pack: pack, api: store.api)
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.posterPlain)
                                     .accessibilityIdentifier("creator-pack-\(pack.id)")
                                 }
                             }

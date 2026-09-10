@@ -184,6 +184,38 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
     }
 
+    /// Dismissing the alert used to leave "No stickers yet" over an account that has plenty — and
+    /// no grid on screen, so not even a pull to try again. The failure state has to carry its own
+    /// way back.
+    @MainActor
+    func testLibraryOfferedARetryAfterAFailedLoad() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = [
+            "--ui-testing",
+            "--reduce-motion",
+            "--ui-library-list-failure",
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US"
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 8))
+        app.buttons["OK"].tap()
+
+        XCTAssertTrue(app.staticTexts["Couldn’t load your library"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["No stickers yet"].exists)
+        let retry = element("library-retry-button")
+        XCTAssertTrue(retry.exists)
+
+        // The mock fails every listing, so the retry is expected to fail again — what matters is
+        // that it ran, and that the way back is still there afterwards.
+        retry.tap()
+        XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 8))
+        app.buttons["OK"].tap()
+        XCTAssertTrue(element("library-retry-button").waitForExistence(timeout: 3))
+    }
+
     @MainActor
     func testLibraryStickerContextMenuOffersRenameAndConfirmedDelete() {
         let card = element("library-sticker-sticker-demo")

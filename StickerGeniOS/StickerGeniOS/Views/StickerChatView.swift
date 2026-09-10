@@ -263,8 +263,11 @@ struct StickerChatView: View {
             if oldValue == nil, newValue != nil { Haptics.warning() }
         }
         .alert("Using personal photos", isPresented: $showingPrivacy) {
-            Button("Continue") { privacyAccepted = true }
-            Button("Not now", role: .cancel) {}
+            Button("Continue") {
+                Haptics.tap(.light)
+                privacyAccepted = true
+            }
+            Button("Not now", role: .cancel) { Haptics.tap(.light) }
         } message: {
             Text("""
                 Reference images are uploaded privately and \
@@ -392,7 +395,7 @@ struct StickerChatView: View {
                     if await store.delete(stickerID: stickerID) { dismiss() } else { Haptics.failure() }
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) { Haptics.tap(.light) }
         } message: {
             Text("Deletion starts a durable purge of the private source images, transcript, revisions, and exports.")
         }
@@ -478,7 +481,6 @@ struct StickerChatView: View {
                     .transition(.opacity)
                 } else {
                     Button("Retry") {
-                        Haptics.tap(.light)
                         Task { await retryFailedTurn() }
                     }
                         .buttonStyle(.posterCompact)
@@ -505,7 +507,6 @@ struct StickerChatView: View {
                 if let document = revisionDocument(for: message) {
                     HStack(spacing: 0) {
                         Button {
-                            Haptics.tap(.light)
                             presentedDocument = .init(document: document, revisionID: message.revisionId)
                         } label: {
                             // Sized outright rather than left to `aspectRatio` inside a full-width
@@ -514,7 +515,7 @@ struct StickerChatView: View {
                             StickerAttachment(document: document, assets: assetStore.images, videos: assetStore.videos)
                                 .frame(width: 200, height: 200)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.posterPlain)
                         .accessibilityIdentifier("show-sticker-attachment")
 
                         Spacer(minLength: 0)
@@ -554,10 +555,7 @@ struct StickerChatView: View {
                 assets: assetStore.images,
                 videos: assetStore.videos,
                 toolAPI: store.api,
-                onOpenSticker: {
-                    Haptics.tap(.light)
-                    presentedDocument = .init(document: $0, revisionID: message.revisionId)
-                }
+                onOpenSticker: { presentedDocument = .init(document: $0, revisionID: message.revisionId) }
             )
         }
     }
@@ -572,10 +570,7 @@ struct StickerChatView: View {
             streamErrorBanner
 
             if candidate != nil {
-                CandidateReadyBanner(isBusy: isDeciding) {
-                    Haptics.tap(.light)
-                    showingCandidate = true
-                }
+                CandidateReadyBanner(isBusy: isDeciding) { showingCandidate = true }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -615,7 +610,7 @@ struct StickerChatView: View {
                 } label: {
                     PosterSymbol("xmark")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.posterPlain)
                 .foregroundStyle(AppColors.muted)
                 .accessibilityLabel("Dismiss connection warning")
             }
@@ -646,7 +641,6 @@ struct StickerChatView: View {
                                     // from any photo retires the tip, not only from the one
                                     // showing it.
                                     liftTip.invalidate(reason: .actionPerformed)
-                                    Haptics.tap(.light)
                                     Task { pendingLift = await SubjectLiftPresenter.lift(from: reference) }
                                 } : nil,
                                 tip: reference.id == liftTipTarget ? liftTip : nil,
@@ -679,7 +673,10 @@ struct StickerChatView: View {
                             PosterMenuLabel("Photo Library", icon: .photo)
                         }
                     } else {
-                        Button("Add photos") { showingPrivacy = true }
+                        Button("Add photos") {
+                            Haptics.tap(.light)
+                            showingPrivacy = true
+                        }
                     }
                 } label: {
                     PosterSymbol("plus")
@@ -692,7 +689,7 @@ struct StickerChatView: View {
                             offset: .zero
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.posterPlain)
                 .foregroundStyle(AppColors.ink)
                 .accessibilityLabel("Add photos")
                 .accessibilityIdentifier("add-chat-attachment")
@@ -709,9 +706,6 @@ struct StickerChatView: View {
                     .accessibilityIdentifier("chat-composer")
 
                 Button {
-                    // Fired here rather than after the request: the tap is what the feel belongs
-                    // to, and the send is a round trip away.
-                    Haptics.tap(isComputing ? .rigid : .light)
                     if isComputing {
                         stoppedByUser = true
                         Task { await stop() }
@@ -744,7 +738,10 @@ struct StickerChatView: View {
                         .frame(width: 34, height: 34)
                         .contentShape(.rect)
                 }
-                .buttonStyle(.plain)
+                // Weighted by what the button currently is: stop interrupts work already being
+                // paid for and is meant to feel firmer than send. The style fires on the press
+                // rather than after the request, which is a round trip away from the finger.
+                .buttonStyle(PosterPlainButtonStyle(feedback: isComputing ? .rigid : .light))
                 .disabled(isComputing ? store.stoppingStickerIDs.contains(stickerID) : !canSend)
                 .accessibilityLabel(isComputing ? "Stop" : "Send")
                 .accessibilityIdentifier(isComputing ? "stop-streaming" : "send-chat-message")

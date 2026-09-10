@@ -72,7 +72,14 @@ struct StickerVersionsSheet: View {
         .navigationTitle("Version history")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("sticker-versions-sheet")
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") {
+                    Haptics.tap(.light)
+                    dismiss()
+                }
+            }
+        }
         .sheet(isPresented: $showingComparison) {
             NavigationStack {
                 RevisionComparisonView(store: store, stickerID: stickerID, assets: assets)

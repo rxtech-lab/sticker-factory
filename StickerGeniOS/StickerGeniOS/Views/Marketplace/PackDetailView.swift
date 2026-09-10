@@ -138,9 +138,9 @@ struct PackDetailView: View {
                 .padding(.vertical, 6)
                 .posterCapsule()
             }
-            // `.plain`, or the row picks up the default button chrome and stacks a filled capsule
-            // on top of the glass one it already draws for itself.
-            .buttonStyle(.plain)
+            // Undecorated, or the row picks up the default button chrome and stacks a filled
+            // capsule on top of the glass one it already draws for itself.
+            .buttonStyle(.posterPlain)
             .accessibilityIdentifier("pack-creator-button")
             .padding(.top, 2)
         }
@@ -206,7 +206,7 @@ struct PackDetailView: View {
                             StickerLibraryCard(sticker: sticker, api: store.api, showsStatus: false)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.posterPlain)
                         .accessibilityIdentifier("pack-sticker-\(sticker.id)")
                     }
                 }
@@ -239,7 +239,6 @@ struct PackDetailView: View {
                     ForEach(MessengerDestination.allCases) { destination in
                         Button {
                             messengerTip.invalidate(reason: .actionPerformed)
-                            Haptics.tap(.light)
                             messengerDestination = destination
                         } label: {
                             Label {
@@ -307,7 +306,7 @@ struct PackDetailView: View {
                 ? String(localized: "1 sticker isn't ready for WhatsApp and Telegram. Edit the pack to prepare it.")
                 : String(localized: "\(count) stickers aren't ready for WhatsApp and Telegram. Edit the pack to prepare them."))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.posterPlain)
         .accessibilityIdentifier("pack-messenger-unprepared")
     }
 
@@ -328,12 +327,10 @@ struct PackDetailView: View {
     }
 
     private func openEditor() {
-        Haptics.tap(.light)
         isEditing = true
     }
 
     private func toggleInstall(_ detail: StickerPackDetail) {
-        Haptics.tap(.light)
         Task {
             isWorking = true
             defer { isWorking = false }
@@ -355,7 +352,10 @@ struct PackDetailView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") { previewedSticker = nil }
+                        Button("Close") {
+                            Haptics.tap(.light)
+                            previewedSticker = nil
+                        }
                     }
                 }
         }

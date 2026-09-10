@@ -34,7 +34,7 @@ private struct StickerRenameAlertModifier: ViewModifier {
                 }
                 .disabled(trimmedTitle.isEmpty || trimmedTitle == currentTitle)
                 .accessibilityIdentifier("confirm-rename-sticker")
-                Button("Cancel", role: .cancel) {}
+                Button("Cancel", role: .cancel) { Haptics.tap(.light) }
             } message: {
                 Text("Choose the name shown in your Library and sticker detail.")
             }

@@ -426,6 +426,7 @@ struct QuickModeView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .accessibilityLabel("Reference photo")
                         Button("Remove photo", systemImage: "xmark.circle") {
+                            Haptics.selection()
                             model.references = []; photo = nil
                         }
                         .font(.subheadline.weight(.semibold))

@@ -211,7 +211,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         backConfiguration.imagePadding = 4
         backButton.configuration = backConfiguration
         backButton.accessibilityIdentifier = "messages-create-back"
-        backButton.addTarget(self, action: #selector(close), for: .touchUpInside)
+        backButton.addHapticAction(self, action: #selector(close))
 
         titleLabel.text = String(localized: "Create Sticker")
         titleLabel.font = .preferredFont(forTextStyle: .headline)
@@ -310,7 +310,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         generateConfiguration.cornerStyle = .capsule
         generateButton.configuration = generateConfiguration
         generateButton.accessibilityIdentifier = "messages-generate-sticker"
-        generateButton.addTarget(self, action: #selector(generate), for: .touchUpInside)
+        generateButton.addHapticAction(self, action: #selector(generate), feedback: .medium)
         formStack.addArrangedSubview(generateButton)
         generateButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
 
@@ -363,7 +363,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         configuration.cornerStyle = .capsule
         addPhotosButton.configuration = configuration
         addPhotosButton.accessibilityIdentifier = "messages-add-reference-images"
-        addPhotosButton.addTarget(self, action: #selector(addPhotos), for: .touchUpInside)
+        addPhotosButton.addHapticAction(self, action: #selector(addPhotos))
     }
 
     private func configureWorking() {
@@ -390,7 +390,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         cancelConfiguration.title = String(localized: "Stop watching")
         workingCancelButton.configuration = cancelConfiguration
         workingCancelButton.accessibilityIdentifier = "messages-create-stop-watching"
-        workingCancelButton.addTarget(self, action: #selector(stopWatching), for: .touchUpInside)
+        workingCancelButton.addHapticAction(self, action: #selector(stopWatching), feedback: .rigid)
 
         workingProgress.progressTintColor = .systemBlue
         workingProgress.accessibilityIdentifier = "messages-create-progress"
@@ -449,7 +449,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         sendConfiguration.cornerStyle = .capsule
         sendButton.configuration = sendConfiguration
         sendButton.accessibilityIdentifier = "messages-send-created-sticker"
-        sendButton.addTarget(self, action: #selector(sendCreatedSticker), for: .touchUpInside)
+        sendButton.addHapticAction(self, action: #selector(sendCreatedSticker), feedback: .medium)
 
         var reviseConfiguration = UIButton.Configuration.tinted()
         reviseConfiguration.title = String(localized: "Revise")
@@ -458,7 +458,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         reviseConfiguration.cornerStyle = .capsule
         reviseButton.configuration = reviseConfiguration
         reviseButton.accessibilityIdentifier = "messages-revise-created-sticker"
-        reviseButton.addTarget(self, action: #selector(revise), for: .touchUpInside)
+        reviseButton.addHapticAction(self, action: #selector(revise))
 
         var openConfiguration = UIButton.Configuration.tinted()
         openConfiguration.title = String(localized: "Open the main app")
@@ -466,13 +466,13 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
         openAppButton.configuration = openConfiguration
         openAppButton.isHidden = true
         openAppButton.accessibilityIdentifier = "messages-review-created-sticker"
-        openAppButton.addTarget(self, action: #selector(reviewCreatedSticker), for: .touchUpInside)
+        openAppButton.addHapticAction(self, action: #selector(reviewCreatedSticker))
 
         var doneConfiguration = UIButton.Configuration.plain()
         doneConfiguration.title = String(localized: "Done")
         doneButton.configuration = doneConfiguration
         doneButton.accessibilityIdentifier = "messages-created-back-to-library"
-        doneButton.addTarget(self, action: #selector(close), for: .touchUpInside)
+        doneButton.addHapticAction(self, action: #selector(close))
 
         let actions = UIStackView(arrangedSubviews: [sendButton, reviseButton])
         actions.axis = .horizontal
@@ -644,7 +644,7 @@ final class MessagesCreateViewController: UIViewController, PHPickerViewControll
             button.layer.cornerRadius = 14
             button.clipsToBounds = true
             button.accessibilityLabel = String(localized: "Remove reference image \(index + 1)")
-            button.addTarget(self, action: #selector(removeReference(_:)), for: .touchUpInside)
+            button.addHapticSelection(self, action: #selector(removeReference(_:)))
             referenceStack.addArrangedSubview(button)
             NSLayoutConstraint.activate([
                 button.widthAnchor.constraint(equalToConstant: 80),

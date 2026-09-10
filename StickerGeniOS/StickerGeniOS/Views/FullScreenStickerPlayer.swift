@@ -61,6 +61,7 @@ struct FullScreenStickerPlayer: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
+                        Haptics.tap(.light)
                         dismiss()
                     } label: {
                         Label("Close", systemImage: "xmark")
@@ -136,7 +137,11 @@ struct StickerEditorSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onFinished(false) }.disabled(isSaving)
+                    Button("Cancel") {
+                        Haptics.tap(.light)
+                        onFinished(false)
+                    }
+                    .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving {
@@ -160,8 +165,11 @@ struct StickerEditorSheet: View {
                 isPresented: $confirmingUnpublish,
                 titleVisibility: .visible
             ) {
-                Button("Save Anyway") { Task { await save() } }
-                Button("Cancel", role: .cancel) {}
+                Button("Save Anyway") {
+                    Haptics.tap(.medium)
+                    Task { await save() }
+                }
+                Button("Cancel", role: .cancel) { Haptics.tap(.light) }
             } message: {
                 // Saving creates a revision with no renditions, so the server derives the sticker
                 // back to draft. Better said here than discovered when it vanishes from Messages.

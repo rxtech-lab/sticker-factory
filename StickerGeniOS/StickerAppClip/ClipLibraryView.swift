@@ -100,7 +100,7 @@ struct ClipLibraryView: View {
                             .padding(16)
                             .posterSurface(cornerRadius: 18, fill: AppColors.mint, offset: .zero)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.posterPlain)
                         .accessibilityIdentifier("clip-generation-status")
                     } else if let error = generation.error {
                         ErrorBanner(message: error)
@@ -138,7 +138,7 @@ struct ClipLibraryView: View {
                                 } label: {
                                     ClipStickerTile(sticker: sticker, library: library, client: generation)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.posterPlain)
                                 .disabled(generation.busy)
                                 .accessibilityIdentifier("clip-sticker-\(sticker.id)")
                             }
@@ -202,7 +202,10 @@ struct ClipLibraryView: View {
                 QuickModeView(model: generation, presentation: .composer)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { showingComposer = false }
+                            Button("Close") {
+                                Haptics.tap(.light)
+                                showingComposer = false
+                            }
                                 .accessibilityIdentifier("clip-generation-close")
                         }
                     }

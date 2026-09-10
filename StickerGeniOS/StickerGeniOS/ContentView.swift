@@ -105,6 +105,9 @@ struct StickerFactoryTabView: View {
         .tint(AppColors.accent)
         .accessibilityIdentifier("sticker-factory-tabs")
         .onChange(of: selection) { _, tab in
+            // The tab bar is UIKit's, so its buttons never reach the app's styles. Watching the
+            // selection is what makes the most-pressed control in the app answer at all.
+            Haptics.selection()
             AppTelemetry.event("tab_selected", parameters: ["tab": ["library", "marketplace", "account"][tab]])
         }
         .sheet(isPresented: $showingQuickMode) {
@@ -112,7 +115,14 @@ struct StickerFactoryTabView: View {
                 QuickModeView(model: QuickModeModel(baseURL: environment.configuration.apiBaseURL, appClip: false) { force in
                     try await environment.tokenBroker.validAccessToken(forceRefresh: force)
                 })
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showingQuickMode = false } } }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") {
+                            Haptics.tap(.light)
+                            showingQuickMode = false
+                        }
+                    }
+                }
             }
         }
         .onChange(of: environment.pendingShareRoute) { _, _ in openShareRoute() }
