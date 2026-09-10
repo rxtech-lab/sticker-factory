@@ -271,6 +271,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         modeControl.setTitleTextAttributes([.foregroundColor: UIColor.label], for: .normal)
         modeControl.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
         modeControl.addTarget(self, action: #selector(modeControlChanged), for: .valueChanged)
+        modeControl.addAction(UIAction { _ in Haptics.selection() }, for: .valueChanged)
         modeControl.isHidden = true
         view.addSubview(modeControl)
 
@@ -331,7 +332,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         buttonConfiguration.cornerStyle = .capsule
         openAppButton.configuration = buttonConfiguration
         openAppButton.accessibilityIdentifier = "open-sticker-factory"
-        openAppButton.addTarget(self, action: #selector(openMainApplicationFromButton), for: .touchUpInside)
+        openAppButton.addHapticAction(self, action: #selector(openMainApplicationFromButton))
 
         view.addSubview(statusContainer)
         NSLayoutConstraint.activate([
@@ -359,7 +360,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         createButton.translatesAutoresizingMaskIntoConstraints = false
         createButton.isHidden = true
         createButton.accessibilityIdentifier = "sticker-factory-messages-create-button"
-        createButton.addTarget(self, action: #selector(showCreation), for: .touchUpInside)
+        createButton.addHapticAction(self, action: #selector(showCreation), feedback: .medium)
         view.addSubview(createButton)
         NSLayoutConstraint.activate([
             createButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),

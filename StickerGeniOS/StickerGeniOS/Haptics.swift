@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import UIKit
 
 /// Every vibration the app produces, in one place.
@@ -98,5 +99,51 @@ final class StreamHaptics {
         lastCharacterCount = characterCount
         lastTick = instant
         tick()
+    }
+}
+
+extension View {
+    /// Fires a tap the moment a button style reports its press, rather than when its action runs.
+    ///
+    /// Touch-down is the only moment that feels *caused* by the finger. An action-time buzz lands
+    /// after the press animation and reads as a separate reply to the tap — and for anything that
+    /// awaits, it lands whenever the network gets around to it. The button styles in the design
+    /// system all feed this, which is what makes the whole app answer to touch without every call
+    /// site remembering to ask.
+    ///
+    /// Firing on the press rather than on the action does mean a touch dragged off the control has
+    /// already buzzed. That is the same bargain the system keyboard makes, and the alternative — a
+    /// button that stays silent until you commit — is the thing being fixed here.
+    func hapticPress(_ isPressed: Bool, style: UIImpactFeedbackGenerator.FeedbackStyle) -> some View {
+        onChange(of: isPressed) { _, pressed in
+            if pressed { Haptics.tap(style) }
+        }
+    }
+}
+
+/// The UIKit half of the same bargain the button styles make in SwiftUI.
+///
+/// The Messages extension is the only place in the app that builds buttons by hand, and wiring the
+/// feel into the same call that wires the action is what keeps the two from drifting apart — a
+/// button added later cannot pick up one without the other.
+extension UIButton {
+    /// Runs `action` on release, and answers the press on the way down.
+    ///
+    /// Touch-down for the reason argued above: the feel belongs to the press, not to whatever the
+    /// press eventually starts.
+    func addHapticAction(
+        _ target: Any?,
+        action: Selector,
+        feedback: UIImpactFeedbackGenerator.FeedbackStyle = .light
+    ) {
+        addTarget(target, action: action, for: .touchUpInside)
+        addAction(UIAction { _ in Haptics.tap(feedback) }, for: .touchDown)
+    }
+
+    /// The same, for a button that changes a value rather than starting something — removing a
+    /// reference photo, say. A selection tick on the release, which is when the value changes.
+    func addHapticSelection(_ target: Any?, action: Selector) {
+        addTarget(target, action: action, for: .touchUpInside)
+        addAction(UIAction { _ in Haptics.selection() }, for: .touchUpInside)
     }
 }

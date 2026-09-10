@@ -205,12 +205,18 @@ struct PosterCard<Content: View>: View {
 
 // MARK: - Buttons
 
-/// A pill button, pressed into its own shadow.
+/// A pill button, pressed into its own shadow — and felt as well as seen.
+///
+/// The tap lives here rather than in each button's action so that pressing anything wearing this
+/// style answers, without the call site remembering to ask. Weight follows what the button is for:
+/// a primary action is worth more than the secondary sitting next to it, and a destructive one
+/// should feel like it costs something.
 struct PosterButtonStyle: ButtonStyle {
     var fill: Color = AppColors.ink
     var foreground: Color = AppColors.card
     var shadowColor: Color = AppColors.coral
     var isCompact = false
+    var feedback: UIImpactFeedbackGenerator.FeedbackStyle = .medium
 
     func makeBody(configuration: Configuration) -> some View {
         Pill(
@@ -218,7 +224,8 @@ struct PosterButtonStyle: ButtonStyle {
             fill: fill,
             foreground: foreground,
             shadowColor: shadowColor,
-            isCompact: isCompact
+            isCompact: isCompact,
+            feedback: feedback
         )
     }
 
@@ -229,6 +236,7 @@ struct PosterButtonStyle: ButtonStyle {
         let foreground: Color
         let shadowColor: Color
         let isCompact: Bool
+        let feedback: UIImpactFeedbackGenerator.FeedbackStyle
         @Environment(\.isEnabled) private var isEnabled
 
         private var pressed: Bool { configuration.isPressed }
@@ -259,6 +267,9 @@ struct PosterButtonStyle: ButtonStyle {
                 .offset(x: pressed ? shift.width : 0, y: pressed ? shift.height : 0)
                 .animation(.easeOut(duration: 0.12), value: pressed)
                 .contentShape(.capsule)
+                // Only when the button can actually do something: a disabled control that buzzes
+                // is telling the user it worked.
+                .hapticPress(isEnabled && pressed, style: feedback)
         }
     }
 }
@@ -266,7 +277,7 @@ struct PosterButtonStyle: ButtonStyle {
 extension ButtonStyle where Self == PosterButtonStyle {
     /// The primary call to action: ink, with a coral shadow.
     static var poster: PosterButtonStyle { .init() }
-    static var posterCompact: PosterButtonStyle { .init(isCompact: true) }
+    static var posterCompact: PosterButtonStyle { .init(isCompact: true, feedback: .light) }
 
     /// The cheerful alternative primary — lime on ink.
     static var posterLime: PosterButtonStyle {
@@ -275,17 +286,52 @@ extension ButtonStyle where Self == PosterButtonStyle {
 
     /// A secondary control: cream, outlined, ink shadow.
     static var posterSecondary: PosterButtonStyle {
-        .init(fill: AppColors.card, foreground: AppColors.ink, shadowColor: AppColors.ink)
+        .init(fill: AppColors.card, foreground: AppColors.ink, shadowColor: AppColors.ink, feedback: .light)
     }
 
     static var posterSecondaryCompact: PosterButtonStyle {
-        .init(fill: AppColors.card, foreground: AppColors.ink, shadowColor: AppColors.ink, isCompact: true)
+        .init(
+            fill: AppColors.card,
+            foreground: AppColors.ink,
+            shadowColor: AppColors.ink,
+            isCompact: true,
+            feedback: .light
+        )
     }
 
     /// Destructive, and loud about it.
     static var posterDanger: PosterButtonStyle {
-        .init(fill: AppColors.coral, foreground: AppColors.card, shadowColor: AppColors.ink)
+        .init(fill: AppColors.coral, foreground: AppColors.card, shadowColor: AppColors.ink, feedback: .heavy)
     }
+}
+
+/// The undecorated button — a sticker tile, a thumbnail, a chevron that draws its own chrome.
+///
+/// Stands in for `.plain` everywhere the app used it. It renders the label exactly as `.plain`
+/// does, and adds the one thing `.plain` never had: an answer to the touch. Tiles are the most
+/// tapped things in the app and were the only ones that stayed silent.
+struct PosterPlainButtonStyle: ButtonStyle {
+    var feedback: UIImpactFeedbackGenerator.FeedbackStyle = .light
+
+    func makeBody(configuration: Configuration) -> some View {
+        Plain(configuration: configuration, feedback: feedback)
+    }
+
+    private struct Plain: View {
+        let configuration: Configuration
+        let feedback: UIImpactFeedbackGenerator.FeedbackStyle
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .hapticPress(isEnabled && configuration.isPressed, style: feedback)
+        }
+    }
+}
+
+extension ButtonStyle where Self == PosterPlainButtonStyle {
+    /// `.plain`, with the tap you can feel.
+    static var posterPlain: PosterPlainButtonStyle { .init() }
 }
 
 // MARK: - Backgrounds
@@ -402,12 +448,16 @@ struct PosterEyebrow: View {
 // MARK: - States
 
 /// The empty state: a wobbly blob holding a glyph, then the poster's headline and a line of copy.
-struct EmptyStateView: View {
+///
+/// Optionally with something to press. A screen that is empty because it *failed* has to offer the
+/// way back itself — the pull-to-refresh a list carries goes missing exactly when the list does.
+struct EmptyStateView<Action: View>: View {
     let title: String
     let message: String
     /// Defaults to the brand mark, which is what every empty state on the web shows.
     var icon: String = PosterIcon.mark
     var accent: Color = AppColors.lime
+    @ViewBuilder var action: Action
 
     var body: some View {
         VStack(spacing: 16) {
@@ -424,9 +474,19 @@ struct EmptyStateView: View {
                 .foregroundStyle(AppColors.muted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 320)
+
+            action
+                .padding(.top, 4)
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension EmptyStateView where Action == EmptyView {
+    /// The plain state: nothing here, and nothing to do about it from this screen.
+    init(title: String, message: String, icon: String = PosterIcon.mark, accent: Color = AppColors.lime) {
+        self.init(title: title, message: message, icon: icon, accent: accent) { EmptyView() }
     }
 }
 

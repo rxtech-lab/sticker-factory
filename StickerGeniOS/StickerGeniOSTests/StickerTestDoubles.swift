@@ -384,6 +384,31 @@ actor CancelledLibraryAPI: StickerAPIClientProtocol {
     }
 }
 
+/// A library that cannot be reached at all on the first attempt, and can on the second.
+///
+/// Both endpoints fail: a dead network takes the packs with the stickers, which is exactly the
+/// case where the Library is left with nothing on screen and no list to pull down.
+actor OfflineLibraryAPI: StickerAPIClientProtocol {
+    nonisolated let stickerID = "offline-library-sticker"
+    private var calls = 0
+
+    func listStickers(cursor: String?) async throws -> Page<Sticker> {
+        calls += 1
+        guard calls > 1 else { throw URLError(.notConnectedToInternet) }
+        return .init(data: [
+            .init(
+                id: stickerID, title: "Back online", kind: .static, status: .published,
+                activeRevisionId: nil, createdAt: Date(), updatedAt: Date(), previewAsset: nil, systemSticker: nil
+            )
+        ], nextCursor: nil)
+    }
+
+    func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse {
+        guard calls > 1 else { throw URLError(.notConnectedToInternet) }
+        return .init(sections: [], generatedAt: Date())
+    }
+}
+
 actor TurnFailureAPI: StickerAPIClientProtocol {
     nonisolated let stickerID = "turn-failure-sticker"
     private var sends = 0

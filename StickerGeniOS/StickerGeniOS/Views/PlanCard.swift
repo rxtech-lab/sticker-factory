@@ -98,7 +98,7 @@ struct PlanCard: View {
                 Haptics.tap(.medium)
                 onConfirm()
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) { Haptics.tap(.light) }
         } message: {
             Text(confirmationMessage)
         }
@@ -112,7 +112,10 @@ struct PlanCard: View {
                 onReject(reason.isEmpty ? nil : reason)
                 rejectionReason = ""
             }
-            Button("Keep it", role: .cancel) { rejectionReason = "" }
+            Button("Keep it", role: .cancel) {
+                Haptics.tap(.light)
+                rejectionReason = ""
+            }
         } message: {
             Text("Say what is wrong and the assistant will draft a new plan right away. Leave it blank to just dismiss this one.")
         }
@@ -148,6 +151,7 @@ struct PlanCard: View {
 
     private var versionPicker: some View {
         Button {
+            Haptics.tap(.light)
             onShowVersions()
         } label: {
             HStack(spacing: 4) {
@@ -252,7 +256,6 @@ struct PlanCard: View {
     private var layerHeadingRow: some View {
         if record.actionable {
             Button {
-                Haptics.tap(.light)
                 editTip.invalidate(reason: .actionPerformed)
                 onEdit(.layers)
             } label: {
@@ -262,7 +265,7 @@ struct PlanCard: View {
                 }
                 .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.posterPlain)
             .accessibilityLabel(layerHeading)
             .accessibilityHint("Edit the layers of this plan")
             .accessibilityIdentifier("plan-edit-layers")
@@ -280,7 +283,6 @@ struct PlanCard: View {
     private var timingNote: some View {
         if record.actionable {
             Button {
-                Haptics.tap(.light)
                 editTip.invalidate(reason: .actionPerformed)
                 onEdit(.timing)
             } label: {
@@ -290,7 +292,7 @@ struct PlanCard: View {
                 }
                 .posterLabelStyle(9, color: AppColors.ink.opacity(0.65))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.posterPlain)
             .accessibilityLabel("Timing, \(timingSummary)")
             .accessibilityHint("Change how long this animation runs")
             .accessibilityIdentifier("plan-edit-timing")
@@ -441,6 +443,7 @@ private struct PlanReferencePreview: View {
                             // "Sticker" here is the Messages pack, not this project: the action
                             // publishes the picture as a sticker of its own, ready to send.
                             Button {
+                                Haptics.tap(.light)
                                 onAddToStickerPack(image)
                             } label: {
                                 PosterMenuLabel(
@@ -454,6 +457,7 @@ private struct PlanReferencePreview: View {
                             .accessibilityIdentifier("add-plan-image-to-sticker")
 
                             Button {
+                                Haptics.tap(.light)
                                 onSaveToPhotoLibrary(image)
                             } label: {
                                 PosterMenuLabel("Save to Photo Library", icon: .save)

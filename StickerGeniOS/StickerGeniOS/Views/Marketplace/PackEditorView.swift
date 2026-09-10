@@ -121,7 +121,10 @@ struct PackEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Close") { dismiss() }
+                Button("Close") {
+                    Haptics.tap(.light)
+                    dismiss()
+                }
                     .accessibilityIdentifier("pack-editor-close-button")
             }
             ToolbarItem(placement: .confirmationAction) {
@@ -153,7 +156,7 @@ struct PackEditorView: View {
                 Haptics.tap(.heavy)
                 Task { await delete() }
             }
-            Button("Keep pack", role: .cancel) {}
+            Button("Keep pack", role: .cancel) { Haptics.tap(.light) }
         } message: {
             Text("It disappears from Sticker Packs and from everyone who added it. Your stickers themselves are untouched.")
         }

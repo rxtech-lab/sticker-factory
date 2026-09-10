@@ -44,7 +44,10 @@ struct PlanVersionsSheet: View {
         .modifier(ChatErrorAlert(message: selectionError) { selectionError = nil })
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
+                Button("Done") {
+                    Haptics.tap(.light)
+                    dismiss()
+                }
                     .disabled(selectingID != nil)
             }
         }

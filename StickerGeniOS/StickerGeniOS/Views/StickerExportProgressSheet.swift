@@ -69,10 +69,16 @@ struct StickerExportProgressSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     if !progress.isRunning {
-                        Button("Done", action: onDismiss)
+                        Button("Done") {
+                            Haptics.tap(.light)
+                            onDismiss()
+                        }
                             .accessibilityIdentifier("export-progress-done")
                     } else if progress.isWaitingOnServer {
-                        Button("Continue in Background", action: onDismiss)
+                        Button("Continue in Background") {
+                            Haptics.tap(.light)
+                            onDismiss()
+                        }
                             .accessibilityIdentifier("export-progress-background")
                     }
                 }

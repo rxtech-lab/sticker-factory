@@ -8,6 +8,7 @@ struct StickerGeniOSApp: App {
     /// that wants push has to keep one. It does nothing but forward — see `PushDeviceRegistry`.
     @UIApplicationDelegateAdaptor(PushApplicationDelegate.self) private var pushDelegate
     @State private var environment = AppEnvironment.live()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         AppTelemetry.configure()
@@ -27,6 +28,12 @@ struct StickerGeniOSApp: App {
                     if let url = activity.webpageURL { environment.handleIncomingURL(url) }
                 }
                 .onOpenURL { url in environment.handleIncomingURL(url) }
+                // Generation runs on the server and keeps spending while the app is away, and the
+                // same account can spend from another device. Coming back is therefore the one
+                // moment the cached balance is reliably behind.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { environment.enteredForeground() }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .rxAuthSessionExpired)) { _ in
                     Task { await environment.sessionExpired() }
                 }

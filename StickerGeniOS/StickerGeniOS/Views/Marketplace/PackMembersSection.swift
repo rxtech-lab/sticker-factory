@@ -38,10 +38,16 @@ struct PackMembersSection: View {
                     .accessibilityIdentifier("\(identifierPrefix)-member-\(sticker.id)")
                 }
                 .onMove { members.move(fromOffsets: $0, toOffset: $1) }
-                .onDelete { members.remove(atOffsets: $0) }
+                .onDelete { offsets in
+                    Haptics.tap(.medium)
+                    members.remove(atOffsets: offsets)
+                }
             }
 
+            // Form rows are stock SwiftUI controls, so nothing here wears a poster style that
+            // could answer the press for it.
             Button {
+                Haptics.tap(.light)
                 onChoose()
             } label: {
                 Label("Choose stickers", systemImage: "plus.circle")

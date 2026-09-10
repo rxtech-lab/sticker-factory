@@ -59,7 +59,10 @@ private struct ClipQuickEntry: View {
                 )
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
-                            Button(role: .destructive) { authentication.signOut() } label: {
+                            Button(role: .destructive) {
+                                Haptics.tap(.medium)
+                                authentication.signOut()
+                            } label: {
                                 PosterToolbarIcon(glyph: .signOut)
                             }
                             .accessibilityLabel("Sign Out")
@@ -101,7 +104,10 @@ private struct ClipQuickEntry: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { showingSignIn = false }
+                            Button("Close") {
+                                Haptics.tap(.light)
+                                showingSignIn = false
+                            }
                                 .accessibilityIdentifier("clip-sign-in-close")
                                 .disabled(manager.isAuthenticating)
                         }

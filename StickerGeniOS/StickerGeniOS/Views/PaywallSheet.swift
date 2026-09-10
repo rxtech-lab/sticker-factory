@@ -46,7 +46,10 @@ struct PaywallSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        Haptics.tap(.light)
+                        dismiss()
+                    }
                         .accessibilityIdentifier("paywall-done")
                 }
             }

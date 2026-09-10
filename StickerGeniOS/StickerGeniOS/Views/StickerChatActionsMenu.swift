@@ -19,21 +19,26 @@ struct StickerChatActionsMenu: View {
     private let versionsTip = VersionHistoryTip()
 
     var body: some View {
+        // Every row asks for its own tap. A menu is drawn by UIKit, which never sees the app's
+        // button styles — so this is the one place feedback cannot come from the style.
         Menu {
             if candidate != nil {
                 Section {
                     Button {
+                        Haptics.tap(.light)
                         onAcceptCandidate()
                     } label: {
                         PosterMenuLabel("Continue with this sticker", icon: .accept)
                     }
                         .accessibilityIdentifier("accept-candidate")
                     Button {
+                        Haptics.tap(.light)
                         onCompare()
                     } label: {
                         PosterMenuLabel("Compare with previous", icon: .compare)
                     }
                     Button(role: .destructive) {
+                        Haptics.tap(.medium)
                         onRejectCandidate()
                     } label: {
                         PosterMenuLabel("Reject candidate", icon: .reject)
@@ -45,6 +50,7 @@ struct StickerChatActionsMenu: View {
 
             Section {
                 Button {
+                    Haptics.tap(.light)
                     versionsTip.invalidate(reason: .actionPerformed)
                     onExport()
                 } label: {
@@ -59,12 +65,14 @@ struct StickerChatActionsMenu: View {
 
             Section {
                 Button {
+                    Haptics.tap(.light)
                     onRename()
                 } label: {
                     PosterMenuLabel("Rename sticker", icon: .rename)
                 }
                     .accessibilityIdentifier("rename-sticker")
                 Button {
+                    Haptics.tap(.light)
                     versionsTip.invalidate(reason: .actionPerformed)
                     onViewVersions()
                 } label: {
@@ -75,6 +83,7 @@ struct StickerChatActionsMenu: View {
 
             Section {
                 Button(role: .destructive) {
+                    Haptics.tap(.medium)
                     onDelete()
                 } label: {
                     PosterMenuLabel("Delete project", icon: .delete)

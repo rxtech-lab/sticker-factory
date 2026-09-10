@@ -55,6 +55,13 @@ struct RevisionComparisonView: View {
         }
         .navigationTitle("Compare revisions")
         .accessibilityIdentifier("revision-comparison")
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") {
+                    Haptics.tap(.light)
+                    dismiss()
+                }
+            }
+        }
     }
 }

@@ -59,10 +59,15 @@ struct PlanEditorSheet: View {
         .accessibilityIdentifier("plan-editor-sheet")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }.disabled(isSaving)
+                Button("Cancel") {
+                    Haptics.tap(.light)
+                    dismiss()
+                }
+                .disabled(isSaving)
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button {
+                    Haptics.tap(.medium)
                     save()
                 } label: {
                     if isSaving { ProgressView().controlSize(.small) } else { Text("Save") }
@@ -81,7 +86,6 @@ struct PlanEditorSheet: View {
         Task {
             defer { isSaving = false }
             do {
-                Haptics.tap(.medium)
                 try await onSave(edit)
                 dismiss()
             } catch {
@@ -159,7 +163,6 @@ struct PlanEditorSheet: View {
                 )
             }
             Button {
-                Haptics.tap(.light)
                 model.layers.append(PlanEditorModel.newLayer(existingIDs: Set(model.layers.map(\.layerId))))
             } label: {
                 PosterMenuLabel("Add layer", icon: .add).frame(maxWidth: .infinity)
@@ -171,7 +174,6 @@ struct PlanEditorSheet: View {
     }
 
     private func remove(_ id: UUID) {
-        Haptics.tap(.light)
         withAnimation { model.layers.removeAll { $0.id == id } }
     }
 
@@ -242,7 +244,7 @@ private struct PlanEditorLayerCard: View {
                     .foregroundStyle(canRemove ? AppColors.coral : AppColors.faint)
                     .frame(width: 32, height: 32)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.posterPlain)
             .disabled(!canRemove)
             .accessibilityLabel("Remove layer \(index + 1)")
             .accessibilityIdentifier("plan-editor-remove-layer-\(index)")
@@ -328,14 +330,13 @@ private struct PlanEditorLayerCard: View {
                 }
                 Spacer()
                 Button(role: .destructive) {
-                    Haptics.tap(.light)
                     withAnimation { layer.effects.removeAll { $0.id == effect.wrappedValue.id } }
                 } label: {
                     Image(systemName: "minus.circle")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(AppColors.coral)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.posterPlain)
                 .accessibilityLabel("Remove \(effect.wrappedValue.label)")
             }
             // Delay is what makes a staggered reveal legible, and it is the number the card puts on

@@ -48,6 +48,10 @@ final class AppEnvironment {
         // Installing or removing a pack changes which sections the Library shows. Wiring it here
         // rather than having either store reach for the other keeps them independent.
         self.marketplace.onInstallsChanged = { [store] in await store.refreshSections() }
+        // Generating is what spends credits, so the count in the Library toolbar follows the work
+        // rather than sitting on whatever the last paywall or cold start happened to read.
+        let subscriptionStore = self.subscription
+        self.store.onCreditsMayHaveChanged = { subscriptionStore.refresh() }
     }
 
     static func live() -> AppEnvironment {
@@ -155,6 +159,16 @@ final class AppEnvironment {
             await store.refresh()
             bindSubscription()
         }
+    }
+
+    /// Reloads what may have moved while the app was not in front of the user.
+    ///
+    /// Credits are the reason: they are spent by the server, which keeps working through a
+    /// backgrounded app, and they can be spent from another device entirely — so the count in the
+    /// toolbar is the one number on screen that can go stale without anything happening here.
+    func enteredForeground() {
+        guard authenticationState == .signedIn else { return }
+        subscription.refresh()
     }
 
     func authenticationCompleted() {

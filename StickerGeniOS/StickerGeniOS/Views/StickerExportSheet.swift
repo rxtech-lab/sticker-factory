@@ -111,10 +111,7 @@ struct StickerExportSheet: View {
             if let progress = model.progress {
                 StickerExportProgressSheet(
                     progress: progress,
-                    onCancel: {
-                        Haptics.tap()
-                        model.cancelExport()
-                    },
+                    onCancel: { model.cancelExport() },
                     onDismiss: { isPresentingProgress = false }
                 )
             }
@@ -214,7 +211,7 @@ struct StickerExportSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.posterPlain)
             .accessibilityIdentifier("export-preview")
             .accessibilityLabel(
                 revision.document.kind == .animated
@@ -399,7 +396,6 @@ struct StickerExportSheet: View {
             // The files are on the server, not on this device, so the share sheet cannot be handed
             // its items up front the way `ShareLink` needs them.
             Button {
-                Haptics.tap()
                 Task {
                     if await model.prepareShareFiles(
                         store: store,
@@ -490,7 +486,6 @@ struct StickerExportSheet: View {
 
     private func runExport() {
         publishTip.invalidate(reason: .actionPerformed)
-        Haptics.tap(.medium)
         // The timeline opens in the same frame as the tap, before any work starts: the first step
         // validates a document whose assets may still be arriving, and that is exactly the wait
         // this replaces.

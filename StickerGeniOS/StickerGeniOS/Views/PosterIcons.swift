@@ -31,6 +31,8 @@ nonisolated enum PosterIcon {
     static let history = "🕰️"
     static let mail = "✉️"
     static let credits = "⚡"
+    /// A screen that could not reach the server at all.
+    static let offline = "📡"
 }
 
 /// Small, hand-inked glyphs for the navigation bar.

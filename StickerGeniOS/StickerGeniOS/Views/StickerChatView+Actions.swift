@@ -242,7 +242,6 @@ extension StickerChatView {
     /// step aside for the error alert.
     @discardableResult
     func acceptCandidate(_ revision: StickerRevision) async -> Bool {
-        Haptics.tap(.light)
         isDeciding = true
         defer { isDeciding = false }
         do {
@@ -261,7 +260,6 @@ extension StickerChatView {
 
     @discardableResult
     func rejectCandidate(_ revision: StickerRevision) async -> Bool {
-        Haptics.tap(.light)
         isDeciding = true
         defer { isDeciding = false }
         do {

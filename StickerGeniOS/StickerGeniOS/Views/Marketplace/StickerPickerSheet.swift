@@ -109,7 +109,10 @@ struct StickerPickerSheet: View {
                 .searchable(text: $query, prompt: "Search stickers")
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
+                        Button("Done") {
+                            Haptics.tap(.light)
+                            dismiss()
+                        }
                             .accessibilityIdentifier("sticker-picker-done-button")
                     }
                 }
@@ -155,6 +158,9 @@ struct StickerPickerSheet: View {
                                 isSelected: selectedIDs.contains(sticker.id)
                             )
                         }
+                        // Stays undecorated and silent: a tile that toggles a selection answers
+                        // with `Haptics.selection()` above, and an impact on top of that is two
+                        // buzzes for one tap.
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("pack-pick-\(sticker.id)")
                     }

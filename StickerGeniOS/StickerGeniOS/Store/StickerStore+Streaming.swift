@@ -60,6 +60,9 @@ extension StickerStore {
         state.failureMessage = nil
         jobs[stickerID] = state
         computingStickerIDs.insert(stickerID)
+        // The server debits as the turn begins, so this is the earlier of the two moments the
+        // balance moves. The later one is the turn settling, below.
+        onCreditsMayHaveChanged?()
         // Ask for permission — and enrol with APNs — as the first turn starts, so the prompt
         // arrives with its own reason already on screen rather than as a launch-time interrogation.
         notifier?.prepare()
@@ -128,6 +131,8 @@ extension StickerStore {
         if event.type == .failed { state.failureMessage = event.data.message }
         state.streamErrorMessage = nil
         jobs[stickerID] = state
+        // Whatever this turn cost — including a refund for one that failed — is settled by now.
+        if state.isTerminal { onCreditsMayHaveChanged?() }
         Self.log.debug(
             """
             event job=\(jobID, privacy: .public) id=\(event.id) type=\(event.type.rawValue, privacy: .public) \
@@ -214,6 +219,7 @@ extension StickerStore {
         Self.log.debug("turn settled job=\(jobID, privacy: .public)")
         computingStickerIDs.remove(stickerID)
         jobs[stickerID]?.isTerminal = true
+        onCreditsMayHaveChanged?()
 
         if let error, !hasAssistantTurn(stickerID: stickerID, jobID: jobID) {
             jobs[stickerID]?.streamErrorMessage = error.localizedDescription
@@ -272,6 +278,7 @@ extension StickerStore {
         if let detail = try? await api.sticker(id: stickerID) { absorb(detail: detail) }
         computingStickerIDs.remove(stickerID)
         jobs[stickerID]?.isTerminal = true
+        onCreditsMayHaveChanged?()
     }
 
     func stopReconciliationPolling(stickerID: String) {

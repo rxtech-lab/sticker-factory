@@ -78,6 +78,7 @@ struct AccountView: View {
 
             Section {
                 Button {
+                    Haptics.tap(.light)
                     onShowWelcome()
                 } label: {
                     Label {
@@ -88,7 +89,10 @@ struct AccountView: View {
                 }
                 .accessibilityIdentifier("show-welcome-button")
 
-                Button(action: onShowFeatures) {
+                Button {
+                    Haptics.tap(.light)
+                    onShowFeatures()
+                } label: {
                     Label("What's new", systemImage: "gift.fill")
                 }
                 .accessibilityIdentifier("show-feature-cards-button")
@@ -118,6 +122,7 @@ struct AccountView: View {
 
             Section {
                 Button("Sign Out", role: .destructive) {
+                    Haptics.tap(.medium)
                     confirmingLogout = true
                 }
                 .font(.posterDisplay(16, weight: .bold))
@@ -143,8 +148,11 @@ struct AccountView: View {
             LegalDocumentView(document: document, baseURL: environment.configuration.apiBaseURL)
         }
         .confirmationDialog(signOutTitle, isPresented: $confirmingLogout) {
-            Button("Sign Out", role: .destructive) { Task { await environment.signOut() } }
-            Button("Cancel", role: .cancel) {}
+            Button("Sign Out", role: .destructive) {
+                Haptics.tap(.heavy)
+                Task { await environment.signOut() }
+            }
+            Button("Cancel", role: .cancel) { Haptics.tap(.light) }
         } message: {
             Text("Shared credentials and cached iMessage stickers will be removed from this device.")
         }
@@ -190,6 +198,7 @@ private struct SubscriptionSection: View {
             .accessibilityIdentifier("subscription-credits")
 
             Button {
+                Haptics.tap(.light)
                 subscription.presentPaywall()
             } label: {
                 Label("View Plans", systemImage: "creditcard")
@@ -202,6 +211,7 @@ private struct SubscriptionSection: View {
             // subscription the user is being charged for and must be able to cancel. Gating this
             // on the server's view would hide the only control that can end it.
             Button {
+                Haptics.tap(.light)
                 isManagingSubscription = true
             } label: {
                 Label("Manage Subscription", systemImage: "arrow.triangle.2.circlepath")
@@ -210,6 +220,7 @@ private struct SubscriptionSection: View {
             .manageSubscriptionsSheet(isPresented: $isManagingSubscription)
 
             Button {
+                Haptics.tap(.light)
                 restore()
             } label: {
                 HStack {

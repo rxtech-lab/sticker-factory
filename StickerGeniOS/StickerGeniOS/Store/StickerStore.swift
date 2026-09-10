@@ -63,6 +63,16 @@ final class StickerStore {
     var isLoading = false
     private(set) var isLoadingMoreStickers = false
     var errorMessage: String?
+    /// Why the last full library reload failed, still true right now.
+    ///
+    /// Deliberately separate from `errorMessage`: that one is the alert, and the alert is gone the
+    /// moment the user taps OK. What is left behind on a dead network is an empty grid that looks
+    /// exactly like an empty library — and, because the grid is what carries pull-to-refresh, one
+    /// with no way back. This is what lets the Library say *why* it is empty and offer the retry.
+    /// Cleared by the next successful load.
+    private(set) var libraryLoadFailure: String?
+    /// The same, for a remote search: a failed query leaves no results and no way to run it again.
+    private(set) var librarySearchFailure: String?
 
     let api: StickerAPIClientProtocol
 
@@ -95,6 +105,15 @@ final class StickerStore {
     /// Asked to request notification permission when a turn starts. The banners themselves come
     /// from the server, which is the only side still watching once iOS suspends the app.
     @ObservationIgnored let notifier: (any GenerationNotifying)?
+
+    /// Called whenever a generation starts or ends — the two moments the user's credit balance
+    /// moves. Wired in `AppEnvironment` to the subscription cache, so the count in the Library
+    /// toolbar follows the work instead of waiting for a paywall or the next cold start.
+    ///
+    /// A closure rather than a direct reference, because generation knows nothing about billing
+    /// and neither store should have to reach for the other. `SubscriptionStore.refresh()`
+    /// coalesces overlapping calls, so firing this more than once per turn costs one request.
+    @ObservationIgnored var onCreditsMayHaveChanged: (() -> Void)?
 
     init(api: StickerAPIClientProtocol, notifier: (any GenerationNotifying)? = nil) {
         self.api = api
@@ -135,6 +154,8 @@ final class StickerStore {
         isSearchingLibrary = false
         isLoadingMoreLibrarySearchResults = false
         errorMessage = nil
+        libraryLoadFailure = nil
+        librarySearchFailure = nil
     }
 
     func refresh() async {
@@ -164,9 +185,11 @@ final class StickerStore {
             stickers = page.items.filter { seenIDs.insert($0.id).inserted }
             nextStickerCursor = Self.usableCursor(page.nextCursor)
             errorMessage = nil
+            libraryLoadFailure = nil
         } catch {
             guard !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
+            libraryLoadFailure = error.localizedDescription
         }
         await refreshSections()
     }
@@ -208,6 +231,7 @@ final class StickerStore {
         librarySearchGeneration &+= 1
         let generation = librarySearchGeneration
         activeLibrarySearchQuery = query
+        librarySearchFailure = nil
         librarySearchResults = []
         librarySearchSections = []
         nextLibrarySearchCursor = nil
@@ -229,15 +253,18 @@ final class StickerStore {
             librarySearchSections = sectionResponse.packSections
             nextLibrarySearchCursor = Self.usableCursor(owned.nextCursor)
             errorMessage = nil
+            librarySearchFailure = nil
         } catch {
             guard generation == librarySearchGeneration, !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
+            librarySearchFailure = error.localizedDescription
         }
     }
 
     func clearLibrarySearch() {
         librarySearchGeneration &+= 1
         activeLibrarySearchQuery = nil
+        librarySearchFailure = nil
         librarySearchResults = []
         librarySearchSections = []
         nextLibrarySearchCursor = nil
