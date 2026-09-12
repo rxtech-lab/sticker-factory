@@ -58,7 +58,7 @@ struct AccountView: View {
                 PosterListHeader("Signed In")
             }
 
-            if environment.subscription.isReady {
+            if environment.subscription.isEnabled {
                 SubscriptionSection(subscription: environment.subscription)
             }
 
@@ -179,7 +179,7 @@ private struct SubscriptionSection: View {
     var body: some View {
         Section {
             LabeledContent("Plan") {
-                Text(subscription.activePlanName ?? String(localized: "Free"))
+                Text(subscription.entitlements == nil ? "—" : subscription.activePlanName ?? String(localized: "Free"))
                     .foregroundStyle(.secondary)
             }
             .accessibilityIdentifier("subscription-plan")
@@ -189,10 +189,12 @@ private struct SubscriptionSection: View {
                     Text(credits, format: .number)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
-                } else {
+                } else if subscription.isLoading || subscription.isConnecting {
                     // Nothing loaded yet, or the read failed. Either way a number here would be a
                     // guess, and a wrong balance is worse than no balance.
                     ProgressView().controlSize(.small)
+                } else {
+                    Text("—").foregroundStyle(.secondary)
                 }
             }
             .accessibilityIdentifier("subscription-credits")
@@ -231,7 +233,7 @@ private struct SubscriptionSection: View {
                     }
                 }
             }
-            .disabled(isRestoring)
+            .disabled(isRestoring || !subscription.isReady)
             .accessibilityIdentifier("restore-purchases-button")
 
             if let restoreMessage {

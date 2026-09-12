@@ -110,6 +110,9 @@ final class AppEnvironment {
         if isUITesting, arguments.contains("--ui-balance-refresh") {
             subscription = SubscriptionStore(uiTestClient: BalanceRefreshFixture.makeClient())
         }
+        if isUITesting, arguments.contains("--ui-subscription-unavailable") {
+            subscription = SubscriptionConnectionFixture.makeStore()
+        }
         #endif
         let environment = AppEnvironment(
             configuration: configuration,
@@ -144,6 +147,7 @@ final class AppEnvironment {
 
     func start() async {
         if isUITesting {
+            subscription.refresh()
             await store.refresh()
             return
         }
@@ -156,8 +160,8 @@ final class AppEnvironment {
         await authManager.checkExistingAuth()
         synchronizeAuthenticationState()
         if authenticationState == .signedIn {
+            subscription.refresh()
             await store.refresh()
-            bindSubscription()
         }
     }
 
@@ -175,7 +179,8 @@ final class AppEnvironment {
         AppTelemetry.event("login", parameters: ["method": "rxlab"])
         synchronizeAuthenticationState()
         Task { await store.refresh() }
-        bindSubscription()
+        subscription.reset()
+        subscription.refresh()
     }
 
     /// Opens the exact project started in Messages. Unknown links — including the OAuth callback,
@@ -189,20 +194,6 @@ final class AppEnvironment {
         guard let stickerID = StickerDeepLink.stickerID(from: url) else { return }
         AppTelemetry.event("deep_link_opened", parameters: ["destination": "sticker"])
         pendingStickerID = stickerID
-    }
-
-    /// Points the subscription store at whoever is signed in.
-    ///
-    /// The rxlab user id comes from the shared token bundle's `subject` rather than from RxAuth's
-    /// profile, because that bundle is what the access token was minted for — and the subscription
-    /// service derives the same `sub` from that token, so anything else here would disagree with
-    /// the server.
-    private func bindSubscription() {
-        guard subscription.isConfigured else { return }
-        Task { [tokenBroker, subscription] in
-            guard let subject = try? await tokenBroker.currentBundle()?.subject else { return }
-            subscription.signedIn(rxlabUserID: subject)
-        }
     }
 
     func sessionExpired() async {

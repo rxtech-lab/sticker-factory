@@ -51,8 +51,8 @@ nonisolated struct AppConfiguration: Sendable {
     ///
     /// Not a secret, and deliberately so: it does nothing without the signed-in user's access
     /// token, only ever acts for that user, and cannot move a balance or record usage. The server
-    /// holds the secret key that can. Empty in a build with no billing configured, which turns
-    /// every subscription surface off rather than showing an empty paywall.
+    /// holds the secret key that can. Missing configuration is shown in the subscription sheet
+    /// so a signed-in user can understand why plans cannot load.
     let subscriptionPublishableKeys: SubscriptionPublishableKeys
 
     /// Whether this build has a paywall at all.

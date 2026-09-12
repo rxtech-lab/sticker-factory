@@ -2050,6 +2050,9 @@
         }
       }
     },
+    "Connecting to the App Store…" : {
+
+    },
     "Contact support" : {
       "localizations" : {
         "zh-CN" : {
@@ -2226,6 +2229,9 @@
         }
       }
     },
+    "Couldn’t load your library" : {
+
+    },
     "Couldn't prepare the new sticker. Try again." : {
       "localizations" : {
         "zh-CN" : {
@@ -2241,6 +2247,9 @@
           }
         }
       }
+    },
+    "Couldn’t search your library" : {
+
     },
     "Create" : {
       "localizations" : {
@@ -5963,6 +5972,9 @@
         }
       }
     },
+    "Please try again to view subscription plans." : {
+
+    },
     "PNG" : {
       "localizations" : {
         "zh-CN" : {
@@ -8352,6 +8364,12 @@
         }
       }
     },
+    "Subscriptions are not configured in this version of the app. Please update the app and try again." : {
+
+    },
+    "Subscriptions unavailable" : {
+
+    },
     "Sunrise gradient" : {
       "localizations" : {
         "zh-CN" : {
@@ -10236,6 +10254,9 @@
           }
         }
       }
+    },
+    "We couldn’t verify this installation with the App Store. Check your connection and try again." : {
+
     },
     "WebP" : {
       "localizations" : {
