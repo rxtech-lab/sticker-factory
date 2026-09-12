@@ -79,6 +79,37 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testSubscriptionControlsRemainVisibleWhenStoreKitCannotInitialize() {
+        app.terminate()
+        app.launchArguments.append("--ui-subscription-unavailable")
+        app.launch()
+
+        XCTAssertTrue(element("credits-chip").waitForExistence(timeout: 5))
+        app.tabBars.buttons["Account"].tap()
+        XCTAssertTrue(element("view-plans-button").waitForExistence(timeout: 3))
+        XCTAssertTrue(element("manage-subscription-button").exists)
+        element("view-plans-button").tap()
+        XCTAssertTrue(element("subscription-connection-error").waitForExistence(timeout: 3))
+        let unavailable = XCTAttachment(screenshot: app.screenshot())
+        unavailable.name = "Subscription connection can be retried"
+        unavailable.lifetime = .keepAlways
+        add(unavailable)
+        XCTAssertTrue(element("subscription-connection-retry").exists, app.debugDescription)
+
+        element("subscription-connection-retry").tap()
+        XCTAssertTrue(app.staticTexts["Choose your plan"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Monthly Points"].exists)
+        let recovered = XCTAttachment(screenshot: app.screenshot())
+        recovered.name = "Subscription plans after retry"
+        recovered.lifetime = .keepAlways
+        add(recovered)
+        element("paywall-done").tap()
+        let credits = element("subscription-credits")
+        XCTAssertTrue(credits.waitForExistence(timeout: 3))
+        XCTAssertEqual(credits.label, "Credits, 42")
+    }
+
+    @MainActor
     func testBalanceRefreshCancellationPreservesDataAndCanRefreshAgain() {
         app.terminate()
         app.launchArguments.append("--ui-balance-refresh")

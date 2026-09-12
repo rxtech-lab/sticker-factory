@@ -320,7 +320,7 @@ struct LibraryView: View {
             CreatorPacksView(store: marketplace, handle: route.handle)
         }
         .toolbar {
-            if subscription.isReady {
+            if subscription.isEnabled {
                 ToolbarItem(placement: .topBarLeading) {
                     CreditsChip(subscription: subscription)
                 }

@@ -16,10 +16,47 @@ private struct SubscriptionPaywallModifier: ViewModifier {
                     subscription: subscription,
                     refusal: subscription.pendingRefusal
                 )
+            } else {
+                SubscriptionConnectionView(subscription: subscription)
             }
         }
         .onChange(of: subscription.isPaywallPresented) { _, isPresented in
             if !isPresented { subscription.paywallDismissed() }
+        }
+    }
+}
+
+private struct SubscriptionConnectionView: View {
+    @Bindable var subscription: SubscriptionStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if subscription.isConnecting {
+                    PosterProgress(message: String(localized: "Connecting to the App Store…"))
+                        .accessibilityIdentifier("subscription-connection-progress")
+                } else {
+                    ContentUnavailableView {
+                        Label("Subscriptions unavailable", systemImage: "creditcard")
+                            .accessibilityIdentifier("subscription-connection-error")
+                    } description: {
+                        Text(subscription.lastError ?? String(localized: "Please try again to view subscription plans."))
+                    } actions: {
+                        Button("Try Again") { subscription.retryConnection() }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("subscription-connection-retry")
+                    }
+                }
+            }
+            .navigationTitle("Subscription")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                        .accessibilityIdentifier("paywall-done")
+                }
+            }
         }
     }
 }
