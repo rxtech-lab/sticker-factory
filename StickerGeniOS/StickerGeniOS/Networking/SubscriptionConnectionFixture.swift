@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import StoreKit
 
 /// Uses the real connection, client and paywall after a simulated StoreKit failure.
 /// No Apple credentials or production requests are involved in this UI test.
@@ -20,9 +21,19 @@ nonisolated final class SubscriptionConnectionFixture: URLProtocol, @unchecked S
         )
         let network = URLSessionConfiguration.ephemeral
         network.protocolClasses = [Self.self]
+        var retryCount = 0
         return SubscriptionStore(
             configuration: configuration, tokenBroker: broker,
-            environmentProvider: { refreshing in refreshing ? .sandbox : nil },
+            environmentProvider: { refreshing in
+                if refreshing {
+                    retryCount += 1
+                    if retryCount > 1 { return .sandbox }
+                }
+                let underlying = NSError(domain: "ASDErrorDomain", code: 530,
+                                         userInfo: [NSLocalizedDescriptionKey: "Unable to Complete Request"])
+                throw SubscriptionStoreKitFailure(StoreKitError.systemError(underlying),
+                                                  stage: refreshing ? .refreshRequest : .sharedRequest)
+            },
             session: URLSession(configuration: network)
         )
     }

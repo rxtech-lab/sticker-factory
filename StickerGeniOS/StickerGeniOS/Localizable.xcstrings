@@ -2133,6 +2133,22 @@
         }
       }
     },
+    "Copy Diagnostics" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制诊断信息"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製診斷資訊"
+          }
+        }
+      }
+    },
     "Could not append a frame" : {
       "localizations" : {
         "zh-CN" : {
@@ -7635,6 +7651,22 @@
     "Shine" : {
 
     },
+    "Show Error Details" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示错误详情"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示錯誤詳情"
+          }
+        }
+      }
+    },
     "Showing the plan" : {
       "localizations" : {
         "zh-CN" : {
@@ -8360,6 +8392,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "訂閱"
+          }
+        }
+      }
+    },
+    "Subscription Error" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "订阅错误"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訂閱錯誤"
           }
         }
       }

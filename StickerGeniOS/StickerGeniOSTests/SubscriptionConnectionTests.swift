@@ -1,10 +1,47 @@
 import Foundation
 import RxSubscriptionIOS
+import StoreKit
 import XCTest
 @testable import StickerGeniOS
 
 @MainActor
 final class SubscriptionConnectionTests: XCTestCase {
+    func testStoreKitErrorSurvivesFailedRetryAndClearsAfterRecoveryAndReset() async throws {
+        let appleError = NSError(domain: "ASDErrorDomain", code: 530,
+                                 userInfo: [NSLocalizedDescriptionKey: "Unable to Complete Request"])
+        var shouldFail = true
+        let store = makeStore { refreshing in
+            guard shouldFail else { return .sandbox }
+            throw SubscriptionStoreKitFailure(StoreKitError.systemError(appleError),
+                                              stage: refreshing ? .refreshRequest : .sharedRequest)
+        }
+        defer { store.reset() }
+        store.refresh()
+        try await settled(store)
+        XCTAssertFalse(store.isReady)
+        XCTAssertTrue(try XCTUnwrap(store.connectionDiagnostics).contains("storekit.shared.request"))
+        store.retryConnection()
+        try await settled(store)
+        let report = try XCTUnwrap(store.connectionDiagnostics)
+        XCTAssertTrue(report.contains("storekit.refresh.request"))
+        XCTAssertTrue(report.contains("ASDErrorDomain (530)"))
+        XCTAssertTrue(report.contains("Unable to Complete Request"))
+        XCTAssertFalse(store.isReady, "Failed verification must not select a billing environment")
+        shouldFail = false
+        store.retryConnection()
+        try await settled(store)
+        XCTAssertTrue(store.isReady)
+        XCTAssertNil(store.connectionDiagnostics)
+        XCTAssertNil(store.lastError)
+        store.reset()
+        shouldFail = true
+        store.refresh()
+        try await settled(store)
+        XCTAssertNotNil(store.connectionDiagnostics)
+        store.reset()
+        XCTAssertNil(store.connectionDiagnostics)
+    }
+
     func testStoreKitFailureKeepsPaywallAccessibleAndExplicitRetryLoadsSandboxBalance() async throws {
         var attempts: [Bool] = []
         let store = makeStore { refreshing in
@@ -116,7 +153,7 @@ final class SubscriptionConnectionTests: XCTestCase {
     private func makeStore(
         vault: InMemoryTokenVault? = nil,
         keys: SubscriptionPublishableKeys = .init(xcode: nil, sandbox: "rxs_pk_sandbox_test", production: "rxs_pk_production_test"),
-        environment: @escaping (Bool) async -> SubscriptionEnvironment?
+        environment: @escaping (Bool) async throws -> SubscriptionEnvironment?
     ) -> SubscriptionStore {
         let url = URL(string: "https://subscription-connection.test")!
         let configuration = AppConfiguration(

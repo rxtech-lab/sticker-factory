@@ -24,7 +24,7 @@ nonisolated enum SubscriptionDiagnostics {
 }
 
 nonisolated extension SubscriptionEnvironment {
-    static func currentVerified(refreshing: Bool = false) async -> Self? {
+    static func currentVerified(refreshing: Bool = false) async throws -> Self? {
         // Refresh can ask for App Store credentials, so only a user's retry requests it.
         let source = refreshing ? "storekit.refresh" : "storekit.shared"
         let result: VerificationResult<AppTransaction>
@@ -37,12 +37,12 @@ nonisolated extension SubscriptionEnvironment {
             }
         } catch {
             SubscriptionDiagnostics.failure(error, stage: "\(source).request")
-            return nil
+            throw SubscriptionStoreKitFailure(error, stage: refreshing ? .refreshRequest : .sharedRequest)
         }
         switch result {
         case .unverified(_, let error):
             SubscriptionDiagnostics.failure(error, stage: "\(source).verification")
-            return nil
+            throw SubscriptionStoreKitFailure(error, stage: refreshing ? .refreshVerification : .sharedVerification)
         case .verified(let appTransaction):
             let environment: Self?
             if appTransaction.environment == .xcode {
@@ -137,6 +137,7 @@ final class SubscriptionStore {
     private(set) var isLoading = false
     private(set) var isConnecting = false
     private(set) var lastError: String?
+    private(set) var connectionDiagnostics: String?
 
     /// Raised by whichever surface hit a wall, and lowered when the sheet closes.
     var isPaywallPresented = false
@@ -151,7 +152,7 @@ final class SubscriptionStore {
     @ObservationIgnored private let serverURL: URL?
     @ObservationIgnored private let publishableKeys: SubscriptionPublishableKeys
     @ObservationIgnored private let tokenBroker: SharedTokenBroker?
-    @ObservationIgnored private let environmentProvider: (Bool) async -> SubscriptionEnvironment?
+    @ObservationIgnored private let environmentProvider: (Bool) async throws -> SubscriptionEnvironment?
     @ObservationIgnored private let session: URLSession
     @ObservationIgnored private var clientBindingTask: Task<Void, Never>?
     @ObservationIgnored private var connectionID: UUID?
@@ -193,8 +194,8 @@ final class SubscriptionStore {
     init(
         configuration: AppConfiguration,
         tokenBroker: SharedTokenBroker,
-        environmentProvider: @escaping (Bool) async -> SubscriptionEnvironment? = { refreshing in
-            await SubscriptionEnvironment.currentVerified(refreshing: refreshing)
+        environmentProvider: @escaping (Bool) async throws -> SubscriptionEnvironment? = { refreshing in
+            try await SubscriptionEnvironment.currentVerified(refreshing: refreshing)
         },
         session: URLSession = .shared
     ) {
@@ -248,6 +249,7 @@ final class SubscriptionStore {
         connectionID = attempt
         isConnecting = true
         lastError = nil
+        connectionDiagnostics = nil
         let environmentProvider = self.environmentProvider
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
@@ -272,7 +274,7 @@ final class SubscriptionStore {
                 }
                 guard !Task.isCancelled, self.connectionID == attempt else { return }
                 stage = "storekit.environment"
-                let environment = await environmentProvider(refreshingStoreKit)
+                let environment = try await environmentProvider(refreshingStoreKit)
                 guard !Task.isCancelled, self.connectionID == attempt else { return }
                 guard let environment else { throw SubscriptionConnectionError.appStoreUnavailable }
                 stage = "configuration.\(environment.rawValue)"
@@ -299,6 +301,12 @@ final class SubscriptionStore {
             } catch {
                 guard !Task.isCancelled, self.connectionID == attempt else { return }
                 self.lastError = error.localizedDescription
+                if let failure = error as? SubscriptionStoreKitFailure {
+                    self.connectionDiagnostics = failure.report(
+                        version: version, build: build,
+                        operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString
+                    )
+                }
                 SubscriptionDiagnostics.failure(error, stage: stage)
                 AppTelemetry.failure(error, operation: "subscription_connection")
             }
@@ -405,6 +413,7 @@ final class SubscriptionStore {
         client = nil
         entitlements = nil
         lastError = nil
+        connectionDiagnostics = nil
         isLoading = false
         isPaywallPresented = false
         pendingRefusal = nil
