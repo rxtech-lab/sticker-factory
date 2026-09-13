@@ -89,12 +89,35 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(element("view-plans-button").waitForExistence(timeout: 3))
         XCTAssertTrue(element("manage-subscription-button").exists)
         element("view-plans-button").tap()
+        let errorAlert = app.alerts["Subscription Error"]
+        XCTAssertTrue(errorAlert.waitForExistence(timeout: 5))
+        XCTAssertTrue(errorAlert.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "Unable to Complete Request")
+        ).firstMatch.exists)
+        XCTAssertTrue(errorAlert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "ASDErrorDomain (530)")).firstMatch.exists)
+        errorAlert.buttons["Close"].tap()
         XCTAssertTrue(element("subscription-connection-error").waitForExistence(timeout: 3))
         let unavailable = XCTAttachment(screenshot: app.screenshot())
         unavailable.name = "Subscription connection can be retried"
         unavailable.lifetime = .keepAlways
         add(unavailable)
         XCTAssertTrue(element("subscription-connection-retry").exists, app.debugDescription)
+
+        // An authenticated refresh can still fail. Its new error must open another alert.
+        element("subscription-connection-retry").tap()
+        XCTAssertTrue(errorAlert.waitForExistence(timeout: 5))
+        XCTAssertTrue(errorAlert.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "storekit.refresh.request")
+        ).firstMatch.exists)
+        let diagnosticAlert = XCTAttachment(screenshot: app.screenshot())
+        diagnosticAlert.name = "StoreKit error details after failed retry"
+        diagnosticAlert.lifetime = .keepAlways
+        add(diagnosticAlert)
+        errorAlert.buttons["Copy Diagnostics"].tap()
+        XCTAssertTrue(errorAlert.waitForNonExistence(timeout: 3))
+        element("subscription-connection-error-details").tap()
+        XCTAssertTrue(errorAlert.waitForExistence(timeout: 3))
+        errorAlert.buttons["Close"].tap()
 
         element("subscription-connection-retry").tap()
         XCTAssertTrue(app.staticTexts["Choose your plan"].waitForExistence(timeout: 5))

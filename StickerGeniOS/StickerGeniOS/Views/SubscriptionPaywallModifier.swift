@@ -29,6 +29,8 @@ private struct SubscriptionPaywallModifier: ViewModifier {
 private struct SubscriptionConnectionView: View {
     @Bindable var subscription: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
+    @State private var isErrorPresented = false
+    @State private var errorDetails = ""
 
     var body: some View {
         NavigationStack {
@@ -46,10 +48,25 @@ private struct SubscriptionConnectionView: View {
                         Button("Try Again") { subscription.retryConnection() }
                             .buttonStyle(.borderedProminent)
                             .accessibilityIdentifier("subscription-connection-retry")
+                        if subscription.lastError != nil {
+                            Button("Show Error Details", systemImage: "exclamationmark.bubble") {
+                                showErrorDetails()
+                            }
+                            .accessibilityIdentifier("subscription-connection-error-details")
+                        }
                     }
                 }
             }
             .navigationTitle("Subscription")
+            .onChange(of: subscription.isConnecting, initial: true) { _, isConnecting in
+                if !isConnecting, subscription.lastError != nil { showErrorDetails() }
+            }
+            .alert("Subscription Error", isPresented: $isErrorPresented) {
+                Button("Copy Diagnostics") { UIPasteboard.general.string = errorDetails }
+                Button("Close", role: .cancel) {}
+            } message: {
+                Text(errorDetails)
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -58,6 +75,11 @@ private struct SubscriptionConnectionView: View {
                 }
             }
         }
+    }
+
+    private func showErrorDetails() {
+        errorDetails = subscription.connectionDiagnostics ?? subscription.lastError ?? ""
+        isErrorPresented = true
     }
 }
 

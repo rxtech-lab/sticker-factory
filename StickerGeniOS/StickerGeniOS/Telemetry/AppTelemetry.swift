@@ -86,7 +86,8 @@ enum AppTelemetry {
         guard isEnabled, !StickerStore.isCancellation(error) else { return }
         // Domain/message/userInfo can include server text, URLs and credentials.
         // Preserve only a safe category and numeric code in the non-fatal report.
-        let category = error is URLError ? "network" :
+        let category = error is SubscriptionStoreKitFailure ? "storekit" :
+            error is URLError ? "network" :
             error.subscriptionRefusal != nil ? "subscription_refusal" : "application"
         event("workflow_failed", parameters: ["operation": operation, "category": category])
         guard category != "subscription_refusal" else { return }
@@ -94,7 +95,18 @@ enum AppTelemetry {
     }
 
     static func sanitizedError(_ error: Error, operation: String, category: String) -> NSError {
-        NSError(
+        if let failure = error as? SubscriptionStoreKitFailure {
+            return NSError(
+                domain: "app.rxlab.stickerfactory.\(operation)",
+                code: failure.code,
+                userInfo: [
+                    NSLocalizedDescriptionKey: category,
+                    "storekit_stage": failure.stage.rawValue,
+                    "storekit_errors": failure.errorCodes
+                ]
+            )
+        }
+        return NSError(
             domain: "app.rxlab.stickerfactory.\(operation)",
             code: (error as NSError).code,
             userInfo: [NSLocalizedDescriptionKey: category]
