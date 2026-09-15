@@ -20,6 +20,7 @@ struct StickerExportSheet: View {
     private let publishTip = PublishStickerTip()
     private let useTip = UseStickerTip()
 
+    @State private var controlsApplied = 0
     private var assets: [String: UIImage] { assetStore.images }
     private var renderAssets: StickerRenderAssets { assetStore.renderAssets }
     private var verifiedAssetIDs: Set<String> { assetStore.verifiedAssetIDs }
@@ -42,6 +43,13 @@ struct StickerExportSheet: View {
     private var actionIsComplete: Bool { isPublished || localExportReady }
     /// Saving an edit replaces the revision underneath a render that is already running, so the
     /// preview opens view-only while an export or publish is in flight.
+    private var rememberedSettings: StickerControlSettings? {
+        guard revision.document.configuration != nil else { return nil }
+        _ = controlsApplied
+        let account = (try? SharedKeychainTokenVault().load()?.subject) ?? "local"
+        return StickerControlPreferences().load(accountID: account, stickerID: stickerID, document: revision.document)
+    }
+
     private var canEdit: Bool { !model.isPublishing && !publishIsPending }
 
     /// One flat column on the sheet itself: preview, state, settings, actions.
@@ -128,7 +136,9 @@ struct StickerExportSheet: View {
                         revisionID: revision.id,
                         assetStore: assetStore
                     )
-                    : nil
+                    : nil,
+                controls: .init(store: store, stickerID: stickerID, assetStore: assetStore,
+                    onApply: { controlsApplied += 1 })
             )
         }
         .onChange(of: publishSucceeded) { _, succeeded in
@@ -181,11 +191,16 @@ struct StickerExportSheet: View {
     /// would read as the look of every export.
     private var preview: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button { isPresentingFullScreen = true } label: {
+            Button {
+                isPresentingFullScreen = true
+            } label: {
                 ZStack {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(.background.opacity(0.7))
-                    StickerPlayer(document: revision.document, assets: assets, videos: assetStore.videos, repeats: true)
+                    StickerPlayer(
+                        document: revision.document, assets: assets, videos: assetStore.videos,
+                        repeats: true, settings: rememberedSettings
+                    )
                         .padding(16)
                 }
                 .frame(height: 190)
@@ -360,9 +375,7 @@ struct StickerExportSheet: View {
                     }
 
                     Spacer()
-                    PosterSymbol("chevron.up.chevron.down")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                    PosterDropdownIcon()
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)

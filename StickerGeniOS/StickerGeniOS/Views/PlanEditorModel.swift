@@ -1,4 +1,5 @@
 import Foundation
+import AnimatedView
 
 /// The part of the plan the user tapped to open the editor.
 nonisolated enum PlanEditorFocus: Hashable {
@@ -58,6 +59,9 @@ nonisolated struct PlanEditorModel: Hashable {
         var prompt: String
         var motion: String
         var videoSeconds: Int
+        /// The poses and moods of a sprite character, for the configuration editor. The editor
+        /// cannot author a sprite's sheets, so the layer is always kept; this only names its parts.
+        var sprite: StickerConfigurationEditor.Sprite?
         var effects: [Effect]
         /// How the untouched source reads on the card, for the "keep it as it is" option.
         var keptLabel: String
@@ -82,11 +86,13 @@ nonisolated struct PlanEditorModel: Hashable {
     var fps: Int
     var loop: StickerLoopBehavior
     var layers: [Layer]
+    var configuration: AnimatedControlConfiguration?
 
     /// A plan may hold at most eight layers, and at most one of them may be a video clip.
-    static let layerLimit = 8
+    static let layerLimit = 12
 
     init(plan: Plan) {
+        configuration = plan.configuration
         original = plan
         title = plan.title
         summary = plan.summary
@@ -114,6 +120,10 @@ nonisolated struct PlanEditorModel: Hashable {
             prompt: layer.source.prompt ?? layer.name,
             motion: layer.source.motion ?? "",
             videoSeconds: videoSeconds,
+            sprite: layer.source.sprite.map { StickerConfigurationEditor.Sprite(
+                clips: $0.clips.map { .init(id: $0.id, label: $0.label) },
+                expressions: $0.expressions.map { .init(id: $0.id, label: $0.label) }
+            ) },
             effects: layer.animations.enumerated().map { index, animation in
                 Effect(
                     origin: index,
@@ -182,12 +192,23 @@ nonisolated struct PlanEditorModel: Hashable {
         if layers.filter({ $0.source == .video }).count > 1 {
             return String(localized: "A plan can have only one video layer.")
         }
+        let layerIDs = Set(layers.map(\.layerId))
+        do {
+            try configuration?.keepingLayers(layerIDs)?.validated(layerIds: layerIDs, planned: true)
+        } catch {
+            return error.localizedDescription
+        }
         return nil
     }
 
     /// What the user changed, and nothing else. Empty when the editor was opened and closed again.
     func edit() -> PlanEdit {
         var edit = PlanEdit()
+        let kept = configuration?.keepingLayers(Set(layers.map(\.layerId)))
+        if kept != original.configuration {
+            edit.configuration = kept
+            if kept == nil { edit.clearConfiguration = true }
+        }
         if title.trimmed != original.title { edit.title = title.trimmed }
         if summary.trimmed != original.summary { edit.summary = summary.trimmed }
 

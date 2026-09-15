@@ -266,7 +266,7 @@ actor RejectedListingTransport: StickerHTTPTransport {
     func data(for request: URLRequest) async throws -> StickerHTTPResult {
         let url = try #require(request.url)
         let body = Data("""
-        {"error":{"code":"IOS_APP_UPDATE_REQUIRED","message":"Update Winky Sticker House to version 1.2 or later to view your stickers.",\
+        {"error":{"code":"IOS_APP_UPDATE_REQUIRED","message":"Update Winky Sticker Factory to version 1.2 or later to view your stickers.",\
         "requestId":"request-version"}}
         """.utf8)
         let response = try #require(HTTPURLResponse(

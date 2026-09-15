@@ -3,6 +3,7 @@ import Foundation
 struct MessagesLibrarySnapshot: Sendable {
     let sections: [StickerSection]
     let isOffline: Bool
+    var isRefreshing = false
 
     /// Every sticker across every section, in display order.
     var stickers: [CachedSticker] { sections.flatMap(\.stickers) }
@@ -32,6 +33,8 @@ enum SharedSectionAllowlist {
     }
 }
 
+typealias MessagesLibraryUpdate = @Sendable (MessagesLibrarySnapshot) async -> Void
+
 actor MessagesLibraryService {
     private let tokenBroker: SharedTokenBroker
     private let client: StickerLibraryClient
@@ -45,6 +48,12 @@ actor MessagesLibraryService {
         cache = try SharedStickerCache()
     }
 
+    init(tokenBroker: SharedTokenBroker, client: StickerLibraryClient, cache: SharedStickerCache) {
+        self.tokenBroker = tokenBroker
+        self.client = client
+        self.cache = cache
+    }
+
     /// The descriptors behind the last successful refresh.
     ///
     /// A `CachedSticker` describes the file on disk and deliberately says nothing about other
@@ -54,15 +63,86 @@ actor MessagesLibraryService {
 
     /// Cached sections the user still has, per the app's last published allowlist.
     ///
-    /// Only used on the offline paths: a successful refresh is authoritative on its own.
+    /// Used for cached previews and offline paths; the live listing is authoritative.
     private static func allowed(_ sections: [StickerSection]) -> [StickerSection] {
         SharedSectionAllowlist.filter(sections, allowed: SharedSectionAllowlist.current())
     }
 
-    func refresh() async throws -> MessagesLibrarySnapshot {
+    /// Downloads the renditions a refresh still needs, four at a time, publishing rows as they land
+    /// so the grid fills in rather than appearing all at once.
+    ///
+    /// One download per asset however many placements share it, and an asset that fails is skipped
+    /// rather than failing the refresh: a library missing one sticker still opens.
+    private func downloadPending(
+        _ pending: [SystemStickerDescriptor],
+        into stored: [CacheKey: CachedSticker],
+        subject: String,
+        token: String,
+        onUpdate: MessagesLibraryUpdate
+    ) async throws -> [CacheKey: CachedSticker] {
+        var ready = stored
+        let placements = Dictionary(grouping: pending, by: \.assetID)
+        var seenAssets: Set<String> = []
+        var queue = pending.filter { seenAssets.insert($0.assetID).inserted }.makeIterator()
+        let client = self.client
+        try await withThrowingTaskGroup(of: (String, DownloadedRendition?).self) { group in
+            func enqueue(_ descriptor: SystemStickerDescriptor) {
+                group.addTask {
+                    do {
+                        try Task.checkCancellation()
+                        return (descriptor.assetID, try await client.download(descriptor, accessToken: token))
+                    } catch {
+                        try Task.checkCancellation()
+                        return (descriptor.assetID, nil)
+                    }
+                }
+            }
+            for _ in 0..<4 {
+                if let next = queue.next() { enqueue(next) }
+            }
+            let clock = ContinuousClock()
+            var lastUpdate = clock.now
+            while let (assetID, rendition) = try await group.next() {
+                try Task.checkCancellation()
+                if let rendition {
+                    for var descriptor in placements[assetID] ?? [] {
+                        descriptor.mimeType = rendition.mimeType ?? descriptor.mimeType
+                        if let saved = try? await cache.store(rendition.data, descriptor: descriptor, for: subject) {
+                            ready[saved.key] = saved
+                        }
+                    }
+                    try Task.checkCancellation()
+                    // Fill the first few rows immediately. Later results coalesce to avoid constant relayout.
+                    if !ready.isEmpty && (ready.count <= 12 || lastUpdate.duration(to: clock.now) >= .milliseconds(150)) {
+                        await onUpdate(MessagesLibrarySnapshot(
+                            sections: StickerSection.grouped(Array(ready.values)), isOffline: false, isRefreshing: true
+                        ))
+                        lastUpdate = clock.now
+                    }
+                }
+                if let next = queue.next() { enqueue(next) }
+            }
+        }
+        return ready
+    }
+
+    func refresh(onUpdate: MessagesLibraryUpdate = { _ in }) async throws -> MessagesLibrarySnapshot {
+        try Task.checkCancellation()
+        descriptors = []
+        // A local, account-scoped read comes before token rotation or any network request.
+        if let session = try await tokenBroker.cachedSession() {
+            let cached = try await cache.cachedSections(for: session.subject, validateFiles: false)
+            try Task.checkCancellation()
+            await onUpdate(MessagesLibrarySnapshot(
+                sections: Self.allowed(cached), isOffline: false, isRefreshing: true
+            ))
+        }
+        try Task.checkCancellation()
         let authenticated: AuthenticatedSession
         do {
             authenticated = try await tokenBroker.authenticatedSession()
+        } catch is CancellationError {
+            throw CancellationError()
         } catch SharedAuthenticationError.missingCredentials {
             try? await cache.purge()
             throw SharedAuthenticationError.missingCredentials
@@ -70,16 +150,17 @@ actor MessagesLibraryService {
             try? await cache.purge()
             throw SharedAuthenticationError.refreshRejected
         } catch {
+            try Task.checkCancellation()
             if let cachedSession = try? await tokenBroker.cachedSession(),
-               let sections = try? await cache.cachedSections(for: cachedSession.subject),
+               let sections = try? await cache.cachedSections(for: cachedSession.subject, validateFiles: false),
                !sections.isEmpty {
                 return MessagesLibrarySnapshot(sections: Self.allowed(sections), isOffline: true)
             }
             throw error
         }
 
-        try await cache.prepare(for: authenticated.subject)
-        let existing = try await cache.cachedSections(for: authenticated.subject)
+        try Task.checkCancellation()
+        let existing = try await cache.cachedSections(for: authenticated.subject, validateFiles: false)
 
         let session: AuthenticatedSession
         let descriptors: [SystemStickerDescriptor]
@@ -90,15 +171,23 @@ actor MessagesLibraryService {
         } catch StickerLibraryError.unauthorized {
             do {
                 let refreshed = try await tokenBroker.authenticatedSession(forceRefresh: true)
+                try Task.checkCancellation()
+                guard refreshed.subject == authenticated.subject else {
+                    throw SharedAuthenticationError.missingCredentials
+                }
                 let fetched = try await client.fetchSections(accessToken: refreshed.accessToken)
                 session = refreshed
                 descriptors = fetched
+            } catch SharedAuthenticationError.missingCredentials {
+                try? await cache.purge()
+                throw SharedAuthenticationError.missingCredentials
             } catch SharedAuthenticationError.refreshRejected {
                 try? await cache.purge()
                 throw SharedAuthenticationError.refreshRejected
             } catch let error as StickerLibraryError where error.isUpdateRequired {
                 throw error
             } catch {
+                try Task.checkCancellation()
                 if !existing.isEmpty {
                     return MessagesLibrarySnapshot(sections: Self.allowed(existing), isOffline: true)
                 }
@@ -107,54 +196,29 @@ actor MessagesLibraryService {
         } catch let error as StickerLibraryError where error.isUpdateRequired {
             throw error
         } catch {
+            try Task.checkCancellation()
             if !existing.isEmpty {
                 return MessagesLibrarySnapshot(sections: Self.allowed(existing), isOffline: true)
             }
             throw error
         }
 
-        // Keyed by (section, sticker): the same sticker can sit in two installed packs, and each
-        // placement is its own cache entry even though both resolve to one file on disk.
-        let existingByKey = Dictionary(
-            uniqueKeysWithValues: existing.flatMap(\.stickers).map { ($0.key, $0) }
-        )
-        // One asset fetched once, however many sections reference it.
-        var downloadedAssetIDs: Set<String> = []
-        for descriptor in descriptors {
-            if existingByKey[descriptor.key]?.assetID == descriptor.assetID {
-                continue
-            }
-            do {
-                let rendition: DownloadedRendition
-                if downloadedAssetIDs.contains(descriptor.assetID),
-                   let sibling = existingByKey.values.first(where: { $0.assetID == descriptor.assetID }),
-                   let bytes = try? Data(contentsOf: sibling.fileURL) {
-                    rendition = DownloadedRendition(data: bytes, mimeType: descriptor.mimeType)
-                } else {
-                    rendition = try await client.download(descriptor, accessToken: session.accessToken)
-                    downloadedAssetIDs.insert(descriptor.assetID)
-                }
-                var verifiedDescriptor = descriptor
-                verifiedDescriptor.mimeType = rendition.mimeType ?? descriptor.mimeType
-                _ = try await cache.store(rendition.data, descriptor: verifiedDescriptor, for: session.subject)
-            } catch StickerLibraryError.unauthorized {
-                // Do not expose or retain a rendition that could not be authorized.
-                continue
-            } catch {
-                // Preserve the last verified local rendition when one remote item fails. Other
-                // items — and other sections — can still update successfully.
-                continue
-            }
-        }
-
-        try await cache.removeEntries(
-            notIn: Set(descriptors.map(\.key)),
-            for: session.subject
-        )
+        try Task.checkCancellation()
         self.descriptors = descriptors
+        let reconciled = try await cache.reconcile(descriptors, for: session.subject)
+        var ready = Dictionary(reconciled.flatMap(\.stickers).map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        try Task.checkCancellation()
+        await onUpdate(MessagesLibrarySnapshot(sections: reconciled, isOffline: false, isRefreshing: true))
+
+        // Share one download across placements, with a small concurrency limit for the extension.
+        // Each completed asset is usable immediately, even when another request stalls.
+        let pending = descriptors.filter { ready[$0.key]?.assetID != $0.assetID }
+        ready = try await downloadPending(
+            pending, into: ready, subject: session.subject, token: session.accessToken, onUpdate: onUpdate
+        )
+        try Task.checkCancellation()
         return MessagesLibrarySnapshot(
-            sections: try await cache.cachedSections(for: session.subject),
-            isOffline: false
+            sections: StickerSection.grouped(Array(ready.values)), isOffline: false
         )
     }
 }

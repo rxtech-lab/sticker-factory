@@ -1,8 +1,9 @@
 import sharp from "sharp";
-import { loopedTime, sequenceFrameIndex } from "@/lib/animation/sample";
-import { layerImageAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
+import { loopedTime, sequenceFrameIndex, spriteFrameIndex } from "@/lib/animation/sample";
+import { resolveStickerConfiguration, layerImageAssetIds, spriteClip, spriteExpressionTile, type StickerDocument } from "@/lib/contracts/sticker";
 import { describeError, traceEvent } from "@/lib/observability/trace";
-import { frameFragment, IdFactory, sequenceCellKey, type RenderAssets } from "@/lib/render/document-svg";
+import { frameFragment, IdFactory, sequenceCellKey, spriteCellKey, type RenderAssets } from "@/lib/render/document-svg";
+import { compositeSpriteFrame } from "@/lib/render/sprite-registration";
 
 /**
  * Renders a document to a PNG the agent can look at.
@@ -62,6 +63,7 @@ const SHEET_QUALITY = 72;
 
 /** Every asset id a render of this document needs. */
 export function referencedAssetIds(document: StickerDocument): string[] {
+  document = resolveStickerConfiguration(document);
   const ids = new Set<string>();
   if (document.background.type === "image") ids.add(document.background.assetId);
   for (const layer of document.layers) {
@@ -97,6 +99,7 @@ function checkerDef(id: string): string {
 }
 
 export function documentSvg(document: StickerDocument, assets: RenderAssets): { svg: string; times: number[]; width: number; height: number } {
+  document = resolveStickerConfiguration(document);
   const times = sampleTimes(document);
   const columns = times.length === 1 ? 1 : COLUMNS;
   const rows = Math.ceil(times.length / columns);
@@ -166,8 +169,9 @@ function assetEdges(document: StickerDocument, edge: number): Map<string, number
   if (document.background.type === "image") want(document.background.assetId, edge);
   for (const layer of document.layers) {
     // A sequence layer's atlas is handled by `sliceAtlases`, which replaces it with the individual
-    // cells — so it is deliberately not listed here and never inlined whole.
-    if (layer.type === "sequence") continue;
+    // cells — so it is deliberately not listed here and never inlined whole. A sprite's sheets are
+    // composited into cells by `compositeSpriteCells` the same way.
+    if (layer.type === "sequence" || layer.type === "sprite") continue;
     for (const id of layerImageAssetIds(layer)) want(id, edge);
   }
   return edges;
@@ -264,6 +268,48 @@ async function sliceAtlases(
   }));
 }
 
+/** The sheets a sprite draws from, which are never inlined whole for the same reason an atlas is not. */
+function spriteSheetIds(document: StickerDocument): Set<string> {
+  return new Set(document.layers.flatMap((layer) => (
+    layer.type === "sprite" ? [...layer.clips.map((clip) => clip.assetId), layer.expressions.assetId] : []
+  )));
+}
+
+/**
+ * Draws each sprite frame the sheet shows — body cell plus expression — ahead of time.
+ *
+ * The document is already resolved here, so each sprite layer names exactly one clip and one face;
+ * the frames are whichever `spriteFrameIndex` picks for the sampled instants, deduplicated like
+ * atlas cells. Best-effort per layer for the same reason `sliceAtlases` is: a labelled placeholder
+ * beats a failed render.
+ */
+async function compositeSpriteCells(
+  document: StickerDocument,
+  assets: RenderAssets,
+  times: number[],
+  into: RenderAssets,
+  cellEdge: number,
+): Promise<void> {
+  await Promise.all(document.layers.map(async (layer) => {
+    if (layer.type !== "sprite") return;
+    const clip = spriteClip(layer);
+    const tile = spriteExpressionTile(layer);
+    const atlas = assets.get(clip.assetId);
+    const sheet = assets.get(layer.expressions.assetId);
+    if (!atlas || !sheet) return;
+    const indices = new Set(times.map((time) => spriteFrameIndex(clip.frames, time)));
+    try {
+      await Promise.all([...indices].map(async (index) => {
+        const bytes = await compositeSpriteFrame({ atlas: atlas.bytes, clip, index, sheet: sheet.bytes, tile, edge: cellEdge });
+        into.set(spriteCellKey(layer.id, clip.id, index, layer.expressionId), { bytes, mimeType: "image/png" });
+      }));
+      traceEvent("render:sprite:composited", { layerId: layer.id, clipId: clip.id, expressionId: layer.expressionId, cells: indices.size });
+    } catch (error) {
+      traceEvent("render:sprite:fail", { layerId: layer.id, clipId: clip.id, error: describeError(error) });
+    }
+  }));
+}
+
 /**
  * Shrinks every bitmap to the size the sheet can actually show it at.
  *
@@ -305,14 +351,16 @@ export async function prepareRenderAssets(
   assets: RenderAssets,
   options: { times: number[]; assetEdge: number; cellEdge: number },
 ): Promise<RenderAssets> {
+  document = resolveStickerConfiguration(document);
   const { times, assetEdge, cellEdge } = options;
   const edges = assetEdges(document, assetEdge);
   const fitted: RenderAssets = new Map();
   const atlases = requiredCells(document, times);
+  const sheets = spriteSheetIds(document);
   await Promise.all([...assets].map(async ([id, asset]) => {
     // Replaced by its own cells below, and deliberately not copied across: leaving it in the map
     // would let `document-svg`'s whole-atlas fallback inline it again.
-    if (atlases.has(id)) return;
+    if (atlases.has(id) || sheets.has(id)) return;
     const edge = edges.get(id);
     // Not a bitmap this renderer rasterises — an SVG layer's source is embedded as markup.
     if (edge === undefined) {
@@ -347,6 +395,7 @@ export async function prepareRenderAssets(
     }
   }));
   await sliceAtlases(document, assets, times, fitted, cellEdge);
+  await compositeSpriteCells(document, assets, times, fitted, cellEdge);
   return fitted;
 }
 
@@ -369,6 +418,7 @@ function svgDiagnostics(svg: string): Record<string, number> {
 }
 
 export async function renderSticker(document: StickerDocument, assets: RenderAssets): Promise<StickerRender> {
+  document = resolveStickerConfiguration(document);
   const startedAt = Date.now();
   const missing = referencedAssetIds(document).filter((id) => !assets.has(id));
   traceEvent("render:sticker:start", {

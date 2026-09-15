@@ -40,6 +40,14 @@ struct PlanEditorSheet: View {
                         }
                         Divider()
                         layers.id(PlanEditorFocus.layers)
+                        if model.isAnimated {
+                            Divider()
+                            StickerConfigurationEditor(
+                                configuration: $model.configuration,
+                                layers: model.layers.map { .init(id: $0.layerId, name: $0.name, sprite: $0.sprite) },
+                                planned: true
+                            )
+                        }
                         if let message = model.validationMessage { NoticeBanner(message: message) }
                         if let errorMessage { ErrorBanner(message: errorMessage) }
                     }
@@ -356,32 +364,6 @@ private struct PlanEditorLayerCard: View {
 
     private func formatted(_ value: Double) -> String {
         value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
-    }
-}
-
-/// The poster's text field: paper inside a card, so it reads as somewhere to write.
-private struct PosterField: View {
-    let placeholder: String
-    @Binding var text: String
-    var lineLimit: ClosedRange<Int>?
-
-    var body: some View {
-        Group {
-            if let lineLimit {
-                TextField(placeholder, text: $text, axis: .vertical).lineLimit(lineLimit)
-            } else {
-                TextField(placeholder, text: $text)
-            }
-        }
-        .textFieldStyle(.plain)
-        .font(.system(size: 14, design: .rounded))
-        .padding(10)
-        .posterSurface(
-            cornerRadius: Poster.chipRadius,
-            fill: AppColors.paper,
-            lineWidth: Poster.hairline,
-            offset: .zero
-        )
     }
 }
 

@@ -3,7 +3,7 @@
 
 import { gateway } from "@ai-sdk/gateway";
 import { generateImage, generateText, type ModelMessage } from "ai";
-import { recordImageApiCost } from "@/lib/ai/cost";
+import { recordImageApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { alternateChromaKey, chromaKeyBackground, preferredChromaKey, type ChromaKeyColor } from "@/lib/ai/chroma-key";
 import { ApiError } from "@/lib/http/errors";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
@@ -304,10 +304,37 @@ function stickerInstruction(input: AiImageInput, keyColor?: ChromaKeyColor): str
     `Latest instruction: ${input.prompt}`,
     keyColor
       ? `Draw one centered sticker subject. ${chromaBackdropInstruction(keyColor)}`
-      : "Create a centered sticker with a genuinely transparent background.",
-    "Produce exactly one sticker subject. Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side.",
+      : input.sheet
+        ? "The whole background of the sheet, and every gap between cells, is genuinely transparent."
+        : "Create a centered sticker with a genuinely transparent background.",
+    input.sheet
+      ? sheetInstruction(input.sheet)
+      : "Produce exactly one sticker subject. Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side.",
     "Return PNG.",
   ].filter(Boolean).join("\n\n");
+}
+
+/**
+ * The sheet paragraph, replacing the one-subject rule above.
+ *
+ * Everything here is what the registration step depends on: cells of one size in row-major order,
+ * the body at one scale and one position in every cell, a face placeholder in one flat colour, and
+ * transparent padding so a cell never bleeds into its neighbour.
+ */
+function sheetInstruction(sheet: NonNullable<AiImageInput["sheet"]>): string {
+  return [
+    `Draw a sprite sheet: a grid of ${sheet.columns} columns by ${sheet.rows} rows of equal cells filling the 1024x1024 frame,`,
+    `containing exactly ${sheet.count} drawings in row-major order (left to right, then top to bottom).`,
+    "Every cell is the same size. Leave transparent padding inside every cell edge so no drawing touches or crosses a cell boundary.",
+    `Cells after the ${sheet.count}th stay completely transparent.`,
+    "No dividers, borders, numbers, labels, arrows, captions, or text anywhere.",
+    sheet.tiles
+      ? "Each cell contains only an inner facial patch that will fill the body's face opening: eyes, brows, mouth, cheeks, nose, facial markings, and the skin or fur directly beneath them. No enclosing outline, sticker border, rim, shadow, head silhouette, ears, hair, outer head fur, neck, body, or background. Never draw a complete head or miniature portrait inside this patch. Match the surrounding head's colour and texture so the patch blends into it. Keep transparent padding outside the patch. The patch is the same size, at the same position, and facing the same way in every cell; only the expression changes. Preserve hard pixel edges and the original pixel grid for pixel art."
+      : "Draw the same character at exactly the same scale and body position in every cell, so the frames register when flipped through.",
+    sheet.facePlaceholder
+      ? "Keep the head silhouette, ears, hair, and outer head fur. Replace the entire inner face from brow to chin and cheek to cheek with a single flat, solid, pure magenta (#FF00FF) filled oval with no outline, features, highlights, shading, or gradient, the same size relative to the head in every cell. Remove all original eyes, brows, nose, and mouth; none may remain outside or beneath the opening. This is the opening for an inner facial patch, not for another complete head. Use magenta nowhere else in the image."
+      : "",
+  ].filter(Boolean).join(" ");
 }
 
 export async function generateThroughImageModel(
@@ -330,7 +357,9 @@ export async function generateThroughImageModel(
     n: 1,
     size: "1024x1024",
     maxRetries: 2,
-    providerOptions: transparentProviderOptions,
+    providerOptions: input.quality
+      ? { openai: { ...transparentProviderOptions.openai, quality: input.quality } }
+      : transparentProviderOptions,
     abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
   });
   await recordImageApiCost(result);
@@ -364,6 +393,8 @@ async function generateThroughQuickImageModel(
   keyColor: ChromaKeyColor,
 ): Promise<Uint8Array> {
   const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_QUICK_IMAGE_MODEL ?? "google/gemini-3.1-flash-lite-image"),
     messages: [{
       role: "user",

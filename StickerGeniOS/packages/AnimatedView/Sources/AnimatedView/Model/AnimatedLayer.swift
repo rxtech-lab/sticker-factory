@@ -1,7 +1,7 @@
 import Foundation
 
 public enum AnimatedLayerType: String, Codable, CaseIterable, Hashable, Sendable {
-    case image, text, shape, svg, particle, sequence, video
+    case image, text, shape, svg, particle, sequence, video, sprite
     /// Not a wire type. Stands for a layer a newer build wrote and this one cannot draw; the layer
     /// re-encodes its own original `type` string, so this raw value never reaches JSON.
     case unsupported
@@ -11,12 +11,12 @@ public enum AnimatedLayerType: String, Codable, CaseIterable, Hashable, Sendable
     /// `sequence` is authorable only in the sense that a document can contain one — the footage
     /// comes from lifting a subject out of a Live Photo in the picker, and there is nothing
     /// meaningful to create from an empty editor menu. `video` is the same: the clip is generated
-    /// on the server from a confirmed plan, so there is nothing to author locally. `unsupported` is
-    /// never authorable at all.
+    /// on the server from a confirmed plan, so there is nothing to author locally, and a `sprite`'s
+    /// sheets and face slots are registered by the server build. `unsupported` is never authorable.
     public var isAuthorable: Bool {
         switch self {
         case .image, .text, .shape, .svg, .particle: true
-        case .sequence, .video, .unsupported: false
+        case .sequence, .video, .sprite, .unsupported: false
         }
     }
 }
@@ -620,6 +620,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     case particle(AnimatedParticleLayer)
     case sequence(AnimatedSequenceLayer)
     case video(AnimatedVideoLayer)
+    case sprite(AnimatedSpriteLayer)
     /// A layer this build does not understand. See `AnimatedUnsupportedLayer`.
     case unsupported(AnimatedUnsupportedLayer)
 
@@ -640,6 +641,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .particle: self = .particle(try AnimatedParticleLayer(from: decoder))
         case .sequence: self = .sequence(try AnimatedSequenceLayer(from: decoder))
         case .video: self = .video(try AnimatedVideoLayer(from: decoder))
+        case .sprite: self = .sprite(try AnimatedSpriteLayer(from: decoder))
         // `unsupported` is not a wire type, so a document that literally spells it is as unknown as
         // anything else — and falls into the same bucket rather than round-tripping as a real case.
         case .unsupported, nil: self = .unsupported(try AnimatedUnsupportedLayer(from: decoder))
@@ -655,6 +657,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .particle(let value): try value.encode(to: encoder)
         case .sequence(let value): try value.encode(to: encoder)
         case .video(let value): try value.encode(to: encoder)
+        case .sprite(let value): try value.encode(to: encoder)
         case .unsupported(let value): try value.encode(to: encoder)
         }
     }
@@ -669,6 +672,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
             case .particle(let v): v.base
             case .sequence(let v): v.base
             case .video(let v): v.base
+            case .sprite(let v): v.base
             case .unsupported(let v): v.base
             }
         }
@@ -681,6 +685,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
             case .particle(var v): v.base = newValue; self = .particle(v)
             case .sequence(var v): v.base = newValue; self = .sequence(v)
             case .video(var v): v.base = newValue; self = .video(v)
+            case .sprite(var v): v.base = newValue; self = .sprite(v)
             // Deliberately a no-op. `raw` is what gets encoded, so writing the base here would
             // change what the editor shows without changing what is saved.
             case .unsupported: break
@@ -705,6 +710,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .particle: .particle
         case .sequence: .sequence
         case .video: .video
+        case .sprite: .sprite
         case .unsupported: .unsupported
         }
     }
@@ -722,7 +728,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     public var supportsTrim: Bool {
         switch self {
         case .shape, .svg: true
-        case .image, .text, .particle, .sequence, .video, .unsupported: false
+        case .image, .text, .particle, .sequence, .video, .sprite, .unsupported: false
         }
     }
 
@@ -735,6 +741,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .particle(let v): v.isValid
         case .sequence(let v): v.isValid
         case .video(let v): v.isValid
+        case .sprite(let v): v.isValid
         case .unsupported(let v): v.isValid
         }
     }
@@ -760,6 +767,9 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .image(let v): [v.assetId, v.maskAssetId].compactMap { $0 }
         case .sequence(let v): [v.assetId]
         case .video(let v): [v.posterAssetId]
+        // Every clip sheet and the expression sheet, whatever is selected: a control can switch to
+        // any of them without another download. The poster is for consumers that cannot composite.
+        case .sprite(let v): v.clips.map(\.assetId) + [v.expressions.assetId]
         case .text, .shape, .svg, .particle, .unsupported: []
         }
     }
@@ -768,7 +778,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
     public var referencedVideoAssetIDs: [String] {
         switch self {
         case .video(let v): [v.assetId]
-        case .image, .sequence, .text, .shape, .svg, .particle, .unsupported: []
+        case .image, .sequence, .sprite, .text, .shape, .svg, .particle, .unsupported: []
         }
     }
 }

@@ -6,7 +6,7 @@ import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
-import { recordTextApiCost } from "@/lib/ai/cost";
+import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { MAX_LAYER_INDEX, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { ApiError } from "@/lib/http/errors";
@@ -184,6 +184,8 @@ export async function editSticker(
   };
 
   const generation = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
@@ -336,6 +338,15 @@ export function validateEditOperation(
       "A clip has to be generated; turn an image layer into one with create_video instead",
     );
   }
+  // A sprite's sheets and face slots are registered by the build; an `addLayer` naming them by hand
+  // would point at sheets this turn never drew, or at anchors nothing measured.
+  if (operation.op === "addLayer" && operation.layer.type === "sprite") {
+    throw new ApiError(
+      422,
+      "UNSAFE_EDIT_OPERATION",
+      "A sprite character has to be planned and built; it cannot be introduced by an edit",
+    );
+  }
   return operation;
 }
 
@@ -360,6 +371,7 @@ export function validatePlannedAnimationOperation(
     operation.op === "removeLayer" ||
     (operation.op === "addLayer" && (
       operation.layer.type === "image" || operation.layer.type === "sequence" || operation.layer.type === "video"
+      || operation.layer.type === "sprite"
     ))
   ) {
     throw new ApiError(

@@ -3,7 +3,7 @@
 
 import { and, eq } from "drizzle-orm";
 import type { PostChatMessageRequest } from "@/lib/contracts/api";
-import { EXPORT_LOOP_HOLD_SECONDS, layerImageAssetIds, layerVideoAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
+import { EXPORT_LOOP_HOLD_SECONDS, documentRenderableLayers, layerImageAssetIds, layerVideoAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
 import { assets, stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
@@ -112,28 +112,33 @@ export async function validateDocumentAssetReferences(
   document: StickerDocument,
   additionalAssetIds: string[] = [],
 ): Promise<Map<string, typeof assets.$inferSelect>> {
-  const imageLayers = document.layers.filter((layer): layer is Extract<typeof layer, { type: "image" }> => layer.type === "image");
+  const allLayers = documentRenderableLayers(document);
+  const imageLayers = allLayers.filter((layer): layer is Extract<typeof layer, { type: "image" }> => layer.type === "image");
   // v2 grew two more places a document can name an asset. Both are ownership holes if missed: an
   // svg layer can reference uploaded artwork, and the artwork background can reference an image.
-  const svgAssetIds = document.layers.flatMap((layer) => (
+  const svgAssetIds = allLayers.flatMap((layer) => (
     layer.type === "svg" && layer.source.kind === "asset" ? [layer.source.assetId] : []
   ));
   const backgroundAssetIds = document.background.type === "image" ? [document.background.assetId] : [];
-  const sequenceLayers = document.layers.filter(
+  const sequenceLayers = allLayers.filter(
     (layer): layer is Extract<typeof layer, { type: "sequence" }> => layer.type === "sequence",
   );
-  const videoLayers = document.layers.filter(
+  const videoLayers = allLayers.filter(
     (layer): layer is Extract<typeof layer, { type: "video" }> => layer.type === "video",
+  );
+  const spriteLayers = allLayers.filter(
+    (layer): layer is Extract<typeof layer, { type: "sprite" }> => layer.type === "sprite",
   );
   const ids = [...new Set([
     ...additionalAssetIds,
-    ...document.layers.flatMap(layerImageAssetIds),
+    ...allLayers.flatMap(layerImageAssetIds),
     // The clip: `layerImageAssetIds` reports a video layer's poster, since that is what the server
     // draws, and the MP4 the client plays has to clear the same ownership bar.
-    ...document.layers.flatMap(layerVideoAssetIds),
+    ...allLayers.flatMap(layerVideoAssetIds),
     // The poster is what a pre-v3 client is served in place of the footage, so it has to clear the
     // same ownership bar as everything else the document names.
     ...sequenceLayers.flatMap((layer) => (layer.posterAssetId ? [layer.posterAssetId] : [])),
+    ...spriteLayers.map((layer) => layer.posterAssetId),
     ...svgAssetIds,
     ...backgroundAssetIds,
   ])];
@@ -202,6 +207,27 @@ export async function validateDocumentAssetReferences(
     const poster = byId.get(layer.posterAssetId)!;
     if (poster.mimeType !== "image/png" || !poster.hasAlpha) {
       throw new ApiError(422, "INVALID_VIDEO_POSTER", "A video layer's poster must be a transparent PNG");
+    }
+  }
+  for (const layer of spriteLayers) {
+    // Every sheet is stored as a `sequence` asset carrying its grid, and the layer carries the same
+    // grid: as with captures, a disagreement means cells would be cut in the wrong places.
+    const sheets = [
+      ...layer.clips.map((clip) => ({ what: `clip ${clip.id}`, assetId: clip.assetId, columns: clip.columns, rows: clip.rows, count: clip.frames.length })),
+      { what: "expression sheet", assetId: layer.expressions.assetId, columns: layer.expressions.columns, rows: layer.expressions.rows, count: layer.expressions.tiles.length },
+    ];
+    for (const sheet of sheets) {
+      const asset = byId.get(sheet.assetId)!;
+      if (asset.kind !== "sequence" || asset.mimeType !== "image/png" || !asset.hasAlpha) {
+        throw new ApiError(422, "INVALID_SPRITE_ASSET", `A sprite layer's ${sheet.what} must be a validated transparent sheet`);
+      }
+      if (asset.sequenceColumns !== sheet.columns || asset.sequenceRows !== sheet.rows || asset.frameCount !== sheet.count) {
+        throw new ApiError(422, "SPRITE_METADATA_MISMATCH", `A sprite layer's ${sheet.what} grid must match the stored sheet`);
+      }
+    }
+    const poster = byId.get(layer.posterAssetId)!;
+    if (poster.mimeType !== "image/png" || !poster.hasAlpha) {
+      throw new ApiError(422, "INVALID_SPRITE_POSTER", "A sprite layer's poster must be a transparent PNG");
     }
   }
   return byId;

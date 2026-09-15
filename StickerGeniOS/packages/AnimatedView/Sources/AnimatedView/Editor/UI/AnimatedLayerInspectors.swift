@@ -205,6 +205,90 @@ struct AnimatedVideoLayerInspector: View {
     }
 }
 
+/// A controllable character: which pose and which face are showing, and how it fits.
+///
+/// The pose and mood pickers write the layer's own defaults. A sticker with controls overrides them
+/// per viewer at playback, so what is set here is what the sticker shows before anyone touches a
+/// control — and what it shows wherever there are no controls at all.
+struct AnimatedSpriteLayerInspector: View {
+    @Bindable var editor: AnimatedDocumentEditor
+    let layer: AnimatedSpriteLayer
+    let assets: any AnimatedAssetProvider
+
+    var body: some View {
+        Section {
+            HStack {
+                Spacer()
+                thumbnail
+                Spacer()
+            }
+
+            Picker("Pose", selection: binding(\.clipId)) {
+                ForEach(layer.clips) { Text($0.id.capitalized).tag($0.id) }
+            }
+            Picker("Mood", selection: binding(\.expressionId)) {
+                ForEach(layer.expressions.tiles) { Text($0.id.capitalized).tag($0.id) }
+            }
+
+            Picker("Fit", selection: binding(\.contentMode)) {
+                ForEach(AnimatedContentMode.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Character")
+        } footer: {
+            Text(
+                "\(layer.clips.count) poses and \(layer.expressions.tiles.count) expressions, composed as it plays. "
+                    + "Controls on the sticker can override the pose and mood."
+            )
+        }
+    }
+
+    /// The composited frame under the playhead, so scrubbing the timeline scrubs the character too.
+    @ViewBuilder
+    private var thumbnail: some View {
+        let clip = layer.currentClip
+        let index = AnimationInterpolator.spriteFrameIndex(clip.frames, atDocumentTime: editor.scrubDocumentTime)
+        if let frame = SpriteFrameCache.shared.frame(for: layer, index: index, assets: assets) ?? assets.image(for: layer.posterAssetId) {
+            Image(platformImage: frame)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 88, height: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Text("\(index + 1)/\(clip.frames.count)")
+                        .font(.caption2.monospacedDigit())
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding(4)
+                }
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.purple.gradient)
+                .frame(width: 88, height: 88)
+                .overlay {
+                    AnimatedCartoonSymbol("face.smiling")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+        }
+    }
+
+    private func binding<Value>(_ keyPath: WritableKeyPath<AnimatedSpriteLayer, Value>) -> Binding<Value> {
+        Binding(
+            get: { layer[keyPath: keyPath] },
+            set: { newValue in
+                editor.updateLayer(id: layer.base.id, name: "Edit Character") {
+                    guard case .sprite(var value) = $0 else { return }
+                    value[keyPath: keyPath] = newValue
+                    $0 = .sprite(value)
+                }
+            }
+        )
+    }
+}
+
 /// A layer written by a newer build. Nothing to edit; the point is to say so plainly.
 struct AnimatedUnsupportedLayerInspector: View {
     var body: some View {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PlanConfigurationSchema, configurationIssues, configurationKeepingLayers } from "./configuration";
 import {
   compileLayerAnimations,
   type AnimationTiming,
@@ -14,6 +15,7 @@ import {
   aspectLockedScale,
   layerScaleIsAspectLocked,
   LayerIdSchema,
+  documentRenderableLayers,
   type StickerDocument,
   type StickerLayerV1,
 } from "@/lib/contracts/sticker";
@@ -108,7 +110,46 @@ export const PlanLayerSourceV1Schema = z.discriminatedUnion("kind", [
     /** The video model's floor is 2 s; the plan timing's ceiling is 4 s. */
     durationSeconds: z.number().int().min(2).max(4).default(3),
   }).strict(),
+  z.object({
+    /**
+     * A controllable character: one still, a few named body clips, and a strip of face expressions.
+     *
+     * Costs `1 + clips + 1` image generations: the still is separated from the approved reference
+     * like a `generate` layer, every clip is one sprite sheet, and all the expressions share one
+     * sheet. Mood and pose controls then bind `expression` and `clip` on the built layer, so the
+     * combinations are free — see `SpriteLayerV1Schema`.
+     */
+    kind: z.literal("sprite"),
+    /** What to draw: the complete character at rest, same rules as a generate prompt. */
+    prompt: z.string().trim().min(1).max(2_000),
+    clips: z.array(z.object({
+      id: LayerIdSchema,
+      label: z.string().trim().min(1).max(80),
+      /** What the body does across the frames, in order. The first frame is the resting pose. */
+      prompt: z.string().trim().min(1).max(1_000),
+      /** How long each frame holds. Six frames is the norm; a still pose may be one. */
+      frames: z.array(z.object({ duration: z.number().min(0.05).max(10) }).strict()).min(1).max(8),
+    }).strict()).min(1).max(8),
+    expressions: z.array(z.object({
+      id: LayerIdSchema,
+      label: z.string().trim().min(1).max(80),
+      /** The face alone: eyes, brows, mouth, cheeks. The first entry is the neutral face. */
+      prompt: z.string().trim().min(1).max(500),
+    }).strict()).min(1).max(8),
+  }).strict(),
 ]);
+
+/** The default sheet grid for a clip of `count` frames: 3x2 up to six, 4x2 up to eight. */
+export function spriteSheetGrid(count: number): { columns: number; rows: number } {
+  return count <= 6 ? { columns: 3, rows: 2 } : { columns: 4, rows: 2 };
+}
+
+/** Sprite layers of a plan, with their sources narrowed. */
+export function planSpriteLayers(plan: Pick<PlanV1, "layers">) {
+  return plan.layers.flatMap((layer) => (
+    layer.source.kind === "sprite" ? [{ layer, source: layer.source }] : []
+  ));
+}
 
 /**
  * One layer of a planned sticker.
@@ -145,6 +186,16 @@ export const PlanLayerV1Schema = z.object({
         + "Copy columns, rows, frameCount, and frameRate exactly as they were given to you.",
     });
   }
+  if (layer.source.kind === "sprite") {
+    const clipIds = layer.source.clips.map((clip) => clip.id);
+    if (new Set(clipIds).size !== clipIds.length) {
+      context.addIssue({ code: "custom", path: ["source", "clips"], message: `Layer ${layer.layerId} repeats a clip id; give every clip its own id` });
+    }
+    const expressionIds = layer.source.expressions.map((expression) => expression.id);
+    if (new Set(expressionIds).size !== expressionIds.length) {
+      context.addIssue({ code: "custom", path: ["source", "expressions"], message: `Layer ${layer.layerId} repeats an expression id; give every expression its own id` });
+    }
+  }
 });
 
 export const PlanTimingV1Schema = z.object({
@@ -161,13 +212,15 @@ export const PlanTimingV1Schema = z.object({
  * generates images.
  */
 export const PlanV1Schema = z.object({
+  configuration: PlanConfigurationSchema.optional(),
   version: z.literal(1).default(1),
   title: z.string().trim().min(1).max(120),
   /** Shown to the user as the assistant's chat message: one or two friendly sentences. */
   summary: z.string().trim().min(1).max(1_000),
   kind: z.enum(["static", "animated"]),
   timing: PlanTimingV1Schema.default({ durationSeconds: 2, fps: 30, loop: "loop" }),
-  layers: z.array(PlanLayerV1Schema).min(1).max(8),
+  /** Twelve rather than eight: a two-character scene spends two of them before any scenery. */
+  layers: z.array(PlanLayerV1Schema).min(1).max(12),
   /**
    * How to draw the finished static reference the user approves before animated parts are made.
    *
@@ -177,6 +230,38 @@ export const PlanV1Schema = z.object({
    */
   conceptPrompt: z.string().trim().min(1).max(2_000).optional(),
 }).strict().superRefine((plan, context) => {
+  if (plan.configuration) {
+    const issues = configurationIssues(plan.configuration, new Set(plan.layers.map((layer) => layer.layerId)));
+    if (plan.kind !== "animated") issues.push("Configurable stickers need an animated plan");
+    for (const variant of plan.configuration.variants) {
+      for (const patch of variant.layers) {
+        const layer = plan.layers.find((layer) => layer.layerId === patch.layerId);
+        if ((patch.source?.kind === "frames" || patch.source?.kind === "sequence") && patch.source.frameRate > plan.timing.fps) issues.push("Pose frame rate exceeds plan frame rate");
+        // A clip or expression binding only means something on a sprite, and only for an id the
+        // sprite declares; a sprite's artwork is never swapped whole, its parts are selected.
+        if (patch.clip !== undefined || patch.expression !== undefined) {
+          if (layer?.source.kind !== "sprite") {
+            issues.push(`Variant ${variant.id} selects a clip or expression on ${patch.layerId}, which is not a sprite layer`);
+          } else {
+            if (patch.clip !== undefined && !layer.source.clips.some((clip) => clip.id === patch.clip)) {
+              issues.push(`Variant ${variant.id} selects clip ${patch.clip}, which sprite ${patch.layerId} does not declare`);
+            }
+            if (patch.expression !== undefined && !layer.source.expressions.some((expression) => expression.id === patch.expression)) {
+              issues.push(`Variant ${variant.id} selects expression ${patch.expression}, which sprite ${patch.layerId} does not declare`);
+            }
+          }
+        }
+        if (patch.source && layer?.source.kind === "sprite") {
+          issues.push(`Variant ${variant.id} replaces the artwork of sprite ${patch.layerId}; bind clip or expression on a sprite instead`);
+        }
+        if (patch.animations && layer) {
+          try { compilePlanAnimations({ ...plan, layers: [{ ...layer, animations: patch.animations }] }); }
+          catch (error) { issues.push(error instanceof Error ? error.message : String(error)); }
+        }
+      }
+    }
+    for (const message of issues) context.addIssue({ code: "custom", message });
+  }
   const ids = new Set<string>();
   for (const layer of plan.layers) {
     if (ids.has(layer.layerId)) {
@@ -209,6 +294,16 @@ export const PlanV1Schema = z.object({
       code: "custom",
       path: ["summary"],
       message: "Say in the summary which layer is generated as a video and why its motion needs one.",
+    });
+  }
+  // A sprite only makes sense with a timeline to walk its clips on. It is also the one source whose
+  // cost the user cannot read off the layer count, so the plan says what it buys.
+  const sprites = planSpriteLayers(plan);
+  if (sprites.length > 0 && plan.kind === "static") {
+    context.addIssue({
+      code: "custom",
+      message: `${sprites.map(({ layer }) => `Layer ${layer.layerId}`).join(", ")} `
+        + `${sprites.length > 1 ? "are sprite characters, which need" : "is a sprite character, which needs"} an animated plan.`,
     });
   }
 
@@ -258,6 +353,8 @@ function plannedLayerType(source: PlanLayerSourceV1): StickerLayerV1["type"] {
     return "sequence";
   case "video":
     return "video";
+  case "sprite":
+    return "sprite";
   case "text":
     return "text";
   case "shape":
@@ -310,13 +407,65 @@ export function compilePlanAnimations(plan: Pick<PlanV1, "kind" | "timing" | "la
  * A video layer counts: its clip is animated from a still that is separated from the approved
  * reference exactly the way a generate layer's artwork is, so it pays for that image first.
  */
-export function planGenerationCount(plan: Pick<PlanV1, "layers">): number {
-  return plan.layers.filter((layer) => layer.source.kind === "generate" || layer.source.kind === "video").length;
+export function planGenerationCount(plan: Pick<PlanV1, "layers" | "configuration">): number {
+  const alternatives = plan.configuration?.variants.flatMap((variant) => variant.layers).filter((layer) => layer.source?.kind === "generate" || layer.source?.kind === "frames").length ?? 0;
+  const stills = plan.layers.filter((layer) => layer.source.kind === "generate" || layer.source.kind === "video" || layer.source.kind === "sprite").length;
+  return alternatives + stills + planSpriteSheetCount(plan);
+}
+
+/**
+ * How many sprite sheets executing this plan will draw: one per clip plus one expression sheet per
+ * sprite layer. Counted apart from the stills because a sheet is drawn at a higher quality and
+ * holds more than an ordinary generation.
+ */
+export function planSpriteSheetCount(plan: Pick<PlanV1, "layers">): number {
+  return planSpriteLayers(plan).reduce((total, { source }) => total + source.clips.length + 1, 0);
 }
 
 /** How many video generations executing this plan will cost, on top of its image generations. */
 export function planVideoCount(plan: Pick<PlanV1, "layers">): number {
   return plan.layers.filter((layer) => layer.source.kind === "video").length;
+}
+
+/**
+ * Rejects a plan that does not build the controllable character the project was created for.
+ *
+ * The user asked for switchable moods and poses with a toggle rather than with words, so the
+ * requirement is the project's, not a sentence in the transcript the planner may read past. Without
+ * this the flag would be a suggestion: the model would occasionally answer a mood request with three
+ * separately drawn stills, which is the exact shape the sprite layer exists to replace.
+ *
+ * A sprite alone is not enough — one that nothing selects between is an animation with a single
+ * clip. At least one choice control has to bind the layer's `clip` or `expression`, which is what
+ * puts the picker in the controls sheet.
+ *
+ * The message is the model's repair instruction: it is returned from the `create_plan` tool, and the
+ * planner is told to fix what the error describes with `update_plan`.
+ */
+export function assertControllablePlan(plan: Pick<PlanV1, "layers" | "configuration">): void {
+  const sprites = planSpriteLayers(plan);
+  if (sprites.length === 0) {
+    throw new Error(
+      "This project is controllable: every character needs a layer with a sprite source — a still, "
+      + "named body clips, and a strip of face expressions — so the user can switch mood and pose. "
+      + "Re-plan the characters as sprites rather than as separately drawn stills.",
+    );
+  }
+  // Every sprite, not merely some sprite: a second character the user can see but cannot pose is
+  // the more confusing half-built outcome, and it is the one a plan drifts into.
+  const bound = new Set((plan.configuration?.variants ?? []).flatMap((variant) => variant.layers.flatMap((patch) => (
+    patch.clip !== undefined || patch.expression !== undefined ? [patch.layerId] : []
+  ))));
+  // All of them at once, not the first: a three-character plan that binds only the cat would
+  // otherwise cost a repair round trip per character.
+  const unbound = sprites.filter(({ layer }) => !bound.has(layer.layerId));
+  if (unbound.length) {
+    throw new Error(
+      `${unbound.length > 1 ? "Sprites" : "Sprite"} ${unbound.map(({ layer }) => layer.layerId).join(", ")} `
+      + `${unbound.length > 1 ? "have" : "has"} no controls: add a choice control per character whose variants `
+      + "bind clip (a pose picker) or expression (a mood picker) on it, one variant per option, each with its own control id.",
+    );
+  }
 }
 
 /**
@@ -330,11 +479,22 @@ export function planVideoCount(plan: Pick<PlanV1, "layers">): number {
 export function assertPlanAllowedForJob(plan: Pick<PlanV1, "layers">, job: { quick: boolean }): void {
   if (!job.quick) return;
   const videos = plan.layers.filter((layer) => layer.source.kind === "video");
-  if (videos.length === 0) return;
-  throw new Error(
-    `Video layers are not available in quick mode: ${videos.map((layer) => layer.layerId).join(", ")}. `
-      + "Draw each one with a generate source and express its motion with animations instead.",
-  );
+  if (videos.length > 0) {
+    throw new Error(
+      `Video layers are not available in quick mode: ${videos.map((layer) => layer.layerId).join(", ")}. `
+        + "Draw each one with a generate source and express its motion with animations instead.",
+    );
+  }
+  // The quick model draws against a chroma backdrop that is keyed out afterwards; a sprite sheet
+  // needs a second flat colour for its face slot, and a grid of cells besides, neither of which that
+  // key can tell apart from the backdrop.
+  const sprites = planSpriteLayers(plan);
+  if (sprites.length > 0) {
+    throw new Error(
+      `Sprite characters are not available in quick mode: ${sprites.map(({ layer }) => layer.layerId).join(", ")}. `
+        + "Draw the character with a generate source instead.",
+    );
+  }
 }
 
 /**
@@ -351,7 +511,7 @@ export function assertPlanAllowedForJob(plan: Pick<PlanV1, "layers">, job: { qui
  * reference that was deliberately never made: `confirmPlan`, `planReferencePrompt`, and
  * `executePlanBuildTurn`.
  */
-export function planRequiresConcept(plan: Pick<PlanV1, "kind" | "layers">): boolean {
+export function planRequiresConcept(plan: Pick<PlanV1, "kind" | "layers" | "configuration">): boolean {
   if (plan.kind !== "animated") return false;
   const capturesSubject = plan.layers.some((layer) => layer.source.kind === "sequence");
   return !capturesSubject || planGenerationCount(plan) > 0;
@@ -400,10 +560,10 @@ export function assertAnimatedPlanUsesReferenceBackedArtwork(plan: PlanV1): void
  * the one thing in a document that cannot be regenerated at any price, so a re-plan that dropped it
  * would quietly replace the user's face with something drawn from a prompt.
  */
-export function reusableAssetIds(document?: Pick<StickerDocument, "layers">): string[] {
-  return document?.layers.flatMap((layer) => (
+export function reusableAssetIds(document?: StickerDocument): string[] {
+  return document ? documentRenderableLayers(document).flatMap((layer) => (
     layer.type === "image" || layer.type === "sequence" ? [layer.assetId] : []
-  )) ?? [];
+  )) : [];
 }
 
 /**
@@ -415,8 +575,8 @@ export function reusableAssetIds(document?: Pick<StickerDocument, "layers">): st
  * the user confirmed it.
  */
 export function assertPlanReuseIsResolvable(
-  plan: Pick<PlanV1, "layers">,
-  document?: Pick<StickerDocument, "layers">,
+  plan: Pick<PlanV1, "layers" | "configuration">,
+  document?: StickerDocument,
   /**
    * Capture atlases attached to the message being planned against.
    *
@@ -431,6 +591,9 @@ export function assertPlanReuseIsResolvable(
     (layer.source.kind === "existing" && !available.has(layer.source.assetId))
     || (layer.source.kind === "sequence" && !resolvableCaptures.has(layer.source.assetId))
   ));
+  for (const variant of plan.configuration?.variants ?? []) for (const patch of variant.layers) {
+    if ((patch.source?.kind === "existing" || patch.source?.kind === "sequence") && !available.has(patch.source.assetId)) throw new Error(`Variant ${variant.id} reuses unavailable artwork ${patch.source.assetId}`);
+  }
   if (unknown.length === 0) return;
   const named = unknown
     .map((layer) => `${layer.layerId} (${(layer.source as { assetId: string }).assetId})`)
@@ -549,6 +712,8 @@ export const PlanLayerEditV1Schema = z.object({
  * removal, and addition without three operations that could contradict one another.
  */
 export const PlanEditV1Schema = z.object({
+  configuration: PlanConfigurationSchema.nullable().optional(),
+  clearConfiguration: z.boolean().optional(),
   title: z.string().trim().min(1).max(120).optional(),
   summary: z.string().trim().min(1).max(1_000).optional(),
   timing: z.object({
@@ -645,6 +810,8 @@ export function applyPlanEdit(current: PlanV1, edit: PlanEditV1): PlanV1 {
       ? `${summary} One layer is generated as a short video clip.`
       : summary,
     timing: { ...current.timing, ...edit.timing },
+    configuration: configurationKeepingLayers(edit.clearConfiguration ? undefined : edit.configuration === undefined ? current.configuration : edit.configuration ?? undefined,
+      new Set(layers.map((layer) => layer.layerId))),
     layers,
   });
 }

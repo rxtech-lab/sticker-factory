@@ -121,6 +121,7 @@ extension StickerAPIClientProtocol {
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse { throw TestFixtureError.stub }
     func importSticker(_ request: ImportStickerRequest, idempotencyKey: String) async throws -> ImportStickerResponse { throw TestFixtureError.stub }
     func sticker(id: String) async throws -> StickerDetail { throw TestFixtureError.stub }
+    func stickerPlayback(stickerID: String, revisionID: String?) async throws -> StickerPlaybackBundle { throw TestFixtureError.stub }
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail { throw TestFixtureError.stub }
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse { throw TestFixtureError.stub }
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage { throw TestFixtureError.stub }
@@ -143,6 +144,13 @@ extension StickerAPIClientProtocol {
     /// other request, and a stub with no opinion about it must not fail a test about the library.
     func registerDevice(token: String, environment: PushEnvironment, bundleID: String?, appVersion: String?) async throws {}
     func unregisterDevice(token: String) async throws {}
+
+    /// Nothing pending rather than throwing: account deletion is a state every double is asked
+    /// about and none of them is a test *about*, and a stub that throws here fails suites that
+    /// only wanted to exercise the library.
+    func accountDeletionState() async throws -> AccountDeletionState { .none }
+    func requestAccountDeletion() async throws -> AccountDeletionState { .none }
+    func cancelAccountDeletion() async throws -> AccountDeletionState { .none }
 
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
     func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
@@ -687,6 +695,49 @@ actor LiveTurnStreamAPI: StickerAPIClientProtocol {
                 id: 1, jobId: jobID, type: .progress, createdAt: Date(),
                 data: .init(message: "Composing", progress: 0.2)
             ))
+            continuation.finish(throwing: URLError(.cancelled))
+        }
+    }
+}
+
+/// A turn that reports stages and counts the way the workflow does, and then stays live.
+///
+/// The stream ends cancelled rather than completed on purpose — that is how a backgrounded app's
+/// stream dies — so the job keeps the status it was left with and the test can read it.
+actor StagedProgressAPI: StickerAPIClientProtocol {
+    nonisolated let stickerID = "staged-progress-sticker"
+    nonisolated let streams = StreamCounter()
+    nonisolated let events: [GenerationEventData]
+
+    init(events: [GenerationEventData]) { self.events = events }
+
+    func confirmPlan(stickerID: String, planID: String, idempotencyKey: String) async throws -> ConfirmPlanResponse {
+        .init(
+            message: .init(id: "staged-source", status: .streaming),
+            job: .init(id: "staged-job", state: .queued, workflowRunId: nil, eventsUrl: "/events")
+        )
+    }
+
+    func sticker(id: String) async throws -> StickerDetail { PreviewFixtures.detail }
+
+    func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
+        .init(data: [
+            .init(
+                id: "staged-source", role: .user, kind: .text, content: "Make it.",
+                targetLayerId: nil, imagePlacement: .replace, baseRevisionId: nil, sequence: 1,
+                revisionId: nil, jobId: "staged-job", status: .streaming, createdAt: Date(), attachments: []
+            )
+        ], nextBeforeSequence: nil)
+    }
+
+    nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
+        streams.mark()
+        return AsyncThrowingStream { continuation in
+            for (index, data) in events.enumerated() {
+                continuation.yield(.init(
+                    id: Int64(index + 1), jobId: jobID, type: .progress, createdAt: Date(), data: data
+                ))
+            }
             continuation.finish(throwing: URLError(.cancelled))
         }
     }

@@ -22,6 +22,14 @@ nonisolated enum SystemStickerSize: String, CaseIterable, Identifiable, Codable,
 
     static let `default` = SystemStickerSize.large
 
+    /// Where a sticker posed in the Messages extension starts.
+    ///
+    /// Below `default` on purpose. Messages sizes a sticker from its pixels, and the large rung
+    /// arrives about 206 pt wide — which is most of a bubble. These are peeled and stuck onto a
+    /// message, so one that covers what it was stuck to has stopped being a sticker and become a
+    /// redaction. The regular rung is the size Messages' own stickers arrive at.
+    static let stuck = SystemStickerSize.medium
+
     var id: Self { self }
 
     var dimension: Int {

@@ -9,17 +9,18 @@ import Foundation
 ///
 /// Coordinates are normalized and keyframe times are absolute seconds.
 public struct AnimatedDocument: Codable, Hashable, Sendable {
-    public static let currentVersion = 4
+    public static let currentVersion = 5
     /// Versions this build can read. v3 only *added* the `sequence` layer and v4 only added the
     /// `video` layer, so a v2 document is already a valid v4 one and needs no rewriting —
     /// accepting it is the whole migration.
-    public static let readableVersions: ClosedRange<Int> = 2...4
+    public static let readableVersions: ClosedRange<Int> = 2...5
     public static let maximumLayerCount = 12
     public static let maximumKeyframeCount = 128
     public static let durationRange: ClosedRange<Double> = 0.1...30
     public static let speedRange: ClosedRange<Double> = 0.1...8
     public static let fpsRange: ClosedRange<Int> = 1...60
 
+    public var configuration: AnimatedControlConfiguration?
     public var version: Int
     public var canvas: AnimatedCanvas
     public var kind: AnimatedKind
@@ -49,8 +50,10 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
         speed: Double = 1,
         background: AnimatedBackground = .none,
         mp4Background: AnimatedBackground = .solid("#FFFFFF"),
-        layers: [AnimatedLayer]
+        layers: [AnimatedLayer],
+        configuration: AnimatedControlConfiguration? = nil
     ) {
+        self.configuration = configuration
         self.version = version
         self.canvas = canvas
         self.kind = kind
@@ -64,11 +67,12 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, canvas, kind, durationSeconds, fps, loop, speed, background, mp4Background, layers
+        case configuration, version, canvas, kind, durationSeconds, fps, loop, speed, background, mp4Background, layers
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        configuration = try c.decodeIfPresent(AnimatedControlConfiguration.self, forKey: .configuration)
         version = try c.value(.version, default: Self.currentVersion)
         canvas = try c.value(.canvas, default: .init())
         kind = try c.decode(AnimatedKind.self, forKey: .kind)
@@ -83,6 +87,7 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(configuration, forKey: .configuration)
         try c.encode(version, forKey: .version)
         try c.encode(canvas, forKey: .canvas)
         try c.encode(kind, forKey: .kind)
@@ -168,7 +173,17 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
     }
 
     public var hasMotion: Bool {
-        kind == .animated && layers.contains { !$0.animation.isEmpty }
+        guard kind == .animated else { return false }
+        let resolved = (try? resolvingConfiguration()) ?? self
+        return resolved.layers.contains { layer in
+            if !layer.animation.isEmpty { return true }
+            switch layer {
+            case .sequence(let sequence): return sequence.frameCount > 1
+            case .video(let video): return video.frameCount > 1
+            case .sprite(let sprite): return sprite.hasMotion
+            default: return false
+            }
+        }
     }
 
     public func layer(id: String) -> AnimatedLayer? {
@@ -181,6 +196,25 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
     public func validated() throws -> Self {
         guard Self.readableVersions.contains(version) else {
             throw AnimatedDocumentError.unsupportedVersion(version)
+        }
+        if let configuration {
+            guard version >= 5, kind == .animated else {
+                throw AnimatedConfigurationError.invalid("Configurable stickers need an animated version 5 document")
+            }
+            try configuration.validated(layerIds: Set(layers.map(\.id)))
+            // Per layer, not per pairing: a cast's states add rather than multiply, so walking the
+            // coverage set opens a two-character sticker in twelve resolutions rather than thirty-six.
+            var heaviest: [String: Int] = [:]
+            for values in configuration.coverageSelections {
+                for layer in try resolvingConfiguration(values).layers {
+                    heaviest[layer.id] = max(heaviest[layer.id] ?? 0, layer.animation.allKeyframes.count)
+                }
+            }
+            // The keyframe budget is the one rule that adds up across layers, so no single
+            // resolution ever holds two of them at their heaviest. The server bounds the same sum.
+            guard heaviest.values.reduce(0, +) <= Self.maximumKeyframeCount else {
+                throw AnimatedDocumentError.tooManyKeyframes
+            }
         }
         guard canvas.isValid else { throw AnimatedDocumentError.invalidCanvas }
         switch kind {

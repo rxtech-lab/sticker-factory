@@ -14,6 +14,13 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse
     func importSticker(_ request: ImportStickerRequest, idempotencyKey: String) async throws -> ImportStickerResponse
     func sticker(id: String) async throws -> StickerDetail
+    /// The document and artwork a controllable sticker is posed from.
+    ///
+    /// Readable for a sticker this account owns and for a member of a pack it has installed — the
+    /// same audience the Messages extension fetches under. A pack that has only been *browsed* is
+    /// not one of them, so a marketplace screen must not ask on behalf of a pack the reader has
+    /// not added.
+    func stickerPlayback(stickerID: String, revisionID: String?) async throws -> StickerPlaybackBundle
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage
@@ -36,6 +43,15 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     // Push
     func registerDevice(token: String, environment: PushEnvironment, bundleID: String?, appVersion: String?) async throws
     func unregisterDevice(token: String) async throws
+
+    // Account
+    /// Whether this account is counting down to deletion.
+    func accountDeletionState() async throws -> AccountDeletionState
+    /// Starts the grace period, here and at the identity provider. Idempotent: re-requesting keeps
+    /// the original deadline rather than pushing it a week further out.
+    func requestAccountDeletion() async throws -> AccountDeletionState
+    /// Stops a pending deletion. Available for the whole grace period.
+    func cancelAccountDeletion() async throws -> AccountDeletionState
 
     // Marketplace
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
@@ -149,6 +165,13 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         try await send(path: "api/v1/stickers/\(id)")
     }
 
+    func stickerPlayback(stickerID: String, revisionID: String?) async throws -> StickerPlaybackBundle {
+        try await send(
+            path: "api/v1/stickers/\(stickerID)/playback",
+            query: revisionID.map { [URLQueryItem(name: "revisionId", value: $0)] } ?? []
+        )
+    }
+
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail {
         try await send(
             path: "api/v1/stickers/\(id)",
@@ -257,8 +280,35 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
+    func registerLiveActivity(activityID: String, jobID: String, token: String) async throws -> LiveActivitySnapshot {
+        try await send(path: "api/v1/live-activities", method: "POST", body: [
+            "activityId": activityID, "jobId": jobID, "token": token,
+            "environment": PushEnvironment.current.rawValue
+        ])
+    }
+
+    func liveActivitySnapshot(jobID: String) async throws -> LiveActivitySnapshot {
+        try await send(path: "api/v1/live-activities", query: [URLQueryItem(name: "jobId", value: jobID)])
+    }
+
+    func unregisterLiveActivity(activityID: String) async throws {
+        let _: EmptyResponse = try await send(path: "api/v1/live-activities", method: "DELETE", body: ["activityId": activityID])
+    }
+
     func unregisterDevice(token: String) async throws {
         let _: EmptyResponse = try await send(path: "api/v1/devices/\(token)", method: "DELETE")
+    }
+
+    func accountDeletionState() async throws -> AccountDeletionState {
+        try await send(path: "api/v1/account/deletion")
+    }
+
+    func requestAccountDeletion() async throws -> AccountDeletionState {
+        try await send(path: "api/v1/account/deletion", method: "POST")
+    }
+
+    func cancelAccountDeletion() async throws -> AccountDeletionState {
+        try await send(path: "api/v1/account/deletion", method: "DELETE")
     }
 
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse {

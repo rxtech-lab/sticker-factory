@@ -50,6 +50,34 @@
       "when": 1789200000002,
       "tag": "0006_job_billing_environment",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789444800000,
+      "tag": "0007_configurable_playback",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789444800000,
+      "tag": "0008_account_deletion",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789531200000,
+      "tag": "0009_controllable_stickers",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789531200001,
+      "tag": "0010_generation_live_activities",
+      "breakpoints": true
     }
   ]
 }

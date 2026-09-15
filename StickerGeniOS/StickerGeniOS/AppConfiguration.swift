@@ -32,7 +32,7 @@ nonisolated struct SubscriptionPublishableKeys: Sendable {
 }
 
 nonisolated struct AppConfiguration: Sendable {
-    static let defaultAppName = "Winky Sticker House"
+    static let defaultAppName = "Winky Sticker Factory"
     static let appGroupIdentifier = "group.app.rxlab.stickerfactory"
     static let keychainService = "app.rxlab.sticker-factory.oauth"
     static let keychainAccount = "oauth-token-bundle"

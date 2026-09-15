@@ -7,9 +7,10 @@
 // the same credit settlement as a turn that spends minutes in the durable runtime. The `"use step"`
 // wrappers in `workflows/sticker-generation/steps.ts` are thin shells over these.
 
+import { pushLiveActivityUpdate } from "@/lib/notifications/live-activities";
 import { and, eq } from "drizzle-orm";
 import { firstRow, getDatabase, type Database } from "@/lib/db/client";
-import { chatMessages, generationEvents, generationJobs, stickers, type GenerationJobRow } from "@/lib/db/schema";
+import { chatMessages, generationEvents, generationJobs, plans, stickers, type GenerationJobRow } from "@/lib/db/schema";
 import { isNotifiableJobKind, notifyGenerationFinished, type GenerationOutcome } from "@/lib/notifications/generation";
 import { traceEvent } from "@/lib/observability/trace";
 import { chargeJobCredits, refundJobCredits } from "@/lib/subscription/credits";
@@ -54,6 +55,7 @@ export async function beginJob(jobId: string): Promise<void> {
       createdAt: now,
     });
   });
+  await pushLiveActivityUpdate(db, job.ownerId, jobId);
 }
 
 /**
@@ -73,6 +75,27 @@ async function announceJobEnded(
     .from(stickers).where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).then(firstRow);
   // A sticker the user has since deleted has nothing to open.
   if (!sticker || sticker.status === "deleting") return;
+  if (outcome === "ready") {
+    // Initial image/chat jobs can be routed into planning, so job.kind alone cannot identify
+    // a plan-ready turn. Use this job's persisted assistant card and its current plan state.
+    const planCard = await db.select({ state: plans.state }).from(chatMessages)
+      .leftJoin(plans, and(
+        eq(plans.id, chatMessages.planId),
+        eq(plans.ownerId, job.ownerId),
+        eq(plans.stickerId, job.stickerId),
+      ))
+      .where(and(
+        eq(chatMessages.jobId, job.id),
+        eq(chatMessages.ownerId, job.ownerId),
+        eq(chatMessages.role, "assistant"),
+        eq(chatMessages.kind, "plan"),
+      )).limit(1).then(firstRow);
+    if (planCard) {
+      // A draft is not ready; a confirmed, rejected, or superseded plan no longer needs review.
+      if (planCard.state !== "finalized") return;
+      outcome = "plan_ready";
+    }
+  }
   await notifyGenerationFinished(db, {
     ownerId: job.ownerId,
     jobId: job.id,
@@ -107,6 +130,7 @@ export async function completeJob(
     }
     await tx.insert(generationEvents).values({ jobId, ownerId: job.ownerId, type: "completed", dataJson: result, createdAt: now });
   });
+  await pushLiveActivityUpdate(db, job.ownerId, jobId);
   await settle(options.settlement, async () => {
     // The one path that actually charges. Everything else returns the hold.
     await chargeJobCredits(db, job);
@@ -176,6 +200,7 @@ export async function failJob(
   // something else already finished, stays silent. The refund is guarded the same way, so a
   // repeated call cannot release a hold that a different ending already settled.
   if (!failed) return;
+  await pushLiveActivityUpdate(db, job.ownerId, jobId);
   await settle(options.settlement, async () => {
     await refundJobCredits(db, job, "generation_failed");
     await announceJobEnded(db, job, "failed");

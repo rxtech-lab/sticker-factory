@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
+    <true/>
     <key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
     <false/>
     <key>FirebaseInAppMessagingAutomaticDataCollectionEnabled</key>
@@ -53,9 +57,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Winky Sticker House uses the photos and Live Photos you choose as private references for sticker generation and editing, including lifting a subject out of them.</string>
+	<string>Winky Sticker Factory uses the photos and Live Photos you choose as private references for sticker generation and editing, including lifting a subject out of them.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Winky Sticker House saves plan images you choose to your photo library.</string>
+	<string>Winky Sticker Factory saves plan images you choose to your photo library.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

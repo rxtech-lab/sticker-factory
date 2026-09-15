@@ -1,3 +1,8 @@
+import { BuildReviewCheckpointSchema, loadBuildCheckpoint, saveBuildCheckpoint, completedBuildSteps, buildAssetsReady, type BuildReviewCheckpoint } from "./build-checkpoints";
+import { generatePlannedVariants } from "./configurable-artwork";
+import { generateSpriteArtwork } from "./sprite-artwork";
+import { configurationReviewSelections } from "@/lib/contracts/configuration";
+import { resolveStickerConfiguration } from "@/lib/contracts/sticker";
 // Building a confirmed plan into a finished composition, and the layout pass that settles
 // where its parts sit.
 
@@ -16,7 +21,7 @@ import { createCandidateRevision } from "@/lib/services/stickers";
 import { downscaleForModelInput, getObjectStore } from "@/lib/storage/r2";
 import { documentFromPlan, generateAndStoreAsset, generateAndStoreVideoAsset, generatedLayers, loadStoredGeneratedImage, selectImageReferences } from "./asset-generation";
 import type { StoredVideoTiming } from "./asset-generation";
-import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, finishToolCall, insertAssistantMessage, renderWorkingDocument, showStickerThroughTool, toolCallLabeller, turnResult } from "./turn-context";
+import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, finishToolCall, insertAssistantMessage, renderWorkingDocument, reportTurnNote, showStickerThroughTool, turnResult } from "./turn-context";
 import type { AiTurnResult, StickerToolName } from "./turn-context";
 
 /**
@@ -35,17 +40,39 @@ async function refineBuiltLayout(
   history: string,
   /** The approved static reference every part was separated from, when the plan had one. */
   reference: { bytes: Uint8Array; mimeType: string } | undefined,
+  assetJobId: string,
+  checkpoint?: BuildReviewCheckpoint,
 ): Promise<StickerDocument> {
   // One layer has no inter-layer composition to repair. Skipping it also avoids adding a vision
   // round trip to plans whose only reason to exist is structured motion.
-  if (document.layers.length < 2) return document;
+  if (checkpoint?.finalized || (document.layers.length < 2 && !document.configuration)) return document;
+  const configurations = document.configuration ? configurationReviewSelections(document.configuration) : [{}];
+  let configurationCursor = checkpoint?.configurationCursor ?? 0;
+  const db = await getDatabase();
+  const publishReviewProgress = () => appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+    stage: "reviewing",
+    message: "Reviewing sticker configurations…",
+    progressLabel: "Review checks",
+    completedUnits: Math.min(configurationCursor, configurations.length),
+    totalUnits: configurations.length,
+  });
+  await publishReviewProgress();
 
   let working = document;
-  let reviewed: StickerDocument | undefined;
-  let revision = 0;
-  let viewedRevision = -1;
-  let viewedPlanImage = reference === undefined;
-  const nextLabel = toolCallLabeller();
+  let reviewed = checkpoint?.reviewed;
+  let revision = checkpoint?.revision ?? 0;
+  let viewedRevision = checkpoint?.viewedRevision ?? -1;
+  let viewedPlanImage = checkpoint?.viewedPlanImage ?? reference === undefined;
+  const toolCalls = { ...checkpoint?.toolCalls };
+  const saveReview = (finalized = false) => saveBuildCheckpoint(job, assetJobId, "review", {
+    document: working, reviewed, configurationCursor, revision, viewedRevision, viewedPlanImage, finalized, toolCalls,
+  });
+  await saveReview();
+  const nextLabel = (name: StickerToolName) => {
+    const count = (toolCalls[name] ?? 0) + 1;
+    toolCalls[name] = count;
+    return count === 1 ? name : `${name} #${count}`;
+  };
   const abort = (error: unknown): never => { throw new TurnAbort(error); };
   const openCall = async (toolName: StickerToolName): Promise<string> => {
     try {
@@ -64,6 +91,7 @@ async function refineBuiltLayout(
             await assertJobStillRunning(job.id).catch(abort);
             const viewable = await downscaleForModelInput(reference.bytes);
             viewedPlanImage = true;
+            await saveReview();
             await finishToolCall(job, call, "complete", viewable);
             return viewable;
           } catch (error) {
@@ -76,10 +104,14 @@ async function refineBuiltLayout(
     renderSticker: async () => {
       const call = await openCall("view_sticker");
       try {
-        const render = await renderWorkingDocument(working, job.ownerId);
+        const values = configurations[configurationCursor % configurations.length];
+        const render = await renderWorkingDocument(resolveStickerConfiguration(working, values), job.ownerId);
+        configurationCursor += 1;
         reviewed = working;
         viewedRevision = revision;
+        await saveReview();
         await finishToolCall(job, call, "complete", render);
+        await publishReviewProgress();
         return render;
       } catch (error) {
         await finishToolCall(job, call, "failed", error);
@@ -100,6 +132,9 @@ async function refineBuiltLayout(
         await assertDocumentAssetsOwned(landed, job.ownerId, job.stickerId).catch(abort);
         working = landed;
         revision += 1;
+        configurationCursor = 0;
+        await saveReview();
+        await publishReviewProgress();
         await finishToolCall(job, call, "complete", { revision, document: working });
         return { revision, document: working };
       } catch (error) {
@@ -116,12 +151,14 @@ async function refineBuiltLayout(
         if (!viewedPlanImage) {
           throw new Error("Call view_plan_image before finalizing the generated sticker");
         }
+        if (configurationCursor < configurations.length) throw new Error(`Review all ${configurations.length} configurations with view_sticker before finalizing; ${configurationCursor} viewed`);
         const diagnostics = layoutDiagnostics(working);
         if (diagnostics.offCanvasLayerIds.length > 0) {
           throw new Error(
             `Keep every complete layer box on canvas. Fix: ${diagnostics.offCanvasLayerIds.join(", ")}`,
           );
         }
+        await saveReview(true);
         await finishToolCall(job, call, "complete", { revision, document: working });
         return { revision, document: working };
       } catch (error) {
@@ -132,10 +169,11 @@ async function refineBuiltLayout(
   };
 
   const result = await getAiProvider().refineStickerLayout(
-    { document, instruction, history },
+    { document, instruction: instruction + (checkpoint ? ` Resuming review: ${configurationCursor} of ${configurations.length} configurations already checked on this exact layout. Continue with the next unchecked configuration; do not restart completed checks. If all checks are done, finalize. The saved layout includes previous adjustments.` : "") + (document.configuration ? ` Review all ${configurations.length} mood/pose configurations. Each successive view_sticker shows the next configuration in this order: ${JSON.stringify(configurations)}. Check expression identity, sprite alignment, pose continuity and clipping before finalizing. After a layout change, review all configurations again.` : ""), history },
     session,
   );
   await assertJobStillRunning(job.id);
+  if (document.configuration && (!result?.finalized || configurationCursor < configurations.length)) throw new Error("Expression review did not finish. Retry to reuse the generated artwork.");
   if (!result?.finalized) {
     console.warn("Using the last viewed layout from an unfinished review loop", {
       jobId: job.id,
@@ -183,6 +221,12 @@ export async function loadPlanVisualReference(
  * static document cannot hold a non-zero keyframe by schema, and `assertDocumentAssetsOwned` runs
  * over the finished document.
  */
+/** A plan's layer name, bounded to what fits on one line of the chat's working card. */
+function partName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed.length <= 24 ? trimmed : `${trimmed.slice(0, 23)}…`;
+}
+
 export async function executePlanBuildTurn(
   job: typeof generationJobs.$inferSelect,
   sticker: typeof stickers.$inferSelect,
@@ -234,34 +278,100 @@ export async function executePlanBuildTurn(
     : undefined;
 
   const primaryToolCallId = await beginToolCall(job, "build-plan");
-  await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+  const finishBuild = async (document: StickerDocument, checkpoint?: BuildReviewCheckpoint): Promise<AiTurnResult> => {
+    document = await refineBuiltLayout(
+      job,
+      document,
+      `${plan.title}. ${plan.summary}`,
+      history,
+      visualReference,
+      assetJobId,
+      checkpoint,
+    );
+    await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+      stage: "finalizing",
+      message: "Finishing your sticker…",
+      clearProgress: true,
+    });
+    // With a cast, the biggest character is the one the thumbnail should be of; "whichever is listed
+    // first" is a visible wrong answer once a sticker holds more than one.
+    const largestSprite = document.layers.filter((layer) => layer.type === "sprite")
+      .sort((a, b) => b.anchor.scale.x * b.anchor.scale.y - a.anchor.scale.x * a.anchor.scale.y)[0];
+    const firstImageAssetId = document.layers.find((layer) => layer.type === "image")?.assetId
+      ?? largestSprite?.posterAssetId;
+    let snapshot = 0;
+    await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document });
+
+    await assertJobStillRunning(job.id);
+    const revisionId = await createCandidateRevision(db, {
+      ownerId: job.ownerId,
+      stickerId: sticker.id,
+      sourceMessageId: sourceMessage.id,
+      document,
+      id: job.id,
+      parentRevisionId: activeRevision?.id,
+      // No single layer is "the" master; the first image one keeps the library thumbnail from being
+      // blank until published exports supply a real preview. Read off the document rather than off
+      // `generated` so a plan that only rearranges reused artwork still has one. A plan made entirely
+      // of text, shape, or particle layers has no image asset at all, which is why these are optional.
+      masterAssetId: firstImageAssetId,
+      previewAssetId: firstImageAssetId,
+    });
+    await finishToolCall(job, primaryToolCallId);
+    const content = await showStickerThroughTool(job, revisionId, document.kind, plan.title, history);
+    const assistantMessageId = await insertAssistantMessage(job, content, "image", revisionId);
+    const result = await turnResult(assistantMessageId, revisionId);
+    snapshot += 1;
+    await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, revisionId, document });
+    await appendGenerationEvent(db, job.id, job.ownerId, "candidate", {
+      revisionId,
+      assistantMessageId,
+      assetIds: generated.map((item) => item.assetId),
+      assistantMessage: result.assistantMessage,
+    });
+    return result;
+  };
+  const checkpoint = await loadBuildCheckpoint(job, assetJobId, "review", BuildReviewCheckpointSchema);
+  if (checkpoint) {
+    await assertDocumentAssetsOwned(checkpoint.document, job.ownerId, sticker.id);
+    return finishBuild(checkpoint.document, checkpoint);
+  }
+  const videoCount = generated.filter((item) => item.video).length;
+  const stillSpan = videoCount > 0 ? 0.5 : 0.7;
+  const storedParts = await Promise.all(generated.map((item) => loadStoredGeneratedImage(job, sticker.id, item.assetId)));
+  const pendingParts = generated.flatMap((item, index) => storedParts[index] ? [] : [{ item, index }]);
+  let partsDone = generated.length - pendingParts.length;
+  if (pendingParts.length) await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
     stage: "composing",
-    progress: 0.05,
+    progress: 0.05 + stillSpan * (partsDone / Math.max(generated.length, 1)),
     partCount: generated.length,
+    progressLabel: "Artwork parts",
+    completedUnits: partsDone,
+    totalUnits: generated.length,
     layerCount: plan.layers.length,
   });
 
   // Progress is split by what each part costs in wall clock: the stills share the first stretch
   // and any clip takes the next, so a turnaround that runs for minutes is not shown as stuck at
   // the end of an image bar.
-  const videoCount = generated.filter((item) => item.video).length;
-  const stillSpan = videoCount > 0 ? 0.5 : 0.7;
   const videoTimings = new Map<string, StoredVideoTiming>();
 
   // Where each separated part came back in the reference frame. Only meaningful when there is a
   // reference: a part drawn from its prompt alone was drawn wherever the model liked.
   const separatedParts: Array<{ layerId: string; subject: SubjectBounds | undefined }> = [];
+  if (visualReference) storedParts.forEach((stored, index) => {
+    if (stored) separatedParts[index] = { layerId: generated[index].layer.layerId, subject: stored.subject };
+  });
   const partConcurrency = 3;
-  let partsDone = 0;
   let progressWrites = Promise.resolve();
-  for (let offset = 0; offset < generated.length; offset += partConcurrency) {
+  for (let offset = 0; offset < pendingParts.length; offset += partConcurrency) {
     // Allocate transcript sequences serially before starting this batch's independent AI calls.
     const batch = [];
-    for (const [batchIndex, item] of generated.slice(offset, offset + partConcurrency).entries()) {
+    for (const { item, index } of pendingParts.slice(offset, offset + partConcurrency)) {
       await assertJobStillRunning(job.id);
-      const index = offset + batchIndex;
       const label = `compose-part:${index} ${item.layer.name}`;
       const partToolCallId = await beginToolCall(job, "build-plan", undefined, label);
+      await reportTurnNote(job, `Drawing ${partName(item.layer.name)}`);
       batch.push({ index, item, partToolCallId });
     }
     const results = await Promise.allSettled(batch.map(async ({ index, item, partToolCallId }) => {
@@ -315,12 +425,16 @@ export async function executePlanBuildTurn(
       // fraction follows completed work and never moves backwards.
       progressWrites = progressWrites.then(async () => {
         partsDone += 1;
+        await reportTurnNote(job, `Finished ${partName(item.layer.name)} (${partsDone} of ${generated.length})`);
         await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
           stage: "composing_part",
           progress: 0.05 + stillSpan * (partsDone / Math.max(generated.length, 1)),
           partIndex: index,
           partName: item.layer.name,
           partCount: generated.length,
+          progressLabel: "Artwork parts",
+          completedUnits: partsDone,
+          totalUnits: generated.length,
         });
       });
       await progressWrites;
@@ -331,13 +445,31 @@ export async function executePlanBuildTurn(
     if (failure?.status === "rejected") throw failure.reason;
   }
 
+  await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+    stage: "assembling",
+    message: "Preparing animation and assembly…",
+    clearProgress: true,
+  });
+
   // Clips after every still, not interleaved: a clip is the slowest thing in the build, and a
   // turn that is going to fail on its second image should fail before paying for a video.
-  let videosDone = 0;
+  const completedSteps = await completedBuildSteps(job);
+  const reusedVideos = new Set<string>();
+  for (const item of generated) if (item.video && completedSteps.has(`compose-video ${item.layer.name}`)
+    && await buildAssetsReady(job, [item.video.assetId])) reusedVideos.add(item.video.assetId);
+  let videosDone = reusedVideos.size;
+  if (videosDone < videoCount) {
+    await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+      stage: "composing_video", message: "Composing video clips…",
+      progressLabel: "Video clips", completedUnits: videosDone, totalUnits: videoCount,
+    });
+  }
   for (const item of generated) {
     if (!item.video) continue;
     await assertJobStillRunning(job.id);
-    const videoToolCallId = await beginToolCall(job, "build-plan", undefined, `compose-video ${item.layer.name}`);
+    const videoLabel = `compose-video ${item.layer.name}`;
+    const reusedVideo = reusedVideos.has(item.video.assetId);
+    const videoToolCallId = reusedVideo ? undefined : await beginToolCall(job, "build-plan", undefined, videoLabel);
     try {
       const timing = await generateAndStoreVideoAsset(job, sticker.id, { stillAssetId: item.assetId, video: item.video });
       videoTimings.set(item.layer.layerId, timing);
@@ -346,6 +478,7 @@ export async function executePlanBuildTurn(
       throw error;
     }
     await finishToolCall(job, videoToolCallId, "complete", { previewAssetId: item.assetId });
+    if (reusedVideo) continue;
     videosDone += 1;
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "composing_video",
@@ -353,10 +486,20 @@ export async function executePlanBuildTurn(
       partName: item.layer.name,
       videoIndex: videosDone - 1,
       videoCount,
+      progressLabel: "Video clips",
+      completedUnits: videosDone,
+      totalUnits: videoCount,
     });
   }
 
-  let document = documentFromPlan(plan, assetJobId, videoTimings);
+  // Sprites after the stills and clips, for the same reason clips follow stills: each sheet is drawn
+  // from the layer's separated still, and a sprite is the most generations any one layer can cost.
+  const spriteBuilds = await generateSpriteArtwork(job, sticker.id, plan, assetJobId, visualReference);
+  await generatePlannedVariants(job, sticker.id, plan, assetJobId, visualReference);
+  await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+    stage: "assembling", message: "Assembling your sticker…", clearProgress: true,
+  });
+  let document = documentFromPlan(plan, assetJobId, videoTimings, spriteBuilds);
   // The reference is the picture the user approved, so a part measured in it outranks the position
   // the planner guessed before that picture existed. Parts whose measurement is implausible keep
   // the plan's layout, and the review below still looks at the whole.
@@ -368,43 +511,5 @@ export async function executePlanBuildTurn(
   // Covers the reused layers too: an `existing` source names an asset by id, and this is what stops
   // a plan from pointing at another sticker's artwork, or at one that has since been swept.
   await assertDocumentAssetsOwned(document, job.ownerId, sticker.id);
-  document = await refineBuiltLayout(
-    job,
-    document,
-    `${plan.title}. ${plan.summary}`,
-    history,
-    visualReference,
-  );
-  const firstImageAssetId = document.layers.find((layer) => layer.type === "image")?.assetId;
-  let snapshot = 0;
-  await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document });
-
-  await assertJobStillRunning(job.id);
-  const revisionId = await createCandidateRevision(db, {
-    ownerId: job.ownerId,
-    stickerId: sticker.id,
-    sourceMessageId: sourceMessage.id,
-    document,
-    id: job.id,
-    parentRevisionId: activeRevision?.id,
-    // No single layer is "the" master; the first image one keeps the library thumbnail from being
-    // blank until published exports supply a real preview. Read off the document rather than off
-    // `generated` so a plan that only rearranges reused artwork still has one. A plan made entirely
-    // of text, shape, or particle layers has no image asset at all, which is why these are optional.
-    masterAssetId: firstImageAssetId,
-    previewAssetId: firstImageAssetId,
-  });
-  await finishToolCall(job, primaryToolCallId);
-  const content = await showStickerThroughTool(job, revisionId, document.kind, plan.title, history);
-  const assistantMessageId = await insertAssistantMessage(job, content, "image", revisionId);
-  const result = await turnResult(assistantMessageId, revisionId);
-  snapshot += 1;
-  await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, revisionId, document });
-  await appendGenerationEvent(db, job.id, job.ownerId, "candidate", {
-    revisionId,
-    assistantMessageId,
-    assetIds: generated.map((item) => item.assetId),
-    assistantMessage: result.assistantMessage,
-  });
-  return result;
+  return finishBuild(document);
 }

@@ -5,9 +5,10 @@ import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
-import { recordTextApiCost } from "@/lib/ai/cost";
+import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { viewPlanImageTool } from "@/lib/ai/view-plan-image-tool";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
+import { configurationReviewSelections } from "@/lib/contracts/configuration";
 import { PlanV1Schema, reusableAssetIds } from "@/lib/contracts/plan";
 import { LayoutAdjustmentSchema, layoutDiagnostics } from "@/lib/layout/composition";
 import { describeToolError, isTurnAbort, summarizeDocument } from "./gateway-contracts";
@@ -21,6 +22,7 @@ export async function refineStickerLayout(
   let state: LayoutTurnResult | undefined;
   let fatal: unknown;
   const hasPlanImage = Boolean(session.viewPlanImage);
+  const configurationCount = input.document.configuration ? configurationReviewSelections(input.document.configuration).length : 1;
 
   const guard = async (run: () => Promise<LayoutDraftState>) => {
     try {
@@ -75,9 +77,12 @@ export async function refineStickerLayout(
   };
 
   const generation = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
+      "When a document has configuration, view_sticker advances through every choice combination. Review all combinations listed in the instruction, including after layout changes. Do not finalize after viewing only the default.",
       "You are the final composition reviewer for a multi-layer sticker. The individual assets",
       "are already approved-quality: never redraw, replace, remove, rename, or restyle them, and",
       "never change their animation timing. Your only job is layout.",
@@ -120,9 +125,9 @@ export async function refineStickerLayout(
     ].filter(Boolean).join("\n\n"), []),
     tools,
     toolChoice: "required",
-    stopWhen: [hasToolCall("finalize_layout"), stepCountIs(hasPlanImage ? 9 : 8), () => fatal !== undefined],
+    stopWhen: [hasToolCall("finalize_layout"), stepCountIs(Math.max(hasPlanImage ? 9 : 8, configurationCount * 2 + 8)), () => fatal !== undefined],
     maxRetries: 2,
-    abortSignal: AbortSignal.timeout(120_000),
+    abortSignal: AbortSignal.timeout(Math.max(120_000, configurationCount * 20_000)),
   });
   await recordTextApiCost(generation);
 
@@ -213,6 +218,8 @@ export async function planSticker(
   };
 
   const generation = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
@@ -247,7 +254,9 @@ export async function planSticker(
       "than the first turn's did: the user's face is the one thing in this sticker that has a",
       "correct answer.",
       "",
-      "Layers. At most 8. Every layer picks its own source. The seven options are:",
+      "Layers. At most 12, and every one is paid for: a generate layer costs one image and a sprite",
+      "costs 2 plus its clip count. Plan the fewest layers the design needs. Every layer picks its",
+      "own source. The eight options are:",
       "  generate — artwork drawn from a prompt by an image model onto a transparent background.",
       "    This is the only source that can draw a subject: a character, creature, face, animal,",
       "    object, food, prop, scene element, or any illustration at all. Use one generate layer",
@@ -288,6 +297,25 @@ export async function planSticker(
       "    The summary the user reads must say which layer is generated as a video and why its",
       "    motion needs one — it costs more than a drawn layer and looks different, and they are",
       "    confirming that.",
+      "  sprite — a controllable character: one still of the character at rest, a few named body",
+      "    clips, and a strip of face expressions, composed at draw time so the viewer can pick a",
+      "    mood and a pose independently. Use it whenever the user asks for a character whose",
+      "    moods, expressions, emotions, poses, or actions can be switched — never build those out",
+      "    of generate variants, whole-character redraws, or animations presets, and never plan a",
+      "    separate face layer. The prompt describes the complete character like a generate prompt.",
+      "    clips: 1 to 8, the first always id `idle` (breathing, one blink, a long rest); each has an",
+      "    id, a label, a prompt saying what the body does frame by frame, and 1 to 8 frames — six is",
+      "    the norm — each with a duration in seconds that you author: a loop runs 2 to 4 seconds,",
+      "    holds are long (1 to 2.5 s), a blink is 0.15 to 0.3 s, and frame 1 is the resting pose the",
+      "    loop returns to. Clips move the body only; the face is drawn separately.",
+      "    expressions: 1 to 8 faces, the first always id `neutral`; each has an id, a label, and a",
+      "    prompt for the face alone — eyes, brows, mouth, cheeks — never the body or a pose.",
+      "    A sprite costs 1 + clips + 1 image generations, cannot be reused with existing on a later",
+      "    plan (plan it as sprite again with the same ids), and is only for animated plans. Plan one",
+      "    sprite layer per character the user wants to control — two characters are two sprite",
+      "    layers, each with its own clips, expressions, and controls, and each paying that cost",
+      "    again. The summary says which characters are controllable and how many clips and",
+      "    expressions each has.",
       "Animated visual fidelity. In an animated plan, every new visible element must use generate,",
       "including styled lettering, bursts, stars, underlines, badges, and decorative accents. The",
       "approved static image is later separated into these generated layers, which is how the final",
@@ -357,11 +385,33 @@ export async function planSticker(
       "square frame and give the layer one square box big enough to hold it.",
       "For a staged text reveal, split the phrase into at most 6 chunks and prefer whole words —",
       "generated chunks in an animated plan, text chunks in a static one:",
-      '"Hello World" is two layers, not eleven. A plan may use at most 8 layers, so one layer',
+      '"Hello World" is two layers, not eleven. A plan may use at most 12 layers, so one layer',
       "per letter only works for very short words, and cramming a phrase into it produces uneven",
       "spacing and unreadably small type. Lay the chunks out left to right with each chunk's width",
       "roughly proportional to its length so the spacing between them looks even, and leave a",
       "visible gap between neighbouring chunks or the words run together into one string.",
+      "",
+      "Controllable characters. When the user asks for moods, expressions, poses, or actions they can",
+      "switch between, set configuration.controls and configuration.variants against each sprite layer.",
+      "Every sprite gets its own controls, and a control acts on exactly one sprite: a pose choice",
+      "control whose option ids are that sprite's clip ids, with one variant per option binding",
+      "{ layerId, clip }; and a mood choice control whose option ids are that sprite's expression ids,",
+      "with one variant per option binding { layerId, expression }. With one character name the",
+      "controls `pose` and `mood`. With several, give each its own control ids and labels naming the",
+      "character — `catPose` labelled \"Cat pose\", `dogMood` labelled \"Dog mood\" — so the viewer can",
+      "tell the rows apart; bind one control to two sprites only when the user asked them to change",
+      "together. Every sprite you plan must be bound by at least one control: a character the viewer",
+      "can see but cannot pose is a bug, not scenery. Never bind source or animations on a",
+      "sprite. Add a number control bound to speed (0.25 to 2) when the user wants to slow or hurry",
+      "the animation, and toggles binding layerIds visibility for accessory layers. Choice controls",
+      "name stable option ids; every option in a control binds the same properties; at most 64",
+      "combinations per character, so keep each one to about 4 moods and 3 poses. Two characters at",
+      "that size are fine — the budget is per character, not per sticker. Accessory layers that are not a",
+      "character keep the older variant sources: base for unchanged artwork, generate for a redrawn",
+      "still, frames for a registered sprite animation, existing for reusable still artwork, sequence",
+      "with its unchanged grid for an already approved animated variant, and an animations patch to",
+      "swap a layer's motion presets. Do not create controls unless requested or already present, and",
+      "preserve existing control, option, clip, and expression ids during revisions.",
       "",
       "Layout. x and y are the layer's normalized centre (0,0 is top-left, 1,1 is bottom-right).",
       // Nothing else in this prompt says what the order of `layers` means, and a planner that
@@ -426,6 +476,18 @@ export async function planSticker(
     ].join("\n"),
     messages: userTurn([
       `Sticker kind: ${input.stickerKind}`,
+      // The switch in the create screen, not a sentence the user typed — so it is stated as a
+      // requirement of the project rather than left for the model to infer from their wording.
+      // `create_plan` enforces the same rule and hands back a repair instruction if it is ignored.
+      input.controllable
+        ? "This project is controllable: the user asked for characters whose mood and pose they can"
+          + " switch from the sticker itself. Plan one sprite layer per character their request calls"
+          + " for — one for a single subject, one each when they name several. If their words imply a"
+          + " pair (a cat and a dog, two friends, a couple), that is two sprites, not one drawing of"
+          + " both, because a group drawn as one sprite cannot be posed apart. Give each the clips and"
+          + " expressions its own subject calls for, and give every one of them a mood control, a pose"
+          + " control, or both. Everything else about the sticker still follows their request."
+        : "",
       priorArtNote(priorArt),
       attachedImagesNote(
         viewable.length,
@@ -462,6 +524,15 @@ export async function planSticker(
             .map((asset) => `- assetId ${asset.assetId}, columns ${asset.columns}, rows ${asset.rows}, `
               + `frameCount ${asset.frameCount}, frameRate ${asset.frameRate}`)
             .join("\n")}`
+        : "",
+      // A sprite cannot be reused with `existing`, so a revision has to plan it again; naming the ids
+      // it already has is what keeps the user's saved control choices valid across the re-plan.
+      (input.document?.layers ?? []).some((layer) => layer.type === "sprite")
+        ? "The current sticker has controllable characters. When you keep one, plan it as a sprite "
+          + "again with the same layerId, clip ids, and expression ids, adding or removing only what "
+          + `the user asked for:\n${(input.document?.layers ?? []).flatMap((layer) => (layer.type === "sprite"
+            ? [`- layer ${layer.id}: clips ${layer.clips.map((clip) => clip.id).join(", ")}; expressions ${layer.expressions.tiles.map((tile) => tile.id).join(", ")}`]
+            : [])).join("\n")}`
         : "",
       input.rejectedReasons.length > 0
         ? `The user already turned down earlier plans for these reasons — do not repeat them:\n${input.rejectedReasons

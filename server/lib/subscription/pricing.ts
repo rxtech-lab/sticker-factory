@@ -1,5 +1,5 @@
 import type { PublishExportsRequest } from "@/lib/contracts/api";
-import { planVideoCount, type PlanV1 } from "@/lib/contracts/plan";
+import { planVideoCount, planGenerationCount, planSpriteSheetCount, type PlanV1 } from "@/lib/contracts/plan";
 import type { GenerationJobRow } from "@/lib/db/schema";
 
 /** The RxSubscription balance unit API spend is charged against. */
@@ -46,9 +46,20 @@ export function jobCreditHold(kind: JobKind): number {
  */
 const VIDEO_LAYER_HOLD = 10;
 
+/**
+ * What one sprite sheet adds to a compose hold.
+ *
+ * A sheet is drawn at medium quality rather than low — six body frames have to survive being read
+ * back at a third of the canvas — so it costs a few times what an ordinary part does. Held at twice
+ * an image hold: enough to cover the sheet and a retry after a failed face-slot registration.
+ */
+const SPRITE_SHEET_HOLD = 2 * JOB_HOLDS.image;
+
 /** The compose hold for a specific plan: the flat estimate, plus one video's worth per clip. */
-export function composeCreditHold(plan: Pick<PlanV1, "layers">): number {
-  return jobCreditHold("compose") + VIDEO_LAYER_HOLD * planVideoCount(plan);
+export function composeCreditHold(plan: Pick<PlanV1, "layers" | "configuration">): number {
+  const additionalArtwork = planGenerationCount(plan) - planGenerationCount({ layers: plan.layers });
+  return jobCreditHold("compose") + VIDEO_LAYER_HOLD * planVideoCount(plan) + jobCreditHold("image") * additionalArtwork
+    + SPRITE_SHEET_HOLD * planSpriteSheetCount(plan);
 }
 
 /**

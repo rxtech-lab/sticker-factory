@@ -3,6 +3,7 @@ import { Mp4BackgroundV1Schema, StickerDocumentSchema } from "@/lib/contracts/st
 
 export const StickerKindSchema = z.enum(["static", "animated"]);
 export const AssetKindSchema = z.enum([
+  "playback",
   "reference",
   "mask",
   "master",
@@ -123,14 +124,37 @@ export const SequenceMetadataSchema = z.object({
  */
 const QuickGenerationSchema = z.boolean().optional();
 
+/**
+ * Build the character as a sprite whose mood and pose the viewer can switch, without the user
+ * having to ask the agent for it in words.
+ *
+ * It is a property of the project rather than of this request: the flag is stored on the sticker
+ * and every later plan for it — a revision, a re-plan after feedback — has to honour it too.
+ * Animated only, and never in quick mode, which draws against a chroma backdrop that cannot be
+ * told apart from a sprite sheet's face placeholder.
+ *
+ * Optional rather than defaulted, exactly as `quick` is: a client that never sends it leaves the
+ * column's own default to decide instead of writing a false through every layer on the way down.
+ */
+const ControllableGenerationSchema = z.boolean().optional();
+
 export const CreateStickerRequestSchema = z.object({
   title: z.string().trim().min(1).max(100),
   kind: StickerKindSchema,
   prompt: z.string().trim().min(1).max(4_000),
   referenceAssetIds: z.array(z.string().uuid()).max(8).default([]),
   quick: QuickGenerationSchema,
+  controllable: ControllableGenerationSchema,
   useQuickModeAllowance: z.boolean().optional(),
-}).strict();
+}).strict().superRefine((request, ctx) => {
+  if (!request.controllable) return;
+  if (request.kind !== "animated") {
+    ctx.addIssue({ code: "custom", path: ["controllable"], message: "Controllable stickers must be animated" });
+  }
+  if (request.quick) {
+    ctx.addIssue({ code: "custom", path: ["controllable"], message: "Controllable stickers are not available in quick mode" });
+  }
+});
 
 /**
  * A picture the user already has, turned into a sticker project without generating anything.
@@ -174,7 +198,7 @@ export const PostChatMessageRequestSchema = z.object({
 
 export const CreateUploadRequestSchema = z.object({
   stickerId: z.string().uuid().optional(),
-  kind: AssetKindSchema,
+  kind: AssetKindSchema.exclude(["playback"]),
   mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm"]),
   byteSize: z.number().int().positive().max(25 * 1024 * 1024),
   filename: z.string().trim().min(1).max(180),
@@ -275,6 +299,7 @@ export const CompleteUploadRequestSchema = z.object({
 }).strict();
 
 export const PublishExportsRequestSchema = z.object({
+  playbackDocument: StickerDocumentSchema.optional(),
   revisionId: z.string().uuid(),
   pngAssetId: z.string().uuid().optional(),
   apngAssetId: z.string().uuid().optional(),
@@ -448,6 +473,7 @@ export const StickerSummaryV1Schema = z.object({
   kind: StickerKindSchema,
   status: z.enum(["draft", "published", "deleting"]),
   activeRevisionId: z.string().uuid().nullable(),
+  playbackRevisionId: z.string().uuid().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   previewAsset: AssetV1Schema.nullable(),
@@ -644,6 +670,19 @@ export const UnpublishPackRequestSchema = z.object({
   state: z.enum(["draft", "unlisted"]).default("draft"),
 }).strict();
 
+/**
+ * The state of a pending account deletion.
+ *
+ * ISO-8601 rather than the epoch seconds the identity provider speaks, to match every other instant
+ * on this API. `deletionScheduledAt` is the instant both this server and the identity provider will
+ * act on; the app shows it so "in 7 days" is never a guess.
+ */
+export const AccountDeletionStateV1Schema = z.object({
+  pendingDeletion: z.boolean(),
+  deletionScheduledAt: z.string().datetime().nullable(),
+  deletionRequestedAt: z.string().datetime().nullable(),
+}).strict();
+
 export type CreateStickerRequest = z.infer<typeof CreateStickerRequestSchema>;
 export type ImportStickerRequest = z.infer<typeof ImportStickerRequestSchema>;
 export type UpdateStickerRequest = z.infer<typeof UpdateStickerRequestSchema>;
@@ -653,6 +692,7 @@ export type UpdatePackRequest = z.infer<typeof UpdatePackRequestSchema>;
 export type AddPackItemRequest = z.infer<typeof AddPackItemRequestSchema>;
 export type ReorderPackItemsRequest = z.infer<typeof ReorderPackItemsRequestSchema>;
 export type UnpublishPackRequest = z.infer<typeof UnpublishPackRequestSchema>;
+export type AccountDeletionStateV1 = z.infer<typeof AccountDeletionStateV1Schema>;
 export type PostChatMessageRequest = z.infer<typeof PostChatMessageRequestSchema>;
 export type CreateUploadRequest = z.infer<typeof CreateUploadRequestSchema>;
 export type PublishExportsRequest = z.infer<typeof PublishExportsRequestSchema>;

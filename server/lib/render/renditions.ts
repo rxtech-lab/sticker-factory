@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { loopedTime } from "@/lib/animation/sample";
-import { EXPORT_LOOP_HOLD_SECONDS, type StickerDocument } from "@/lib/contracts/sticker";
+import { EXPORT_LOOP_HOLD_SECONDS, resolveStickerConfiguration, type StickerDocument } from "@/lib/contracts/sticker";
 import { frameFragment, IdFactory, type RenderAssets } from "@/lib/render/document-svg";
 import { encodeApng } from "@/lib/render/apng";
 import { prepareRenderAssets } from "@/lib/render/sticker-render";
@@ -57,6 +57,7 @@ export function animatedRenditionTiming(
   document: Extract<StickerDocument, { kind: "animated" }>,
   fps: number,
 ): RenditionTiming {
+  document = resolveStickerConfiguration(document);
   const playbackSeconds = document.durationSeconds / Math.max(document.speed, 0.0001);
   const cycleSeconds = playbackSeconds * (document.loop === "pingPong" ? 2 : 1);
   const hold = holdSeconds(document.loop);
@@ -145,6 +146,7 @@ export async function renderStillPng(
   size: number,
   options: { palette?: boolean } = {},
 ): Promise<Uint8Array> {
+  document = resolveStickerConfiguration(document);
   const fitted = await prepareRenditionAssets(document, assets, size, [0]);
   return rasterise(frameSvg(document, 0, size, fitted), size, options.palette ?? false);
 }
@@ -156,6 +158,7 @@ export async function renderApng(
   size: number,
   fps: number,
 ): Promise<{ bytes: Uint8Array; timing: RenditionTiming }> {
+  document = resolveStickerConfiguration(document);
   const timing = animatedRenditionTiming(document, fps);
   const fitted = await prepareRenditionAssets(document, assets, size, timing.times);
   const frames = [];
@@ -177,6 +180,7 @@ export async function renderStillWebp(
   assets: RenderAssets,
   size: number,
 ): Promise<Uint8Array> {
+  document = resolveStickerConfiguration(document);
   const fitted = await prepareRenditionAssets(document, assets, size, [0]);
   const webp = await sharp(Buffer.from(frameSvg(document, 0, size, fitted)), { density: 72 })
     .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -204,6 +208,7 @@ export async function renderAnimatedWebp(
   size: number,
   fps: number,
 ): Promise<{ bytes: Uint8Array; timing: RenditionTiming }> {
+  document = resolveStickerConfiguration(document);
   const timing = animatedRenditionTiming(document, fps);
   const fitted = await prepareRenditionAssets(document, assets, size, timing.times);
   const pages: Buffer[] = [];

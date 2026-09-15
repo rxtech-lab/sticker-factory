@@ -50,6 +50,7 @@ struct StickerChatView: View {
     /// looking failed once the replacement stream opens — well after the tap.
     @State var isRetrying = false
     @State private var presentedDocument: PresentedStickerDocument?
+    @State private var controlsApplied = 0
     /// Measured, not fixed: the bar grows with reference chips, a multi-line draft and the
     /// candidate banner, and the transcript has to keep exactly that much room free under it.
     @State private var bottomBarHeight: CGFloat = 0
@@ -154,7 +155,28 @@ struct StickerChatView: View {
         let phase = messages.last {
             $0.kind == .status && $0.status == .streaming && StickerToolLabel.isPhase($0.content)
         }
-        return phase.map { StickerToolLabel.text(for: $0.content) } ?? String(localized: "Working…")
+        if let phase { return StickerToolLabel.text(for: phase.content) }
+        // Before any phase opens a row — routing the request, gathering references — the server's
+        // own stage is the only thing that knows what is happening, and the chip is where the
+        // status lives. The generic label is the last resort, not the first.
+        return store.jobs[stickerID]?.statusDetail ?? String(localized: "Working…")
+    }
+
+    /// When the turn being waited on began, for the elapsed clock in `AssistantWorkingCard`.
+    ///
+    /// Taken from the message that started it rather than from when this screen happened to attach
+    /// to the job, so leaving the chat and coming back mid-turn shows the real wait instead of
+    /// restarting the clock at zero. The server's timestamp is only trusted when it reads as a
+    /// plausible start — a device clock far enough off would otherwise turn the reassurance into
+    /// nonsense — and the moment the stream opened stands in when it does not.
+    private var turnStartedAt: Date? {
+        let job = store.jobs[stickerID]
+        if let sourceMessageID = job?.sourceMessageID,
+           let created = messages.first(where: { $0.id == sourceMessageID })?.createdAt,
+           created <= .now, Date.now.timeIntervalSince(created) < 6 * 3600 {
+            return created
+        }
+        return job?.startedAt
     }
 
     /// The revision the sticker actions operate on. Nothing renders it — the assistant attaches
@@ -372,13 +394,17 @@ struct StickerChatView: View {
         .fullScreenCover(item: $presentedDocument) { presented in
             FullScreenStickerPlayer(
                 document: presented.document,
+                startsEditing: presented.startsEditing,
+                settings: presented.settings,
                 assets: assetStore.images,
                 videos: assetStore.videos,
                 // Editing needs a revision to parent the save onto. A bubble whose document came
                 // from a live generation stream has none yet, so that one opens view-only.
                 editing: presented.revisionID.map {
                     .init(store: store, stickerID: stickerID, revisionID: $0, assetStore: assetStore)
-                }
+                },
+                controls: .init(store: store, stickerID: stickerID, assetStore: assetStore,
+                    onApply: { controlsApplied += 1 })
             )
         }
         .stickerRenameAlert(
@@ -455,10 +481,22 @@ struct StickerChatView: View {
     @ViewBuilder
     private var transcriptTail: some View {
         if isComputing {
-            AssistantTypingIndicator()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+            let job = store.jobs[stickerID]
+            let summary = AssistantWorkingSummary(job: job, messages: messages, titleStatus: activeStatus)
+            AssistantWorkingCard(
+                startedAt: turnStartedAt,
+                note: summary.note,
+                completedSteps: summary.completedSteps,
+                outputTokens: job?.outputTokens ?? 0,
+                imagesDrawn: job?.imagesDrawn ?? 0,
+                clipsFilmed: job?.clipsFilmed ?? 0,
+                progress: job?.unitProgress,
+                progressLabel: job?.progressLabel,
+                progressCount: job?.progressCountText
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
 
         if let job = store.jobs[stickerID], job.isFailed, job.sourceMessageID != nil {
@@ -496,6 +534,10 @@ struct StickerChatView: View {
         }
     }
 
+    private func openSticker(_ document: AnimatedDocument, revisionID: String?) {
+        presentedDocument = PresentedStickerDocument(document: document, revisionID: revisionID)
+    }
+
     @ViewBuilder
     private func transcriptRow(_ message: ChatMessage) -> some View {
         if message.kind == .deviceEdit {
@@ -507,7 +549,7 @@ struct StickerChatView: View {
                 if let document = revisionDocument(for: message) {
                     HStack(spacing: 0) {
                         Button {
-                            presentedDocument = .init(document: document, revisionID: message.revisionId)
+                            openSticker(document, revisionID: message.revisionId)
                         } label: {
                             // Sized outright rather than left to `aspectRatio` inside a full-width
                             // row: an unbounded height proposal there resolves to the row's width,
@@ -550,12 +592,18 @@ struct StickerChatView: View {
             }
         } else {
             ChatBubble(
+                configurationSettings: revisionDocument(for: message).flatMap { doc in
+                    guard doc.configuration != nil else { return nil }
+                    _ = controlsApplied
+                    let account = (try? SharedKeychainTokenVault().load()?.subject) ?? "local"
+                    return StickerControlPreferences().load(accountID: account, stickerID: stickerID, document: doc)
+                },
                 message: message,
                 sticker: revisionDocument(for: message),
                 assets: assetStore.images,
                 videos: assetStore.videos,
                 toolAPI: store.api,
-                onOpenSticker: { presentedDocument = .init(document: $0, revisionID: message.revisionId) }
+                onOpenSticker: { openSticker($0, revisionID: message.revisionId) }
             )
         }
     }

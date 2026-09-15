@@ -87,6 +87,7 @@ export async function revertRevision(db: Database, ownerId: string, stickerId: s
       documentJson: StickerDocumentSchema.parse(target.documentJson),
       masterAssetId: target.masterAssetId,
       previewAssetId: target.previewAssetId,
+      playbackJson: target.playbackJson,
       pngAssetId: target.pngAssetId,
       apngAssetId: target.apngAssetId,
       // Reverting to a revision published before the switch has to carry its GIF across, or the
@@ -148,6 +149,7 @@ export async function createCandidateRevision(
       eq(stickerRevisions.stickerId, input.stickerId),
     )).then(firstRow);
     if (!parent) throw new ApiError(422, "INVALID_PARENT_REVISION", "The revision parent does not belong to this sticker");
+
   }
   const assetIds = [input.masterAssetId, input.previewAssetId].filter((value): value is string => Boolean(value));
   const revisionAssets = await validateDocumentAssetReferences(db, input.ownerId, input.stickerId, parsed, assetIds);
@@ -186,6 +188,7 @@ export async function saveEditedRevision(
   stickerId: string,
   request: SaveEditedDocumentRequest,
   revisionId = crypto.randomUUID(),
+  clientVersion = 5,
 ) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
 
@@ -228,6 +231,7 @@ export async function saveEditedRevision(
     eq(stickerRevisions.stickerId, stickerId),
   )).then(firstRow);
   if (!parent) throw new ApiError(422, "INVALID_PARENT_REVISION", "The revision parent does not belong to this sticker");
+  if (parent.documentJson.configuration && clientVersion < 5) throw new ApiError(409, "STICKER_CLIENT_UPDATE_REQUIRED", "Update the app before editing this configurable sticker");
   // Editing forward from a branch that was already turned down would resurrect it silently.
   if (parent.candidateState === "rejected" || parent.candidateState === "superseded") {
     throw new ApiError(409, "INVALID_PARENT_REVISION", "That revision was already rejected or superseded");

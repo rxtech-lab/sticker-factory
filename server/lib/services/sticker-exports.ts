@@ -4,7 +4,8 @@ import { and, eq, ne } from "drizzle-orm";
 import type { MessengerRenditionsRequest, PublishExportsRequest } from "@/lib/contracts/api";
 import { ATTACHMENT_RENDITION_DIMENSIONS } from "@/lib/contracts/api";
 import { countKeyframes } from "@/lib/animation/compile";
-import { StickerDocumentSchema } from "@/lib/contracts/sticker";
+import { preparePlaybackBundle } from "./playback";
+import { StickerDocumentSchema, resolveStickerConfiguration } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
 import { stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
@@ -145,14 +146,18 @@ export async function bindExports(
     throw new ApiError(422, "MP4_BACKGROUND_NOT_ALLOWED", "Static exports do not use an MP4 background");
   }
   if (revision.kind === "animated") {
-    const document = StickerDocumentSchema.parse(revision.documentJson);
+    const document = resolveStickerConfiguration(StickerDocumentSchema.parse(revision.documentJson));
     if (document.kind !== "animated") {
       throw new ApiError(422, "REVISION_KIND_MISMATCH", "Animated revision metadata must contain an animated sticker document");
     }
     // Counted through the shared helper rather than by hand: this sum used to omit `trim`, which
     // rejected a perfectly good draw-on-only sticker here with a confusing 422.
     const keyframeCount = document.layers.reduce((total, layer) => total + countKeyframes(layer.animation), 0);
-    if (keyframeCount === 0) {
+    const carriesFrames = document.layers.some((layer) => (
+      ((layer.type === "sequence" || layer.type === "video") && layer.frameCount > 1)
+      || (layer.type === "sprite" && layer.clips.some((clip) => clip.frames.length > 1))
+    ));
+    if (keyframeCount === 0 && !revision.documentJson.configuration && !carriesFrames) {
       throw new ApiError(422, "ANIMATION_KEYFRAMES_REQUIRED", "Animated exports require at least one accepted animation keyframe");
     }
     for (const assetId of [
@@ -182,6 +187,7 @@ export async function bindExports(
   const publishedDocument = StickerDocumentSchema.parse(revision.kind === "animated"
     ? { ...sourceDocument, mp4Background: request.mp4Background }
     : sourceDocument);
+  const playbackJson = await preparePlaybackBundle(db, ownerId, stickerId, request.revisionId, publishedDocument, request.playbackDocument);
   await db.transaction(async (tx) => {
     await tx.insert(stickerRevisions).values({
       id: publishedRevisionId,
@@ -190,6 +196,7 @@ export async function bindExports(
       kind: revision.kind,
       candidateState: "accepted",
       documentJson: publishedDocument,
+      playbackJson,
       masterAssetId: revision.masterAssetId,
       previewAssetId: revision.previewAssetId,
       pngAssetId: request.pngAssetId,

@@ -11,6 +11,7 @@ import { firstRow, setDatabaseForTests } from "@/lib/db/client";
 import { assets, chatAttachments, chatMessages, generationEvents, generationJobs, plans as planRows, stickerRevisions, stickers, users } from "@/lib/db/schema";
 import { derivedAssetId } from "@/lib/services/assets";
 import { confirmPlan } from "@/lib/services/plans";
+import { cancelGenerationWorkflow } from "@/lib/services/workflows";
 import { acceptRevision, createChatTurn, createCleanupJob, createSticker, listChatMessages, retryFailedChatTurn } from "@/lib/services/stickers";
 import { MemoryObjectStore, normalizeTransparentPng, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
@@ -250,7 +251,7 @@ describe("durable sticker workflow: composition", () => {
     await close();
   }, 30_000);
 
-  it("generates an approvable static reference, then separates matching parts after confirmation", async () => {
+  it.each(["button", "chat-failed", "chat-cancelled"])("resumes the confirmed layered animation with %s and reuses completed parts", async (retryMode) => {
     const { db, close } = await createTestDatabase();
     const store = new MemoryObjectStore();
     setDatabaseForTests(db);
@@ -265,7 +266,16 @@ describe("durable sticker workflow: composition", () => {
     const referenceSelections: Array<Array<{ label: string; required?: boolean }>> = [];
     setAiProviderForTests({
       ...unusedAiProvider,
-      routeChatTurn: mockProvider.routeChatTurn.bind(mockProvider),
+      routeChatTurn: async (input) => {
+        if (input.instruction === "Retry") {
+          expect(input.retryableGeneration).toMatchObject({ state: retryMode === "chat-cancelled" ? "cancelled" : "failed" });
+          const failedStep = input.retryableGeneration!.steps.find((step) => step.name.startsWith("compose-part:") && step.status === "failed");
+          expect(failedStep).toBeDefined();
+          expect(input.retryableGeneration!.steps.some((step) => step.status === "complete")).toBe(true);
+          return { type: "retry_generation", stepId: failedStep!.id };
+        }
+        return mockProvider.routeChatTurn(input);
+      },
       planSticker: mockProvider.planSticker.bind(mockProvider),
       generateConceptImage: async (input) => {
         const output = await mockProvider.generateConceptImage(input);
@@ -343,10 +353,20 @@ describe("durable sticker workflow: composition", () => {
     // confirmation job. The compose step must recover that plan through their shared source turn.
     expect(await stickerGenerationWorkflow(confirmed.jobId)).toEqual({ status: "failed" });
     expect(generatedReferences).toHaveLength(Math.min(partCount, 3) - 1);
+    const previouslyCompletedParts = generatedReferences.length;
     const savedPart = await db.select().from(assets)
       .where(eq(assets.id, derivedAssetId(confirmed.jobId, 0))).then(firstRow);
     expect(savedPart?.state).toBe("ready");
-    const retry = await retryFailedChatTurn(db, "owner-c", sticker.stickerId, confirmed.messageId);
+    if (retryMode === "chat-cancelled") {
+      // Stop uses a complete source message, unlike a provider failure. Recovery must read the job.
+      await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, confirmed.jobId));
+      await cancelGenerationWorkflow(db, "owner-c", confirmed.jobId);
+    }
+    const retry = retryMode === "button"
+      ? await retryFailedChatTurn(db, "owner-c", sticker.stickerId, confirmed.messageId)
+      : await createChatTurn(db, "owner-c", sticker.stickerId, {
+        text: "Retry", intent: "chat", attachments: [], imagePlacement: "replace",
+      });
     expect((await stickerGenerationWorkflow(retry.jobId)).workflowStatus).toBe("succeeded");
 
     expect(generatedReferences).toHaveLength(partCount);
@@ -398,13 +418,16 @@ describe("durable sticker workflow: composition", () => {
       .filter((message) => message.role === "system");
     const toolRows = toolMessages.map((message) => message.content);
     expect(toolRows).toContain("build-plan");
-    expect(toolRows.filter((name) => name.startsWith("compose-part:"))).toHaveLength(partCount);
+    expect(toolRows).not.toContain("compose-part:0 " + proposed[0].planJson.layers[0].name);
+    const retryProgress = await db.select().from(generationEvents).where(eq(generationEvents.jobId, retry.jobId)).orderBy(generationEvents.id);
+    expect(retryProgress.find((event) => event.dataJson.stage === "composing")?.dataJson.completedUnits).toBe(previouslyCompletedParts);
+    expect(toolRows.filter((name) => name.startsWith("compose-part:"))).toHaveLength(partCount - previouslyCompletedParts);
     expect(toolRows).toContain("view_plan_image");
     expect(toolRows).toContain("view_sticker");
     expect(toolRows).toContain("finalize_layout");
     const transcript = await listChatMessages(db, "owner-c", sticker.stickerId);
     const partCalls = transcript.data.filter((message) => message.content.startsWith("compose-part:") && toolMessages.some((tool) => tool.id === message.id));
-    expect(partCalls).toHaveLength(partCount);
+    expect(partCalls).toHaveLength(partCount - previouslyCompletedParts);
     for (const call of partCalls) {
       const details = JSON.parse(call.toolDetails as string);
       expect(composedAssets.some((asset) => asset.id === details.previewAssetId)).toBe(true);

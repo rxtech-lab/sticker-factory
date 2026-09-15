@@ -1,4 +1,5 @@
 import Foundation
+import AnimatedView
 
 /// The user's own change to the live plan card.
 ///
@@ -20,7 +21,12 @@ nonisolated struct PlanEdit: Codable, Hashable, Sendable {
     /// The complete new layer list, in order. Absent leaves the layers untouched.
     var layers: [PlanLayerEdit]?
 
-    var isEmpty: Bool { title == nil && summary == nil && timing == nil && layers == nil }
+    var configuration: AnimatedControlConfiguration?
+    var clearConfiguration: Bool?
+
+    var isEmpty: Bool {
+        title == nil && summary == nil && timing == nil && layers == nil && configuration == nil && clearConfiguration != true
+    }
 }
 
 nonisolated struct PlanTimingEdit: Codable, Hashable, Sendable {

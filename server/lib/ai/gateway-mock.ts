@@ -3,12 +3,39 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
+import { configurationReviewSelections } from "@/lib/contracts/configuration";
 import { PlanV1Schema, reusableAssetIds, type PlanV1 } from "@/lib/contracts/plan";
 import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
 import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+
+/**
+ * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
+ * nudged a little per cell so a clip has visible motion, or one face plate per cell with a
+ * different mouth so expressions can be told apart. Enough for registration and compositing to run
+ * end to end in tests.
+ */
+function mockSheetSvg(sheet: NonNullable<AiImageInput["sheet"]>): string {
+  const cellWidth = Math.floor(1024 / sheet.columns), cellHeight = Math.floor(1024 / sheet.rows);
+  const cells = Array.from({ length: sheet.count }, (_, index) => {
+    const ox = (index % sheet.columns) * cellWidth, oy = Math.floor(index / sheet.columns) * cellHeight;
+    const cx = ox + cellWidth / 2, cy = oy + cellHeight / 2;
+    const r = Math.min(cellWidth, cellHeight) * 0.32;
+    if (sheet.tiles) {
+      const smile = index % 2 === 0 ? `M${cx - r * 0.4} ${cy + r * 0.3} Q${cx} ${cy + r * 0.7} ${cx + r * 0.4} ${cy + r * 0.3}` : `M${cx - r * 0.4} ${cy + r * 0.5} Q${cx} ${cy + r * 0.1} ${cx + r * 0.4} ${cy + r * 0.5}`;
+      return `<ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${r * 0.85}" fill="#ffd6a5" stroke="#231f20" stroke-width="6"/>`
+        + `<circle cx="${cx - r * 0.35}" cy="${cy - r * 0.2}" r="${r * 0.12}" fill="#231f20"/><circle cx="${cx + r * 0.35}" cy="${cy - r * 0.2}" r="${r * 0.12}" fill="#231f20"/>`
+        + `<path d="${smile}" fill="none" stroke="#231f20" stroke-width="8" stroke-linecap="round"/>`;
+    }
+    const lift = (index % 3) * 6;
+    return `<circle cx="${cx}" cy="${cy + r * 0.4 - lift}" r="${r}" fill="#ff8fa3"/>`
+      + `<circle cx="${cx}" cy="${cy - r * 0.6 - lift}" r="${r * 0.8}" fill="#ff8fa3"/>`
+      + (sheet.facePlaceholder ? `<ellipse cx="${cx}" cy="${cy - r * 0.55 - lift}" rx="${r * 0.55}" ry="${r * 0.45}" fill="#ff00ff"/>` : "");
+  }).join("");
+  return `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">${cells}</svg>`;
+}
 
 export class MockAiProvider implements AiProvider {
   async selectImageReferences(input: AiReferenceSelectionContext): Promise<number[]> {
@@ -24,9 +51,9 @@ export class MockAiProvider implements AiProvider {
   async generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {
     const label = input.prompt.replace(/[<&>]/g, "").slice(0, 24) || "Sticker";
     const bytes = await sharp(
-      Buffer.from(
-        `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1024" fill="none"/><circle cx="512" cy="480" r="360" fill="#ff8fa3"/><circle cx="400" cy="430" r="35" fill="#231f20"/><circle cx="624" cy="430" r="35" fill="#231f20"/><path d="M390 570 Q512 670 634 570" fill="none" stroke="#231f20" stroke-width="28" stroke-linecap="round"/><text x="512" y="900" text-anchor="middle" font-family="system-ui" font-size="68" fill="#231f20">${label}</text></svg>`,
-      ),
+      Buffer.from(input.sheet ? mockSheetSvg(input.sheet) : (
+        `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1024" fill="none"/><circle cx="512" cy="480" r="360" fill="#ff8fa3"/><circle cx="400" cy="430" r="35" fill="#231f20"/><circle cx="624" cy="430" r="35" fill="#231f20"/><path d="M390 570 Q512 670 634 570" fill="none" stroke="#231f20" stroke-width="28" stroke-linecap="round"/><text x="512" y="900" text-anchor="middle" font-family="system-ui" font-size="68" fill="#231f20">${label}</text></svg>`
+      )),
     )
       .png()
       .toBuffer();
@@ -37,13 +64,15 @@ export class MockAiProvider implements AiProvider {
   }
 
   async refineStickerLayout(
-    _input: AiLayoutContext,
+    input: AiLayoutContext,
     session: LayoutDraftingSession,
   ): Promise<LayoutTurnResult | undefined> {
     // Exercise the same mandatory look-before-finalize contract without making tests invent visual
     // judgements. Focused tests cover corrections through the layout session itself.
     if (session.viewPlanImage) await session.viewPlanImage();
-    await session.renderSticker();
+    const states = input.document.configuration ? configurationReviewSelections(input.document.configuration) : [{}];
+    // One render per choice combination, in order, because the real loop's cursor counts them.
+    for (let index = 0; index < states.length; index += 1) await session.renderSticker();
     const finalized = await session.finalizeLayout();
     return { revision: finalized.revision, finalized: true };
   }
@@ -211,6 +240,44 @@ export class MockAiProvider implements AiProvider {
     const characters = tokens.length >= 2 ? tokens : ["A", "B"];
     const animated = input.stickerKind === "animated";
     const wantsClip = animated && /\b(rotat(?:e|es|ing)|spin(?:s|ning)?|turn(?:s|around|table)?)\b/i.test(input.instruction);
+    // Mirrors the real planner's rule: selectable moods or poses mean a sprite character, and the
+    // plan carries the controls that select them. The project's own switch says the same thing
+    // without the user having had to word it that way, so it is honoured whatever they typed.
+    const wantsSprite = input.controllable
+      || /\b(mood|moods|expression|expressions|pose|poses|emotion|emotions)\b/i.test(input.instruction);
+    if (animated && wantsSprite) {
+      const sprite = PlanV1Schema.parse({
+        version: 1, title: "Controllable character", kind: "animated", timing: { durationSeconds: 3, fps: 24, loop: "loop" },
+        summary: "Here is a controllable character with two clips and three expressions. Confirm to build it.",
+        conceptPrompt: "A polished sticker of one round friendly character at rest, in a coherent bold style.",
+        layers: [{ layerId: "hero", name: "Character", x: 0.5, y: 0.5, scaleX: 0.9, scaleY: 0.9, source: {
+          kind: "sprite", prompt: "One round friendly character filling the frame on a transparent background.",
+          clips: [
+            { id: "idle", label: "Idle", prompt: "breathes gently and blinks once", frames: [{ duration: 2.4 }, { duration: 0.18 }, { duration: 0.28 }, { duration: 0.22 }, { duration: 0.3 }, { duration: 1.2 }] },
+            { id: "wave", label: "Wave", prompt: "raises one arm and waves it side to side", frames: [{ duration: 0.4 }, { duration: 0.3 }, { duration: 0.35 }, { duration: 0.3 }, { duration: 0.35 }, { duration: 0.7 }] },
+          ],
+          expressions: [
+            { id: "neutral", label: "Neutral", prompt: "calm open eyes and a small smile" },
+            { id: "happy", label: "Happy", prompt: "closed curved eyes and a wide smile" },
+            { id: "sad", label: "Sad", prompt: "downturned brows and a small frown" },
+          ],
+        } }],
+        configuration: { controls: [
+          { id: "mood", type: "choice", label: "Mood", defaultValue: "neutral", options: [{ id: "neutral", label: "Neutral" }, { id: "happy", label: "Happy" }, { id: "sad", label: "Sad" }] },
+          { id: "pose", type: "choice", label: "Pose", defaultValue: "idle", options: [{ id: "idle", label: "Idle" }, { id: "wave", label: "Wave" }] },
+          { id: "speed", type: "number", label: "Speed", defaultValue: 1, minimum: 0.25, maximum: 2, step: 0.05, binding: "speed" },
+        ], variants: [
+          { id: "neutral", selections: { mood: "neutral" }, layers: [{ layerId: "hero", expression: "neutral" }] },
+          { id: "happy", selections: { mood: "happy" }, layers: [{ layerId: "hero", expression: "happy" }] },
+          { id: "sad", selections: { mood: "sad" }, layers: [{ layerId: "hero", expression: "sad" }] },
+          { id: "idle", selections: { pose: "idle" }, layers: [{ layerId: "hero", clip: "idle" }] },
+          { id: "wave", selections: { pose: "wave" }, layers: [{ layerId: "hero", clip: "wave" }] },
+        ] },
+      });
+      const created = await session.createPlan(sprite);
+      const finalized = await session.finalizePlan(created.planId);
+      return { ...finalized, finalized: true };
+    }
     // Mirrors the instruction the real planner is given: revising a sticker keeps the artwork it
     // already has, so the leading layers reuse it and only the surplus is drawn.
     const reusable = reusableAssetIds(input.document);

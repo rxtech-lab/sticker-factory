@@ -22,6 +22,47 @@ nonisolated struct StickerJobState: Sendable, Equatable {
     /// Set when the event stream itself died, as opposed to the generation failing.
     /// Surfaced in chat so a dead stream cannot look like silence.
     var streamErrorMessage: String?
+    /// What the server said it was doing, in the newest event that said anything — the same
+    /// synthesis the Lock Screen's Live Activity shows (`liveActivitySnapshot`), so the app in the
+    /// foreground is never less informative than the app in the background.
+    ///
+    /// Latest wins rather than sticky per field: a `stage` arriving after a `message` describes the
+    /// work now, and keeping the older line beside it would let the screen contradict itself.
+    var statusDetail: String?
+    /// The current stage's own count — "Artwork parts 3/5" — when the stage has one.
+    ///
+    /// Counts belong to a stage, not to the turn, so they are cleared by `clearProgress` as well as
+    /// replaced by the next stage that reports one. See `build-turns.ts`.
+    var progressLabel: String?
+    var completedUnits: Int?
+    var totalUnits: Int?
+    /// The newest line the turn wrote about itself — "Drawing the artwork from 2 references",
+    /// "Finished Left arm (3 of 8)". Finer than the stage in the title chip and much more frequent,
+    /// which is the whole point: it is what moves while a stage sits still.
+    var note: String?
+    /// What the turn has spent so far: tokens written, images drawn, clips filmed.
+    ///
+    /// Summed from the per-call deltas the server streams (`reportTurnWork`), which is what makes
+    /// them right after a re-attach as well as after a cold start — the stream resumes from the
+    /// last event this job saw, and a fresh job state replays the turn from its first event.
+    var outputTokens = 0
+    var imagesDrawn = 0
+    var clipsFilmed = 0
+    /// When this turn started, for the elapsed clock in chat. Set once per job id: a re-attach
+    /// mid-turn is the same wait continuing, not a new one.
+    var startedAt = Date()
+
+    /// How far through the current stage the counted units are, when they are worth drawing.
+    var unitProgress: Double? {
+        guard let completedUnits, let totalUnits, totalUnits > 0,
+              completedUnits >= 0, completedUnits <= totalUnits else { return nil }
+        return Double(completedUnits) / Double(totalUnits)
+    }
+
+    var progressCountText: String? {
+        guard unitProgress != nil, let completedUnits, let totalUnits else { return nil }
+        return "\(completedUnits)/\(totalUnits)"
+    }
 }
 
 @MainActor
@@ -101,6 +142,8 @@ final class StickerStore {
     @ObservationIgnored private var refreshGeneration = 0
     /// Invalidates late remote-search responses whenever the user changes or clears the query.
     @ObservationIgnored private var librarySearchGeneration = 0
+
+    @ObservationIgnored var liveActivities: GenerationLiveActivityManager?
 
     /// Asked to request notification permission when a turn starts. The banners themselves come
     /// from the server, which is the only side still watching once iOS suspends the app.
@@ -317,19 +360,24 @@ final class StickerStore {
     }
 
     @discardableResult
-    func create(kind: StickerKind, prompt: String, references: [PendingMediaAttachment]) async throws -> Sticker {
+    func create(
+        kind: StickerKind,
+        prompt: String,
+        controllable: Bool = false,
+        references: [PendingMediaAttachment]
+    ) async throws -> Sticker {
         return try await AppTelemetry.measure(.createSticker) {
             let assetIDs = try await upload(references, stickerID: nil, kind: .reference)
             let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
             let response = try await api.createSticker(
-                .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs),
+                .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs, controllable: controllable),
                 idempotencyKey: UUID().uuidString
             )
             let detail = try await api.sticker(id: response.stickerId)
             stickers.removeAll { $0.id == detail.id }
             stickers.insert(detail.sticker, at: 0)
             reattachAttempts[detail.id] = 0
-            observe(jobID: response.job.id, stickerID: detail.id, sourceMessageID: response.initialMessageId)
+            observe(jobID: response.job.id, stickerID: detail.id, sourceMessageID: response.initialMessageId, startsGeneration: true)
             return detail.sticker
         }
     }
@@ -589,7 +637,7 @@ final class StickerStore {
                     messages[stickerID, default: []].append(persisted)
                 }
                 reattachAttempts[stickerID] = 0
-                observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id)
+                observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, startsGeneration: true)
                 // Only hand `computingStickerIDs` over to the stream if one is actually running,
                 // otherwise the composer would stay disabled with nothing driving it.
                 startedObservation = observations[stickerID] != nil
@@ -626,7 +674,7 @@ final class StickerStore {
                 messages[stickerID]?[index].jobId = response.job.id
             }
             reattachAttempts[stickerID] = 0
-            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.messageId, force: true)
+            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.messageId, force: true, startsGeneration: true)
         }
     }
 
@@ -645,7 +693,7 @@ final class StickerStore {
             // already streaming and would otherwise open its own stream for the same job, which this
             // call would then immediately supersede.
             reattachAttempts[stickerID] = 0
-            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, force: true)
+            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, force: true, startsGeneration: true)
             await loadMessages(stickerID: stickerID)
         }
     }
@@ -702,7 +750,7 @@ final class StickerStore {
             // would otherwise see a streaming user message and open a second stream for one job.
             if let job = response.job, let message = response.message {
                 reattachAttempts[stickerID] = 0
-                observe(jobID: job.id, stickerID: stickerID, sourceMessageID: message.id, force: true)
+                observe(jobID: job.id, stickerID: stickerID, sourceMessageID: message.id, force: true, startsGeneration: true)
             }
             await loadMessages(stickerID: stickerID)
         }

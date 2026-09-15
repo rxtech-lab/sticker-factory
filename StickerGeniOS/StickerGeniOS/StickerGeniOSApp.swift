@@ -33,6 +33,7 @@ struct StickerGeniOSApp: App {
                 // moment the cached balance is reliably behind.
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { environment.enteredForeground() }
+                    if phase == .background { environment.store.liveActivities?.pause() }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .rxAuthSessionExpired)) { _ in
                     Task { await environment.sessionExpired() }

@@ -19,6 +19,8 @@ import UIKit
 nonisolated struct PresentedStickerDocument: Identifiable, Sendable {
     let document: AnimatedDocument
     var revisionID: String?
+    var startsEditing = false
+    var settings: StickerControlSettings?
 
     var id: String { revisionID ?? "document-\(document.hashValue)" }
 }
@@ -26,11 +28,14 @@ nonisolated struct PresentedStickerDocument: Identifiable, Sendable {
 /// The sticker at full size, with a way into the editor.
 struct FullScreenStickerPlayer: View {
     let document: AnimatedDocument
+    var startsEditing = false
+    var settings: StickerControlSettings?
     let assets: [String: UIImage]
     var videos: [String: KeyedVideoFrames] = [:]
     /// Everything a save needs. `nil` for a document with no revision behind it — a preview, or a
     /// candidate that has not been accepted — in which case editing is view-only.
     var editing: EditingContext?
+    var controls: ControlsContext?
 
     struct EditingContext {
         let store: StickerStore
@@ -39,40 +44,75 @@ struct FullScreenStickerPlayer: View {
         let assetStore: StickerAssetStore
     }
 
+    struct ControlsContext {
+        let store: StickerStore
+        let stickerID: String
+        let assetStore: StickerAssetStore
+        var onApply: () -> Void = {}
+
+        var accountID: String { (try? SharedKeychainTokenVault().load()?.subject) ?? "local" }
+    }
+
     @Environment(\.dismiss) private var dismiss
     /// Presented by a plain flag, never by an `item:` binding.
     ///
-    /// `PresentedStickerDocument` mints a fresh `UUID` on init, so building one inside a computed
+    /// `PresentedStickerDocument` used to mint a fresh `UUID` on init, so building one inside a computed
     /// binding's getter gave the cover a new identity on every parent re-evaluation — SwiftUI tore
     /// the editor down and re-presented it from the original document, silently discarding whatever
     /// had been edited. Identity has to be stable for as long as the thing is on screen.
     @State private var isEditing = false
+    @State private var didPresentInitially = false
+    @State private var isPresentingControls = false
+    @State private var controlsHeight: CGFloat = 0
+    @State private var previewSettings: StickerControlSettings?
+    @State private var previewAssets: StickerRenderAssets?
+    @State private var afterControlsAction: ControlsAction?
+
+    private enum ControlsAction: Equatable { case edit, close, expand }
+    private var hasControls: Bool { document.configuration != nil && controls != nil }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
-                StickerPlayer(document: document, assets: assets, videos: videos, repeats: true)
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .accessibilityIdentifier("full-screen-sticker-player")
+                GeometryReader { geometry in
+                    let coveredHeight = isPresentingControls
+                        ? (controlsHeight > 0 ? max(0, controlsHeight - geometry.safeAreaInsets.bottom) : geometry.size.height / 2)
+                        : 0
+                    StickerPlayer(document: document,
+                        assets: previewAssets?.images ?? assets,
+                        videos: previewAssets?.videos ?? videos,
+                        repeats: true, settings: previewSettings ?? settings)
+                        .padding()
+                        .frame(width: geometry.size.width, height: max(1, geometry.size.height - coveredHeight))
+                        .clipped()
+                        .accessibilityIdentifier("full-screen-sticker-player")
+                }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         Haptics.tap(.light)
-                        dismiss()
+                        performAfterControls(.close)
                     } label: {
                         Label("Close", systemImage: "xmark")
                     }
                         .accessibilityIdentifier("dismiss-full-screen-player")
                 }
-                if editing != nil {
-                    ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if hasControls && !isPresentingControls {
+                        Button("Controls", systemImage: "switch.2") {
+                            Haptics.tap(.light)
+                            controlsHeight = 0
+                            isPresentingControls = true
+                        }
+                        .accessibilityIdentifier("show-sticker-controls")
+                    }
+                    if editing != nil {
                         Button {
                             Haptics.tap(.light)
-                            isEditing = true
+                            performAfterControls(.edit)
                         } label: {
                             Label("Edit", systemImage: "slider.horizontal.3")
                         }
@@ -81,6 +121,45 @@ struct FullScreenStickerPlayer: View {
                 }
             }
             .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+        .onAppear {
+            guard !didPresentInitially else { return }
+            didPresentInitially = true
+            restoreAppliedSettings()
+            if let settings { previewSettings = settings }
+            if startsEditing {
+                isEditing = true
+            } else if hasControls {
+                isPresentingControls = true
+            }
+        }
+        .sheet(isPresented: $isPresentingControls, onDismiss: controlsDismissed) {
+            if let controls {
+                StickerControlsSheet(
+                    document: document, stickerID: controls.stickerID, accountID: controls.accountID,
+                    loadAssets: { target in
+                        await controls.assetStore.preload(document: target, api: controls.store.api)
+                        guard target.layers.flatMap(\.referencedImageAssetIDs).allSatisfy({ controls.assetStore.images[$0] != nil }) else {
+                            throw StickerExportError.renderFailed
+                        }
+                        return controls.assetStore.renderAssets
+                    },
+                    onApply: { _, _, _ in controls.onApply() },
+                    onClose: { isPresentingControls = false },
+                    onExpand: { _ in performAfterControls(.expand) },
+                    onEdit: editing == nil ? nil : { performAfterControls(.edit) },
+                    initialSettings: previewSettings, showsPreview: false,
+                    onPreviewChange: { selected, loaded in
+                        guard isPresentingControls else { return }
+                        previewSettings = selected
+                        previewAssets = loaded
+                    }
+                )
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+                } action: { controlsHeight = $0 }
+            }
         }
         .fullScreenCover(isPresented: $isEditing) {
             if let editing {
@@ -98,6 +177,35 @@ struct FullScreenStickerPlayer: View {
             }
         }
     }
+
+    private func restoreAppliedSettings() {
+        guard hasControls, let controls else { return }
+        previewSettings = StickerControlPreferences().load(
+            accountID: controls.accountID, stickerID: controls.stickerID, document: document)
+        previewAssets = controls.assetStore.renderAssets
+    }
+
+    private func performAfterControls(_ action: ControlsAction) {
+        if isPresentingControls {
+            afterControlsAction = action
+            isPresentingControls = false
+        } else {
+            switch action {
+            case .edit: isEditing = true
+            case .close: dismiss()
+            case .expand: break
+            }
+        }
+    }
+
+    private func controlsDismissed() {
+        let action = afterControlsAction
+        afterControlsAction = nil
+        controlsHeight = 0
+        // Full Screen keeps the draft visible; Cancel and swipe dismissal restore saved values.
+        if action != .expand { restoreAppliedSettings() }
+        if let action { performAfterControls(action) }
+    }
 }
 
 /// Hosts `AnimatedIconEditor` and owns the save.
@@ -110,6 +218,7 @@ struct StickerEditorSheet: View {
     let context: FullScreenStickerPlayer.EditingContext
     let onFinished: (Bool) -> Void
 
+    @State private var showingControlEditor = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var confirmingUnpublish = false
@@ -143,6 +252,11 @@ struct StickerEditorSheet: View {
                     }
                     .disabled(isSaving)
                 }
+                ToolbarItem(placement: .bottomBar) {
+                    if document.kind == .animated {
+                        Button("Configurable layers", systemImage: "slider.horizontal.3") { showingControlEditor = true }
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving {
                         ProgressView()
@@ -152,6 +266,34 @@ struct StickerEditorSheet: View {
                             if isPublished { confirmingUnpublish = true } else { Task { await save() } }
                         }
                         .accessibilityIdentifier("save-edited-sticker-button")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingControlEditor) {
+                NavigationStack {
+                    StickerBackground {
+                        ScrollView {
+                            StickerConfigurationEditor(
+                                configuration: $document.configuration,
+                                layers: document.layers.map {
+                                    .init(id: $0.id, name: $0.name, sprite: StickerConfigurationEditor.sprite(of: $0))
+                                },
+                                onRequestArtwork: { instruction in
+                                showingControlEditor = false
+                                Task { await requestArtwork(instruction) }
+                            })
+                            .padding(20)
+                        }
+                    }
+                    .navigationTitle("Configurable layers")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                Haptics.tap(.light)
+                                showingControlEditor = false
+                            }
+                        }
                     }
                 }
             }
@@ -185,6 +327,22 @@ struct StickerEditorSheet: View {
             }
         }
         .interactiveDismissDisabled(isSaving)
+    }
+
+    private func requestArtwork(_ instruction: String) async {
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+        do {
+            let saved = try await context.store.saveEditedDocument(
+                stickerID: context.stickerID, parentRevisionID: context.revisionID, document: document.validated()
+            )
+            try await context.store.sendMessage(
+                stickerID: context.stickerID, content: instruction, references: [], mask: nil,
+                targetLayerID: nil, intent: .animate, baseRevisionID: saved.revisionId
+            )
+            onFinished(true)
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func save() async {

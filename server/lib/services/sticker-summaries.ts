@@ -204,6 +204,7 @@ export function selectStickerSummaries(db: Database) {
   return db.select({
     sticker: stickerSummaryColumns,
     systemAsset: systemAssetSummaryColumns,
+    playbackRevisionId: sql<string | null>`CASE WHEN ${stickerRevisions.playbackJson} IS NOT NULL THEN ${stickerRevisions.id} ELSE NULL END`,
     previewAsset: previewAssetSummaryColumns,
     attachmentMedium: attachmentMediumSummaryColumns,
     attachmentSmall: attachmentSmallSummaryColumns,
@@ -229,6 +230,7 @@ export type AssetSummary = Pick<typeof assets.$inferSelect,
   | "frameCount" | "durationSeconds" | "fps" | "sha256" | "hasAlpha" | "createdAt">;
 
 export type StickerSummaryRow = {
+  playbackRevisionId?: string | null;
   sticker: Pick<typeof stickers.$inferSelect,
     "id" | "title" | "kind" | "status" | "activeRevisionId" | "messengerEmoji" | "createdAt" | "updatedAt">;
   systemAsset: Pick<typeof assets.$inferSelect, "id" | "mimeType" | "byteSize" | "sha256"> | null;
@@ -268,6 +270,7 @@ function serializeAttachment(asset: AssetSummary | null) {
 export function serializeStickerSummary({
   sticker,
   systemAsset,
+  playbackRevisionId,
   previewAsset,
   attachmentMedium,
   attachmentSmall,
@@ -281,6 +284,7 @@ export function serializeStickerSummary({
     kind: sticker.kind,
     status: sticker.status,
     activeRevisionId: sticker.activeRevisionId,
+    playbackRevisionId: playbackRevisionId ?? null,
     createdAt: sticker.createdAt.toISOString(),
     updatedAt: sticker.updatedAt.toISOString(),
     previewAsset: previewAsset ? {

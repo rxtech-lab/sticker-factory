@@ -11,6 +11,8 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     private var packDetails = [PreviewFixtures.packDetail.id: PreviewFixtures.packDetail]
     /// Readable so a test can assert the app enrolled this device for push.
     private(set) var registeredDeviceTokens: [String] = []
+    /// Survives across calls so a UI test can request deletion, see the pending state, and cancel.
+    private var accountDeletion: AccountDeletionState = .none
     /// Readable so a test can assert which renditions an export actually produced — a publish that
     /// was never going to share a video does not encode one.
     private(set) var uploadedKinds: [AssetKind] = []
@@ -32,7 +34,20 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         self.failCreationAsUpload = failCreationAsUpload
         self.failChatSendAsInsufficientCredits = failChatSendAsInsufficientCredits
         self.failLibraryListing = failLibraryListing
-        if ProcessInfo.processInfo.arguments.contains("--ui-plan-versions") {
+        if ProcessInfo.processInfo.arguments.contains("--ui-working-progress") {
+            let source = PreviewFixtures.messages[0]
+            messages = [source]
+            for (index, tool) in [("working-plan", "view_plan_image"), ("working-sticker", "view_sticker")].enumerated() {
+                messages.append(.init(id: tool.0, role: .system, kind: .status, content: tool.1,
+                    imagePlacement: .replace, sequence: source.sequence + index + 1,
+                    jobId: source.jobId, status: .complete, createdAt: .now, attachments: []))
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--ui-configurable-sticker") {
+            for i in detail.revisions.indices { detail.revisions[i].document = PreviewFixtures.configurableDocument }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--ui-plan-versions")
+            || ProcessInfo.processInfo.arguments.contains("--ui-sprite-plan") {
             // Only the latest card is loaded; the older version comes from the history endpoint.
             var message = PreviewFixtures.messages[0]
             message.id = "message-plan-current"
@@ -40,6 +55,19 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             message.kind = .plan
             message.jobId = nil
             message.plan = PreviewFixtures.planVersions[1]
+            if ProcessInfo.processInfo.arguments.contains("--ui-sprite-plan") {
+                message.plan?.plan.layers[0].source = .sprite(
+                    prompt: "A friendly character",
+                    clips: [.init(id: "idle", label: "Idle", prompt: "Standing still", frames: [.init(duration: 1)])],
+                    expressions: [.init(id: "happy", label: "Happy", prompt: "Smiling")]
+                )
+                message.plan?.plan.configuration = .init(controls: [
+                    .init(id: "pose", label: "Pose", type: .choice, defaultValue: .string("idle"),
+                          options: [.init(id: "idle", label: "Idle")])
+                ], variants: [
+                    .init(id: "idle", selections: ["pose": "idle"], layers: [.init(layerId: "hero", clip: "idle")])
+                ])
+            }
             messages = [message]
             detail.revisions = []
         }
@@ -120,6 +148,24 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         return detail
     }
 
+    /// The borrowed fixture is the only controllable one. Its bundle carries no assets because the
+    /// configurable document is shapes, text, and inline SVG — nothing this mock would have to
+    /// serve bytes for — which is exactly what the preview's controls need to move.
+    func stickerPlayback(stickerID: String, revisionID: String?) async throws -> StickerPlaybackBundle {
+        guard stickerID == PreviewFixtures.borrowedSticker.id,
+              let playbackRevisionID = PreviewFixtures.borrowedSticker.playbackRevisionId,
+              revisionID == nil || revisionID == playbackRevisionID else {
+            throw StickerAPIError.http(404)
+        }
+        return .init(
+            stickerId: stickerID,
+            revisionId: playbackRevisionID,
+            version: 1,
+            document: PreviewFixtures.configurableDocument,
+            assets: []
+        )
+    }
+
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail {
         let updatedAt = Date()
         if let index = stickers.firstIndex(where: { $0.id == id }) {
@@ -177,7 +223,16 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         record.supersedesId = planID
         record.sourceVersionId = nil
         record.revision = 1
-        record.generationCount = record.plan.layers.filter(\.source.isGenerated).count
+        let variantArtwork = record.plan.configuration?.variants.flatMap(\.layers).filter {
+            $0.source?.kind == .generate || $0.source?.kind == .frames
+        }.count ?? 0
+        // A sprite buys a sheet per pose plus one of expressions, on top of the still every drawn
+        // layer costs — the same sum `planGenerationCount` computes on the server.
+        let spriteSheets = record.plan.layers.reduce(0) { total, layer in
+            guard let sprite = layer.source.sprite else { return total }
+            return total + sprite.clips.count + 1
+        }
+        record.generationCount = record.plan.layers.filter(\.source.isGenerated).count + variantArtwork + spriteSheets
         messages[index].plan = record
         return .init(messageId: messages[index].id, plan: record)
     }
@@ -185,6 +240,11 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     /// The server's `applyPlanEdit`, in miniature: keep what the edit did not mention.
     private static func applying(_ edit: PlanEdit, to plan: Plan) -> Plan {
         var next = plan
+        if edit.clearConfiguration == true {
+            next.configuration = nil
+        } else if let configuration = edit.configuration {
+            next.configuration = configuration
+        }
         if let title = edit.title { next.title = title }
         if let summary = edit.summary { next.summary = summary }
         if let timing = edit.timing {
@@ -369,6 +429,29 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         registeredDeviceTokens.removeAll { $0 == token }
     }
 
+    /// Scheduling and cancelling move the same in-memory state a real account would, so a UI test
+    /// can walk the whole round trip — request, see the pending row, keep the account.
+    func accountDeletionState() async throws -> AccountDeletionState {
+        accountDeletion
+    }
+
+    func requestAccountDeletion() async throws -> AccountDeletionState {
+        if !accountDeletion.pendingDeletion {
+            let now = Date()
+            accountDeletion = AccountDeletionState(
+                pendingDeletion: true,
+                deletionScheduledAt: now.addingTimeInterval(7 * 24 * 60 * 60),
+                deletionRequestedAt: now
+            )
+        }
+        return accountDeletion
+    }
+
+    func cancelAccountDeletion() async throws -> AccountDeletionState {
+        accountDeletion = .none
+        return accountDeletion
+    }
+
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse {
         if let index = detail.revisions.firstIndex(where: { $0.id == revisionID }) {
             switch action {
@@ -541,7 +624,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     private static var libraryListingError: APIErrorEnvelope {
         APIErrorEnvelope(error: .init(
             code: "IOS_APP_UPDATE_REQUIRED",
-            message: "Update Winky Sticker House to version 1.2 or later to view your stickers.",
+            message: "Update Winky Sticker Factory to version 1.2 or later to view your stickers.",
             requestId: "ui-test-app-version",
             details: nil
         ))
@@ -676,6 +759,19 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
+                if ProcessInfo.processInfo.arguments.contains("--ui-working-progress") {
+                    let updates: [GenerationEventData] = [
+                        .init(message: "Finishing up", stage: "finalizing"),
+                        .init(toolCallId: "working-plan", toolName: "view_plan_image", toolStatus: .complete),
+                        .init(toolCallId: "working-sticker", toolName: "view_sticker", toolStatus: .complete)
+                    ]
+                    for (index, data) in updates.enumerated() where Int64(index + 1) > (lastEventID ?? 0) {
+                        continuation.yield(.init(id: Int64(index + 1), jobId: jobID, type: .progress, createdAt: .now, data: data))
+                    }
+                    do { try await Task.sleep(for: .seconds(60)) } catch {}
+                    continuation.finish()
+                    return
+                }
                 let events: [(GenerationEventType, Double, String)] = [
                     (.queued, 0.05, "Queued securely"),
                     (.started, 0.2, "Generating one candidate"),

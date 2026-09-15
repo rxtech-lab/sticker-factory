@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/account-deletion",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

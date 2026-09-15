@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    " · %lld IMAGES" : {
+
+    },
     " · %lld VIDEOS" : {
       "localizations" : {
         "zh-CN" : {
@@ -146,6 +149,7 @@
       }
     },
     "%@ is responding" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -225,6 +229,9 @@
         }
       }
     },
+    "%@ tokens" : {
+
+    },
     "%@. Detailed artwork can still be exported one size down, or as a still frame, to stay under Apple's 500 KB limit — the export always goes through." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -301,6 +308,22 @@
         }
       }
     },
+    "%lld clips" : {
+
+    },
+    "%lld combinations" : {
+
+    },
+    "%lld combinations, %lld for %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld combinations, %2$lld for %3$@"
+          }
+        }
+      }
+    },
     "%lld credits. Tap to top up." : {
       "localizations" : {
         "zh-CN" : {
@@ -321,6 +344,9 @@
 
     },
     "%lld generations remaining" : {
+
+    },
+    "%lld images" : {
 
     },
     "%lld LAYERS" : {
@@ -370,6 +396,9 @@
           }
         }
       }
+    },
+    "%lld steps done" : {
+
     },
     "%lld stickers" : {
 
@@ -463,6 +492,12 @@
         }
       }
     },
+    "1 clip" : {
+
+    },
+    "1 image" : {
+
+    },
     "1 install" : {
       "localizations" : {
         "zh-CN" : {
@@ -494,6 +529,9 @@
           }
         }
       }
+    },
+    "1 step done" : {
+
     },
     "1 sticker" : {
       "localizations" : {
@@ -976,6 +1014,9 @@
         }
       }
     },
+    "Add control" : {
+
+    },
     "Add layer" : {
 
     },
@@ -998,6 +1039,9 @@
         }
       }
     },
+    "Add option" : {
+
+    },
     "Add photos" : {
       "localizations" : {
         "zh-CN" : {
@@ -1013,6 +1057,9 @@
           }
         }
       }
+    },
+    "Add this pack to your library to pose this sticker." : {
+
     },
     "Add to %@" : {
       "localizations" : {
@@ -1142,6 +1189,9 @@
         }
       }
     },
+    "Adjust" : {
+
+    },
     "Adjusting animation" : {
       "localizations" : {
         "zh-CN" : {
@@ -1206,6 +1256,9 @@
         }
       }
     },
+    "Allow showing or hiding this layer" : {
+
+    },
     "An MP4 with a solid background, for video-only apps." : {
       "localizations" : {
         "zh-CN" : {
@@ -1221,6 +1274,9 @@
           }
         }
       }
+    },
+    "Animate" : {
+
     },
     "Animated" : {
       "localizations" : {
@@ -1333,6 +1389,15 @@
           }
         }
       }
+    },
+    "Apply" : {
+
+    },
+    "Artwork" : {
+
+    },
+    "Assembling the layers" : {
+
     },
     "assistant: %@" : {
       "localizations" : {
@@ -1522,6 +1587,9 @@
           }
         }
       }
+    },
+    "Build configurable sticker" : {
+
     },
     "Build number" : {
       "localizations" : {
@@ -1785,6 +1853,16 @@
     "Change the plan yourself" : {
 
     },
+    "Character · %lld poses · %lld moods" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Character · %1$lld poses · %2$lld moods"
+          }
+        }
+      }
+    },
     "Check the layers, layout, and image count. Build only when the plan matches what you want." : {
       "localizations" : {
         "zh-CN" : {
@@ -1816,6 +1894,9 @@
           }
         }
       }
+    },
+    "Checking the result" : {
+
     },
     "Checking your allowance…" : {
 
@@ -1919,6 +2000,9 @@
         }
       }
     },
+    "Choose what can change in the preview and before sending." : {
+
+    },
     "Clip length %llds" : {
 
     },
@@ -2018,6 +2102,12 @@
         }
       }
     },
+    "Composing the artwork" : {
+
+    },
+    "Configurable layers" : {
+
+    },
     "Confirm before generation" : {
       "localizations" : {
         "zh-CN" : {
@@ -2116,6 +2206,18 @@
           }
         }
       }
+    },
+    "Control" : {
+
+    },
+    "Control name" : {
+
+    },
+    "Controllable" : {
+
+    },
+    "Controls" : {
+
     },
     "Copy" : {
       "localizations" : {
@@ -2492,6 +2594,12 @@
         }
       }
     },
+    "Default" : {
+
+    },
+    "Default speed" : {
+
+    },
     "Delay %@s" : {
 
     },
@@ -2523,6 +2631,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刪除“%@”"
+          }
+        }
+      }
+    },
+    "Delete Account" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除账户"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除帳戶"
+          }
+        }
+      }
+    },
+    "Delete My Account" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除我的账户"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除我的帳戶"
           }
         }
       }
@@ -2587,6 +2727,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刪除此貼圖專案？"
+          }
+        }
+      }
+    },
+    "Delete your %@ account?" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要删除你的 %@ 账户吗？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要刪除你的 %@ 帳戶嗎？"
           }
         }
       }
@@ -2657,6 +2813,9 @@
           }
         }
       }
+    },
+    "Describe this expression or pose" : {
+
     },
     "Describe your sticker" : {
       "localizations" : {
@@ -2811,6 +2970,9 @@
           }
         }
       }
+    },
+    "Drawing a part" : {
+
     },
     "Drawing artwork" : {
       "localizations" : {
@@ -3208,6 +3370,22 @@
         }
       }
     },
+    "Everything will be permanently deleted on %@." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有内容将于 %@ 永久删除。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有內容將於 %@ 永久刪除。"
+          }
+        }
+      }
+    },
     "Exclude" : {
       "localizations" : {
         "zh-CN" : {
@@ -3582,6 +3760,9 @@
         }
       }
     },
+    "Finishing up" : {
+
+    },
     "Fitting it for Messages" : {
       "localizations" : {
         "zh-CN" : {
@@ -3677,6 +3858,15 @@
         }
       }
     },
+    "Full Screen" : {
+
+    },
+    "Gathering references" : {
+
+    },
+    "General" : {
+
+    },
     "Generate %lld images" : {
       "localizations" : {
         "zh-CN" : {
@@ -3708,6 +3898,12 @@
           }
         }
       }
+    },
+    "Generate animated pose" : {
+
+    },
+    "Generate expression" : {
+
     },
     "Generate one candidate" : {
       "localizations" : {
@@ -3888,6 +4084,9 @@
           }
         }
       }
+    },
+    "Has controls" : {
+
     },
     "Help" : {
       "localizations" : {
@@ -4075,6 +4274,22 @@
         }
       }
     },
+    "Keep My Account" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留我的账户"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留我的帳戶"
+          }
+        }
+      }
+    },
     "Keep pack" : {
       "localizations" : {
         "zh-CN" : {
@@ -4141,6 +4356,15 @@
           }
         }
       }
+    },
+    "Last finished: %@" : {
+
+    },
+    "layer" : {
+
+    },
+    "Layer" : {
+
     },
     "Layer name" : {
 
@@ -4330,6 +4554,9 @@
         }
       }
     },
+    "Loading artwork…" : {
+
+    },
     "Loading balances…" : {
       "localizations" : {
         "zh-CN" : {
@@ -4345,6 +4572,9 @@
           }
         }
       }
+    },
+    "Loading controls…" : {
+
     },
     "Loading conversation" : {
       "localizations" : {
@@ -4820,6 +5050,9 @@
         }
       }
     },
+    "Mood" : {
+
+    },
     "More ideas? Come back after your allowance resets." : {
 
     },
@@ -4841,6 +5074,9 @@
           }
         }
       }
+    },
+    "Movement" : {
+
     },
     "MP4 background" : {
       "localizations" : {
@@ -5069,6 +5305,9 @@
           }
         }
       }
+    },
+    "No layers" : {
+
     },
     "No matches" : {
       "localizations" : {
@@ -5726,6 +5965,9 @@
         }
       }
     },
+    "Option name" : {
+
+    },
     "Optional · up to 8" : {
       "localizations" : {
         "zh-CN" : {
@@ -5741,6 +5983,9 @@
           }
         }
       }
+    },
+    "Original artwork" : {
+
     },
     "Out of credits" : {
       "localizations" : {
@@ -5924,6 +6169,9 @@
     "Plan allowance: %lld generations" : {
 
     },
+    "Plan new artwork…" : {
+
+    },
     "Plan version" : {
       "localizations" : {
         "zh-CN" : {
@@ -5971,6 +6219,12 @@
           }
         }
       }
+    },
+    "Planning the edit" : {
+
+    },
+    "Planning the motion" : {
+
     },
     "Please open %@ and sign in again." : {
       "localizations" : {
@@ -6077,6 +6331,9 @@
         }
       }
     },
+    "Pose" : {
+
+    },
     "Prepare for WhatsApp and Telegram" : {
 
     },
@@ -6165,6 +6422,12 @@
 
     },
     "Preparing stickers" : {
+
+    },
+    "Preparing…" : {
+
+    },
+    "Press and hold to drag it onto a message, or send it." : {
 
     },
     "Preview only" : {
@@ -6544,6 +6807,9 @@
         }
       }
     },
+    "Reading your request" : {
+
+    },
     "Ready for %@" : {
 
     },
@@ -6764,6 +7030,9 @@
         }
       }
     },
+    "Remove control" : {
+
+    },
     "Remove from library" : {
       "localizations" : {
         "zh-CN" : {
@@ -6882,6 +7151,12 @@
         }
       }
     },
+    "Rendering the sticker" : {
+
+    },
+    "Reset" : {
+
+    },
     "Resets %@" : {
 
     },
@@ -6948,6 +7223,9 @@
           }
         }
       }
+    },
+    "Retry loading" : {
+
     },
     "Retrying…" : {
       "localizations" : {
@@ -7060,6 +7338,9 @@
           }
         }
       }
+    },
+    "Reviewing the design" : {
+
     },
     "Reviewing the plan image" : {
       "localizations" : {
@@ -7559,6 +7840,9 @@
         }
       }
     },
+    "Sending…" : {
+
+    },
     "Separate %lld parts" : {
       "localizations" : {
         "zh-CN" : {
@@ -7631,6 +7915,9 @@
           }
         }
       }
+    },
+    "Shared sticker settings are unavailable." : {
+
     },
     "Sharing packs on the marketplace is part of a paid plan." : {
       "localizations" : {
@@ -7743,6 +8030,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "登出"
+          }
+        }
+      }
+    },
+    "Sign out and sign in again to confirm this change." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请退出登录后重新登录以确认此更改。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請登出後重新登入以確認此變更。"
           }
         }
       }
@@ -7952,6 +8255,9 @@
         }
       }
     },
+    "Speed" : {
+
+    },
     "Spin" : {
 
     },
@@ -8121,6 +8427,9 @@
         }
       }
     },
+    "Sticker Controls" : {
+
+    },
     "Sticker maker" : {
       "localizations" : {
         "zh-CN" : {
@@ -8284,6 +8593,9 @@
         }
       }
     },
+    "Still" : {
+
+    },
     "Still being drafted." : {
       "localizations" : {
         "zh-CN" : {
@@ -8299,6 +8611,9 @@
           }
         }
       }
+    },
+    "Still frame" : {
+
     },
     "Stop" : {
       "localizations" : {
@@ -8499,7 +8814,13 @@
         }
       }
     },
+    "Sway" : {
+
+    },
     "Swipe a sticker to remove it." : {
+
+    },
+    "Switchable moods and poses" : {
 
     },
     "Tap a photo you attached to cut its subject away from the background, so only the part you want reaches the sticker." : {
@@ -9240,6 +9561,22 @@
         }
       }
     },
+    "This account is scheduled for deletion" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此账户已计划删除"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此帳戶已排定刪除"
+          }
+        }
+      }
+    },
     "This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the sticker is a still frame. The animated GIF and MP4 exports are unaffected. Shortening the animation, or switching a ping-pong loop to a plain loop, brings the motion back." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9356,6 +9693,16 @@
         }
       }
     },
+    "This prepares %lld images for %lld combinations using the approved reference. You can choose an expression and motion locally before sending." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This prepares %1$lld images for %2$lld combinations using the approved reference. You can choose an expression and motion locally before sending."
+          }
+        }
+      }
+    },
     "This sticker could not be drawn at the messenger's size." : {
       "localizations" : {
         "zh-CN" : {
@@ -9454,6 +9801,12 @@
           }
         }
       }
+    },
+    "This sticker's controls are invalid." : {
+
+    },
+    "This sticker's controls are unavailable." : {
+
     },
     "This sticker's prepared file could not be read." : {
 
@@ -10142,6 +10495,9 @@
         }
       }
     },
+    "Verifying the files" : {
+
+    },
     "Version" : {
       "localizations" : {
         "zh-CN" : {
@@ -10271,6 +10627,9 @@
         }
       }
     },
+    "Visible by default" : {
+
+    },
     "Wait for the current AI edit to finish before sending another." : {
       "localizations" : {
         "zh-CN" : {
@@ -10286,6 +10645,9 @@
           }
         }
       }
+    },
+    "Waiting for the first update…" : {
+
     },
     "Waiting…" : {
       "localizations" : {
@@ -10304,6 +10666,9 @@
       }
     },
     "We couldn’t verify this installation with the App Store. Check your connection and try again." : {
+
+    },
+    "We’ll draw each character once, then a sheet of poses and a strip of faces for them. You and anyone you send it to pick the mood and pose on the sticker itself. Costs a few more images per character than a plain animation." : {
 
     },
     "WebP" : {
@@ -10612,6 +10977,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你接受的修訂版本已就緒"
+          }
+        }
+      }
+    },
+    "Your account is deleted 7 days after you ask, and you can cancel any time before then. Your stickers and their media are deleted with it. Packs you already published stay in the marketplace, credited to “deleted-account”." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "账户将在你提出请求 7 天后删除，在此之前你可以随时取消。你的贴纸及其媒体文件会一并删除。你已发布的贴纸包会保留在市场中，署名为“deleted-account”。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帳戶將在你提出請求 7 天後刪除，在此之前你可以隨時取消。你的貼紙及其媒體檔案會一併刪除。你已發佈的貼紙包會保留在市場中，署名為「deleted-account」。"
+          }
+        }
+      }
+    },
+    "Your account will be permanently deleted in 7 days, along with your stickers and their media. You can cancel any time before then. Packs you already published stay in the marketplace, credited to “deleted-account”." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的账户将在 7 天后被永久删除，你的贴纸及其媒体文件也会一并删除。在此之前你可以随时取消。你已发布的贴纸包会保留在市场中，署名为“deleted-account”。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的帳戶將在 7 天後被永久刪除，你的貼紙及其媒體檔案也會一併刪除。在此之前你可以隨時取消。你已發佈的貼紙包會保留在市場中，署名為「deleted-account」。"
           }
         }
       }

@@ -69,7 +69,7 @@ describe("PlanV1Schema", () => {
   });
 
   it("rejects more layers than the document layer ceiling", () => {
-    const layers = Array.from({ length: 9 }, (_, index) => ({
+    const layers = Array.from({ length: 13 }, (_, index) => ({
       ...plan().layers[0],
       layerId: `part_${index}`,
     }));

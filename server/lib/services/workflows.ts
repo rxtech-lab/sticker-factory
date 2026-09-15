@@ -1,3 +1,4 @@
+import { pushLiveActivityUpdate } from "@/lib/notifications/live-activities";
 import { and, eq, inArray } from "drizzle-orm";
 import { getRun, start } from "workflow/api";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
@@ -47,6 +48,7 @@ async function recordDispatchFailure(db: Database, jobId: string): Promise<void>
     return job;
   });
   // Nothing ran, so nothing is owed.
+  if (failed) await pushLiveActivityUpdate(db, failed.ownerId, jobId);
   if (failed) await refundJobCredits(db, failed, "workflow_dispatch_failed");
 }
 
@@ -159,6 +161,7 @@ export async function cancelGenerationWorkflow(db: Database, ownerId: string, jo
   // Stopping a turn must not cost anything — a user who changes their mind
   // halfway gets their credits back, which is also what makes Stop safe to
   // press.
+  if (cancelled) await pushLiveActivityUpdate(db, ownerId, jobId);
   if (cancelled) await refundJobCredits(db, job, "user_cancelled");
 
   if (cancelled && job.workflowRunId && !job.workflowRunId.startsWith("inline_")) {

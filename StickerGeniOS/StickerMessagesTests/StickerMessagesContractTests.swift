@@ -340,7 +340,7 @@ struct StickerMessagesContractTests {
             _ = try await client.fetchSections(accessToken: "access")
             #expect(Bool(false), "The rejected listing must throw")
         } catch let error as StickerLibraryError {
-            #expect(error.localizedDescription == "Update Winky Sticker House to version 1.2 or later to view your stickers.")
+            #expect(error.localizedDescription == "Update Winky Sticker Factory to version 1.2 or later to view your stickers.")
         } catch {
             #expect(Bool(false), "Unexpected error: \(error)")
         }

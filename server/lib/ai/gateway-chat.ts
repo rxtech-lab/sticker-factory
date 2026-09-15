@@ -5,7 +5,7 @@ import { createWebTools, isWebTool, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool, type LanguageModel } from "ai";
 import { z } from "zod";
-import { recordTextApiCost } from "@/lib/ai/cost";
+import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { resolveChatAction } from "./gateway-contracts";
 import type { AiChatAction, AiChatContext, AiTitleContext } from "./gateway-contracts";
 import { attachedImagesNote, priorArtNote, userTurn, viewablePlanVisuals, viewableReferences } from "./gateway-models";
@@ -22,8 +22,19 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
     motion: z.string().trim().min(1).max(500),
     durationSeconds: z.number().int().min(2).max(4).default(3),
   }).strict();
+  const retrySteps = input.retryableGeneration?.steps.filter((step) => step.status !== "complete") ?? [];
+  const retryInput = z.object({
+    stepId: z.enum(retrySteps.length ? retrySteps.map((step) => step.id) : ["unavailable"]).optional(),
+  }).strict();
   const tools = {
     ...createWebTools(),
+    ...(input.retryableGeneration ? {
+      "retry-generation": tool({
+        description: "Resume the previous failed or stopped generation with its original request, approved plan, poses, motion and references. Use for retry, try again, continue, or a request to retry a failed generation step. Optionally select the failed/stopped stepId from the supplied steps. Completed build assets are reused and remaining dependent steps run. Do not reinterpret a retry as a new image or a new design.",
+        inputSchema: retryInput,
+        execute: async (value) => value,
+      }),
+    } : {}),
     ...(videoLayers.length > 0 ? {
       "generate-video": tool({
         description: [
@@ -168,6 +179,8 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
     }),
   };
   const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: chatModel ?? gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
@@ -176,6 +189,10 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
       // Every other rule here selects between mutations, which on its own reads as "the user always
       // wants a change". Questions are a large share of real turns, so the not-a-change case has to
       // come first and be stated as strongly as the rest.
+      "When a previous generation failed or was stopped and the user asks to retry or continue it,",
+      "choose retry-generation. It resumes the saved request and steps, including the approved plan's",
+      "poses and animation. Choose a named failed step when requested; omit stepId to resume the whole",
+      "generation. For questions about the failure use reply; for a genuinely new request use the other tools.",
       "First decide whether the user is asking for a change to the sticker at all.",
       "If they are not — a question about the sticker or about you, a comment, feedback, thanks,",
       "small talk, or anything you are unsure about — call reply. Questions such as 'who is this?',",
@@ -241,13 +258,16 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
       input.document
         ? `Current StickerDocument: ${JSON.stringify(input.document)}`
         : "There is no current sticker document.",
+      input.retryableGeneration
+        ? `Previous interrupted generation and step outcomes:\n${JSON.stringify(input.retryableGeneration)}`
+        : "There is no failed or stopped generation to retry.",
       `Recoverable chat history:\n${input.history}`,
       `Latest user message:\n${input.instruction}`,
     ].filter(Boolean).join("\n\n"), [...priorArt.map((visual) => visual.image), ...viewable]),
     tools,
     toolChoice: "required",
     stopWhen: [
-      hasToolCall("reply", "generate-sticker", "generate-image", "generate-video", "edit-sticker", "animate-sticker", "plan-sticker", "show-sticker"),
+      hasToolCall("retry-generation", "reply", "generate-sticker", "generate-image", "generate-video", "edit-sticker", "animate-sticker", "plan-sticker", "show-sticker"),
       stepCountIs(8),
     ],
     maxRetries: 2,
@@ -260,6 +280,10 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
   const call = actionCalls[0];
   if (!call) throw new Error("Sticker chat agent returned no tool call");
   switch (call.toolName) {
+    case "retry-generation": {
+      if (!input.retryableGeneration) throw new Error("There is no interrupted generation to retry");
+      return { type: "retry_generation", ...retryInput.parse(call.input) };
+    }
     case "generate-video": {
       if (videoLayers.length === 0) throw new Error("Video generation is unavailable for this sticker");
       const value = videoInput.parse(call.input);
@@ -343,6 +367,8 @@ export async function showSticker(
     }),
   };
   const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system:
       WEB_RESEARCH_PROMPT + " A sticker revision is ready. Call show-sticker exactly once with a concise caption that says what changed and invites further natural-language refinement.",
@@ -365,6 +391,8 @@ export async function showSticker(
 
 export async function reply(instruction: string, history: string): Promise<string> {
   const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system:
       WEB_RESEARCH_PROMPT + " You are Sticker Factory's concise creative assistant. Help refine the user's private sticker project. Never claim an edit was made unless an image or animation revision was actually created.",
@@ -380,6 +408,8 @@ export async function reply(instruction: string, history: string): Promise<strin
 
 export async function summarizeStickerTitle(input: AiTitleContext): Promise<string> {
   const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     // A naming call sits between a finished turn and the client being told the turn finished, so
     // it runs on the cheapest model the deployment has rather than the orchestrator's.
     model: gateway(
