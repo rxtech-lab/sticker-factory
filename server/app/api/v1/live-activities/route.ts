@@ -7,6 +7,13 @@ import {
   liveActivitySnapshot, pushLiveActivityUpdate,
 } from "@/lib/notifications/live-activities";
 
+export async function GET(request: Request) {
+  return withApiAuth(request, async (principal, db) => {
+    const jobId = z.uuid().parse(new URL(request.url).searchParams.get("jobId"));
+    return noStoreJson(await liveActivitySnapshot(db, principal.sub, jobId));
+  });
+}
+
 export async function POST(request: Request) {
   return withApiAuth(request, async (principal, db) => {
     const body = await readJson(request, RegisterLiveActivitySchema.parse);

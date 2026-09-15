@@ -74,6 +74,31 @@ function readableTool(value: unknown): string | undefined {
   return ordinal && label ? `${label} (${ordinal})` : label;
 }
 
+// Mirrors StickerToolLabel.stages, for the same reason as the tool labels above: a stage is what
+// the Lock Screen shows during the stretches of a turn that open no tool row at all.
+const stageLabels: Record<string, string> = {
+  "reading_request": "Reading your request",
+  "preparing_context": "Gathering references",
+  "planning_edit": "Planning the edit",
+  "planning_animation": "Planning the motion",
+  "generating_image": "Drawing artwork",
+  "reviewing": "Reviewing the design",
+  "composing": "Composing the artwork",
+  "composing_part": "Drawing a part",
+  "composing_sprite": "Drawing the frames",
+  "composing_video": "Filming a clip",
+  "assembling": "Assembling the layers",
+  "validating_candidate": "Checking the result",
+  "rendering_exports": "Rendering the sticker",
+  "verifying_exports": "Verifying the files",
+  "finalizing": "Finishing up"
+};
+
+function readableStage(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return stageLabels[value] ?? readableStatus(value);
+}
+
 function readableStatus(value: unknown): string | undefined {
   if (typeof value !== "string" || !value.trim()) return undefined;
   const words = value.trim().replaceAll("_", " ").replaceAll("-", " ");
@@ -91,18 +116,56 @@ export async function liveActivitySnapshot(db: Database, ownerId: string, jobId:
     sql`(${generationEvents.type} != 'progress' OR (
       ${generationEvents.dataJson}->>'message' IS NOT NULL OR
       ${generationEvents.dataJson}->>'stage' IS NOT NULL OR
+      ${generationEvents.dataJson}->>'note' IS NOT NULL OR
+      ${generationEvents.dataJson}->>'completedUnits' IS NOT NULL OR
+      ${generationEvents.dataJson}->>'completedParts' IS NOT NULL OR
+      ${generationEvents.dataJson}->>'clearProgress' = 'true' OR
       ${generationEvents.dataJson}->>'toolStatus' = 'streaming'
     ))`,
   )).orderBy(desc(generationEvents.id)).limit(1).then(firstRow);
   const terminal = ["succeeded", "failed", "cancelled"].includes(job.state);
   const phase = job.state === "succeeded" ? "completed" : job.state === "running" ? "running" : job.state;
-  const data = event?.dataJson ?? {};
+  // A count-only update still advances the snapshot version. Keep the most recent text
+  // independently so it cannot revert to a generic status when the counter moves.
+  const textEvent = !terminal && event ? await db.select({ data: generationEvents.dataJson })
+    .from(generationEvents).where(and(
+      eq(generationEvents.jobId, jobId),
+      sql`${generationEvents.id} <= ${event.id}`,
+      inArray(generationEvents.type, ["queued", "started", "progress", "waiting"]),
+      sql`(${generationEvents.dataJson}->>'message' IS NOT NULL OR
+        ${generationEvents.dataJson}->>'stage' IS NOT NULL OR
+        ${generationEvents.dataJson}->>'note' IS NOT NULL OR
+        ${generationEvents.dataJson}->>'toolStatus' = 'streaming')`,
+    )).orderBy(desc(generationEvents.id)).limit(1).then(firstRow) : undefined;
+  const data = textEvent?.data ?? {};
+  // Tool/status events preserve the current stage count until an explicit clear or new count.
+  // Bound the lookup to the status snapshot so its event ID also versions these counters.
+  const progressEvent = !terminal && event
+    ? await db.select({ data: generationEvents.dataJson }).from(generationEvents).where(and(
+      eq(generationEvents.jobId, jobId),
+      eq(generationEvents.type, "progress"),
+      sql`${generationEvents.id} <= ${event.id}`,
+      sql`(${generationEvents.dataJson}->>'completedUnits' IS NOT NULL
+        OR ${generationEvents.dataJson}->>'completedParts' IS NOT NULL
+        OR ${generationEvents.dataJson}->>'clearProgress' = 'true')`,
+    )).orderBy(desc(generationEvents.id)).limit(1).then(firstRow)
+    : undefined;
+  const progressData = progressEvent?.data;
+  const progressCounts = z.object({
+    completedUnits: z.number().int().nonnegative(),
+    totalUnits: z.number().int().positive(),
+    progressLabel: z.string().min(1).max(60),
+  }).refine((counts) => counts.completedUnits <= counts.totalUnits).safeParse(progressData?.clearProgress === true ? undefined : {
+    completedUnits: progressData?.completedUnits ?? progressData?.completedParts,
+    totalUnits: progressData?.totalUnits ?? progressData?.totalParts,
+    progressLabel: progressData?.progressLabel ?? "Artwork parts",
+  });
   const message = terminal
     ? (job.state === "succeeded" ? "Sticker ready" : job.state === "failed" ? "Generation failed. Open to retry." : "Generation stopped")
-    : readableStatus(data.message) ?? readableStatus(data.stage) ?? readableTool(data.toolName)
+    : readableStatus(data.note) ?? readableStatus(data.message) ?? readableStage(data.stage) ?? readableTool(data.toolName)
       ?? (job.state === "queued" ? "Waiting to start…" : job.state === "waiting" ? "Waiting for your input" : "Creating your sticker…");
   return {
-    state: { message, phase, eventID: event?.id ?? 0 },
+    state: { message, phase, eventID: event?.id ?? 0, ...(progressCounts.success ? progressCounts.data : {}) },
     terminal,
   };
 }

@@ -5,7 +5,7 @@ import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
-import { recordTextApiCost } from "@/lib/ai/cost";
+import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { viewPlanImageTool } from "@/lib/ai/view-plan-image-tool";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { configurationReviewSelections } from "@/lib/contracts/configuration";
@@ -77,6 +77,8 @@ export async function refineStickerLayout(
   };
 
   const generation = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
@@ -216,6 +218,8 @@ export async function planSticker(
   };
 
   const generation = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,

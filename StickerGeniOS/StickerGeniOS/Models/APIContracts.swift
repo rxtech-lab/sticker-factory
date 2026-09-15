@@ -958,6 +958,18 @@ nonisolated struct GenerationEventData: Codable, Hashable, Sendable {
     var message: String?
     var progress: Double?
     var stage: String?
+    var completedUnits: Int?
+    var totalUnits: Int?
+    var progressLabel: String?
+    var clearProgress: Bool?
+    /// One short, human line about what the turn is doing inside the current stage — see
+    /// `reportTurnNote` on the server. Written for the screen, not derived from a log payload.
+    var note: String?
+    /// What this one model call spent, as a delta the reader adds up — see `reportTurnWork` on the
+    /// server. A turn's totals are the sum of these, and the stream delivers each event once.
+    var outputTokens: Int?
+    var imagesDrawn: Int?
+    var clipsFilmed: Int?
     var messageId: String?
     var revisionId: String?
     var document: AnimatedDocument?
@@ -971,20 +983,34 @@ nonisolated struct GenerationEventData: Codable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case message, progress, stage, messageId, revisionId, document
+        case completedUnits, totalUnits, progressLabel, clearProgress
+        case note, outputTokens, imagesDrawn, clipsFilmed
         case toolCallId, toolName, toolStatus, toolDetails, cancelled, assistantMessage
     }
 }
 
 nonisolated extension GenerationEventData {
+    private enum LegacyProgressKeys: String, CodingKey { case completedParts, totalParts }
     /// Every field is optional *and* failure-tolerant: a payload shape this app version does not
     /// understand degrades that one field to `nil` instead of poisoning the whole event. Forward
     /// compatible metadata is ignored entirely.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyProgressKeys.self)
         self.init(
             message: (try? c.decodeIfPresent(String.self, forKey: .message)) ?? nil,
             progress: (try? c.decodeIfPresent(Double.self, forKey: .progress)) ?? nil,
             stage: (try? c.decodeIfPresent(String.self, forKey: .stage)) ?? nil,
+            completedUnits: (try? c.decodeIfPresent(Int.self, forKey: .completedUnits))
+                ?? (try? legacy.decodeIfPresent(Int.self, forKey: .completedParts)),
+            totalUnits: (try? c.decodeIfPresent(Int.self, forKey: .totalUnits))
+                ?? (try? legacy.decodeIfPresent(Int.self, forKey: .totalParts)),
+            progressLabel: (try? c.decodeIfPresent(String.self, forKey: .progressLabel)) ?? nil,
+            clearProgress: (try? c.decodeIfPresent(Bool.self, forKey: .clearProgress)) ?? nil,
+            note: (try? c.decodeIfPresent(String.self, forKey: .note)) ?? nil,
+            outputTokens: (try? c.decodeIfPresent(Int.self, forKey: .outputTokens)) ?? nil,
+            imagesDrawn: (try? c.decodeIfPresent(Int.self, forKey: .imagesDrawn)) ?? nil,
+            clipsFilmed: (try? c.decodeIfPresent(Int.self, forKey: .clipsFilmed)) ?? nil,
             messageId: (try? c.decodeIfPresent(String.self, forKey: .messageId)) ?? nil,
             revisionId: (try? c.decodeIfPresent(String.self, forKey: .revisionId)) ?? nil,
             document: (try? c.decodeIfPresent(AnimatedDocument.self, forKey: .document)) ?? nil,

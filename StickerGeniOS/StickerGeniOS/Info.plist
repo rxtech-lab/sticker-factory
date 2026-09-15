@@ -4,6 +4,8 @@
 <dict>
     <key>NSSupportsLiveActivities</key>
     <true/>
+    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
+    <true/>
     <key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
     <false/>
     <key>FirebaseInAppMessagingAutomaticDataCollectionEnabled</key>

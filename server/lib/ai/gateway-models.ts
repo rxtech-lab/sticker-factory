@@ -3,7 +3,7 @@
 
 import { gateway } from "@ai-sdk/gateway";
 import { generateImage, generateText, type ModelMessage } from "ai";
-import { recordImageApiCost } from "@/lib/ai/cost";
+import { recordImageApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { alternateChromaKey, chromaKeyBackground, preferredChromaKey, type ChromaKeyColor } from "@/lib/ai/chroma-key";
 import { ApiError } from "@/lib/http/errors";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
@@ -329,10 +329,10 @@ function sheetInstruction(sheet: NonNullable<AiImageInput["sheet"]>): string {
     `Cells after the ${sheet.count}th stay completely transparent.`,
     "No dividers, borders, numbers, labels, arrows, captions, or text anywhere.",
     sheet.tiles
-      ? "Each cell contains only the character's face plate: the oval of skin, fur, or surface the face sits on, with the eyes, brows, mouth, cheeks, nose, and any facial markings drawn on it, and its own outline — cut out on transparent, with no head outline, ears, hair, body, or background. The plate is the same size, at the same position, and facing the same way in every cell; only the expression changes."
+      ? "Each cell contains only an inner facial patch that will fill the body's face opening: eyes, brows, mouth, cheeks, nose, facial markings, and the skin or fur directly beneath them. No enclosing outline, sticker border, rim, shadow, head silhouette, ears, hair, outer head fur, neck, body, or background. Never draw a complete head or miniature portrait inside this patch. Match the surrounding head's colour and texture so the patch blends into it. Keep transparent padding outside the patch. The patch is the same size, at the same position, and facing the same way in every cell; only the expression changes. Preserve hard pixel edges and the original pixel grid for pixel art."
       : "Draw the same character at exactly the same scale and body position in every cell, so the frames register when flipped through.",
     sheet.facePlaceholder
-      ? "Do not draw the face. In every cell, where the face plate goes — the oval from brow to chin and cheek to cheek that the eyes, nose, and mouth sit on — draw a single flat, solid, pure magenta (#FF00FF) filled oval with no outline, features, highlights, shading, or gradient, the same size relative to the head in every cell. Use magenta nowhere else in the image."
+      ? "Keep the head silhouette, ears, hair, and outer head fur. Replace the entire inner face from brow to chin and cheek to cheek with a single flat, solid, pure magenta (#FF00FF) filled oval with no outline, features, highlights, shading, or gradient, the same size relative to the head in every cell. Remove all original eyes, brows, nose, and mouth; none may remain outside or beneath the opening. This is the opening for an inner facial patch, not for another complete head. Use magenta nowhere else in the image."
       : "",
   ].filter(Boolean).join(" ");
 }
@@ -393,6 +393,8 @@ async function generateThroughQuickImageModel(
   keyColor: ChromaKeyColor,
 ): Promise<Uint8Array> {
   const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_QUICK_IMAGE_MODEL ?? "google/gemini-3.1-flash-lite-image"),
     messages: [{
       role: "user",

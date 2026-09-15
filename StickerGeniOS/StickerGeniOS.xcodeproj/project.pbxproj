@@ -32,6 +32,7 @@
 		A00000000000000000000003 /* StickerMessages.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* StickerMessages.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		ABE2A8EBB4A2F9CE305487B3 /* StickerGenerationAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E67EC649BD5CD489756390C /* StickerGenerationAttributes.swift */; };
 		B00000000000000000000001 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000002 /* Kingfisher */; };
+		B47713E8475CA3990E4C3394 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3FB6529023D0F790FA2F9963 /* Assets.xcassets */; };
 		BEDA92EBF02EFB0893E0B42D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7FE3E61FCB0BE974B72CE94A /* Foundation.framework */; };
 		C119B001A001A001A001A001 /* ClipLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B001A001A001A001A002 /* ClipLibraryView.swift */; };
 		C11A00000000000000000001 /* RxAuthSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000019 /* RxAuthSwift */; };
@@ -145,6 +146,7 @@
 		10CFC4A0F2BED0360644588B /* StickerAppClip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StickerAppClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		213B6045E1ABC6942D35394F /* ClipAuthentication.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ClipAuthentication.swift; sourceTree = "<group>"; };
 		3E03547049FE2AC330CA3D60 /* QuickGenerationClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickGenerationClient.swift; sourceTree = "<group>"; };
+		3FB6529023D0F790FA2F9963 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4A193B35C7606F08AB609F18 /* StickerAppClip.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = StickerAppClip.entitlements; sourceTree = "<group>"; };
 		630BD9F3FF2B7870AD961E48 /* QuickHTTPTransport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickHTTPTransport.swift; sourceTree = "<group>"; };
 		6BF3DC6F804404647D42EF30 /* StickerAppClipApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StickerAppClipApp.swift; sourceTree = "<group>"; };
@@ -377,6 +379,7 @@
 			children = (
 				ACAB735450F28ED42A568EF9 /* StickerGenerationActivity.swift */,
 				C2B67698C56773B6146926C1 /* Info.plist */,
+				3FB6529023D0F790FA2F9963 /* Assets.xcassets */,
 			);
 			name = StickerGenerationActivity;
 			path = StickerGenerationActivity;
@@ -729,6 +732,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B47713E8475CA3990E4C3394 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

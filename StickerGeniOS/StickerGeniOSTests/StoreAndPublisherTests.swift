@@ -288,6 +288,58 @@ struct StoreAndPublisherTests {
         store.reset()
     }
 
+    /// The chat's waiting card is only as good as what the store keeps, and the store used to keep
+    /// none of this: `stage`, the label and the counts were decoded and then dropped, so a turn that
+    /// was audibly busy on the Lock Screen was three dots in the app.
+    @Test("A stage and its count reach the job the chat draws from")
+    func stageAndCountsAreKept() async throws {
+        let api = StagedProgressAPI(events: [
+            .init(stage: "preparing_context"),
+            .init(note: "Drawing the artwork from 2 references", outputTokens: 120),
+            .init(note: "Saved the artwork", outputTokens: 80, imagesDrawn: 1),
+            .init(stage: "composing", completedUnits: 2, totalUnits: 5, progressLabel: "Artwork parts")
+        ])
+        let store = StickerStore(api: api)
+
+        try await store.confirmPlan(stickerID: api.stickerID, planID: "staged-plan")
+        try await waitUntil { store.jobs[api.stickerID]?.completedUnits == 2 }
+
+        let job = store.jobs[api.stickerID]
+        #expect(job?.statusDetail == "Composing the artwork")
+        #expect(job?.progressLabel == "Artwork parts")
+        #expect(job?.progressCountText == "2/5")
+        #expect(job?.unitProgress == 0.4)
+        // A new stage retires the old note; the spend is a sum of every delta that arrived.
+        #expect(job?.note == nil)
+        #expect(job?.outputTokens == 200)
+        #expect(job?.imagesDrawn == 1)
+
+        store.reset()
+    }
+
+    /// Counts belong to the stage that reported them. A stage that clears them and does not count
+    /// must leave no bar behind, or the card shows 2/5 of work that is already finished.
+    @Test("A cleared count leaves no progress behind, and a message outranks its stage")
+    func clearedCountsAndMessagePrecedence() async throws {
+        let api = StagedProgressAPI(events: [
+            .init(stage: "composing", completedUnits: 2, totalUnits: 5, progressLabel: "Artwork parts"),
+            .init(message: "Finishing your sticker…", stage: "finalizing", clearProgress: true)
+        ])
+        let store = StickerStore(api: api)
+
+        try await store.confirmPlan(stickerID: api.stickerID, planID: "staged-plan")
+        try await waitUntil { store.jobs[api.stickerID]?.statusDetail == "Finishing your sticker…" }
+
+        let job = store.jobs[api.stickerID]
+        #expect(job?.completedUnits == nil)
+        #expect(job?.totalUnits == nil)
+        #expect(job?.progressLabel == nil)
+        #expect(job?.unitProgress == nil)
+        #expect(job?.progressCountText == nil)
+
+        store.reset()
+    }
+
     @Test("Library requests each sticker page separately as the user reaches it")
     func libraryPagination() async {
         let api = PaginatedLibraryAPI()

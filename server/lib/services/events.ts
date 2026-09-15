@@ -12,12 +12,18 @@ import { pushLiveActivityUpdate } from "@/lib/notifications/live-activities";
 
 export type GenerationEventType = typeof generationEvents.$inferInsert.type;
 
+/**
+ * @param options.pushLiveActivity Pass `false` for an event that changes nothing the Lock Screen
+ * shows. A Live Activity push is rate-limited by the system, so spending one on a counter only the
+ * open app draws costs the next real status change its delivery.
+ */
 export async function appendGenerationEvent(
   db: Database,
   jobId: string,
   ownerId: string,
   type: GenerationEventType,
   data: Record<string, unknown>,
+  options: { pushLiveActivity?: boolean } = {},
 ) {
   const [event] = await db.insert(generationEvents).values({
     jobId,
@@ -26,7 +32,7 @@ export async function appendGenerationEvent(
     dataJson: data,
     createdAt: new Date(),
   }).returning();
-  if (["progress", "waiting", "completed", "failed"].includes(type)) {
+  if (options.pushLiveActivity !== false && ["progress", "waiting", "completed", "failed"].includes(type)) {
     await pushLiveActivityUpdate(db, ownerId, jobId);
   }
   return event;

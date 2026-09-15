@@ -7,7 +7,7 @@ import { gateway } from "@ai-sdk/gateway";
 import { experimental_generateVideo as generateVideo, generateImage, generateText, hasToolCall, stepCountIs, tool } from "ai";
 import sharp from "sharp";
 import { z } from "zod";
-import { recordImageApiCost, recordTextApiCost, recordVideoApiCost } from "@/lib/ai/cost";
+import { recordImageApiCost, recordTextApiCost, recordVideoApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { ApiError } from "@/lib/http/errors";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
 import { downscaleForModelInput, inspectImage, normalizeTransparentPng } from "@/lib/storage/r2";
@@ -43,6 +43,8 @@ export async function selectImageReferences(
   if (visible.length === 0) return required.slice(0, input.maxReferences);
 
   const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,

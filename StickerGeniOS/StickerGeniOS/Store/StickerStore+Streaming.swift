@@ -120,6 +120,8 @@ extension StickerStore {
     /// Applies one event. Deliberately non-throwing: a payload this client cannot use must never
     /// end the stream, because the terminal event is what tells the chat the turn is over.
     private func apply(event: GenerationEvent, stickerID: String, jobID: String) async {
+        // Replayed events must not charge the on-screen work meter twice on reconnect.
+        if let lastEventID = jobs[stickerID]?.lastEventID, event.id <= lastEventID { return }
         await liveActivities?.apply(event)
         if event.type == .completed || event.type == .failed,
            reportedGenerationJobs.insert(jobID).inserted {
@@ -131,6 +133,7 @@ extension StickerStore {
         state.progress = event.data.progress ?? state.progress
         state.message = event.data.message ?? state.message
         state.sourceMessageID = event.data.messageId ?? state.sourceMessageID
+        applyStatus(from: event.data, to: &state)
         state.lastEventID = event.id
         state.isTerminal = event.type == .completed || event.type == .failed || event.type == .candidate
         state.isFailed = event.type == .failed
@@ -165,6 +168,44 @@ extension StickerStore {
            let sourceMessageID = state.sourceMessageID,
            let index = messages[stickerID]?.firstIndex(where: { $0.id == sourceMessageID }) {
             messages[stickerID]?[index].status = .failed
+        }
+    }
+
+    /// Folds one event's status fields into the job, on the same terms as the Live Activity:
+    /// whichever of them the *newest* event carries is what the turn is doing now.
+    ///
+    /// Tool rows are left out on purpose. They are the transcript's job, and a tool that has just
+    /// finished would otherwise stand as the current status until the next stage opens.
+    private nonisolated func applyStatus(from data: GenerationEventData, to state: inout StickerJobState) {
+        let previousStatus = state.statusDetail
+        if let message = data.message?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty {
+            state.statusDetail = message
+        } else if let stage = data.stage, !stage.isEmpty {
+            state.statusDetail = StickerToolLabel.text(forStage: stage)
+        }
+        if state.statusDetail != previousStatus || data.toolStatus != nil {
+            state.note = nil
+        }
+        if let note = data.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
+            state.note = note
+        }
+        // Deltas, so they are added rather than assigned. Nothing here can go backwards: the only
+        // thing that resets these is a new job, which gets a new state.
+        if let tokens = data.outputTokens, tokens > 0 { state.outputTokens += tokens }
+        if let images = data.imagesDrawn, images > 0 { state.imagesDrawn += images }
+        if let clips = data.clipsFilmed, clips > 0 { state.clipsFilmed += clips }
+        // A count is only ever shown against the stage that reported it, so an explicit clear and a
+        // new stage's count both wipe what was there. Counts that fail to make sense are dropped
+        // rather than drawn: a bar at 7/5 is worse than no bar.
+        if data.clearProgress == true {
+            state.completedUnits = nil
+            state.totalUnits = nil
+            state.progressLabel = nil
+        } else if let completed = data.completedUnits, let total = data.totalUnits,
+                  total > 0, completed >= 0, completed <= total {
+            state.completedUnits = completed
+            state.totalUnits = total
+            state.progressLabel = data.progressLabel ?? state.progressLabel
         }
     }
 

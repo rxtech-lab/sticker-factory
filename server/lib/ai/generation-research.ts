@@ -1,13 +1,15 @@
 import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
-import { recordTextApiCost } from "./cost";
+import { recordTextApiCost, reportAiStepUsage } from "./cost";
 import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
 
 /** Image/video APIs cannot execute tools; their generation agent researches before drawing. */
 export async function researchGenerationPrompt(prompt: string): Promise<string> {
   if (!process.env.FIRECRAWL_API_KEY?.trim()) return prompt;
   const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       "You prepare research for sticker image and video generation.",

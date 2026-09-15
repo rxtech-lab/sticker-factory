@@ -218,6 +218,9 @@
     "Apply" : {
 
     },
+    "Assembling the layers" : {
+
+    },
     "Building plan" : {
       "localizations" : {
         "zh-CN" : {
@@ -284,6 +287,12 @@
           }
         }
       }
+    },
+    "Checking the result" : {
+
+    },
+    "Composing the artwork" : {
+
     },
     "Could not append a frame" : {
 
@@ -435,6 +444,9 @@
           }
         }
       }
+    },
+    "Drawing a part" : {
+
     },
     "Drawing artwork" : {
       "localizations" : {
@@ -615,6 +627,9 @@
         }
       }
     },
+    "Finishing up" : {
+
+    },
     "Fitting it for Messages" : {
       "localizations" : {
         "zh-CN" : {
@@ -659,6 +674,9 @@
           }
         }
       }
+    },
+    "Gathering references" : {
+
     },
     "General" : {
 
@@ -979,6 +997,12 @@
         }
       }
     },
+    "Planning the edit" : {
+
+    },
+    "Planning the motion" : {
+
+    },
     "Prepare" : {
 
     },
@@ -1002,6 +1026,9 @@
       }
     },
     "Press and hold to drag it onto a message, or send it." : {
+
+    },
+    "Reading your request" : {
 
     },
     "Reading your request…" : {
@@ -1100,10 +1127,16 @@
         }
       }
     },
+    "Rendering the sticker" : {
+
+    },
     "Reset" : {
 
     },
     "Retry loading" : {
+
+    },
+    "Reviewing the design" : {
 
     },
     "Reviewing the plan image" : {
@@ -1927,6 +1960,9 @@
       }
     },
     "Unsupported writer settings" : {
+
+    },
+    "Verifying the files" : {
 
     },
     "Working" : {

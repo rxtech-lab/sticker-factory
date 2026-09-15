@@ -5,7 +5,7 @@ import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
-import { recordTextApiCost } from "@/lib/ai/cost";
+import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { AnimationOperationsSchema, describeToolError, isTurnAbort, summarizeDocument } from "./gateway-contracts";
 import type { AiAnimationContext, AnimateTurnResult, AnimationDraftState, AnimationDraftingSession } from "./gateway-contracts";
@@ -169,6 +169,8 @@ export async function animateSticker(
   };
 
   const generation = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onStepEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,

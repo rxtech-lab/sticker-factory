@@ -57,6 +57,18 @@ struct StickerToolLabelTests {
         #expect(StickerToolLabel.text(for: "update_plan #3") == "Revising the plan (3)")
     }
 
+    /// Stages are what the screen says during the stretches of a turn that open no tool row, so an
+    /// unlisted one has to read as English too — the server can add a stage before this build knows
+    /// about it, and "preparing_context" on a card is worse than a plain sentence.
+    @Test func stagesReadAsEnglish() {
+        #expect(StickerToolLabel.text(forStage: "reading_request") == "Reading your request")
+        #expect(StickerToolLabel.text(forStage: "preparing_context") == "Gathering references")
+        #expect(StickerToolLabel.text(forStage: "generating_image") == "Drawing artwork")
+        #expect(StickerToolLabel.text(forStage: "composing_video") == "Filming a clip")
+        #expect(StickerToolLabel.text(forStage: "finalizing") == "Finishing up")
+        #expect(StickerToolLabel.text(forStage: "polishing_edges") == "Polishing edges")
+    }
+
     @Test func anUnknownToolIsStillSentenceCased() {
         #expect(StickerToolLabel.text(for: "some_new_tool") == "Some new tool")
         #expect(StickerToolLabel.text(for: "polish-edges") == "Polish edges")

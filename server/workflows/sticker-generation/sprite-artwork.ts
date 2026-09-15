@@ -1,4 +1,7 @@
+import { SpriteClipV1Schema, SpriteExpressionsV1Schema } from "@/lib/contracts/sprite";
+import { loadBuildCheckpoint, saveBuildCheckpoint, buildAssetsReady, completedBuildSteps } from "./build-checkpoints";
 import { eq } from "drizzle-orm";
+import sharp from "sharp";
 import { planSpriteLayers, spriteSheetGrid, type PlanV1 } from "@/lib/contracts/plan";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, generationJobs } from "@/lib/db/schema";
@@ -18,7 +21,8 @@ import { assertJobStillRunning, beginToolCall, finishToolCall } from "./turn-con
  * measures and paints out; one expression sheet of face plates that `registerExpressionTiles`
  * measures; and a poster composited from the two. Every asset id is derived from the confirmed
  * plan's job, so a retried turn reuses whatever it already paid for — and because registration is
- * deterministic, a stored raw sheet is simply measured again rather than trusted to metadata.
+ * deterministic, registered sheets are checkpointed; older stored raw sheets are measured once
+ * to recover their registration before saving a checkpoint.
  */
 
 type Reference = { bytes: Uint8Array; mimeType: string };
@@ -54,6 +58,7 @@ export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, 
       ? "Frame 1 is the resting pose. The frames read in order and loop back to frame 1, so the last frame leads naturally into the first. Change only what the motion moves; the body keeps the same size and position in every cell."
       : "This is a single held pose.",
     `Character: ${source.prompt}`,
+    "Keep the complete head silhouette, ears, hair, and outer fur on this body layer. Replace all existing facial features with the magenta face opening; do not leave eyes, a nose, or a mouth beneath or beside it. Preserve the reference's pixel grid and hard pixel edges when it is pixel art.",
   ].join(" ");
 }
 
@@ -62,7 +67,9 @@ export function spriteExpressionPrompt(layer: { name: string }, source: SpriteSo
   return [
     `Use the approved sticker as the exact reference for the ${layer.name}'s face: its design, style, palette, and line weight.`,
     `Draw ${source.expressions.length} version${source.expressions.length === 1 ? "" : "s"} of only the ${layer.name}'s face plate, one per cell, each with a different expression, in this order: ${list}.`,
-    "The plate is the oval of skin, fur, or surface the features sit on, from brow to chin and cheek to cheek, cut out cleanly with its own outline; it is the same size and position in every cell and faces the same way as in the reference. Only the expression changes between cells.",
+    "The last reference is the actual body frame with a magenta opening. Draw only the inner facial patch that replaces that opening, matching its shape, proportions, viewing angle, and surrounding skin or fur colour. The earlier references supply the original facial identity and style. Do not copy the magenta colour.",
+    "Do not draw a second head, miniature portrait, ears, hair, outer head fur, neck, or body. Those already exist on the body layer. Include the eyes, brows, nose, mouth, cheeks, and the skin or fur directly beneath them, from brow to chin and cheek to cheek. No enclosing outline, sticker border, rim, or shadow around the patch; its edge must blend into the surrounding head when composited.",
+    "Keep the patch the same size and position in every cell; only the expression changes. Preserve the reference's pixel grid, hard pixel edges, palette, and shading when it is pixel art; do not turn it into a smooth portrait.",
   ].join(" ");
 }
 
@@ -129,8 +136,21 @@ async function buildExpressions(
   const count = source.expressions.length;
   const grid = expressionSheetGrid(count);
   const assetId = spriteExpressionAssetId(assetJobId, layer.layerId);
+  // Show the exact opening, including its surrounding head, instead of asking the model to
+  // infer a face patch from full-character references (which can produce a miniature head).
+  const firstClip = source.clips[0];
+  const clipGrid = spriteSheetGrid(firstClip.frames.length);
+  const rawId = spriteClipAssetIds(assetJobId, layer.layerId, firstClip.id).raw;
+  const raw = await getObjectStore().get(objectKey(job.ownerId, rawId, "image/png"));
+  const metadata = await sharp(raw.bytes).metadata();
+  const guide = await sharp(raw.bytes).extract({
+    left: 0, top: 0,
+    width: Math.floor(metadata.width! / clipGrid.columns),
+    height: Math.floor(metadata.height! / clipGrid.rows),
+  }).png().toBuffer();
   await generateAndStoreAsset(job, stickerId, {
-    assetId, references, mode: "conversation_edit", keepFrame: true, quality: "medium",
+    assetId, references: [...references, { bytes: guide, mimeType: "image/png" }],
+    mode: "conversation_edit", keepFrame: true, quality: "medium",
     sheet: { ...grid, count, tiles: true },
     sequence: { ...grid, frameCount: count, frameRate: 1 },
     prompt: spriteExpressionPrompt(layer, source),
@@ -163,12 +183,40 @@ export async function generateSpriteArtwork(
   const db = await getDatabase();
   const store = getObjectStore();
   const stills = new Map(generatedLayers(plan, assetJobId).map((item) => [item.layer.layerId, item.assetId]));
+  const completed = await completedBuildSteps(job);
   const total = sprites.reduce((sum, { source }) => sum + source.clips.length + 1, 0);
-  let done = 0;
+  const clipCheckpoints = new Map<string, SpriteBuild["clips"][number]>();
+  const expressionCheckpoints = new Map<string, SpriteBuild["expressions"]>();
+  const reusedKeys = new Set<string>();
+  for (const { layer, source } of sprites) {
+    for (const clip of source.clips) {
+      const key = `sprite-clip:${layer.layerId}:${clip.id}`;
+      const cached = await loadBuildCheckpoint(job, assetJobId, key, SpriteClipV1Schema);
+      const ids = spriteClipAssetIds(assetJobId, layer.layerId, clip.id);
+      if (cached && await buildAssetsReady(job, [cached.assetId])) {
+        clipCheckpoints.set(key, cached);
+        reusedKeys.add(key);
+      } else if (completed.has(`compose-sprite ${layer.name} ${clip.id}`)
+        && await buildAssetsReady(job, [ids.raw, ids.clean])) reusedKeys.add(key);
+    }
+    const key = `sprite-expressions:${layer.layerId}`;
+    const cached = await loadBuildCheckpoint(job, assetJobId, key, SpriteExpressionsV1Schema);
+    if (cached && await buildAssetsReady(job, [cached.assetId])) {
+      expressionCheckpoints.set(key, cached);
+      reusedKeys.add(key);
+    } else if (completed.has(`compose-sprite ${layer.name} expressions`)
+      && await buildAssetsReady(job, [spriteExpressionAssetId(assetJobId, layer.layerId)])) reusedKeys.add(key);
+  }
+  let done = reusedKeys.size;
+  if (done < total) await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+    stage: "composing_sprite", message: "Composing sprite sheets…",
+    progressLabel: "Sprite sheets", completedUnits: done, totalUnits: total,
+  });
   const progress = async (partName: string) => {
     done += 1;
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "composing_sprite", progress: 0.05 + 0.7 * (done / total), partName, sheetIndex: done - 1, sheetCount: total,
+      progressLabel: "Sprite sheets", completedUnits: done, totalUnits: total,
     });
   };
 
@@ -182,28 +230,47 @@ export async function generateSpriteArtwork(
     const clips: SpriteBuild["clips"] = [];
     for (const clip of source.clips) {
       await assertJobStillRunning(job.id);
-      const call = await beginToolCall(job, "build-plan", undefined, `compose-sprite ${layer.name} ${clip.id}`);
+      const key = `sprite-clip:${layer.layerId}:${clip.id}`;
+      const cached = clipCheckpoints.get(key);
+      if (cached) {
+        clips.push(cached);
+        continue;
+      }
+      const label = `compose-sprite ${layer.name} ${clip.id}`;
+      const reused = reusedKeys.has(key);
+      const call = reused ? undefined : await beginToolCall(job, "build-plan", undefined, label);
       try {
-        clips.push(await buildClip(job, stickerId, assetJobId, layer, source, clip, references));
+        const built = await buildClip(job, stickerId, assetJobId, layer, source, clip, references);
+        await saveBuildCheckpoint(job, assetJobId, key, built);
+        clips.push(built);
       } catch (error) {
         await finishToolCall(job, call, "failed", error);
         throw error;
       }
       await finishToolCall(job, call, "complete", { previewAssetId: clips.at(-1)!.assetId });
-      await progress(`${layer.name} ${clip.label}`);
+      if (!reused) await progress(`${layer.name} ${clip.label}`);
     }
 
     await assertJobStillRunning(job.id);
-    const call = await beginToolCall(job, "build-plan", undefined, `compose-sprite ${layer.name} expressions`);
+    const expressionKey = `sprite-expressions:${layer.layerId}`;
+    const cached = expressionCheckpoints.get(expressionKey);
     let expressions: SpriteBuild["expressions"];
-    try {
-      expressions = await buildExpressions(job, stickerId, assetJobId, layer, source, references);
-    } catch (error) {
-      await finishToolCall(job, call, "failed", error);
-      throw error;
+    if (cached) {
+      expressions = cached;
+    } else {
+      const label = `compose-sprite ${layer.name} expressions`;
+      const reused = reusedKeys.has(expressionKey);
+      const call = reused ? undefined : await beginToolCall(job, "build-plan", undefined, label);
+      try {
+        expressions = await buildExpressions(job, stickerId, assetJobId, layer, source, references);
+        await saveBuildCheckpoint(job, assetJobId, expressionKey, expressions);
+      } catch (error) {
+        await finishToolCall(job, call, "failed", error);
+        throw error;
+      }
+      await finishToolCall(job, call, "complete", { previewAssetId: expressions.assetId });
+      if (!reused) await progress(`${layer.name} expressions`);
     }
-    await finishToolCall(job, call, "complete", { previewAssetId: expressions.assetId });
-    await progress(`${layer.name} expressions`);
 
     const posterAssetId = await ensureSpritePoster(db, job.ownerId, stickerId, {
       clip: clips[0], expressions: { assetId: expressions.assetId }, tile: expressions.tiles[0],

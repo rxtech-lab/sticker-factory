@@ -22,6 +22,47 @@ nonisolated struct StickerJobState: Sendable, Equatable {
     /// Set when the event stream itself died, as opposed to the generation failing.
     /// Surfaced in chat so a dead stream cannot look like silence.
     var streamErrorMessage: String?
+    /// What the server said it was doing, in the newest event that said anything — the same
+    /// synthesis the Lock Screen's Live Activity shows (`liveActivitySnapshot`), so the app in the
+    /// foreground is never less informative than the app in the background.
+    ///
+    /// Latest wins rather than sticky per field: a `stage` arriving after a `message` describes the
+    /// work now, and keeping the older line beside it would let the screen contradict itself.
+    var statusDetail: String?
+    /// The current stage's own count — "Artwork parts 3/5" — when the stage has one.
+    ///
+    /// Counts belong to a stage, not to the turn, so they are cleared by `clearProgress` as well as
+    /// replaced by the next stage that reports one. See `build-turns.ts`.
+    var progressLabel: String?
+    var completedUnits: Int?
+    var totalUnits: Int?
+    /// The newest line the turn wrote about itself — "Drawing the artwork from 2 references",
+    /// "Finished Left arm (3 of 8)". Finer than the stage in the title chip and much more frequent,
+    /// which is the whole point: it is what moves while a stage sits still.
+    var note: String?
+    /// What the turn has spent so far: tokens written, images drawn, clips filmed.
+    ///
+    /// Summed from the per-call deltas the server streams (`reportTurnWork`), which is what makes
+    /// them right after a re-attach as well as after a cold start — the stream resumes from the
+    /// last event this job saw, and a fresh job state replays the turn from its first event.
+    var outputTokens = 0
+    var imagesDrawn = 0
+    var clipsFilmed = 0
+    /// When this turn started, for the elapsed clock in chat. Set once per job id: a re-attach
+    /// mid-turn is the same wait continuing, not a new one.
+    var startedAt = Date()
+
+    /// How far through the current stage the counted units are, when they are worth drawing.
+    var unitProgress: Double? {
+        guard let completedUnits, let totalUnits, totalUnits > 0,
+              completedUnits >= 0, completedUnits <= totalUnits else { return nil }
+        return Double(completedUnits) / Double(totalUnits)
+    }
+
+    var progressCountText: String? {
+        guard unitProgress != nil, let completedUnits, let totalUnits else { return nil }
+        return "\(completedUnits)/\(totalUnits)"
+    }
 }
 
 @MainActor

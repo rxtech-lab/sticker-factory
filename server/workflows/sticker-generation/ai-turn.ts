@@ -3,13 +3,14 @@
 
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { withAiApiCostRecorder } from "@/lib/ai/cost";
+import { withAiApiCostRecorder, withAiStepUsageReporter } from "@/lib/ai/cost";
 import { applyStickerOperationsV1, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, chatAttachments, chatMessages, chatThreads, generationJobs, stickerRevisions, stickers } from "@/lib/db/schema";
 import { getAiProvider, type AiPlanVisual, type AiSequenceAsset } from "@/lib/ai/gateway";
 import { describeError, traceEvent, traceSpan } from "@/lib/observability/trace";
 import { appendGenerationEvent } from "@/lib/services/events";
+import { generationExecutionContext, latestRetryableGeneration } from "@/lib/services/generation-retry";
 import { currentPendingPlan, latestPlanConcept, stickerHasPlan } from "@/lib/services/plans";
 import { assertValidAnimationBase, createCandidateRevision, isValidAnimationBase } from "@/lib/services/stickers";
 import { getObjectStore } from "@/lib/storage/r2";
@@ -18,7 +19,7 @@ import { addLayerBesideExisting, emptyDocument, generateAndStoreAsset, selectIma
 import { executePlanBuildTurn, loadPlanVisualReference } from "./build-turns";
 import { executeEditTurn } from "./edit-turns";
 import { executeAnimationTurn, executePlanTurn } from "./plan-turns";
-import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, boundedTranscript, finishToolCall, insertAssistantMessage, quickCaption, renderWorkingDocument, showStickerThroughTool, turnResult } from "./turn-context";
+import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, boundedTranscript, finishToolCall, insertAssistantMessage, quickCaption, renderWorkingDocument, reportTurnTokens, reportTurnWork, showStickerThroughTool, turnResult } from "./turn-context";
 import type { AiTurnResult, StickerToolName } from "./turn-context";
 
 export async function executeAiJob(jobId: string): Promise<AiTurnResult> {
@@ -28,9 +29,28 @@ export async function executeAiJob(jobId: string): Promise<AiTurnResult> {
   // out, with the frame that threw it, since several of these messages appear in more than one place.
   try {
     const db = await getDatabase();
+    // The owner is what an event stream is keyed on, and both meters below need it on every call.
+    const ownerId = (await db.select({ ownerId: generationJobs.ownerId }).from(generationJobs)
+      .where(eq(generationJobs.id, jobId)).then(firstRow))?.ownerId;
+    // Both meters are best effort: what the chat draws while it waits must never be the reason a
+    // turn that has already been paid for fails.
+    const meter = async (report: (owner: string) => Promise<void>) => {
+      if (ownerId === undefined) return;
+      try {
+        await report(ownerId);
+      } catch (error) {
+        traceEvent("turnMeter:skipped", { jobId, error: describeError(error) });
+      }
+    };
     return await withAiApiCostRecorder(
-      (event) => recordJobApiCost(db, jobId, event),
-      () => runAiTurn(jobId),
+      async (event) => {
+        await recordJobApiCost(db, jobId, event);
+        await meter((owner) => reportTurnWork(db, jobId, owner, event));
+      },
+      () => withAiStepUsageReporter(
+        (outputTokens) => meter((owner) => reportTurnTokens(db, jobId, owner, outputTokens)),
+        () => runAiTurn(jobId),
+      ),
     );
   } catch (error) {
     traceEvent("executeAiJobStep:fail", {
@@ -46,7 +66,14 @@ export async function executeAiJob(jobId: string): Promise<AiTurnResult> {
 
 async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   const db = await getDatabase();
-  const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
+  const attempt = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
+  const execution = attempt ? await generationExecutionContext(db, attempt) : undefined;
+  const job = attempt && execution ? {
+    ...attempt,
+    kind: execution.original.kind,
+    sourceMessageId: execution.original.sourceMessageId,
+    quick: execution.original.quick,
+  } : undefined;
   traceEvent("executeAiJobStep:context", { jobId, kind: job?.kind, state: job?.state, attempts: job?.attempts });
   if (!job || !job.sourceMessageId) throw new Error("Generation job or source message not found");
   if (job.state !== "running") throw new Error(`Generation job is not running (${job.state})`);
@@ -81,12 +108,18 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       .orderBy(desc(chatMessages.sequence)).limit(200),
   ]);
   const transcript = [...chatRows, ...toolRows].sort((left, right) => left.sequence - right.sequence);
-  const history = boundedTranscript(transcript);
+  const retryStep = execution?.retryStepId
+    ? transcript.find((message) => message.id === execution.retryStepId)
+    : undefined;
+  const recoveryNote = execution?.original.id !== job.id
+    ? `\n\nResuming the original ${job.kind} generation. Preserve its request, approved plan, poses, motion and references. Reuse completed work and finish the remaining steps.${retryStep ? ` The user selected step: ${retryStep.content}.` : ""}`
+    : "";
+  const history = boundedTranscript(transcript) + recoveryNote;
   // The planner is prompted with this one instead. Everything else in a turn works from the document
   // in front of it, so a digest of the older conversation costs it little; a plan is a brief, and the
   // brief is spread across the whole thread — the character named in the first message, the style
   // turned down in the third, the "make it a cat" in the sixth. See `keepChatVerbatim`.
-  const planHistory = boundedTranscript(transcript, 24_000, { keepChatVerbatim: true });
+  const planHistory = boundedTranscript(transcript, 24_000, { keepChatVerbatim: true }) + recoveryNote;
   traceEvent("runAiTurn:transcript", {
     jobId,
     chatRows: chatRows.length,
@@ -354,10 +387,22 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     })();
     return referenceImagesPromise;
   };
-  const existingRevision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, job.id)).then(firstRow);
+  const existingRevision = await db.select().from(stickerRevisions).where(and(
+    inArray(stickerRevisions.id, [...new Set([job.id, execution!.original.id])]),
+    eq(stickerRevisions.stickerId, sticker.id),
+  )).orderBy(desc(stickerRevisions.createdAt)).then(firstRow);
   if (existingRevision) {
     const existingDocument = StickerDocumentSchema.parse(existingRevision.documentJson);
-    const kind = existingDocument.kind === "animated" && sourceMessage.kind === "animation"
+    await assertJobStillRunning(job.id);
+    // If generation finished and only its presentation failed, attach the already-built document
+    // to the new attempt without paying for its artwork again.
+    const revisionId = existingRevision.id === job.id ? existingRevision.id : await createCandidateRevision(db, {
+      ownerId: job.ownerId, stickerId: sticker.id, sourceMessageId: sourceMessage.id,
+      id: job.id, document: existingDocument, parentRevisionId: existingRevision.parentRevisionId ?? undefined,
+      masterAssetId: existingRevision.masterAssetId ?? undefined,
+      previewAssetId: existingRevision.previewAssetId ?? undefined,
+    });
+    const kind = existingDocument.kind === "animated" && (sourceMessage.kind === "animation" || job.kind === "compose")
       ? "animation"
       : sourceMessage.kind === "image"
         ? "image"
@@ -365,12 +410,12 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     const primaryToolCallId = await beginToolCall(
       job,
       kind === "animation" ? "animate-sticker" : kind === "image" ? "generate-sticker" : "edit-sticker",
-      existingRevision.id,
+      revisionId,
     );
     await finishToolCall(job, primaryToolCallId);
-    const content = await showStickerThroughTool(job, existingRevision.id, existingDocument.kind, sourceMessage.content, history);
-    const assistantMessageId = await insertAssistantMessage(job, content, kind, existingRevision.id);
-    return turnResult(assistantMessageId, existingRevision.id);
+    const content = await showStickerThroughTool(job, revisionId, existingDocument.kind, sourceMessage.content, history);
+    const assistantMessageId = await insertAssistantMessage(job, content, kind, revisionId);
+    return turnResult(assistantMessageId, revisionId);
   }
 
   if (job.kind === "compose") {
@@ -428,13 +473,24 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   const mustPlanFirst = sticker.kind === "animated" && !activeDocument && !hasPlan;
 
   if (job.kind === "chat") {
+    // The router, the images it reads and the history it reads them against take seconds, and
+    // until one of them opens a tool row the turn has said nothing at all. That silence is the
+    // longest stretch of an ordinary turn where the only thing on screen is an animation, so it
+    // gets a stage of its own rather than being the gap before the first one.
+    await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+      stage: "reading_request",
+      progress: 0.05,
+    });
     // Fetched before the span rather than inside it, so the router's own latency stays the model's
     // and not the object store's.
     const [attachedImages, routerPriorArt] = await Promise.all([
       loadAttachedImages(),
       loadPlanPriorArt(),
     ]);
-    const action = await traceSpan("routeChatTurn", { jobId }, () => getAiProvider().routeChatTurn({
+    const retryableGeneration = execution?.original.id === job.id
+      ? await latestRetryableGeneration(db, job)
+      : undefined;
+    const action = execution?.routedAction ?? await traceSpan("routeChatTurn", { jobId }, () => getAiProvider().routeChatTurn({
       instruction: sourceMessage.content,
       history,
       stickerKind: sticker.kind,
@@ -443,8 +499,26 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       attachmentCount: referenceRows.length,
       references: attachedImages,
       priorArt: routerPriorArt,
+      retryableGeneration,
     }));
     traceEvent("routeChatTurn:routed", { jobId, action: action.type });
+    if (action.type === "retry_generation") {
+      if (!retryableGeneration || (action.stepId && !retryableGeneration.steps.some(
+        (step) => step.id === action.stepId && step.status !== "complete",
+      ))) throw new FatalError("The requested generation step is not available to retry");
+      // A durable link, just like the Retry button's queued event. The current message stays the
+      // source of this attempt for streaming/completion; execution resolves the original request.
+      await assertJobStillRunning(job.id);
+      await appendGenerationEvent(db, job.id, job.ownerId, "queued", {
+        retryOfJobId: retryableGeneration.jobId, retryStepId: action.stepId,
+      });
+      return runAiTurn(job.id);
+    }
+    if (!execution?.routedAction) {
+      // Save the resolved action before any image, edit, animation or plan work can fail. A retry
+      // must not ask the router to interpret the short retry message as a fresh generation.
+      await appendGenerationEvent(db, job.id, job.ownerId, "progress", { checkpoint: "routed_chat", action });
+    }
     // Motion is keyframed onto a live revision of this sticker — the one the user kept, or a
     // candidate descended from it. The router reads their words, not the revision's state, so it
     // cannot know whether the base still qualifies, and by the time it has chosen the turn is
@@ -692,7 +766,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     : undefined;
 
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", { stage: "generating_image", progress: 0.4 });
-  const assetId = job.id;
+  const assetId = execution?.original.id ?? job.id;
   await generateAndStoreAsset(job, sticker.id, {
     assetId,
     prompt: instruction,

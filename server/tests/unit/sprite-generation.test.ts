@@ -87,13 +87,25 @@ it("draws one sheet per clip and one of faces, registers the slots, and replays 
     for (const request of requests) {
       expect(request.keepFrame).toBe(true);
       expect(request.quality).toBe("medium");
-      expect(request.references).toHaveLength(2);
+      expect(request.references).toHaveLength(request.sheet?.tiles ? 3 : 2);
       expect(request.sheet).toBeDefined();
     }
     expect(requests[1].sheet).toMatchObject({ columns: 3, rows: 2, count: 6, facePlaceholder: true });
     expect(requests[2].sheet).toMatchObject({ columns: 3, rows: 2, count: 4, facePlaceholder: true });
     expect(requests[3].sheet).toMatchObject({ columns: 2, rows: 2, count: 3, tiles: true });
     expect(requests[3].prompt).toContain("1. Neutral: calm");
+    expect(requests[3].prompt).toContain("last reference");
+    expect(requests[3].prompt).toContain("Do not draw a second head");
+    // Expressions must see the actual opening they will fill, not only full-character references.
+    // Keep the raw frame's magenta marker: the cleaned body no longer identifies that opening.
+    const rawSheet = (await store.get(objectKey("owner", rawIdle, "image/png"))).bytes;
+    const rawMeta = await sharp(rawSheet).metadata();
+    const firstFrame = await sharp(rawSheet).extract({ left: 0, top: 0,
+      width: Math.floor(rawMeta.width! / 3), height: Math.floor(rawMeta.height! / 2),
+    }).ensureAlpha().raw().toBuffer();
+    const guide = requests[3].references[2];
+    expect(guide.mimeType).toBe("image/png");
+    expect(await sharp(guide.bytes).ensureAlpha().raw().toBuffer()).toEqual(firstFrame);
 
     const build = builds.get("hero")!;
     expect(build.clips.map((clip) => clip.frames.length)).toEqual([6, 4]);

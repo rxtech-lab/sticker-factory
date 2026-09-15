@@ -6,7 +6,8 @@ import { documentRenderableLayers } from "@/lib/contracts/sticker";
 import { and, eq, inArray, max } from "drizzle-orm";
 import { compactTranscript, type TranscriptOptions } from "@/lib/ai/compaction";
 import { applyStickerOperationsV1, StickerDocumentSchema, layerImageAssetIds, layerVideoAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
-import { firstRow, getDatabase } from "@/lib/db/client";
+import type { AiApiCostEvent } from "@/lib/ai/cost";
+import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import { assets, chatMessages, chatThreads, generationJobs } from "@/lib/db/schema";
 import { getAiProvider } from "@/lib/ai/gateway";
 import { describeError, traceEvent } from "@/lib/observability/trace";
@@ -108,6 +109,83 @@ export type StickerToolName =
   | "view_plan_image"
   | "view_sticker"
   | "show-sticker";
+
+/**
+ * Streams what the turn has actually spent, as it spends it: tokens written, images drawn, clips
+ * filmed.
+ *
+ * Hung off the cost recorder because that is already the one seam every model call passes through,
+ * and because these are the same events the turn is billed for — a counter that cannot drift from
+ * the charge. The chat screen adds them up while it waits, which is the difference between a wait
+ * with something moving in it and a wait that looks like a hang.
+ *
+ * **Deltas, not totals.** The event stream hands each reader every event exactly once — a
+ * re-attach resumes after the last id it saw, and a cold start replays the turn from the
+ * beginning — so a sum over deltas lands on the same number either way. A running total would
+ * have to be read back from the database on every model call to survive a step replay, which is
+ * a query per call to say something the client can add up itself.
+ *
+ * No Live Activity push: the Lock Screen shows a status line and a stage count, neither of which
+ * this changes, and pushes are rate-limited by the system.
+ */
+export async function reportTurnWork(
+  db: Database,
+  jobId: string,
+  ownerId: string,
+  event: AiApiCostEvent,
+): Promise<void> {
+  // Text is counted per model round trip instead — see `reportTurnTokens`. A text charge is only
+  // settled once the whole tool loop resolves, which is minutes after the screen needed to know.
+  if (event.kind === "text") return;
+  await appendGenerationEvent(db, jobId, ownerId, "progress", {
+    ...(event.kind === "image" ? { imagesDrawn: 1 } : { clipsFilmed: 1 }),
+  }, { pushLiveActivity: false });
+  traceEvent("turnMeter:asset", { jobId, kind: event.kind });
+}
+
+/**
+ * One short, human line about what the turn is doing *inside* a stage.
+ *
+ * The workflow already narrates itself to the server log — `generateImage:stored`,
+ * `selectImageReferences:decided` — and those lines are the best answer anyone has to "is it
+ * stuck?", because they appear every few seconds where a tool row appears every few minutes. This
+ * is the same narration, written for the person waiting instead of for whoever reads the log.
+ *
+ * Rules, because a note goes on someone's screen:
+ *
+ *   * written out by hand at each call site, never derived from a trace payload — those carry
+ *     object keys, asset ids and owner ids, none of which are anybody's business;
+ *   * one clause, present tense, no ids, no numbers the user cannot act on;
+ *   * best effort. A note that fails to insert is a note nobody misses, and it must never be the
+ *     thing that fails a turn.
+ *
+ * Also updates the Live Activity so long stages can show the work inside them.
+ */
+export async function reportTurnNote(job: { id: string; ownerId: string }, note: string): Promise<void> {
+  try {
+    const db = await getDatabase();
+    await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+      note: note.slice(0, 120),
+    });
+    traceEvent("turnMeter:note", { jobId: job.id, note });
+  } catch (error) {
+    traceEvent("reportTurnNote:skipped", { jobId: job.id, error: describeError(error) });
+  }
+}
+
+/** What one model round trip wrote. Same terms as `reportTurnWork`: a delta, and no push. */
+export async function reportTurnTokens(
+  db: Database,
+  jobId: string,
+  ownerId: string,
+  outputTokens: number,
+): Promise<void> {
+  if (outputTokens <= 0) return;
+  await appendGenerationEvent(db, jobId, ownerId, "progress", { outputTokens }, { pushLiveActivity: false });
+  // Printed, like everything else the turn does, because "the meter is empty" has two very
+  // different causes — nothing emitted, or nothing delivered — and only the log tells them apart.
+  traceEvent("turnMeter:tokens", { jobId, outputTokens });
+}
 
 /**
  * Opens (or, on replay, re-announces) a tool-call row in the transcript.

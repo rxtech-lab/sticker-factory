@@ -155,7 +155,28 @@ struct StickerChatView: View {
         let phase = messages.last {
             $0.kind == .status && $0.status == .streaming && StickerToolLabel.isPhase($0.content)
         }
-        return phase.map { StickerToolLabel.text(for: $0.content) } ?? String(localized: "Working…")
+        if let phase { return StickerToolLabel.text(for: phase.content) }
+        // Before any phase opens a row — routing the request, gathering references — the server's
+        // own stage is the only thing that knows what is happening, and the chip is where the
+        // status lives. The generic label is the last resort, not the first.
+        return store.jobs[stickerID]?.statusDetail ?? String(localized: "Working…")
+    }
+
+    /// When the turn being waited on began, for the elapsed clock in `AssistantWorkingCard`.
+    ///
+    /// Taken from the message that started it rather than from when this screen happened to attach
+    /// to the job, so leaving the chat and coming back mid-turn shows the real wait instead of
+    /// restarting the clock at zero. The server's timestamp is only trusted when it reads as a
+    /// plausible start — a device clock far enough off would otherwise turn the reassurance into
+    /// nonsense — and the moment the stream opened stands in when it does not.
+    private var turnStartedAt: Date? {
+        let job = store.jobs[stickerID]
+        if let sourceMessageID = job?.sourceMessageID,
+           let created = messages.first(where: { $0.id == sourceMessageID })?.createdAt,
+           created <= .now, Date.now.timeIntervalSince(created) < 6 * 3600 {
+            return created
+        }
+        return job?.startedAt
     }
 
     /// The revision the sticker actions operate on. Nothing renders it — the assistant attaches
@@ -460,10 +481,22 @@ struct StickerChatView: View {
     @ViewBuilder
     private var transcriptTail: some View {
         if isComputing {
-            AssistantTypingIndicator()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+            let job = store.jobs[stickerID]
+            let summary = AssistantWorkingSummary(job: job, messages: messages, titleStatus: activeStatus)
+            AssistantWorkingCard(
+                startedAt: turnStartedAt,
+                note: summary.note,
+                completedSteps: summary.completedSteps,
+                outputTokens: job?.outputTokens ?? 0,
+                imagesDrawn: job?.imagesDrawn ?? 0,
+                clipsFilmed: job?.clipsFilmed ?? 0,
+                progress: job?.unitProgress,
+                progressLabel: job?.progressLabel,
+                progressCount: job?.progressCountText
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
 
         if let job = store.jobs[stickerID], job.isFailed, job.sourceMessageID != nil {

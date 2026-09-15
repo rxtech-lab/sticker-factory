@@ -1,3 +1,4 @@
+import { buildAssetsReady, completedBuildSteps } from "./build-checkpoints";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
 import type { PlanV1 } from "@/lib/contracts/plan";
@@ -5,6 +6,7 @@ import type { StickerConfiguration } from "@/lib/contracts/configuration";
 import { getDatabase } from "@/lib/db/client";
 import { assets, generationJobs } from "@/lib/db/schema";
 import { derivedAssetId, ensureAtlasPoster, getReadyOwnedAssets } from "@/lib/services/assets";
+import { appendGenerationEvent } from "@/lib/services/events";
 import { getObjectStore, objectKey } from "@/lib/storage/r2";
 import { generatedLayers, generateAndStoreAsset } from "./asset-generation";
 import { assertJobStillRunning, beginToolCall, finishToolCall } from "./turn-context";
@@ -52,13 +54,33 @@ export async function generatePlannedVariants(
 ): Promise<void> {
   if (!plan.configuration) return;
   const db = await getDatabase();
+  const total = plan.configuration.variants.reduce((count, variant) => count + variant.layers.filter(
+    (patch) => patch.source?.kind === "generate" || patch.source?.kind === "frames",
+  ).length, 0);
+  const completedSteps = await completedBuildSteps(job);
+  const reused = new Set<string>();
+  for (const variant of plan.configuration.variants) for (const patch of variant.layers) {
+    const source = patch.source;
+    if (!source || (source.kind !== "generate" && source.kind !== "frames")) continue;
+    const assetId = variantAssetId(assetJobId, variant.id, patch.layerId);
+    const ids = source.kind === "frames" ? [assetId, derivedAssetId(assetId, "poster")] : [assetId];
+    if (completedSteps.has(`expression ${variant.id} ${patch.layerId}`) && await buildAssetsReady(job, ids)) reused.add(assetId);
+  }
+  let completed = reused.size;
+  if (completed < total) {
+    await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+      stage: "composing_variants", message: "Composing expressions and poses…",
+      progressLabel: "Expression and pose artwork", completedUnits: completed, totalUnits: total,
+    });
+  }
   for (const variant of plan.configuration.variants) for (const patch of variant.layers) {
     const source = patch.source;
     if (!source || (source.kind !== "generate" && source.kind !== "frames")) continue;
     if (!reference) throw new Error("Configurable artwork needs the approved static reference");
     await assertJobStillRunning(job.id);
-    const call = await beginToolCall(job, "build-plan", undefined, `expression ${variant.id} ${patch.layerId}`);
     const assetId = variantAssetId(assetJobId, variant.id, patch.layerId);
+    if (reused.has(assetId)) continue;
+    const call = await beginToolCall(job, "build-plan", undefined, `expression ${variant.id} ${patch.layerId}`);
     try {
       const layer = plan.layers.find((layer) => layer.layerId === patch.layerId)!;
       const baselineId = layer.source.kind === "existing" ? layer.source.assetId : generatedLayers(plan, assetJobId).find((asset) => asset.layer.layerId === patch.layerId)?.assetId;
@@ -86,6 +108,11 @@ export async function generatePlannedVariants(
         if (!posterId) throw new Error("Could not prepare the pose's still preview");
       }
       await finishToolCall(job, call, "complete", { previewAssetId: assetId });
+      completed += 1;
+      await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
+        stage: "composing_variants", message: "Composing expressions and poses…",
+        progressLabel: "Expression and pose artwork", completedUnits: completed, totalUnits: total,
+      });
     } catch (error) {
       await finishToolCall(job, call, "failed", error);
       throw error;

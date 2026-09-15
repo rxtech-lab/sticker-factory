@@ -18,7 +18,7 @@ import { SubjectBoundsSchema, type SubjectBounds } from "@/lib/images/subject-bo
 import { describeError, traceEvent, traceSpan } from "@/lib/observability/trace";
 import { derivedAssetId } from "@/lib/services/assets";
 import { getObjectStore, inspectImage, inspectMp4, objectKey, type ObjectStore } from "@/lib/storage/r2";
-import { isAbortError } from "./turn-context";
+import { isAbortError, reportTurnNote } from "./turn-context";
 
 export async function loadStoredGeneratedImage(
   job: typeof generationJobs.$inferSelect,
@@ -78,10 +78,12 @@ export async function generateAndStoreAsset(
   const stored = await loadStoredGeneratedImage(job, stickerId, params.assetId);
   if (stored) {
     traceEvent("generateImage:reused", trace);
+    await reportTurnNote(job, "Reusing artwork from the last attempt");
     // The measurement was taken from the frame the model returned, which is gone: the stored master
     // is the crop. It was written next to the object for exactly this replay.
     return stored;
   }
+  await reportTurnNote(job, imageNote(params));
   const generated = await traceSpan("generateImage", trace, () => params.concept
     ? provider.generateConceptImage({ prompt: params.prompt, references: params.references })
     : provider.generateStickerImage({
@@ -178,7 +180,33 @@ export async function generateAndStoreAsset(
     throw error;
   }
   traceEvent("generateImage:stored", trace);
+  await reportTurnNote(job, params.concept ? "Saved the sketch" : "Saved the artwork");
   return { subject: generated.subject };
+}
+
+/**
+ * What to call the picture about to be drawn.
+ *
+ * Written from the request rather than from `mode`, whose words ("conversation_edit") are the
+ * pipeline's, not the user's. A reference count is worth saying because it is the difference
+ * between the model working from the sticker on screen and working from nothing.
+ */
+function imageNote(params: {
+  references: ReadonlyArray<unknown>;
+  mask?: unknown;
+  concept?: boolean;
+  sheet?: unknown;
+  sequence?: unknown;
+  mode: "generate" | "conversation_edit";
+}): string {
+  if (params.concept) return "Sketching the concept";
+  if (params.sheet || params.sequence) return "Drawing the frames";
+  if (params.mask) return "Redrawing the painted area";
+  const base = params.mode === "conversation_edit" ? "Redrawing the artwork" : "Drawing the artwork";
+  if (params.references.length === 0) return base;
+  return params.references.length === 1
+    ? `${base} from 1 reference`
+    : `${base} from ${params.references.length} references`;
 }
 
 /** The subject measurement written beside a stored master, or nothing for one stored without it. */
@@ -408,6 +436,7 @@ export async function generateAndStoreVideoAsset(
   )).then(firstRow);
   if (stored?.state === "ready" && stored.frameCount && stored.fps && stored.durationSeconds) {
     traceEvent("generateVideo:reused", trace);
+    await reportTurnNote(job, "Reusing the clip from the last attempt");
     return { frameCount: stored.frameCount, fps: stored.fps, durationSeconds: stored.durationSeconds };
   }
 
@@ -421,6 +450,7 @@ export async function generateAndStoreVideoAsset(
     // expired in the queue fails the clip with an error that looks like a bad image.
     const { url } = await objectStore.signedGet(backdropKey, undefined, 900);
 
+    await reportTurnNote(job, "Filming the clip");
     const generated = await traceSpan("generateVideo", trace, () => provider.generateStickerVideo({
       imageUrl: url,
       motion: video.motion,

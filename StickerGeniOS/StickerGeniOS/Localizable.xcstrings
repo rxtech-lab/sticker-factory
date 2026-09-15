@@ -149,6 +149,7 @@
       }
     },
     "%@ is responding" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-CN" : {
           "stringUnit" : {
@@ -228,6 +229,9 @@
         }
       }
     },
+    "%@ tokens" : {
+
+    },
     "%@. Detailed artwork can still be exported one size down, or as a still frame, to stay under Apple's 500 KB limit — the export always goes through." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -304,6 +308,9 @@
         }
       }
     },
+    "%lld clips" : {
+
+    },
     "%lld combinations" : {
 
     },
@@ -337,6 +344,9 @@
 
     },
     "%lld generations remaining" : {
+
+    },
+    "%lld images" : {
 
     },
     "%lld LAYERS" : {
@@ -386,6 +396,9 @@
           }
         }
       }
+    },
+    "%lld steps done" : {
+
     },
     "%lld stickers" : {
 
@@ -479,6 +492,12 @@
         }
       }
     },
+    "1 clip" : {
+
+    },
+    "1 image" : {
+
+    },
     "1 install" : {
       "localizations" : {
         "zh-CN" : {
@@ -510,6 +529,9 @@
           }
         }
       }
+    },
+    "1 step done" : {
+
     },
     "1 sticker" : {
       "localizations" : {
@@ -1374,6 +1396,9 @@
     "Artwork" : {
 
     },
+    "Assembling the layers" : {
+
+    },
     "assistant: %@" : {
       "localizations" : {
         "zh-CN" : {
@@ -1870,6 +1895,9 @@
         }
       }
     },
+    "Checking the result" : {
+
+    },
     "Checking your allowance…" : {
 
     },
@@ -2073,6 +2101,9 @@
           }
         }
       }
+    },
+    "Composing the artwork" : {
+
     },
     "Configurable layers" : {
 
@@ -2940,6 +2971,9 @@
         }
       }
     },
+    "Drawing a part" : {
+
+    },
     "Drawing artwork" : {
       "localizations" : {
         "zh-CN" : {
@@ -3726,6 +3760,9 @@
         }
       }
     },
+    "Finishing up" : {
+
+    },
     "Fitting it for Messages" : {
       "localizations" : {
         "zh-CN" : {
@@ -3822,6 +3859,9 @@
       }
     },
     "Full Screen" : {
+
+    },
+    "Gathering references" : {
 
     },
     "General" : {
@@ -4316,6 +4356,9 @@
           }
         }
       }
+    },
+    "Last finished: %@" : {
+
     },
     "layer" : {
 
@@ -6177,6 +6220,12 @@
         }
       }
     },
+    "Planning the edit" : {
+
+    },
+    "Planning the motion" : {
+
+    },
     "Please open %@ and sign in again." : {
       "localizations" : {
         "zh-CN" : {
@@ -6758,6 +6807,9 @@
         }
       }
     },
+    "Reading your request" : {
+
+    },
     "Ready for %@" : {
 
     },
@@ -7099,6 +7151,9 @@
         }
       }
     },
+    "Rendering the sticker" : {
+
+    },
     "Reset" : {
 
     },
@@ -7283,6 +7338,9 @@
           }
         }
       }
+    },
+    "Reviewing the design" : {
+
     },
     "Reviewing the plan image" : {
       "localizations" : {
@@ -10437,6 +10495,9 @@
         }
       }
     },
+    "Verifying the files" : {
+
+    },
     "Version" : {
       "localizations" : {
         "zh-CN" : {
@@ -10584,6 +10645,9 @@
           }
         }
       }
+    },
+    "Waiting for the first update…" : {
+
     },
     "Waiting…" : {
       "localizations" : {

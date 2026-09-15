@@ -423,8 +423,11 @@ struct StickerConfigurationEditor: View {
     private func addOption(_ control: AnimatedControl) {
         guard let defaultID = control.defaultValue.string else { return }
         let templates = configuration?.variants.filter { $0.selections[control.id] == defaultID } ?? []
-        // A new pose or mood on a sprite is a new sheet, which only a build can make.
-        if let bound = templates.flatMap(\.layers).first(where: { $0.clip != nil || $0.expression != nil }) {
+        // In a draft, add an editable option using the default pose or mood as its starting
+        // selection. The plan editor has no artwork-request callback, so routing draft options
+        // through that callback silently discards the tap. Built stickers still request a plan
+        // for new sprite artwork.
+        if !planned, let bound = templates.flatMap(\.layers).first(where: { $0.clip != nil || $0.expression != nil }) {
             let what = bound.clip != nil ? "pose" : "expression"
             onRequestArtwork?(
                 "Create a revised plan adding a new \(what) to the sprite character on layer \(bound.layerId), "

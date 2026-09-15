@@ -50,6 +50,35 @@ nonisolated enum StickerToolLabel {
         return ordinal.isEmpty ? label : "\(label) (\(ordinal))"
     }
 
+    /// Sentence-cased wording for a `stage` on a progress event.
+    ///
+    /// Stages are the *inside* of a phase — the long silent stretches where no tool row opens and
+    /// the only thing the screen could otherwise say is that something, somewhere, is happening.
+    /// They are a separate vocabulary from tool ids (`workflows/sticker-generation`, and
+    /// `liveActivitySnapshot` on the server, which words them the same way), so they get their own
+    /// table; an unlisted stage falls back to its own words rather than to silence.
+    static func text(forStage stage: String) -> String {
+        stages[stage] ?? fallback(for: stage)
+    }
+
+    private static let stages: [String: String] = [
+        "reading_request": String(localized: "Reading your request"),
+        "preparing_context": String(localized: "Gathering references"),
+        "planning_edit": String(localized: "Planning the edit"),
+        "planning_animation": String(localized: "Planning the motion"),
+        "generating_image": String(localized: "Drawing artwork"),
+        "reviewing": String(localized: "Reviewing the design"),
+        "composing": String(localized: "Composing the artwork"),
+        "composing_part": String(localized: "Drawing a part"),
+        "composing_sprite": String(localized: "Drawing the frames"),
+        "composing_video": String(localized: "Filming a clip"),
+        "assembling": String(localized: "Assembling the layers"),
+        "validating_candidate": String(localized: "Checking the result"),
+        "rendering_exports": String(localized: "Rendering the sticker"),
+        "verifying_exports": String(localized: "Verifying the files"),
+        "finalizing": String(localized: "Finishing up")
+    ]
+
     private static func base(of toolName: String) -> String {
         String(toolName.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0])
             .trimmingCharacters(in: .whitespaces)

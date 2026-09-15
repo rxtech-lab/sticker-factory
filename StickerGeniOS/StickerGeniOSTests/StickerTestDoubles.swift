@@ -700,6 +700,49 @@ actor LiveTurnStreamAPI: StickerAPIClientProtocol {
     }
 }
 
+/// A turn that reports stages and counts the way the workflow does, and then stays live.
+///
+/// The stream ends cancelled rather than completed on purpose — that is how a backgrounded app's
+/// stream dies — so the job keeps the status it was left with and the test can read it.
+actor StagedProgressAPI: StickerAPIClientProtocol {
+    nonisolated let stickerID = "staged-progress-sticker"
+    nonisolated let streams = StreamCounter()
+    nonisolated let events: [GenerationEventData]
+
+    init(events: [GenerationEventData]) { self.events = events }
+
+    func confirmPlan(stickerID: String, planID: String, idempotencyKey: String) async throws -> ConfirmPlanResponse {
+        .init(
+            message: .init(id: "staged-source", status: .streaming),
+            job: .init(id: "staged-job", state: .queued, workflowRunId: nil, eventsUrl: "/events")
+        )
+    }
+
+    func sticker(id: String) async throws -> StickerDetail { PreviewFixtures.detail }
+
+    func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
+        .init(data: [
+            .init(
+                id: "staged-source", role: .user, kind: .text, content: "Make it.",
+                targetLayerId: nil, imagePlacement: .replace, baseRevisionId: nil, sequence: 1,
+                revisionId: nil, jobId: "staged-job", status: .streaming, createdAt: Date(), attachments: []
+            )
+        ], nextBeforeSequence: nil)
+    }
+
+    nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
+        streams.mark()
+        return AsyncThrowingStream { continuation in
+            for (index, data) in events.enumerated() {
+                continuation.yield(.init(
+                    id: Int64(index + 1), jobId: jobID, type: .progress, createdAt: Date(), data: data
+                ))
+            }
+            continuation.finish(throwing: URLError(.cancelled))
+        }
+    }
+}
+
 final class StreamCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0

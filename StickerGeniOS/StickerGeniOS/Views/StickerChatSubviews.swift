@@ -224,23 +224,31 @@ private struct ToolCallRow: View {
                         Label(message.status.label, systemImage: message.status == .failed ? "exclamationmark.circle" : "info.circle")
                             .foregroundStyle(AppColors.muted)
                         if let assetID = message.toolPreviewAssetID, let api {
+                            // Every preview state occupies the same full-width box the image will
+                            // fill, so the sheet does not jump from a scrap of text on the leading
+                            // edge to a wide picture once the asset lands.
                             if let image = previewAssets.images[assetID] {
                                 Image(uiImage: image)
                                     .resizable()
                                     .scaledToFit()
+                                    .frame(maxWidth: .infinity)
                                     .accessibilityIdentifier("tool-result-image")
                             } else if previewFinished {
-                                ContentUnavailableView("Preview unavailable", systemImage: "photo")
-                                Button("Retry") {
-                                    Haptics.tap(.light)
-                                    Task {
-                                        previewFinished = false
-                                        await previewAssets.load(assetID: assetID, api: api)
-                                        previewFinished = true
+                                VStack(spacing: 12) {
+                                    ContentUnavailableView("Preview unavailable", systemImage: "photo")
+                                    Button("Retry") {
+                                        Haptics.tap(.light)
+                                        Task {
+                                            previewFinished = false
+                                            await previewAssets.load(assetID: assetID, api: api)
+                                            previewFinished = true
+                                        }
                                     }
                                 }
+                                .frame(maxWidth: .infinity, minHeight: 180)
                             } else {
                                 ProgressView("Loading preview…")
+                                    .frame(maxWidth: .infinity, minHeight: 180)
                             }
                         } else {
                             Text(message.toolDetails ?? fallbackDetails)
@@ -331,7 +339,7 @@ private struct ToolCallRow: View {
     }
 }
 
-struct AssistantTypingIndicator: View {
+struct AssistantTypingDots: View {
     @State private var animate = false
 
     var body: some View {
@@ -349,13 +357,197 @@ struct AssistantTypingIndicator: View {
                     )
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .posterCapsule(offset: Poster.smallShadow)
         .onAppear { animate = true }
-        .accessibilityLabel(
-            String(localized: "\(AppConfiguration.defaultAppName) is responding")
-        )
+    }
+}
+
+/// What the turn has actually done so far, for the stretch of it where the transcript is empty.
+///
+/// Three dots alone were honest only about the fact that *something* was happening. A turn can
+/// spend a minute between one tool row and the next — routing the request, drawing an image — and
+/// during that minute a bare animation is indistinguishable from a stuck app.
+///
+/// What it does **not** do is name the phase. The navigation bar's title chip already carries that
+/// (`ChatTitleChip`), and a card that repeats it is two places to read the same sentence. So this
+/// shows the other half, the half nothing else on screen has: the meter.
+///
+///   * the **note**, the newest line the turn wrote about what it is doing inside the stage —
+///     "Drawing the artwork from 2 references", "Finished Left arm (3 of 8)". These arrive every
+///     few seconds where a tool row arrives every few minutes, so this is the part that actually
+///     moves;
+///   * the **elapsed clock**, which is never stale and never wrong, and is what says "not frozen"
+///     even when everything else sits still for a minute;
+///   * **tokens written, images drawn, clips filmed** — the work the turn is being billed for,
+///     counted at the seam that bills it (`reportTurnWork`, `reportAiStepUsage`), so the numbers
+///     cannot be flattering;
+///   * a **count**, for the few stages that can honestly report one (five parts of a sprite, three
+///     review passes). Never a percentage of the whole turn, because nothing knows that number.
+///
+/// It hugs its content rather than filling the column: a bubble the width of the screen implies
+/// there is something in it to read, and there are only ever a few numbers.
+struct AssistantWorkingCard: View {
+    /// When the turn started. Nil keeps the clock off rather than showing a zero that never moves.
+    var startedAt: Date?
+    /// The newest thing the turn said about itself.
+    var note: String?
+    var completedSteps: Int = 0
+    var outputTokens: Int = 0
+    var imagesDrawn: Int = 0
+    var clipsFilmed: Int = 0
+    /// The current stage's own count, never the turn's.
+    var progress: Double?
+    var progressLabel: String?
+    var progressCount: String?
+
+    /// The bar is a fixed width because the card has no width of its own to divide up, and because
+    /// a progress bar that changes length between stages reads as the work changing size.
+    private static let barWidth: CGFloat = 148
+
+    /// How the bubble changes size. A little spring rather than a curve: the card grows a handful
+    /// of times per turn, and a settle reads as the thing filling up while an ease reads as a jump.
+    private static let growth = Animation.spring(response: 0.34, dampingFraction: 0.86)
+
+    var body: some View {
+        TimelineView(.periodic(from: startedAt ?? .now, by: 1)) { context in
+            let elapsed = startedAt.map { max(0, context.date.timeIntervalSince($0)) }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    AssistantTypingDots()
+                    if let elapsed {
+                        Text(Self.clock(elapsed))
+                            .posterLabelStyle(9, color: AppColors.muted)
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                    }
+                }
+
+                if let note {
+                    Text(note)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppColors.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        // Keyed on the text so one note replacing another cross-fades in place
+                        // rather than snapping, which at this size reads as a flicker.
+                        .id(note)
+                        .transition(.opacity)
+                }
+
+                if let meter {
+                    Text(meter)
+                        .posterLabelStyle(9, color: AppColors.ink)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let progress {
+                    countedProgress(progress)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: note)
+            .animation(.easeInOut(duration: 0.25), value: meter)
+            .animation(.easeInOut(duration: 0.25), value: progress)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            // Fit the content, with a ceiling. `maxWidth` alone does the opposite of what it reads
+            // like: a frame with a maximum is *flexible up to* it, so it takes the whole column and
+            // the card is 236pt wide whether it is showing a sentence or three dots. `fixedSize`
+            // hands it no width to fill, which leaves the frame resolving to the content's own
+            // ideal width — and the ceiling still applies, so a long note wraps rather than running
+            // the bubble off the screen.
+            .frame(maxWidth: 236, alignment: .leading)
+            .fixedSize(horizontal: true, vertical: false)
+            .posterSurface(cornerRadius: Poster.tileRadius, lineWidth: Poster.hairline, offset: Poster.smallShadow)
+            // Outside the surface, so the bubble itself grows into a note or a progress bar
+            // arriving rather than snapping to the new size around them.
+            .animation(Self.growth, value: note)
+            .animation(Self.growth, value: meter)
+            .animation(Self.growth, value: progress == nil)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityText(elapsed: elapsed))
+            .accessibilityIdentifier("assistant-working-card")
+        }
+    }
+
+    /// The meter as one line — "1.2K TOKENS · 2 IMAGES" — and nothing at all until the turn has
+    /// done something. A row of zeroes is a worse answer than no row.
+    private var meter: String? {
+        var parts: [String] = []
+        if completedSteps > 0 {
+            parts.append(completedSteps == 1
+                ? String(localized: "1 step done")
+                : String(localized: "\(completedSteps) steps done"))
+        }
+        if outputTokens > 0 { parts.append(String(localized: "\(Self.compact(outputTokens)) tokens")) }
+        if imagesDrawn > 0 {
+            parts.append(imagesDrawn == 1
+                ? String(localized: "1 image")
+                : String(localized: "\(imagesDrawn) images"))
+        }
+        if clipsFilmed > 0 {
+            parts.append(clipsFilmed == 1
+                ? String(localized: "1 clip")
+                : String(localized: "\(clipsFilmed) clips"))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Four figures of token count would be the widest thing on the card and the least worth the
+    /// room, so anything past a thousand is rounded to one decimal.
+    private static func compact(_ value: Int) -> String {
+        guard value >= 1_000 else { return "\(value)" }
+        let thousands = Double(value) / 1_000
+        return thousands >= 10
+            ? "\(Int(thousands.rounded()))k"
+            : String(format: "%.1fk", thousands)
+    }
+
+    /// The elapsed clock, in whole seconds.
+    ///
+    /// Not `StickerExportDuration.text`'s tenths below ten seconds: that resolution belongs to an
+    /// export's step timings, where the steps are short enough for a tenth to mean something. Here
+    /// it would be a digit that ticks once a second and reads as a stopwatch that lost its place.
+    private static func clock(_ elapsed: TimeInterval) -> String {
+        let whole = max(0, elapsed).rounded(.down)
+        return whole < 60 ? "\(Int(whole))s" : StickerExportDuration.text(whole)
+    }
+
+    @ViewBuilder
+    private func countedProgress(_ progress: Double) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if progressLabel != nil || progressCount != nil {
+                HStack(spacing: 8) {
+                    if let progressLabel {
+                        Text(progressLabel).posterLabelStyle(9, color: AppColors.muted)
+                    }
+                    if let progressCount {
+                        Text(progressCount)
+                            .posterLabelStyle(9, color: AppColors.ink)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            // Drawn rather than a `ProgressView` so it is an outlined poster object like every
+            // other surface on this screen, and so the fill can animate to its new width.
+            Capsule()
+                .fill(AppColors.paper)
+                .frame(width: Self.barWidth, height: 8)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(AppColors.coral)
+                        .frame(width: max(0, min(1, progress)) * Self.barWidth, height: 8)
+                        .animation(.easeInOut(duration: 0.3), value: progress)
+                }
+                .overlay(Capsule().strokeBorder(AppColors.ink, lineWidth: Poster.hairline))
+        }
+    }
+
+    private func accessibilityText(elapsed: TimeInterval?) -> String {
+        var parts = [note ?? String(localized: "Working")]
+        if let elapsed { parts.append(Self.clock(elapsed)) }
+        if let meter { parts.append(meter) }
+        if let progressCount { parts.append(progressCount) }
+        return parts.joined(separator: ", ")
     }
 }
 

@@ -268,8 +268,11 @@ describe("durable sticker workflow: composition", () => {
       ...unusedAiProvider,
       routeChatTurn: async (input) => {
         if (input.instruction === "Retry") {
-          expect(input.interruptedPlan).toMatchObject({ state: retryMode === "chat-cancelled" ? "cancelled" : "failed" });
-          return { type: "retry_build" };
+          expect(input.retryableGeneration).toMatchObject({ state: retryMode === "chat-cancelled" ? "cancelled" : "failed" });
+          const failedStep = input.retryableGeneration!.steps.find((step) => step.name.startsWith("compose-part:") && step.status === "failed");
+          expect(failedStep).toBeDefined();
+          expect(input.retryableGeneration!.steps.some((step) => step.status === "complete")).toBe(true);
+          return { type: "retry_generation", stepId: failedStep!.id };
         }
         return mockProvider.routeChatTurn(input);
       },
@@ -350,6 +353,7 @@ describe("durable sticker workflow: composition", () => {
     // confirmation job. The compose step must recover that plan through their shared source turn.
     expect(await stickerGenerationWorkflow(confirmed.jobId)).toEqual({ status: "failed" });
     expect(generatedReferences).toHaveLength(Math.min(partCount, 3) - 1);
+    const previouslyCompletedParts = generatedReferences.length;
     const savedPart = await db.select().from(assets)
       .where(eq(assets.id, derivedAssetId(confirmed.jobId, 0))).then(firstRow);
     expect(savedPart?.state).toBe("ready");
@@ -414,13 +418,16 @@ describe("durable sticker workflow: composition", () => {
       .filter((message) => message.role === "system");
     const toolRows = toolMessages.map((message) => message.content);
     expect(toolRows).toContain("build-plan");
-    expect(toolRows.filter((name) => name.startsWith("compose-part:"))).toHaveLength(partCount);
+    expect(toolRows).not.toContain("compose-part:0 " + proposed[0].planJson.layers[0].name);
+    const retryProgress = await db.select().from(generationEvents).where(eq(generationEvents.jobId, retry.jobId)).orderBy(generationEvents.id);
+    expect(retryProgress.find((event) => event.dataJson.stage === "composing")?.dataJson.completedUnits).toBe(previouslyCompletedParts);
+    expect(toolRows.filter((name) => name.startsWith("compose-part:"))).toHaveLength(partCount - previouslyCompletedParts);
     expect(toolRows).toContain("view_plan_image");
     expect(toolRows).toContain("view_sticker");
     expect(toolRows).toContain("finalize_layout");
     const transcript = await listChatMessages(db, "owner-c", sticker.stickerId);
     const partCalls = transcript.data.filter((message) => message.content.startsWith("compose-part:") && toolMessages.some((tool) => tool.id === message.id));
-    expect(partCalls).toHaveLength(partCount);
+    expect(partCalls).toHaveLength(partCount - previouslyCompletedParts);
     for (const call of partCalls) {
       const details = JSON.parse(call.toolDetails as string);
       expect(composedAssets.some((asset) => asset.id === details.previewAssetId)).toBe(true);

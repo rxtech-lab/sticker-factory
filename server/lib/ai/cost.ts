@@ -55,6 +55,58 @@ export function gatewayCostUsd(providerMetadata: unknown): number | string | und
   return typeof cost === "number" || typeof cost === "string" ? cost : undefined;
 }
 
+/**
+ * Reports what one model round trip wrote, while the call it belongs to is still running.
+ *
+ * Separate from the cost recorder above, which cannot do this job: `recordTextApiCost` runs after
+ * `generateText` resolves, and a chat turn's tool loop takes minutes to resolve — so a meter fed
+ * from it stays empty for exactly the wait it exists to fill. `onStepEnd` fires per round trip, so
+ * the count climbs while the agent is still working.
+ *
+ * Nothing bills on this. The charge stays with the cost recorder, which reads the Gateway's own
+ * price rather than a token count.
+ */
+type StepUsageReporter = (outputTokens: number) => Promise<void>;
+
+const usageStorage = new AsyncLocalStorage<StepUsageReporter>();
+
+/** Installs the reporter every Gateway text call reports its per-step usage to. */
+export function withAiStepUsageReporter<T>(reporter: StepUsageReporter, run: () => Promise<T>): Promise<T> {
+  return usageStorage.run(reporter, run);
+}
+
+/**
+ * Pass as `onStepEnd` on every Gateway text call.
+ *
+ * Reads the count through `stepOutputTokens` rather than off the field directly: the AI SDK flattens
+ * output tokens to a number at the result level and the provider protocol reports them as a
+ * breakdown (`{ total, text, reasoning }`), and which of the two arrives here is a property of the
+ * installed version, not of this code. Accepting both means an SDK upgrade cannot quietly empty the
+ * meter.
+ *
+ * Swallows its own failures: this is a progress readout, and the AI SDK would otherwise let a
+ * failed event insert take down the generation the user is paying for.
+ */
+export async function reportAiStepUsage(
+  step: { usage?: { outputTokens?: number | { total?: number } } },
+): Promise<void> {
+  const reporter = usageStorage.getStore();
+  if (!reporter) return;
+  const tokens = stepOutputTokens(step.usage?.outputTokens);
+  if (tokens === undefined) return;
+  try {
+    await reporter(tokens);
+  } catch {
+    // Reported nowhere on purpose: the caller's own tracing covers the write that failed.
+  }
+}
+
+function stepOutputTokens(value: number | { total?: number } | undefined): number | undefined {
+  const total = typeof value === "object" && value !== null ? value.total : value;
+  if (typeof total !== "number" || !Number.isFinite(total) || total <= 0) return undefined;
+  return Math.round(total);
+}
+
 /** Records every provider step in one text/tool-loop call. */
 export async function recordTextApiCost(result: {
   steps: ReadonlyArray<{ providerMetadata?: unknown }>;

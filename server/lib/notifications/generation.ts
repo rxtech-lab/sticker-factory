@@ -22,7 +22,7 @@ import { traceEvent } from "@/lib/observability/trace";
  * swallowed, because the screen is already the announcement.
  */
 
-export type GenerationOutcome = "ready" | "failed";
+export type GenerationOutcome = "ready" | "plan_ready" | "failed";
 
 /**
  * Job kinds worth interrupting someone for.
@@ -43,9 +43,12 @@ export function isNotifiableJobKind(kind: GenerationJobRow["kind"]): boolean {
   return NOTIFIABLE_JOB_KINDS.has(kind);
 }
 
-/** The words on the banner. Kept here so both outcomes read like one voice. */
+/** The words on the banner. Planning finishes with a review, not a generated sticker. */
 export function generationAlert(outcome: GenerationOutcome, stickerTitle: string): { title: string; body: string } {
   const name = stickerTitle.trim() || "Your sticker";
+  if (outcome === "plan_ready") {
+    return { title: "Plan ready", body: `The plan for ${name} is ready. Tap to review and confirm it.` };
+  }
   return outcome === "ready"
     ? { title: "Sticker ready", body: `${name} finished generating. Tap to take a look.` }
     : { title: "Generation failed", body: `${name} couldn't be generated. Tap to retry.` };

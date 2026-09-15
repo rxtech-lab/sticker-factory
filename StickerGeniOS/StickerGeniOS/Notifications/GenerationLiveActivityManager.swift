@@ -12,6 +12,7 @@ final class GenerationLiveActivityManager {
     private var tokenTasks: [String: Task<Void, Never>] = [:]
     private var uploadTasks: [String: Task<Void, Never>] = [:]
     private var stateTasks: [String: Task<Void, Never>] = [:]
+    private let poller = GenerationActivityPoller()
     private var selectedJobID: String?
     private var seenJobIDs: Set<String> = []
     private static let log = Logger(subsystem: "app.rxlab.stickerfactory", category: "live-activity")
@@ -52,6 +53,7 @@ final class GenerationLiveActivityManager {
     /// Called after sign-in and when returning to the foreground; retries missed token uploads.
     func resume() {
         let activities = GenerationActivity.activities.sorted { $0.attributes.startedAt > $1.attributes.startedAt }
+        poller.stop()
         guard let latest = activities.first else { return }
         selectedJobID = latest.attributes.jobID
         seenJobIDs.formUnion(activities.map { $0.attributes.jobID })
@@ -65,31 +67,16 @@ final class GenerationLiveActivityManager {
     func apply(_ event: GenerationEvent) async {
         guard let activity = GenerationActivity.activities.first(where: { $0.attributes.jobID == event.jobId }),
               event.jobId == selectedJobID else { return }
-        let current = activity.content.state
-        guard event.id > current.eventID, !current.isFinished else { return }
-        var state = current
-        switch event.type {
-        case .completed:
-            state.phase = event.data.cancelled == true ? "cancelled" : "completed"
-            state.message = event.data.cancelled == true ? "Generation stopped" : "Sticker ready"
-        case .failed:
-            state.phase = "failed"
-            state.message = "Generation failed. Open to retry."
-        case .queued, .started, .progress, .waiting:
-            let message = event.data.message ?? event.data.stage
-                ?? (event.data.toolStatus == .streaming ? event.data.toolName.map(StickerToolLabel.text(for:)) : nil)
-            if event.type == .progress && message == nil { return }
-            state.phase = event.type == .waiting ? "waiting" : event.type == .queued ? "queued" : "running"
-            state.message = message.map(Self.readableStatus)
-                ?? (event.type == .queued ? "Waiting to start…"
-                    : event.type == .waiting ? "Waiting for your input" : "Creating your sticker…")
-        default: return // A candidate/document can arrive while the generation is still working.
-        }
-        state.eventID = event.id
+        guard let state = activity.content.state.applying(event) else { return }
         await update(activity, state: state)
     }
 
+    func pause() {
+        poller.stop()
+    }
+
     func signedOut() async {
+        poller.stop()
         selectedJobID = nil
         seenJobIDs.removeAll()
         for task in tokenTasks.values { task.cancel() }
@@ -100,6 +87,19 @@ final class GenerationLiveActivityManager {
     }
 
     private func watch(_ activity: GenerationActivity) {
+        if selectedJobID == activity.attributes.jobID,
+           UIApplication.shared.applicationState == .active,
+           !activity.content.state.isFinished {
+            poller.start(jobID: activity.attributes.jobID) { [weak self] in
+                guard let self, selectedJobID == activity.attributes.jobID,
+                      activity.activityState == .active || activity.activityState == .stale,
+                      !activity.content.state.isFinished else { return false }
+                let snapshot = try await api.liveActivitySnapshot(jobID: activity.attributes.jobID)
+                try Task.checkCancellation()
+                await update(activity, state: snapshot.state)
+                return !snapshot.state.isFinished
+            }
+        }
         guard tokenTasks[activity.id] == nil else { return }
         tokenTasks[activity.id] = Task { [weak self] in
             for await token in activity.pushTokenUpdates {
@@ -111,6 +111,7 @@ final class GenerationLiveActivityManager {
             for await state in activity.activityStateUpdates {
                 guard !Task.isCancelled else { return }
                 if state == .ended || state == .dismissed {
+                    if self?.selectedJobID == activity.attributes.jobID { self?.poller.stop() }
                     self?.tokenTasks.removeValue(forKey: activity.id)?.cancel()
                     self?.uploadTasks.removeValue(forKey: activity.id)?.cancel()
                     self?.stateTasks.removeValue(forKey: activity.id)
@@ -150,6 +151,7 @@ final class GenerationLiveActivityManager {
               !activity.content.state.isFinished else { return }
         let content = ActivityContent(state: state, staleDate: state.isFinished ? nil : .now.addingTimeInterval(180))
         if state.isFinished {
+            poller.stop()
             await activity.end(content, dismissalPolicy: .after(.now.addingTimeInterval(120)))
         } else {
             await activity.update(content)
@@ -157,6 +159,7 @@ final class GenerationLiveActivityManager {
     }
 
     private func retire(_ activity: GenerationActivity) async {
+        if selectedJobID == activity.attributes.jobID { poller.stop() }
         tokenTasks.removeValue(forKey: activity.id)?.cancel()
         uploadTasks.removeValue(forKey: activity.id)?.cancel()
         stateTasks.removeValue(forKey: activity.id)?.cancel()
@@ -164,13 +167,53 @@ final class GenerationLiveActivityManager {
         try? await api.unregisterLiveActivity(activityID: activity.id)
     }
 
-    private static func readableStatus(_ raw: String) -> String {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "_", with: " ")
-        return String((text.prefix(1).uppercased() + text.dropFirst()).prefix(180))
-    }
 }
 
 nonisolated struct LiveActivitySnapshot: Decodable, Sendable {
     var state: StickerGenerationAttributes.ContentState
     var terminal: Bool
+}
+
+/// The same event policy for every foreground update, including detail-only progress.
+nonisolated extension StickerGenerationAttributes.ContentState {
+    func applying(_ event: GenerationEvent) -> Self? {
+        guard event.id > eventID, !isFinished else { return nil }
+        var state = self
+        switch event.type {
+        case .completed:
+            state.phase = event.data.cancelled == true ? "cancelled" : "completed"
+            state.message = event.data.cancelled == true ? "Generation stopped" : "Sticker ready"
+        case .failed:
+            state.phase = "failed"
+            state.message = "Generation failed. Open to retry."
+        case .queued, .started, .progress, .waiting:
+            let message = event.data.note ?? event.data.message
+                ?? event.data.stage.map(StickerToolLabel.text(forStage:))
+                ?? (event.data.toolStatus == .streaming ? event.data.toolName.map(StickerToolLabel.text(for:)) : nil)
+            guard event.type != .progress || message != nil || event.data.completedUnits != nil
+                    || event.data.clearProgress == true else { return nil }
+            state.phase = event.type == .waiting ? "waiting" : event.type == .queued ? "queued" : "running"
+            if let message {
+                let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
+                state.message = String((text.prefix(1).uppercased() + text.dropFirst()).prefix(180))
+            } else if event.type != .progress {
+                state.message = event.type == .queued ? "Waiting to start…"
+                    : event.type == .waiting ? "Waiting for your input" : "Creating your sticker…"
+            }
+        default: return nil
+        }
+        if state.isFinished || event.data.clearProgress == true {
+            state.progressLabel = nil
+            state.completedUnits = nil
+            state.totalUnits = nil
+        } else if let completed = event.data.completedUnits, let total = event.data.totalUnits,
+                  total > 0, completed >= 0, completed <= total {
+            state.completedUnits = completed
+            state.totalUnits = total
+            state.progressLabel = event.data.progressLabel ?? "Artwork parts"
+        }
+        state.eventID = event.id
+        return state
+    }
 }
