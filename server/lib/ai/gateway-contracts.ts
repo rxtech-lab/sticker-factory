@@ -100,7 +100,17 @@ export interface AiVideoOutput {
   modelId: string;
 }
 
+export interface AiRetryableGeneration {
+  jobId: string;
+  kind: string;
+  instruction: string;
+  state: "failed" | "cancelled";
+  error?: string;
+  steps: Array<{ id: string; name: string; status: "streaming" | "complete" | "failed" }>;
+}
+
 export type AiChatAction =
+  | { type: "retry_generation"; stepId?: string }
   | { type: "reply"; message: string }
   | { type: "generate"; instruction: string; usePlanImage?: boolean }
   /** Draws one new element on a transparent background and adds it as its own image layer. */
@@ -562,6 +572,8 @@ export interface AiChatContext {
    * The router is told so it can reach for `plan-sticker` instead of `generate-sticker`.
    */
   hasPlan?: boolean;
+  /** Persisted request and step outcomes from the previous failed or stopped generation. */
+  retryableGeneration?: AiRetryableGeneration;
 }
 
 export interface AiTitleContext {

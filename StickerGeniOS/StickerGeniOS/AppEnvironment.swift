@@ -137,6 +137,7 @@ final class AppEnvironment {
         // Every 402 from the server, wherever it came from, raises the paywall. The error itself
         // still reaches whichever screen asked, so the user also reads the server's own words.
         if let live = api as? StickerAPIClient {
+            environment.store.liveActivities = GenerationLiveActivityManager(api: live)
             let subscription = environment.subscription
             Task {
                 await live.onSubscriptionRefusal { refusal in
@@ -165,6 +166,7 @@ final class AppEnvironment {
         await authManager.checkExistingAuth()
         synchronizeAuthenticationState()
         if authenticationState == .signedIn {
+            store.liveActivities?.resume()
             subscription.refresh()
             await store.refresh()
         }
@@ -177,6 +179,7 @@ final class AppEnvironment {
     /// toolbar is the one number on screen that can go stale without anything happening here.
     func enteredForeground() {
         guard authenticationState == .signedIn else { return }
+        store.liveActivities?.resume()
         subscription.refresh()
     }
 
@@ -204,6 +207,7 @@ final class AppEnvironment {
     func sessionExpired() async {
         // Before the token is gone: dropping this device is an authenticated call, and a device
         // left registered would announce the departing account's stickers to whoever signs in next.
+        await store.liveActivities?.signedOut()
         await PushDeviceRegistry.shared.signedOut()
         // A rejected broker refresh has already invalidated the shared bundle,
         // but RxAuth still owns its in-memory state and refresh timer. Drive
@@ -222,6 +226,7 @@ final class AppEnvironment {
 
     func signOut() async {
         AppTelemetry.event("logout")
+        await store.liveActivities?.signedOut()
         await PushDeviceRegistry.shared.signedOut()
         try? await tokenBroker.logout()
         await authManager.logout()

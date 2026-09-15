@@ -280,6 +280,17 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
+    func registerLiveActivity(activityID: String, jobID: String, token: String) async throws -> LiveActivitySnapshot {
+        try await send(path: "api/v1/live-activities", method: "POST", body: [
+            "activityId": activityID, "jobId": jobID, "token": token,
+            "environment": PushEnvironment.current.rawValue
+        ])
+    }
+
+    func unregisterLiveActivity(activityID: String) async throws {
+        let _: EmptyResponse = try await send(path: "api/v1/live-activities", method: "DELETE", body: ["activityId": activityID])
+    }
+
     func unregisterDevice(token: String) async throws {
         let _: EmptyResponse = try await send(path: "api/v1/devices/\(token)", method: "DELETE")
     }

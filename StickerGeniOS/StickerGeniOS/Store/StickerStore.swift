@@ -102,6 +102,8 @@ final class StickerStore {
     /// Invalidates late remote-search responses whenever the user changes or clears the query.
     @ObservationIgnored private var librarySearchGeneration = 0
 
+    @ObservationIgnored var liveActivities: GenerationLiveActivityManager?
+
     /// Asked to request notification permission when a turn starts. The banners themselves come
     /// from the server, which is the only side still watching once iOS suspends the app.
     @ObservationIgnored let notifier: (any GenerationNotifying)?
@@ -334,7 +336,7 @@ final class StickerStore {
             stickers.removeAll { $0.id == detail.id }
             stickers.insert(detail.sticker, at: 0)
             reattachAttempts[detail.id] = 0
-            observe(jobID: response.job.id, stickerID: detail.id, sourceMessageID: response.initialMessageId)
+            observe(jobID: response.job.id, stickerID: detail.id, sourceMessageID: response.initialMessageId, startsGeneration: true)
             return detail.sticker
         }
     }
@@ -594,7 +596,7 @@ final class StickerStore {
                     messages[stickerID, default: []].append(persisted)
                 }
                 reattachAttempts[stickerID] = 0
-                observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id)
+                observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, startsGeneration: true)
                 // Only hand `computingStickerIDs` over to the stream if one is actually running,
                 // otherwise the composer would stay disabled with nothing driving it.
                 startedObservation = observations[stickerID] != nil
@@ -631,7 +633,7 @@ final class StickerStore {
                 messages[stickerID]?[index].jobId = response.job.id
             }
             reattachAttempts[stickerID] = 0
-            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.messageId, force: true)
+            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.messageId, force: true, startsGeneration: true)
         }
     }
 
@@ -650,7 +652,7 @@ final class StickerStore {
             // already streaming and would otherwise open its own stream for the same job, which this
             // call would then immediately supersede.
             reattachAttempts[stickerID] = 0
-            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, force: true)
+            observe(jobID: response.job.id, stickerID: stickerID, sourceMessageID: response.message.id, force: true, startsGeneration: true)
             await loadMessages(stickerID: stickerID)
         }
     }
@@ -707,7 +709,7 @@ final class StickerStore {
             // would otherwise see a streaming user message and open a second stream for one job.
             if let job = response.job, let message = response.message {
                 reattachAttempts[stickerID] = 0
-                observe(jobID: job.id, stickerID: stickerID, sourceMessageID: message.id, force: true)
+                observe(jobID: job.id, stickerID: stickerID, sourceMessageID: message.id, force: true, startsGeneration: true)
             }
             await loadMessages(stickerID: stickerID)
         }

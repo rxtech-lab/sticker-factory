@@ -8,6 +8,8 @@ import { firstRow, type Database } from "@/lib/db/client";
 import { generationEvents, generationJobs } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 
+import { pushLiveActivityUpdate } from "@/lib/notifications/live-activities";
+
 export type GenerationEventType = typeof generationEvents.$inferInsert.type;
 
 export async function appendGenerationEvent(
@@ -24,6 +26,9 @@ export async function appendGenerationEvent(
     dataJson: data,
     createdAt: new Date(),
   }).returning();
+  if (["progress", "waiting", "completed", "failed"].includes(type)) {
+    await pushLiveActivityUpdate(db, ownerId, jobId);
+  }
   return event;
 }
 

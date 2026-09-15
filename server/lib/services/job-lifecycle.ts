@@ -7,6 +7,7 @@
 // the same credit settlement as a turn that spends minutes in the durable runtime. The `"use step"`
 // wrappers in `workflows/sticker-generation/steps.ts` are thin shells over these.
 
+import { pushLiveActivityUpdate } from "@/lib/notifications/live-activities";
 import { and, eq } from "drizzle-orm";
 import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import { chatMessages, generationEvents, generationJobs, stickers, type GenerationJobRow } from "@/lib/db/schema";
@@ -54,6 +55,7 @@ export async function beginJob(jobId: string): Promise<void> {
       createdAt: now,
     });
   });
+  await pushLiveActivityUpdate(db, job.ownerId, jobId);
 }
 
 /**
@@ -107,6 +109,7 @@ export async function completeJob(
     }
     await tx.insert(generationEvents).values({ jobId, ownerId: job.ownerId, type: "completed", dataJson: result, createdAt: now });
   });
+  await pushLiveActivityUpdate(db, job.ownerId, jobId);
   await settle(options.settlement, async () => {
     // The one path that actually charges. Everything else returns the hold.
     await chargeJobCredits(db, job);
@@ -176,6 +179,7 @@ export async function failJob(
   // something else already finished, stays silent. The refund is guarded the same way, so a
   // repeated call cannot release a hold that a different ending already settled.
   if (!failed) return;
+  await pushLiveActivityUpdate(db, job.ownerId, jobId);
   await settle(options.settlement, async () => {
     await refundJobCredits(db, job, "generation_failed");
     await announceJobEnded(db, job, "failed");

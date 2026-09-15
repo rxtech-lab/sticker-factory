@@ -543,3 +543,18 @@ export type StickerPackRow = typeof stickerPacks.$inferSelect;
 export type StickerPackItemRow = typeof stickerPackItems.$inferSelect;
 export type PackInstallRow = typeof packInstalls.$inferSelect;
 export type DeviceTokenRow = typeof deviceTokens.$inferSelect;
+
+/** Per-activity tokens are distinct from notification device tokens and expire with the activity. */
+export const generationLiveActivities = pgTable("generation_live_activities", {
+  activityId: text("activity_id").primaryKey(),
+  ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  jobId: text("job_id").notNull().references(() => generationJobs.id, { onDelete: "cascade" }),
+  token: text("token").notNull(),
+  environment: text("environment", { enum: ["sandbox", "production"] }).notNull(),
+  expiresAt: timestampColumn("expires_at").notNull(),
+  lastEventId: integer("last_event_id").notNull().default(0),
+  lastPushTimestamp: integer("last_push_timestamp").notNull().default(0),
+}, (table) => [
+  index("generation_live_activities_job_idx").on(table.jobId),
+  check("generation_live_activities_environment_check", sql`${table.environment} IN ('sandbox', 'production')`),
+]);

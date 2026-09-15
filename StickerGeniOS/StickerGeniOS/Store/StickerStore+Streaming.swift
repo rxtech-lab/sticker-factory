@@ -7,7 +7,7 @@ import OSLog
 extension StickerStore {
     func observeExternalJob(jobID: String, stickerID: String) {
         reattachAttempts[stickerID] = 0
-        observe(jobID: jobID, stickerID: stickerID, sourceMessageID: nil, force: true)
+        observe(jobID: jobID, stickerID: stickerID, sourceMessageID: nil, force: true, startsGeneration: true)
     }
 
     func upload(_ attachments: [PendingMediaAttachment], stickerID: String?, kind: AssetKind) async throws -> [String] {
@@ -43,7 +43,12 @@ extension StickerStore {
     /// Observation identity is the live `Task`, not the job id, so a stream that already died can
     /// always be re-attached. Callers read `observations[stickerID]` afterwards to know whether a
     /// stream is running.
-    func observe(jobID: String, stickerID: String, sourceMessageID: String?, force: Bool = false) {
+    func observe(jobID: String, stickerID: String, sourceMessageID: String?, force: Bool = false, startsGeneration: Bool = false) {
+        liveActivities?.start(
+            jobID: jobID, stickerID: stickerID,
+            title: details[stickerID]?.sticker.title ?? stickers.first(where: { $0.id == stickerID })?.title ?? "Your sticker",
+            startsGeneration: startsGeneration
+        )
         // Re-attach whenever the previous observation is gone, even for the same job id.
         if !force, jobs[stickerID]?.jobID == jobID, observations[stickerID] != nil { return }
         observations[stickerID]?.cancel()
@@ -115,6 +120,7 @@ extension StickerStore {
     /// Applies one event. Deliberately non-throwing: a payload this client cannot use must never
     /// end the stream, because the terminal event is what tells the chat the turn is over.
     private func apply(event: GenerationEvent, stickerID: String, jobID: String) async {
+        await liveActivities?.apply(event)
         if event.type == .completed || event.type == .failed,
            reportedGenerationJobs.insert(jobID).inserted {
             AppTelemetry.event("generation_result", parameters: [

@@ -41,6 +41,8 @@ export interface ApnsPush {
   payload: Record<string, unknown>;
   /** APNs replaces an undelivered notification carrying the same id. Max 64 bytes. */
   collapseId?: string;
+  pushType?: "alert" | "liveactivity";
+  priority?: "5" | "10";
 }
 
 export interface ApnsResult {
@@ -243,10 +245,10 @@ export async function sendPushes(pushes: ApnsPush[], config: ApnsConfig): Promis
         try {
           const { status, body } = await post(session, `/3/device/${push.token}`, {
             authorization,
-            "apns-topic": config.bundleId,
-            "apns-push-type": "alert",
+            "apns-topic": push.pushType === "liveactivity" ? `${config.bundleId}.push-type.liveactivity` : config.bundleId,
+            "apns-push-type": push.pushType ?? "alert",
             // The turn finished now; a banner that arrives an hour later is a lie.
-            "apns-priority": "10",
+            "apns-priority": push.priority ?? "10",
             "apns-expiration": String(Math.floor(Date.now() / 1000) + 3600),
             ...(push.collapseId ? { "apns-collapse-id": push.collapseId.slice(0, 64) } : {}),
             "content-type": "application/json",

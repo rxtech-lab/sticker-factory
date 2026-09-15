@@ -11,6 +11,7 @@ import { firstRow, setDatabaseForTests } from "@/lib/db/client";
 import { assets, chatAttachments, chatMessages, generationEvents, generationJobs, plans as planRows, stickerRevisions, stickers, users } from "@/lib/db/schema";
 import { derivedAssetId } from "@/lib/services/assets";
 import { confirmPlan } from "@/lib/services/plans";
+import { cancelGenerationWorkflow } from "@/lib/services/workflows";
 import { acceptRevision, createChatTurn, createCleanupJob, createSticker, listChatMessages, retryFailedChatTurn } from "@/lib/services/stickers";
 import { MemoryObjectStore, normalizeTransparentPng, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
@@ -250,7 +251,7 @@ describe("durable sticker workflow: composition", () => {
     await close();
   }, 30_000);
 
-  it("generates an approvable static reference, then separates matching parts after confirmation", async () => {
+  it.each(["button", "chat-failed", "chat-cancelled"])("resumes the confirmed layered animation with %s and reuses completed parts", async (retryMode) => {
     const { db, close } = await createTestDatabase();
     const store = new MemoryObjectStore();
     setDatabaseForTests(db);
@@ -265,7 +266,13 @@ describe("durable sticker workflow: composition", () => {
     const referenceSelections: Array<Array<{ label: string; required?: boolean }>> = [];
     setAiProviderForTests({
       ...unusedAiProvider,
-      routeChatTurn: mockProvider.routeChatTurn.bind(mockProvider),
+      routeChatTurn: async (input) => {
+        if (input.instruction === "Retry") {
+          expect(input.interruptedPlan).toMatchObject({ state: retryMode === "chat-cancelled" ? "cancelled" : "failed" });
+          return { type: "retry_build" };
+        }
+        return mockProvider.routeChatTurn(input);
+      },
       planSticker: mockProvider.planSticker.bind(mockProvider),
       generateConceptImage: async (input) => {
         const output = await mockProvider.generateConceptImage(input);
@@ -346,7 +353,16 @@ describe("durable sticker workflow: composition", () => {
     const savedPart = await db.select().from(assets)
       .where(eq(assets.id, derivedAssetId(confirmed.jobId, 0))).then(firstRow);
     expect(savedPart?.state).toBe("ready");
-    const retry = await retryFailedChatTurn(db, "owner-c", sticker.stickerId, confirmed.messageId);
+    if (retryMode === "chat-cancelled") {
+      // Stop uses a complete source message, unlike a provider failure. Recovery must read the job.
+      await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, confirmed.jobId));
+      await cancelGenerationWorkflow(db, "owner-c", confirmed.jobId);
+    }
+    const retry = retryMode === "button"
+      ? await retryFailedChatTurn(db, "owner-c", sticker.stickerId, confirmed.messageId)
+      : await createChatTurn(db, "owner-c", sticker.stickerId, {
+        text: "Retry", intent: "chat", attachments: [], imagePlacement: "replace",
+      });
     expect((await stickerGenerationWorkflow(retry.jobId)).workflowStatus).toBe("succeeded");
 
     expect(generatedReferences).toHaveLength(partCount);

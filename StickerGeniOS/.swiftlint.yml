@@ -12,6 +12,8 @@ included:
   - StickerMessages
   - StickerMessagesTests
   - StickerQuickShared
+  - StickerActivityShared
+  - StickerGenerationActivity
   - packages
   - scripts
 

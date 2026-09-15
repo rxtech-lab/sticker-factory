@@ -957,6 +957,7 @@ nonisolated extension GenerationEvent {
 nonisolated struct GenerationEventData: Codable, Hashable, Sendable {
     var message: String?
     var progress: Double?
+    var stage: String?
     var messageId: String?
     var revisionId: String?
     var document: AnimatedDocument?
@@ -969,7 +970,7 @@ nonisolated struct GenerationEventData: Codable, Hashable, Sendable {
     var assistantMessage: ChatMessage?
 
     enum CodingKeys: String, CodingKey {
-        case message, progress, messageId, revisionId, document
+        case message, progress, stage, messageId, revisionId, document
         case toolCallId, toolName, toolStatus, toolDetails, cancelled, assistantMessage
     }
 }
@@ -983,6 +984,7 @@ nonisolated extension GenerationEventData {
         self.init(
             message: (try? c.decodeIfPresent(String.self, forKey: .message)) ?? nil,
             progress: (try? c.decodeIfPresent(Double.self, forKey: .progress)) ?? nil,
+            stage: (try? c.decodeIfPresent(String.self, forKey: .stage)) ?? nil,
             messageId: (try? c.decodeIfPresent(String.self, forKey: .messageId)) ?? nil,
             revisionId: (try? c.decodeIfPresent(String.self, forKey: .revisionId)) ?? nil,
             document: (try? c.decodeIfPresent(AnimatedDocument.self, forKey: .document)) ?? nil,
