@@ -1,3 +1,7 @@
+import { generatePlannedVariants } from "./configurable-artwork";
+import { generateSpriteArtwork } from "./sprite-artwork";
+import { configurationReviewSelections } from "@/lib/contracts/configuration";
+import { resolveStickerConfiguration } from "@/lib/contracts/sticker";
 // Building a confirmed plan into a finished composition, and the layout pass that settles
 // where its parts sit.
 
@@ -38,7 +42,9 @@ async function refineBuiltLayout(
 ): Promise<StickerDocument> {
   // One layer has no inter-layer composition to repair. Skipping it also avoids adding a vision
   // round trip to plans whose only reason to exist is structured motion.
-  if (document.layers.length < 2) return document;
+  if (document.layers.length < 2 && !document.configuration) return document;
+  const configurations = document.configuration ? configurationReviewSelections(document.configuration) : [{}];
+  let configurationCursor = 0;
 
   let working = document;
   let reviewed: StickerDocument | undefined;
@@ -76,7 +82,9 @@ async function refineBuiltLayout(
     renderSticker: async () => {
       const call = await openCall("view_sticker");
       try {
-        const render = await renderWorkingDocument(working, job.ownerId);
+        const values = configurations[configurationCursor % configurations.length];
+        const render = await renderWorkingDocument(resolveStickerConfiguration(working, values), job.ownerId);
+        configurationCursor += 1;
         reviewed = working;
         viewedRevision = revision;
         await finishToolCall(job, call, "complete", render);
@@ -100,6 +108,7 @@ async function refineBuiltLayout(
         await assertDocumentAssetsOwned(landed, job.ownerId, job.stickerId).catch(abort);
         working = landed;
         revision += 1;
+        configurationCursor = 0;
         await finishToolCall(job, call, "complete", { revision, document: working });
         return { revision, document: working };
       } catch (error) {
@@ -116,6 +125,7 @@ async function refineBuiltLayout(
         if (!viewedPlanImage) {
           throw new Error("Call view_plan_image before finalizing the generated sticker");
         }
+        if (configurationCursor < configurations.length) throw new Error(`Review all ${configurations.length} configurations with view_sticker before finalizing; ${configurationCursor} viewed`);
         const diagnostics = layoutDiagnostics(working);
         if (diagnostics.offCanvasLayerIds.length > 0) {
           throw new Error(
@@ -132,10 +142,11 @@ async function refineBuiltLayout(
   };
 
   const result = await getAiProvider().refineStickerLayout(
-    { document, instruction, history },
+    { document, instruction: instruction + (document.configuration ? ` Review all ${configurations.length} mood/pose configurations. Each successive view_sticker shows the next configuration in this order: ${JSON.stringify(configurations)}. Check expression identity, sprite alignment, pose continuity and clipping before finalizing. After a layout change, review all configurations again.` : ""), history },
     session,
   );
   await assertJobStillRunning(job.id);
+  if (document.configuration && (!result?.finalized || configurationCursor < configurations.length)) throw new Error("Expression review did not finish. Retry to reuse the generated artwork.");
   if (!result?.finalized) {
     console.warn("Using the last viewed layout from an unfinished review loop", {
       jobId: job.id,
@@ -356,7 +367,11 @@ export async function executePlanBuildTurn(
     });
   }
 
-  let document = documentFromPlan(plan, assetJobId, videoTimings);
+  // Sprites after the stills and clips, for the same reason clips follow stills: each sheet is drawn
+  // from the layer's separated still, and a sprite is the most generations any one layer can cost.
+  const spriteBuilds = await generateSpriteArtwork(job, sticker.id, plan, assetJobId, visualReference);
+  await generatePlannedVariants(job, sticker.id, plan, assetJobId, visualReference);
+  let document = documentFromPlan(plan, assetJobId, videoTimings, spriteBuilds);
   // The reference is the picture the user approved, so a part measured in it outranks the position
   // the planner guessed before that picture existed. Parts whose measurement is implausible keep
   // the plan's layout, and the review below still looks at the whole.
@@ -375,7 +390,12 @@ export async function executePlanBuildTurn(
     history,
     visualReference,
   );
-  const firstImageAssetId = document.layers.find((layer) => layer.type === "image")?.assetId;
+  // With a cast, the biggest character is the one the thumbnail should be of; "whichever is listed
+  // first" is a visible wrong answer once a sticker holds more than one.
+  const largestSprite = document.layers.filter((layer) => layer.type === "sprite")
+    .sort((a, b) => b.anchor.scale.x * b.anchor.scale.y - a.anchor.scale.x * a.anchor.scale.y)[0];
+  const firstImageAssetId = document.layers.find((layer) => layer.type === "image")?.assetId
+    ?? largestSprite?.posterAssetId;
   let snapshot = 0;
   await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document });
 

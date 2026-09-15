@@ -345,9 +345,18 @@ struct PackDetailView: View {
 
     /// The Library's read-only viewer, unchanged: a pack member is borrowed artwork in both places,
     /// and two sheets that differ only in their padding is one sheet too many.
+    ///
+    /// The one thing this screen knows that the Library does not is that a pack can be looked at
+    /// without being owned. Posing a member needs its playback bundle, which the server hands only
+    /// to the creator and to accounts that have installed the pack — so a browsed pack says what
+    /// would unlock the controls rather than asking for them and showing the refusal.
     private func stickerPreview(_ sticker: Sticker) -> some View {
         NavigationStack {
-            PackStickerPreview(sticker: sticker, api: store.api)
+            PackStickerPreview(
+                sticker: sticker,
+                api: store.api,
+                canControl: detail?.isMine == true || detail?.installed == true
+            )
                 .navigationTitle(sticker.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -359,7 +368,10 @@ struct PackDetailView: View {
                     }
                 }
         }
-        .presentationDetents([.medium, .large])
+        // A member with controls opens at full height: half a sheet holds the artwork and the first
+        // row, and a sheet whose controls are below the fold is one nobody finds. Plain artwork
+        // keeps the smaller detent, where it is a glance rather than a screen.
+        .presentationDetents(sticker.isControllable ? [.large] : [.medium, .large])
     }
 }
 
@@ -369,7 +381,12 @@ private struct PackStatChip: View {
     let text: String
 
     var body: some View {
-        PosterSymbolLabel(verbatim: text, posterSymbol: symbol)
+        Label {
+            Text(verbatim: text)
+        } icon: {
+            Image(systemName: symbol)
+                .accessibilityHidden(true)
+        }
             .font(.system(size: 12, weight: .semibold, design: .rounded))
             .foregroundStyle(AppColors.ink)
             .lineLimit(1)

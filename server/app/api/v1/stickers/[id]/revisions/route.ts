@@ -1,3 +1,4 @@
+import { clientDocumentVersion } from "@/lib/contracts/sticker";
 import { SaveEditedDocumentRequestSchema } from "@/lib/contracts/api";
 import { noStoreJson, readJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
@@ -24,7 +25,7 @@ export async function POST(request: Request, context: Context) {
     const body = await readJson(request, SaveEditedDocumentRequestSchema.parse);
     const result = await executeIdempotent(db, { ownerId: principal.sub, operation, key, request: body }, async () => ({
       status: 201,
-      body: await saveEditedRevision(db, principal.sub, id, body, idempotencyUuid(principal.sub, operation, key)),
+      body: await saveEditedRevision(db, principal.sub, id, body, idempotencyUuid(principal.sub, operation, key), clientDocumentVersion(request)),
     }));
     return noStoreJson(result.body, { status: result.status, headers: { "idempotency-replayed": String(result.replayed) } });
   });

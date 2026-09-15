@@ -24,6 +24,7 @@ struct ChatErrorAlert: ViewModifier {
 }
 
 struct ChatBubble: View {
+    var configurationSettings: StickerControlSettings?
     let message: ChatMessage
     let sticker: AnimatedDocument?
     let assets: [String: UIImage]
@@ -101,7 +102,7 @@ struct ChatBubble: View {
 
             if let sticker {
                 Button { onOpenSticker(sticker) } label: {
-                    StickerAttachment(document: sticker, assets: assets, videos: videos)
+                    StickerAttachment(document: sticker, assets: assets, videos: videos, settings: configurationSettings)
                 }
                 .buttonStyle(.posterPlain)
                 .accessibilityIdentifier("show-sticker-attachment")
@@ -391,6 +392,8 @@ struct StickerAttachment: View {
     let assets: [String: UIImage]
     var videos: [String: KeyedVideoFrames] = [:]
 
+    var settings: StickerControlSettings?
+
     var body: some View {
         ZStack {
             // A checkerboard says "this artwork is transparent". Drawn in paper and ink so it
@@ -408,7 +411,7 @@ struct StickerAttachment: View {
             }
             .clipShape(.rect(cornerRadius: Poster.tileRadius, style: .continuous))
 
-            StickerPlayer(document: document, assets: assets, videos: videos, repeats: true)
+            StickerPlayer(document: document, assets: assets, videos: videos, repeats: true, settings: settings)
                 .padding(10)
         }
         // Square first, then capped: a list row proposes no height, and `aspectRatio` fills a

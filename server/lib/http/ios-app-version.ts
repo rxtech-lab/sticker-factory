@@ -30,7 +30,7 @@ export function requireSupportedIOSAppVersion(request: Request, clientId: string
     throw new ApiError(
       426,
       "IOS_APP_UPDATE_REQUIRED",
-      `Update Winky Sticker House to version ${minimum} or later to view your stickers.`,
+      `Update Winky Sticker Factory to version ${minimum} or later to view your stickers.`,
       { currentVersion: current || null, minimumVersion: minimum },
     );
   }

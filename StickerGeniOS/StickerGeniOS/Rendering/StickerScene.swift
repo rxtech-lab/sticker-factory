@@ -18,13 +18,23 @@ struct StickerPlayer: View {
     /// Decoded clips for video layers. Empty draws each such layer's poster instead.
     var videos: [String: KeyedVideoFrames] = [:]
     var repeats = false
+    var settings: StickerControlSettings?
 
     var body: some View {
+        let resolved = (try? settings?.resolvedDocument(document)) ?? document
+        if let settings, !settings.animate {
+            AnimatedIconFrame(
+                document: resolved,
+                time: settings.stillTime(in: resolved),
+                assets: AnimatedAssetDictionary(images: assets, videos: videos)
+            )
+        } else {
         AnimatedIconView(
-            document: document,
+            document: resolved,
             assets: AnimatedAssetDictionary(images: assets, videos: videos),
             repeats: repeats
         )
+        }
     }
 }
 
@@ -33,21 +43,6 @@ struct StickerPlayer: View {
 /// The exporter used to take the image dictionary alone. Video layers are the first content that
 /// is not a bitmap, and threading a second dictionary through every render call was the
 /// alternative to this one value.
-nonisolated struct StickerRenderAssets: Sendable {
-    var images: [String: UIImage]
-    var videos: [String: KeyedVideoFrames]
-
-    init(images: [String: UIImage] = [:], videos: [String: KeyedVideoFrames] = [:]) {
-        self.images = images
-        self.videos = videos
-    }
-
-    @MainActor
-    var dictionary: AnimatedAssetDictionary {
-        AnimatedAssetDictionary(images: images, videos: videos)
-    }
-}
-
 /// Downloads and keys a video asset once, then shares those decoded frames between every screen
 /// that opens the sticker.
 ///
@@ -209,6 +204,7 @@ final class StickerAssetStore: AnimatedAssetProvider {
     /// Fetches every bitmap a document needs, including image-layer masks, capture atlases, and an
     /// image background.
     func preload(document: AnimatedDocument, api: StickerAPIClientProtocol) async {
+        let document = (try? document.resolvingConfiguration()) ?? document
         var ids = Set(document.layers.flatMap(\.referencedImageAssetIDs))
         if case .image(let assetId, _) = document.background { ids.insert(assetId) }
         for id in ids { await load(assetID: id, api: api) }

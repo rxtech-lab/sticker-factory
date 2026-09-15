@@ -551,29 +551,3 @@ private struct SectionPlaceholder: View {
             .padding(.horizontal)
     }
 }
-
-/// Read-only artwork for a pack member. There is no editor here by design — the sticker belongs
-/// to its creator, and the viewer only has permission to look at it.
-///
-/// Shared with the marketplace's pack detail, which presents a borrowed sticker on the same terms.
-struct PackStickerPreview: View {
-    let sticker: Sticker
-    let api: StickerAPIClientProtocol
-
-    var body: some View {
-        StickerBackground {
-            VStack(spacing: 16) {
-                // `.preview`: one sticker filling a sheet can afford frames at twice the size a
-                // grid tile decodes them at.
-                StickerThumbnail(sticker: sticker, api: api, detail: .preview)
-                    .aspectRatio(1, contentMode: .fit)
-                    .padding(18)
-                    .posterSurface(cornerRadius: Poster.cardRadius, fill: AppColors.paper)
-                    .padding(20)
-                Text(sticker.kind.label)
-                    .posterLabelStyle(10, color: AppColors.muted)
-                Spacer()
-            }
-        }
-    }
-}

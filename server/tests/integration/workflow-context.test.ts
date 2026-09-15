@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import sharp from "sharp";
-import { getAiProvider, setAiProviderForTests, type AiTitleContext } from "@/lib/ai/gateway";
+import { getAiProvider, setAiProviderForTests, type AiPlanContext, type AiTitleContext, type PlanDraftingSession } from "@/lib/ai/gateway";
+import { MockAiProvider } from "@/lib/ai/gateway-mock";
 import { PlanV1Schema } from "@/lib/contracts/plan";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { firstRow, setDatabaseForTests } from "@/lib/db/client";
@@ -310,6 +311,76 @@ describe("durable sticker workflow: agent context", () => {
     expect(newest?.planJson.layers[0].source).toMatchObject({ kind: "sequence", assetId: captureId });
     await close();
   });
+
+  // The switch in the create screen. Everything below is about a project whose user never typed the
+  // words "mood" or "pose" — turning the toggle on is the whole request.
+  it("plans a sprite because the project is controllable, not because the prompt said so", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-controllable", createdAt: new Date(), updatedAt: new Date() });
+
+    const flat = PlanV1Schema.parse({
+      version: 1, title: "Cat", summary: "One drawn cat.", kind: "animated",
+      timing: { durationSeconds: 2, fps: 24, loop: "loop" },
+      conceptPrompt: "A polished sticker of one round orange cat at rest, bold outline, filling the frame.",
+      layers: [{ layerId: "hero", name: "Cat", x: 0.5, y: 0.5, scaleX: 0.9, scaleY: 0.9,
+        source: { kind: "generate", prompt: "A round orange cat on a transparent background" },
+        animations: [{ type: "float", amplitude: 0.04, cycles: 2, delay: 0, duration: 2 }] }],
+    });
+    let controllable: boolean | undefined;
+    let refusal: string | undefined;
+    class Provider extends MockAiProvider {
+      override async planSticker(input: AiPlanContext, session: PlanDraftingSession) {
+        controllable = input.controllable;
+        // What a planner that read the requirement as a suggestion would hand in: one drawn still
+        // with keyframes, and nothing for the user to switch. Only offered on the controllable
+        // project — on the ordinary one it would be accepted, and the draft it created would
+        // collide with the one the mock planner goes on to write.
+        if (input.controllable) {
+          try {
+            await session.createPlan(flat);
+          } catch (error) {
+            refusal = error instanceof Error ? error.message : String(error);
+          }
+        }
+        return super.planSticker(input, session);
+      }
+    }
+    setAiProviderForTests(new Provider());
+
+    const sticker = await createSticker(db, "owner-controllable", {
+      title: "Cat", kind: "animated", prompt: "A round orange cat", referenceAssetIds: [], controllable: true,
+    });
+    const turn = await createChatTurn(db, "owner-controllable", sticker.stickerId, {
+      text: "A round orange cat", intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(turn.jobId)).workflowStatus).toBe("succeeded");
+
+    expect(controllable).toBe(true);
+    expect(refusal).toMatch(/sprite source/);
+    const [stored] = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
+    expect(stored.planJson.layers[0].source.kind).toBe("sprite");
+    // A sprite with no picker bound to it would leave the user exactly where the toggle was meant
+    // to take them off: talking to the agent to change the character's mood.
+    expect(stored.planJson.configuration?.variants.some((variant) => variant.layers.some(
+      (patch) => patch.clip !== undefined || patch.expression !== undefined,
+    ))).toBe(true);
+
+    // The same words with the switch off stay an ordinary drawn sticker, so the flag is doing the
+    // work rather than the prompt.
+    const plain = await createSticker(db, "owner-controllable", {
+      title: "Cat", kind: "animated", prompt: "A round orange cat", referenceAssetIds: [],
+    });
+    const plainTurn = await createChatTurn(db, "owner-controllable", plain.stickerId, {
+      text: "A round orange cat", intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+    expect((await stickerGenerationWorkflow(plainTurn.jobId)).workflowStatus).toBe("succeeded");
+    const [ordinary] = await db.select().from(planRows).where(eq(planRows.stickerId, plain.stickerId));
+    expect(ordinary.planJson.layers.every((layer) => layer.source.kind !== "sprite")).toBe(true);
+    await close();
+  }, 30_000);
 
   it("still renders the concept from the user's photo on a later turn that attaches nothing", async () => {
     const { db, close } = await createTestDatabase();

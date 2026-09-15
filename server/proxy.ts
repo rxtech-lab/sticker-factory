@@ -11,6 +11,6 @@ export default function proxy(request: NextRequest, event: NextFetchEvent) {
 
 export const config = {
   matcher: [
-    "/((?!privacy(?:/|$)|share/ios(?:/|$)|.well-known/apple-app-site-association|api/auth|api/v1|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.well-known/workflow/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!privacy(?:/|$)|share/ios(?:/|$)|.well-known/apple-app-site-association|api/auth|api/v1|api/cron|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.well-known/workflow/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

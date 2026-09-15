@@ -1,3 +1,5 @@
+import AnimatedView
+import SwiftUI
 import ImageIO
 import Messages
 import UIKit
@@ -44,10 +46,10 @@ final class MessagesViewController: MSMessagesAppViewController {
         case sticker(MessagesLibraryService)
         case fullSize(FullSizeStickerLibraryService)
 
-        func refresh() async throws -> MessagesLibrarySnapshot {
+        func refresh(onUpdate: MessagesLibraryUpdate) async throws -> MessagesLibrarySnapshot {
             switch self {
-            case .sticker(let service): try await service.refresh()
-            case .fullSize(let service): try await service.refresh()
+            case .sticker(let service): try await service.refresh(onUpdate: onUpdate)
+            case .fullSize(let service): try await service.refresh(onUpdate: onUpdate)
             }
         }
 
@@ -71,6 +73,8 @@ final class MessagesViewController: MSMessagesAppViewController {
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
     private let openAppButton = UIButton(type: .system)
     private let createButton = UIButton(type: .system)
+    /// What the library state last asked for, before the surface on top of it gets a say.
+    private var wantsCreateButton = false
     private let offlineLabel = UILabel()
     private let hintLabel = UILabel()
 
@@ -94,6 +98,18 @@ final class MessagesViewController: MSMessagesAppViewController {
     private var creationController: MessagesCreateViewController?
     /// Image sends only — a sticker send resolves nothing and finishes within the tap.
     private var sendTasks: [SendKey: Task<Void, Never>] = [:]
+    private var hasConfigurableStickers = false
+    private var playbackService: MessagesPlaybackService?
+    private var controlsController: UIViewController?
+    private var controlsLoadTask: Task<Void, Never>?
+    /// Set when opening the controls is what expanded the drawer, so closing them puts the host back
+    /// the way it was. False when the user was already expanded — collapsing then would take away a
+    /// size they chose themselves.
+    private var expandedForControls = false
+    private let controlSendSession = StickerSendSession()
+    /// The artwork a prepare produced, held until it is sent, re-posed, or the sheet closes.
+    private var prepared: PreparedSticker?
+
     private var insertGate = StickerInsertGate()
 
     private struct SendKey: Hashable {
@@ -121,6 +137,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+        playbackService = try? MessagesPlaybackService()
         configureModeControl()
         configureSurfaceContainer()
         configureStatusView()
@@ -153,6 +170,9 @@ final class MessagesViewController: MSMessagesAppViewController {
         sendTasks.removeAll()
         creationController?.cancelOutstandingWork()
         gridViewController.suspendAnimations()
+        controlsLoadTask?.cancel()
+        controlSendSession.cancel()
+        if controlsController != nil { closeControls() }
         lastKnownConversation = nil
     }
 
@@ -178,7 +198,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     }
 
     private func installChild(for surface: Surface) {
-        let useLegacy = useLegacyBrowser && surface == .sticker
+        let useLegacy = useLegacyBrowser && surface == .sticker && !hasConfigurableStickers
         let child: UIViewController = useLegacy ? legacyBrowserViewController : gridViewController
 
         // A drag hands Messages the `MSSticker` behind the thumbnail. That is the entire
@@ -190,9 +210,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         gridViewController.onSelectItem = nil
         switch surface {
         case .sticker:
-            gridViewController.onSelect = { [weak self] sticker in
-                self?.insertSticker(sticker)
-            }
+            gridViewController.onSelectItem = { [weak self] itemID in self?.send(itemID) }
         case .fullSize:
             // By item id rather than by sticker, because only one of the two modes sends the
             // `MSSticker` the grid is holding; the other resolves a file it has never seen.
@@ -370,7 +388,21 @@ final class MessagesViewController: MSMessagesAppViewController {
     }
 
     private func setCreateButtonVisible(_ visible: Bool) {
-        createButton.isHidden = !(visible && surface == .fullSize && creationController == nil)
+        wantsCreateButton = visible
+        refreshCreateButton()
+    }
+
+    /// Re-answers the question with the library's last wish and whatever is on screen now.
+    ///
+    /// Creation and the controls sheet each take the whole surface, so the floating button would
+    /// otherwise sit on top of one — over the controls it lands on the Reset row, and tapping it
+    /// would abandon a sticker mid-pose. Kept apart from `setCreateButtonVisible` so a child going
+    /// up and coming down again gives back exactly what it took, rather than guessing that the
+    /// library is in a state that wants the button.
+    private func refreshCreateButton() {
+        createButton.isHidden = !(
+            wantsCreateButton && surface == .fullSize && creationController == nil && controlsController == nil
+        )
     }
 
     @objc
@@ -418,7 +450,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     /// download it, and the create screen then falls back to a still preview rather than offering a
     /// Send that would insert nothing.
     private func adoptPublishedSticker(_ stickerID: String) async -> URL? {
-        guard let library, let snapshot = try? await library.refresh() else { return nil }
+        guard let library, let snapshot = try? await library.refresh(onUpdate: { _ in }) else { return nil }
         replaceSections(with: snapshot.sections)
         offlineLabel.isHidden = !snapshot.isOffline
         return snapshot.stickers.first {
@@ -507,40 +539,53 @@ final class MessagesViewController: MSMessagesAppViewController {
     private func refreshLibrary() {
         guard let library else { return }
         loadTask?.cancel()
-        showLoading()
+        if gridViewController.stickerCount == 0 { showLoading() }
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let snapshot = try await library.refresh()
-                guard !Task.isCancelled else { return }
-                replaceSections(with: snapshot.sections)
-                offlineLabel.isHidden = !snapshot.isOffline
-                setCreateButtonVisible(true)
-                if snapshot.stickers.isEmpty {
-                    showEmptyLibrary(
-                        hasInstalledPacks: snapshot.sections.contains { $0.id != SharedStickerCache.mineSectionID }
-                    )
-                } else {
-                    statusContainer.isHidden = true
-                    // Only once there is a grid to size. Offering the control over an empty
-                    // library, or over a sign-in prompt, is a setting for nothing.
-                    setModeControlVisible(true)
+                let snapshot = try await library.refresh { [weak self] snapshot in
+                    guard !Task.isCancelled else { return }
+                    await self?.apply(snapshot)
                 }
+                guard !Task.isCancelled else { return }
+                apply(snapshot)
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
+                replaceSections(with: [])
                 showError(error, offersOpenApp: true)
             }
         }
     }
 
-    private func replaceSections(with sections: [StickerSection]) {
-        if legacyBrowserViewController.parent === self {
+    private func apply(_ snapshot: MessagesLibrarySnapshot) {
+        guard !Task.isCancelled else { return }
+        replaceSections(with: snapshot.sections, reconcilePlayback: !snapshot.isRefreshing)
+        offlineLabel.isHidden = !snapshot.isOffline
+        setCreateButtonVisible(true)
+        if snapshot.stickers.isEmpty {
+            if snapshot.isRefreshing {
+                showLoading()
+            } else {
+                showEmptyLibrary(hasInstalledPacks: snapshot.sections.contains { $0.id != SharedStickerCache.mineSectionID })
+            }
+        } else {
+            statusContainer.isHidden = true
+            activityIndicator.stopAnimating()
+            setModeControlVisible(true)
+        }
+    }
+
+    private func replaceSections(with sections: [StickerSection], reconcilePlayback: Bool = true) {
+        hasConfigurableStickers = sections.flatMap(\.stickers).contains { $0.playbackRevisionID != nil }
+        if reconcilePlayback, let playbackService { Task { await playbackService.reconcile(sections) } }
+        if legacyBrowserViewController.parent === self && !hasConfigurableStickers {
             // MSStickerBrowserView cannot render sections, so the legacy path flattens them —
             // "My Stickers" first, then each pack in order. Grouping is silently lost there.
             legacyBrowserViewController.replaceStickers(with: sections.flatMap(\.stickers))
         } else {
+            if controlsController == nil, gridViewController.parent !== self { install(gridViewController) }
             gridViewController.replaceSections(with: sections)
         }
     }
@@ -615,12 +660,151 @@ final class MessagesViewController: MSMessagesAppViewController {
     /// already holding, straight into `insert(_ sticker:)`. It needs no download and no task, which
     /// is why it returns before any of the machinery below.
     private func send(_ itemID: StickerGridViewController.StickerItemID) {
-        if sendMode == .sticker {
+        if let item = gridViewController.cachedItem(for: itemID), let revisionID = item.playbackRevisionID {
+            openControls(itemID: itemID, item: item, revisionID: revisionID)
+            return
+        }
+        if surface == .sticker || sendMode == .sticker {
             guard let sticker = gridViewController.sticker(for: itemID) else { return }
             insertSticker(sticker)
             return
         }
         sendImage(itemID)
+    }
+
+    private func openControls(itemID: StickerGridViewController.StickerItemID, item: CachedSticker, revisionID: String) {
+        guard controlsController == nil, controlsLoadTask == nil, let service = playbackService else { return }
+        gridViewController.setBusy(true, for: itemID)
+        // A compact drawer is a single row of thumbnails: a mood picker, a pose picker, a speed
+        // slider and a preview cannot be operated in it, and the sheet would open somewhere the user
+        // cannot reach. Requested before the bundle loads rather than after, so the expansion
+        // animates while the artwork downloads instead of jolting the drawer once it lands.
+        //
+        // This is the opposite of the collapse in `applyInsertOutcome` and not in tension with it:
+        // that one ends an errand the user finished, while this one opens a screen they have to use.
+        // It applies in the Stickers drawer too — Apple's chrome owns the *browsing* surface, but a
+        // sheet nobody can operate is not a browsing surface.
+        if presentationStyle == .compact {
+            expandedForControls = true
+            requestPresentationStyle(.expanded)
+        }
+        controlsLoadTask = Task { [weak self] in
+            defer {
+                self?.controlsLoadTask = nil
+                self?.gridViewController.setBusy(false, for: itemID)
+                // The artwork never arrived, or the conversation went away: nothing was installed, so
+                // the expansion above has nothing to show and is given back.
+                if self?.controlsController == nil { self?.restoreCompactAfterControls() }
+            }
+            do {
+                let (account, bundle) = try await service.bundle(stickerID: item.stickerID, revisionID: revisionID)
+                try Task.checkCancellation()
+                guard let self, self.insertionTarget != nil else { return }
+                let image = self.surface == .fullSize && self.sendMode == .image
+                let sheet = StickerControlsSheet(document: bundle.document, stickerID: item.stickerID, accountID: account,
+                    // A full-size image has nothing to peel — `MSSticker` is the ≤500 KB artwork and
+                    // an attachment is not one — so that mode keeps sending in a single step.
+                    actionTitle: image ? String(localized: "Send Image") : String(localized: "Prepare"),
+                    loadAssets: { document in try await service.loadAssets(bundle: bundle, document: document, accountID: account) },
+                    onApply: { [weak self] settings, document, assets in
+                        guard let self else { throw CancellationError() }
+                        try await self.controlSendSession.perform(
+                            prepare: {
+                                try await PreparedSticker.renderedFile(
+                                    service: service, account: account, bundle: bundle, document: document,
+                                    settings: settings, assets: assets, image: image
+                                )
+                            },
+                            validate: {
+                                guard account == (try await service.accountID()), self.insertionTarget != nil else {
+                                    throw CancellationError()
+                                }
+                            },
+                            // In image mode this is still the send. In sticker mode it is the end of
+                            // preparing: the file is kept, and what happens to it is the reader's
+                            // next choice — dragged onto a bubble, or sent.
+                            insert: { fileURL in
+                                guard !image else {
+                                    try await self.insertRendered(fileURL, title: item.title, image: true)
+                                    return
+                                }
+                                self.prepared = try .init(fileURL: fileURL, title: item.title)
+                                self.collapseForPreparedSticker()
+                            }
+                        )
+                    }, onClose: { [weak self] in self?.closeControls() },
+                    preparedSending: image ? nil : .init(
+                        preview: { [weak self] in
+                            guard let sticker = self?.prepared?.sticker else { return AnyView(EmptyView()) }
+                            return AnyView(PreparedStickerView(sticker: sticker))
+                        },
+                        send: { [weak self] in
+                            guard let self, let prepared = self.prepared else { throw CancellationError() }
+                            try await self.insertRendered(prepared.fileURL, title: prepared.title, image: false)
+                            // The errand is finished, so the drawer stops covering the conversation
+                            // the sticker just landed in — the same courtesy `applyInsertOutcome`
+                            // pays an ordinary send.
+                            self.requestPresentationStyle(.compact)
+                        }
+                    ))
+                let controller = UIHostingController(rootView: sheet)
+                self.controlsController = controller
+                self.refreshCreateButton()
+                self.install(controller)
+            } catch is CancellationError {} catch { self?.showHint(error.localizedDescription) }
+        }
+    }
+
+    /// Hands the rendered file to the conversation: an attachment in image mode, an `MSSticker`
+    /// otherwise. The conversation is read again here rather than captured — the send session
+    /// validated it a moment ago, but an extension can lose it between the two.
+    private func insertRendered(_ fileURL: URL, title: String, image: Bool) async throws {
+        guard let conversation = insertionTarget else { throw CancellationError() }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let completion: (Error?) -> Void = { error in
+                if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+            }
+            guard !image else {
+                conversation.insertAttachment(fileURL, withAlternateFilename: title + ".png", completionHandler: completion)
+                return
+            }
+            do {
+                let sticker = try MSSticker(contentsOfFileURL: fileURL, localizedDescription: title)
+                conversation.insert(sticker, completionHandler: completion)
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+
+    private func closeControls() {
+        controlSendSession.cancel()
+        controlsController = nil
+        prepared = nil
+        refreshCreateButton()
+        if let surface { installChild(for: surface) }
+        restoreCompactAfterControls()
+    }
+
+    /// A prepared sticker is peeled and dropped onto a bubble, and there is no bubble on screen
+    /// while the drawer is expanded.
+    ///
+    /// Unconditional, unlike `restoreCompactAfterControls()`: that one returns a loan, and this one
+    /// is what makes the prepared state usable at all, so it applies whether this controller took
+    /// the expansion or the user did. The flag is cleared alongside, or the later restore would try
+    /// to give back an expansion that is already gone.
+    private func collapseForPreparedSticker() {
+        expandedForControls = false
+        if presentationStyle == .expanded { requestPresentationStyle(.compact) }
+    }
+
+    /// Gives back only what opening the controls took: the drawer collapses if this controller was
+    /// the one that expanded it, and is left alone if the user had already expanded it themselves or
+    /// if a completed send has collapsed it already.
+    private func restoreCompactAfterControls() {
+        guard expandedForControls else { return }
+        expandedForControls = false
+        if presentationStyle == .expanded { requestPresentationStyle(.compact) }
     }
 
     /// Two gates, because they guard different things.

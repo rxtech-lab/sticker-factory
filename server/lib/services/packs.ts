@@ -45,8 +45,16 @@ export const MAX_INSTALLED_PACKS = 30;
 /** Cover tiles shown on a browse card. */
 const COVER_STICKER_COUNT = 4;
 
-/** Pack states a non-creator may see. `draft` and `removed` are creator-only. */
-const PUBLIC_PACK_STATES = ["published", "unlisted"] as const;
+/**
+ * Pack states a non-creator may see. `draft` and `removed` are creator-only.
+ *
+ * Also what earns a sticker a reprieve when its creator deletes their account: a pack anyone can
+ * still open has to keep its contents (`lib/services/account-deletion.ts`).
+ */
+export const PUBLIC_PACK_STATES = ["published", "unlisted"] as const;
+
+/** The byline a deleted creator's surviving packs carry, in place of any name they ever had. */
+export const DELETED_ACCOUNT_NAME = "deleted-account";
 
 type PackSort = "recent" | "popular";
 
@@ -121,9 +129,12 @@ export async function ensureCreatorProfile(db: Database, userId: string): Promis
     .then(firstRow) as Promise<CreatorProfileRow>;
 }
 
+/** The columns of `users` the byline needs — `deletedAt` included, which is what anonymizes it. */
+type CreatorUserRow = { id: string; displayName: string | null; deletedAt: Date | null };
+
 type CreatorRow = {
   profile: CreatorProfileRow | null;
-  user: { id: string; displayName: string | null } | null;
+  user: CreatorUserRow | null;
 };
 
 export interface CreatorV1 {
@@ -140,12 +151,27 @@ export interface CreatorV1 {
  * `creator_profiles.display_name` wins over the legacy `users.display_name`. New user rows are
  * id-only because OAuth remains the profile source of truth. The handle is the last resort, so the
  * result is never blank — and the email is never a fallback.
+ *
+ * A deleted account short-circuits all of that. Its packs stay published — that is the point of
+ * keeping the `users` row — but they are bylined `deleted-account` and never as the viewer, whose
+ * own account cannot be the deleted one. Account deletion already rewrites the stored display names
+ * (`lib/services/account-deletion.ts`); this is the structural guarantee behind them, so a profile
+ * row written before that code existed cannot leak a name.
  */
 export function serializeCreator(
   { profile, user }: CreatorRow,
   options: { viewerId: string; packCount?: number },
 ): CreatorV1 {
   const handle = profile?.handle ?? "unknown";
+  if (user?.deletedAt) {
+    return {
+      handle,
+      displayName: DELETED_ACCOUNT_NAME,
+      bio: null,
+      packCount: options.packCount ?? 0,
+      isSelf: false,
+    };
+  }
   return {
     handle,
     displayName: profile?.displayName?.trim() || user?.displayName?.trim() || `@${handle}`,
@@ -197,7 +223,7 @@ export interface PackDetailV1 extends PackSummaryV1 {
 type PackJoinRow = {
   pack: StickerPackRow;
   profile: CreatorProfileRow | null;
-  user: { id: string; displayName: string | null } | null;
+  user: CreatorUserRow | null;
 };
 
 function serializePackSummary(
@@ -246,6 +272,7 @@ type PackMemberRow = {
   position: number;
   sticker: StickerSummaryRow["sticker"];
   systemAsset: StickerSummaryRow["systemAsset"];
+  playbackRevisionId?: string | null;
   previewAsset: StickerSummaryRow["previewAsset"];
   attachmentMedium: StickerSummaryRow["attachmentMedium"];
   attachmentSmall: StickerSummaryRow["attachmentSmall"];
@@ -267,6 +294,7 @@ function selectPackMemberRows(db: Database, packFilter: SQL, query?: string | nu
     position: stickerPackItems.position,
     sticker: stickerSummaryColumns,
     systemAsset: systemAssetSummaryColumns,
+    playbackRevisionId: sql<string | null>`CASE WHEN ${stickerRevisions.playbackJson} IS NOT NULL THEN ${stickerRevisions.id} ELSE NULL END`,
     previewAsset: previewAssetSummaryColumns,
     attachmentMedium: attachmentMediumSummaryColumns,
     attachmentSmall: attachmentSmallSummaryColumns,
@@ -302,6 +330,7 @@ function groupPackMembers(
     if (bucket.length >= perPack) continue;
     bucket.push({
       sticker: row.sticker,
+      playbackRevisionId: row.playbackRevisionId,
       systemAsset: row.systemAsset,
       previewAsset: row.previewAsset,
       attachmentMedium: row.attachmentMedium,

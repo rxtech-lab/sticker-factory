@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld px · arrives about %lld pt wide" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld px · arrives about %2$lld pt wide"
+          }
+        }
+      }
+    },
     "A downloaded sticker exceeds the Messages file-size limit." : {
       "localizations" : {
         "zh-CN" : {
@@ -48,6 +58,12 @@
           }
         }
       }
+    },
+    "A sticker frame could not be read for encoding." : {
+
+    },
+    "A sticker frame could not be rendered." : {
+
     },
     "Add" : {
       "localizations" : {
@@ -113,6 +129,9 @@
         }
       }
     },
+    "Adjust" : {
+
+    },
     "Adjusting animation" : {
       "localizations" : {
         "zh-CN" : {
@@ -144,6 +163,9 @@
           }
         }
       }
+    },
+    "Animate" : {
+
     },
     "Animated" : {
       "localizations" : {
@@ -193,6 +215,9 @@
         }
       }
     },
+    "Apply" : {
+
+    },
     "Building plan" : {
       "localizations" : {
         "zh-CN" : {
@@ -225,6 +250,9 @@
         }
       }
     },
+    "Cancel" : {
+
+    },
     "Change something — \"make it blue\", \"add sunglasses\"…" : {
       "localizations" : {
         "zh-CN" : {
@@ -256,6 +284,12 @@
           }
         }
       }
+    },
+    "Could not append a frame" : {
+
+    },
+    "Could not start" : {
+
     },
     "Couldn’t Complete Action" : {
       "localizations" : {
@@ -466,6 +500,9 @@
         }
       }
     },
+    "Edit" : {
+
+    },
     "Editing layers" : {
       "localizations" : {
         "zh-CN" : {
@@ -497,6 +534,22 @@
           }
         }
       }
+    },
+    "Encoding %lld px · frame %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Encoding %1$lld px · frame %2$lld of %3$lld"
+          }
+        }
+      }
+    },
+    "Encoding GIF at %lld px" : {
+
+    },
+    "Exported at %lld px to stay under Apple's 500 KB sticker limit." : {
+
     },
     "Filming a clip" : {
       "localizations" : {
@@ -578,6 +631,19 @@
         }
       }
     },
+    "Frame %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Frame %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "Full Screen" : {
+
+    },
     "Full-size images need a connection." : {
       "localizations" : {
         "zh-CN" : {
@@ -593,6 +659,9 @@
           }
         }
       }
+    },
+    "General" : {
+
     },
     "Generate" : {
       "localizations" : {
@@ -625,6 +694,12 @@
           }
         }
       }
+    },
+    "Large" : {
+
+    },
+    "Loading artwork…" : {
+
     },
     "Making it" : {
       "localizations" : {
@@ -705,6 +780,9 @@
           }
         }
       }
+    },
+    "Medium" : {
+
     },
     "My Stickers" : {
       "localizations" : {
@@ -866,6 +944,9 @@
         }
       }
     },
+    "Opens controls for posing this sticker" : {
+
+    },
     "Planning it…" : {
       "localizations" : {
         "zh-CN" : {
@@ -898,6 +979,12 @@
         }
       }
     },
+    "Prepare" : {
+
+    },
+    "Preparing…" : {
+
+    },
     "Press and hold a sticker to drag it in." : {
       "localizations" : {
         "zh-CN" : {
@@ -913,6 +1000,9 @@
           }
         }
       }
+    },
+    "Press and hold to drag it onto a message, or send it." : {
+
     },
     "Reading your request…" : {
       "localizations" : {
@@ -1009,6 +1099,12 @@
           }
         }
       }
+    },
+    "Reset" : {
+
+    },
+    "Retry loading" : {
+
     },
     "Reviewing the plan image" : {
       "localizations" : {
@@ -1154,6 +1250,12 @@
         }
       }
     },
+    "Send Image" : {
+
+    },
+    "Sending…" : {
+
+    },
     "Shared credentials could not be read (Keychain status %d)." : {
       "localizations" : {
         "zh-CN" : {
@@ -1169,6 +1271,9 @@
           }
         }
       }
+    },
+    "Shared sticker settings are unavailable." : {
+
     },
     "Showing the plan" : {
       "localizations" : {
@@ -1201,6 +1306,12 @@
           }
         }
       }
+    },
+    "Small" : {
+
+    },
+    "Speed" : {
+
     },
     "Starting securely…" : {
       "localizations" : {
@@ -1249,6 +1360,9 @@
           }
         }
       }
+    },
+    "Sticker Controls" : {
+
     },
     "Sticker Factory could not refresh the library (HTTP %lld)." : {
       "localizations" : {
@@ -1330,6 +1444,9 @@
         }
       }
     },
+    "Still frame" : {
+
+    },
     "Stop watching" : {
       "localizations" : {
         "zh-CN" : {
@@ -1345,6 +1462,9 @@
           }
         }
       }
+    },
+    "Surveying colors" : {
+
     },
     "That didn't finish. Try again." : {
       "localizations" : {
@@ -1441,6 +1561,15 @@
           }
         }
       }
+    },
+    "The animation document is invalid." : {
+
+    },
+    "The animation had no frames to encode." : {
+
+    },
+    "The animation's frames are not all the same size." : {
+
     },
     "The authentication server returned an invalid token response." : {
       "localizations" : {
@@ -1539,6 +1668,9 @@
         }
       }
     },
+    "The export file could not be created." : {
+
+    },
     "The full-size image has unexpected dimensions." : {
       "localizations" : {
         "zh-CN" : {
@@ -1570,6 +1702,9 @@
           }
         }
       }
+    },
+    "The MP4 export failed: %@" : {
+
     },
     "The packs you added have nothing published right now. Open Sticker Factory to add more." : {
       "localizations" : {
@@ -1683,6 +1818,15 @@
         }
       }
     },
+    "The WebP encoder is unavailable." : {
+
+    },
+    "The WebP export could not be encoded." : {
+
+    },
+    "This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the sticker is a still frame. The animated PNG and MP4 exports are unaffected. Shortening the animation, or switching a ping-pong loop to a plain loop, brings the motion back." : {
+
+    },
     "This is taking longer than expected. It is still running — open the main app to pick it up." : {
       "localizations" : {
         "zh-CN" : {
@@ -1731,6 +1875,12 @@
         }
       }
     },
+    "This sticker was made with a newer version of the app (document version %lld)." : {
+
+    },
+    "This sticker's controls are invalid." : {
+
+    },
     "Those reference images are too large together. Remove one and try again." : {
       "localizations" : {
         "zh-CN" : {
@@ -1743,6 +1893,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這些參考影像合在一起太大。請移除一張後重試。"
+          }
+        }
+      }
+    },
+    "Trying %lld px" : {
+
+    },
+    "Trying %lld px · %lld fps" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Trying %1$lld px · %2$lld fps"
           }
         }
       }
@@ -1763,6 +1926,9 @@
         }
       }
     },
+    "Unsupported writer settings" : {
+
+    },
     "Working" : {
       "localizations" : {
         "zh-CN" : {
@@ -1778,6 +1944,9 @@
           }
         }
       }
+    },
+    "Writer did not complete" : {
+
     },
     "Writing a reply" : {
       "localizations" : {

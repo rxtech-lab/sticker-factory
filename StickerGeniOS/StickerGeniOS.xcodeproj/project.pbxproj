@@ -53,6 +53,8 @@
 		F1AE00000000000000000002 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1AE00000000000000000012 /* FirebaseAnalyticsCore */; };
 		F1AE00000000000000000003 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = F1AE00000000000000000013 /* FirebaseCrashlytics */; };
 		F1AE00000000000000000004 /* FirebaseInAppMessaging-Beta in Frameworks */ = {isa = PBXBuildFile; productRef = F1AE00000000000000000014 /* FirebaseInAppMessaging-Beta */; };
+		F50000000000000000000001 /* AnimatedView in Frameworks */ = {isa = PBXBuildFile; productRef = DF2A4293303DD070006910C8 /* AnimatedView */; };
+		F50000000000000000000002 /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = C00000000000000000000002 /* libwebp */; };
 		FEE4261A41752C8259D5AB1B /* QuickHTTPTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630BD9F3FF2B7870AD961E48 /* QuickHTTPTransport.swift */; };
 /* End PBXBuildFile section */
 
@@ -176,7 +178,10 @@
 		A00000000000000000000040 /* Exceptions for "StickerGeniOS" folder in "StickerMessages" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				AppColors.swift,
 				Haptics.swift,
+				Views/DesignSystem.swift,
+				Views/PosterIcons.swift,
 				Views/StickerToolLabel.swift,
 			);
 			target = A00000000000000000000010 /* StickerMessages */;
@@ -216,6 +221,11 @@
 			path = StickerGeniOSUITests;
 			sourceTree = "<group>";
 		};
+		F50000000000000000000003 /* StickerPlaybackShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = StickerPlaybackShared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -233,6 +243,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F50000000000000000000001 /* AnimatedView in Frameworks */,
+				F50000000000000000000002 /* libwebp in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -352,6 +364,7 @@
 				DFD446B330404667007C420E /* icon.icon */,
 				A00000000000000000000035 /* Configuration */,
 				DF2A3E17303C7709006910C8 /* StickerGeniOS */,
+				F50000000000000000000003 /* StickerPlaybackShared */,
 				A00000000000000000000008 /* StickerMessages */,
 				A00000000000000000000022 /* StickerMessagesTests */,
 				DF2A3E27303C770A006910C8 /* StickerGeniOSTests */,
@@ -443,8 +456,13 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A00000000000000000000008 /* StickerMessages */,
+				F50000000000000000000003 /* StickerPlaybackShared */,
 			);
 			name = StickerMessages;
+			packageProductDependencies = (
+				DF2A4293303DD070006910C8 /* AnimatedView */,
+				C00000000000000000000002 /* libwebp */,
+			);
 			productName = StickerMessages;
 			productReference = A00000000000000000000005 /* StickerMessages.appex */;
 			productType = "com.apple.product-type.app-extension.messages";
@@ -489,6 +507,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				DF2A3E17303C7709006910C8 /* StickerGeniOS */,
+				F50000000000000000000003 /* StickerPlaybackShared */,
 			);
 			name = StickerGeniOS;
 			packageProductDependencies = (
@@ -1458,8 +1477,9 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/rxtech-lab/RxAuthSwift";
 			requirement = {
-				kind = exactVersion;
-				version = 1.2.1;
+				kind = versionRange;
+				maximumVersion = 2.0.0;
+				minimumVersion = 1.2.1;
 			};
 		};
 		B00000000000000000000003 /* XCRemoteSwiftPackageReference "Kingfisher" */ = {

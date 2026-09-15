@@ -213,6 +213,19 @@ struct StickerLibraryClient: Sendable {
         return DownloadedRendition(data: result.data, mimeType: contentType)
     }
 
+    func fetchPlayback(stickerID: String, revisionID: String, accessToken: String) async throws -> StickerPlaybackBundle {
+        let endpoint = baseURL.appending(path: "api/v1/stickers/\(stickerID)/playback")
+        var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "revisionId", value: revisionID)]
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("5", forHTTPHeaderField: "X-Sticker-Contract")
+        addClientHeaders(to: &request)
+        let result = try await transport.data(for: request)
+        try Self.validate(result)
+        return try JSONDecoder().decode(StickerPlaybackBundle.self, from: result.data)
+    }
+
     private func addClientHeaders(to request: inout URLRequest) {
         if let appVersion, !appVersion.isEmpty, !appVersion.contains("$(") {
             request.setValue(appVersion, forHTTPHeaderField: "X-iOS-App-Version")
@@ -393,6 +406,7 @@ private struct NestedStickerPageDTO: Decodable {
 }
 
 private struct StickerDTO: Decodable {
+    let playbackRevisionId: String?
     let id: String
     let title: String
     let updatedAt: Date
@@ -409,6 +423,7 @@ private struct StickerDTO: Decodable {
     let webpAsset: AssetDTO?
 
     private enum CodingKeys: String, CodingKey {
+        case playbackRevisionId
         case id
         case title
         case name
@@ -421,6 +436,7 @@ private struct StickerDTO: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        playbackRevisionId = try container.decodeIfPresent(String.self, forKey: .playbackRevisionId)
         id = try container.decode(String.self, forKey: .id)
         title = try container.decodeIfPresent(String.self, forKey: .title)
             ?? container.decodeIfPresent(String.self, forKey: .name)
@@ -443,7 +459,8 @@ private struct StickerDTO: Decodable {
             byteSize: systemSticker?.byteSize,
             sha256: systemSticker?.sha256,
             updatedAt: updatedAt,
-            fullSize: fullSize(systemAssetID: assetID)
+            fullSize: fullSize(systemAssetID: assetID),
+            playbackRevisionID: playbackRevisionId
         )
     }
 

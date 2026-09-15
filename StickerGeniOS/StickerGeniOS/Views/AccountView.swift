@@ -120,6 +120,8 @@ struct AccountView: View {
                 PosterListHeader("About")
             }
 
+            DeleteAccountSection(environment: environment)
+
             Section {
                 Button("Sign Out", role: .destructive) {
                     Haptics.tap(.medium)
@@ -157,6 +159,132 @@ struct AccountView: View {
             Text("Shared credentials and cached iMessage stickers will be removed from this device.")
         }
         .telemetryScreen("account")
+    }
+}
+
+/// Deleting the account, and — for the whole grace period — changing your mind.
+///
+/// Both halves matter. The deletion is real and takes everything with it, so the confirmation says
+/// exactly what goes and what survives; and because it does not happen for a week, the way back has
+/// to be at least as reachable as the way in. While a deletion is pending this section *is* the
+/// pending notice, with the date the account actually disappears.
+private struct DeleteAccountSection: View {
+    @Bindable var environment: AppEnvironment
+    @State private var state: AccountDeletionState = .none
+    @State private var confirmingDeletion = false
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    private var isPending: Bool { state.pendingDeletion }
+
+    private var scheduledDescription: String? {
+        guard let scheduledAt = state.deletionScheduledAt else { return nil }
+        // Formatted here rather than on the server so the date lands in the reader's own timezone.
+        return scheduledAt.formatted(date: .long, time: .shortened)
+    }
+
+    var body: some View {
+        Section {
+            if isPending {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("This account is scheduled for deletion")
+                        .font(.posterDisplay(15, weight: .bold))
+                        .foregroundStyle(AppColors.coral)
+                    if let scheduledDescription {
+                        Text("Everything will be permanently deleted on \(scheduledDescription).")
+                            .font(.system(size: 13, design: .rounded))
+                            .foregroundStyle(AppColors.muted)
+                    }
+                }
+                .padding(.vertical, 4)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("pending-deletion-notice")
+
+                Button {
+                    Haptics.tap(.medium)
+                    perform { try await environment.store.api.cancelAccountDeletion() }
+                } label: {
+                    HStack {
+                        Text("Keep My Account")
+                        if isWorking {
+                            Spacer()
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                }
+                .font(.posterDisplay(16, weight: .bold))
+                .disabled(isWorking)
+                .accessibilityIdentifier("cancel-account-deletion")
+            } else {
+                Button("Delete My Account", role: .destructive) {
+                    Haptics.tap(.medium)
+                    confirmingDeletion = true
+                }
+                .font(.posterDisplay(16, weight: .bold))
+                .foregroundStyle(AppColors.coral)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .disabled(isWorking)
+                .accessibilityIdentifier("delete-account-button")
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 13, design: .rounded))
+                    .foregroundStyle(AppColors.coral)
+                    .accessibilityIdentifier("account-deletion-error")
+            }
+        } header: {
+            PosterListHeader("Delete Account")
+        } footer: {
+            Text("""
+                Your account is deleted 7 days after you ask, and you can cancel any time before then. \
+                Your stickers and their media are deleted with it. Packs you already published stay in \
+                the marketplace, credited to \u{201C}deleted-account\u{201D}.
+                """)
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(AppColors.faint)
+        }
+        .confirmationDialog(
+            "Delete your \(AppConfiguration.defaultAppName) account?",
+            isPresented: $confirmingDeletion
+        ) {
+            Button("Delete My Account", role: .destructive) {
+                Haptics.tap(.heavy)
+                perform { try await environment.store.api.requestAccountDeletion() }
+            }
+            Button("Cancel", role: .cancel) { Haptics.tap(.light) }
+        } message: {
+            Text("""
+                Your account will be permanently deleted in 7 days, along with your stickers and \
+                their media. You can cancel any time before then. Packs you already published stay \
+                in the marketplace, credited to \u{201C}deleted-account\u{201D}.
+                """)
+        }
+        .task {
+            // A failed read falls back to "nothing pending" rather than disabling the button: the
+            // request is idempotent, so a user who *is* pending and taps anyway gets their existing
+            // schedule back and the section corrects itself. Refusing to act on a transient network
+            // failure would be the worse answer.
+            state = (try? await environment.store.api.accountDeletionState()) ?? .none
+        }
+    }
+
+    private func perform(_ work: @escaping () async throws -> AccountDeletionState) {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            defer { isWorking = false }
+            do {
+                state = try await work()
+            } catch let envelope as APIErrorEnvelope
+                where envelope.error.code == "ACCOUNT_DELETION_SCOPE_REQUIRED" {
+                // The install was authorized before the app asked for `write:profile`. Only a fresh
+                // sign-in can grant it, so say that instead of repeating the server's wording.
+                errorMessage = String(localized: "Sign out and sign in again to confirm this change.")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 }
 

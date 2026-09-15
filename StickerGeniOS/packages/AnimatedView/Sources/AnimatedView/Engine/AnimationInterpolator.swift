@@ -186,6 +186,27 @@ public enum AnimationInterpolator {
         )
     }
 
+    /// Which frame of a sprite clip is showing at a given document time.
+    ///
+    /// A clip carries a duration per frame rather than a rate, so this walks the durations modulo
+    /// their sum: the clip loops on its own clock, however long the document is. A pure function of
+    /// document time like `sequenceFrameIndex`, so `speed` and the document's loop apply for free;
+    /// negative time holds the first frame. Mirrored by `spriteFrameIndex` in
+    /// `server/lib/animation/sample.ts` and pinned by `sprite-frame-index-parity.json` — the
+    /// arithmetic order (clamp, remainder, walk) is the parity contract, so do not simplify it.
+    public static func spriteFrameIndex(_ frames: [AnimatedSpriteFrame], atDocumentTime time: Double) -> Int {
+        if frames.count <= 1 { return 0 }
+        var total = 0.0
+        for frame in frames { total += frame.duration }
+        guard total > 0, time.isFinite else { return 0 }
+        var remaining = max(0, time).truncatingRemainder(dividingBy: total)
+        for (index, frame) in frames.enumerated() {
+            if remaining < frame.duration { return index }
+            remaining -= frame.duration
+        }
+        return 0
+    }
+
     /// The shared body of `sequenceFrameIndex` and `videoFrameIndex`.
     public static func frameIndex(
         frameCount: Int,

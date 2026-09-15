@@ -46,7 +46,7 @@ public struct AnimatedIconView: View {
     }
 
     private var playbackDocument: AnimatedDocument {
-        var result = document
+        var result = (try? document.resolvingConfiguration()) ?? document
         if let speed { result.speed = speed }
         if repeats, result.kind == .animated, result.loop == .once { result.loop = .loop }
         return result

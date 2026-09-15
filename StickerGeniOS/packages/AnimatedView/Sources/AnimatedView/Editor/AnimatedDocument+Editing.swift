@@ -51,6 +51,7 @@ extension AnimatedDocument {
         let index = try requireIndex(ofLayer: id)
         var result = self
         result.layers.remove(at: index)
+        result.configuration = result.configuration?.keepingLayers(Set(result.layers.map(\.id)))
         return result
     }
 

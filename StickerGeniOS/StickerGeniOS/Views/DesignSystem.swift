@@ -182,6 +182,14 @@ extension View {
             .textCase(.uppercase)
             .foregroundStyle(color)
     }
+
+    /// Names this view for the UI tests, and leaves it alone when there is nothing to name it.
+    ///
+    /// `accessibilityIdentifier("")` is not the same as not calling it: it overwrites whatever the
+    /// surrounding view had already been named.
+    @ViewBuilder func posterIdentifier(_ identifier: String?) -> some View {
+        if let identifier { accessibilityIdentifier(identifier) } else { self }
+    }
 }
 
 /// The app's card: cream, outlined, sitting a few points above its own shadow.
@@ -200,6 +208,131 @@ struct PosterCard<Content: View>: View {
             // in a grid overlaps it.
             .padding(.trailing, shadow.width)
             .padding(.bottom, shadow.height)
+    }
+}
+
+/// The poster's text field: paper inside a card, so it reads as somewhere to write.
+struct PosterField: View {
+    let placeholder: String
+    @Binding var text: String
+    var lineLimit: ClosedRange<Int>?
+
+    var body: some View {
+        Group {
+            if let lineLimit {
+                TextField(placeholder, text: $text, axis: .vertical).lineLimit(lineLimit)
+            } else {
+                TextField(placeholder, text: $text)
+            }
+        }
+        .textFieldStyle(.plain)
+        .font(.system(size: 14, design: .rounded))
+        .padding(10)
+        .posterSurface(
+            cornerRadius: Poster.chipRadius,
+            fill: AppColors.paper,
+            lineWidth: Poster.hairline,
+            offset: .zero
+        )
+    }
+}
+
+// MARK: - Rows
+
+/// A switch on paper, in the poster's voice: rounded ink copy, hairline outline, ink fill when on.
+struct PosterToggleRow: View {
+    let title: String
+    @Binding var isOn: Bool
+    /// Set when a test has to reach the switch itself; an identifier on the row lands on the
+    /// surface around it rather than on the control the test taps.
+    var identifier: String?
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppColors.ink)
+        }
+        .tint(AppColors.ink)
+        .posterIdentifier(identifier)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .posterSurface(cornerRadius: Poster.chipRadius, fill: AppColors.paper, lineWidth: Poster.hairline, offset: .zero)
+    }
+}
+
+/// The app's dropdown: what the choice is called, the answer standing on paper, and the poster's
+/// chevron — the same row `StickerExportSheet` uses for the MP4 background.
+struct PosterMenuRow<Content: View>: View {
+    let caption: String
+    let value: String
+    var icon: String?
+    var identifier: String?
+    @ViewBuilder var menu: Content
+
+    var body: some View {
+        Menu {
+            menu
+        } label: {
+            HStack(spacing: 10) {
+                if let icon {
+                    Text(icon).font(.system(size: 18)).accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(caption).posterLabelStyle(9, color: AppColors.muted)
+                    Text(value)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppColors.ink)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                PosterDropdownIcon()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .posterSurface(cornerRadius: Poster.chipRadius, fill: AppColors.paper, lineWidth: Poster.hairline, offset: .zero)
+        }
+        .posterIdentifier(identifier)
+    }
+}
+
+/// A value dragged rather than typed: its name in the label voice, its current reading in poster
+/// display type, and an ink track — the stock tinted one is the loudest non-poster control left.
+struct PosterSliderRow: View {
+    let title: String
+    @Binding var value: Double
+    var range: ClosedRange<Double> = 0 ... 1
+    var step: Double?
+    /// Digits for the reading beside the title. `nil` hides it, for a position with no number worth
+    /// showing — where in the animation a still frame is taken, say.
+    var fractionDigits: Int? = 2
+    var identifier: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title).posterLabelStyle(9, color: AppColors.muted)
+                Spacer(minLength: 8)
+                if let fractionDigits {
+                    Text(value, format: .number.precision(.fractionLength(fractionDigits)))
+                        .font(.posterDisplay(15, weight: .bold))
+                        .foregroundStyle(AppColors.ink)
+                        .monospacedDigit()
+                }
+            }
+            Group {
+                if let step {
+                    Slider(value: $value, in: range, step: step)
+                } else {
+                    Slider(value: $value, in: range)
+                }
+            }
+            .tint(AppColors.ink)
+            .posterIdentifier(identifier)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .posterSurface(cornerRadius: Poster.chipRadius, fill: AppColors.paper, lineWidth: Poster.hairline, offset: .zero)
     }
 }
 
@@ -421,12 +554,15 @@ extension PosterSectionHeader where Trailing == EmptyView {
 /// A `Form` section title in the poster's uppercase label voice. The stock grey caption is the
 /// last thing on a settings screen that still reads as somebody else's design system.
 struct PosterListHeader: View {
-    let title: LocalizedStringKey
+    private let title: Text
 
-    init(_ title: LocalizedStringKey) { self.title = title }
+    init(_ title: LocalizedStringKey) { self.title = Text(title) }
+    /// For a heading that names something the user or a plan wrote — a character, a layer — which
+    /// has no translation to look up.
+    init(verbatim title: String) { self.title = Text(verbatim: title) }
 
     var body: some View {
-        Text(title).posterLabelStyle(10, color: AppColors.muted)
+        title.posterLabelStyle(10, color: AppColors.muted)
     }
 }
 

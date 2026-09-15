@@ -173,7 +173,7 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(element("signed-in-profile").exists)
         XCTAssertTrue(element("privacy-policy-link").exists)
         XCTAssertTrue(element("terms-of-service-link").exists)
-        XCTAssertTrue(app.buttons["How Winky Sticker House works"].exists)
+        XCTAssertTrue(app.buttons["How Winky Sticker Factory works"].exists)
         XCTAssertTrue(element("about-page-link").exists)
         XCTAssertTrue(element("sign-out-button").exists)
 
@@ -231,7 +231,7 @@ final class StickerGeniOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Update Winky Sticker House to version 1.2 or later to view your stickers."].exists)
+        XCTAssertTrue(app.staticTexts["Update Winky Sticker Factory to version 1.2 or later to view your stickers."].exists)
         XCTAssertFalse(element("error-banner").exists)
 
         app.buttons["OK"].tap()
@@ -335,6 +335,44 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(element("full-screen-sticker-player").waitForExistence(timeout: 3))
         element("dismiss-full-screen-player").tap()
         XCTAssertFalse(element("full-screen-sticker-player").exists)
+    }
+
+    @MainActor
+    func testConfigurablePreviewRemembersApplyAndDiscardsCancel() {
+        app.terminate()
+        app.launchArguments.append("--ui-configurable-sticker")
+        app.launch()
+        let card = element("library-sticker-sticker-demo")
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        card.tap()
+        let preview = element("show-sticker-attachment")
+        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        preview.tap()
+        XCTAssertTrue(element("sticker-controls-sheet").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("full-screen-sticker-player").exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Configurable sticker medium sheet"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        element("sticker-controls-reset").tap()
+        element("sticker-control-mood").tap()
+        app.buttons["Calm"].tap()
+        app.switches["sticker-controls-animate"].tap()
+        XCTAssertTrue(element("sticker-controls-frame").exists)
+        element("sticker-controls-apply").tap()
+        XCTAssertTrue(preview.waitForExistence(timeout: 3))
+        preview.tap()
+        XCTAssertTrue(element("sticker-controls-sheet").waitForExistence(timeout: 3))
+        let mood = element("sticker-control-mood")
+        XCTAssertTrue((mood.label + String(describing: mood.value)).contains("Calm"))
+        XCTAssertEqual(app.switches["sticker-controls-animate"].value as? String, "0")
+        element("sticker-controls-reset").tap()
+        app.buttons["Cancel"].tap()
+        preview.tap()
+        XCTAssertTrue(element("sticker-controls-sheet").waitForExistence(timeout: 3))
+        XCTAssertTrue((mood.label + String(describing: mood.value)).contains("Calm"))
+        element("sticker-controls-reset").tap()
+        element("sticker-controls-apply").tap()
     }
 
     @MainActor
@@ -536,6 +574,26 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
     }
 
+    /// The switch that asks for a character whose mood and pose are switchable, instead of the user
+    /// having to know to write "moods I can switch between" in the prompt. It belongs to animated
+    /// stickers alone: a still has no clips to switch between.
+    @MainActor
+    func testControllableSwitchFollowsTheStickerType() {
+        openCreateSheet()
+        let picker = element("sticker-kind-picker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 3))
+        XCTAssertFalse(element("sticker-controllable-toggle").exists)
+
+        picker.buttons.element(boundBy: 1).tap()
+        let toggle = element("sticker-controllable-toggle")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
+        toggle.switches.firstMatch.tap()
+        XCTAssertEqual(toggle.switches.firstMatch.value as? String, "1")
+
+        picker.buttons.element(boundBy: 0).tap()
+        XCTAssertFalse(element("sticker-controllable-toggle").exists)
+    }
+
     @MainActor
     func testAdaptiveLayoutKeepsPrimaryActionsVisible() {
         openCreateSheet()
@@ -551,7 +609,7 @@ final class StickerGeniOSUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-welcome"]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker House"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
 
         for title in ["1. Generate", "2. Confirm", "3. Keep every version", "4. Publish", "5. Use it"] {
             app.buttons["Next"].tap()
@@ -656,7 +714,7 @@ final class StickerGeniOSUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-welcome", "--ui-show-feature-cards"]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker House"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
         for _ in 0..<5 { app.buttons["Next"].tap() }
         app.buttons["Get started"].tap()
 
@@ -685,7 +743,7 @@ final class StickerGeniOSUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker House"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 2))
         for _ in 0..<5 { app.buttons["Next"].tap() }
         app.buttons["Get started"].tap()
@@ -697,7 +755,7 @@ final class StickerGeniOSUITests: XCTestCase {
         app.buttons["Got it"].tap()
 
         XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Update Winky Sticker House to version 1.2 or later to view your stickers."].exists)
+        XCTAssertTrue(app.staticTexts["Update Winky Sticker Factory to version 1.2 or later to view your stickers."].exists)
         app.buttons["OK"].tap()
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
     }
@@ -711,7 +769,7 @@ final class StickerGeniOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(element("feature-cards-sheet").waitForExistence(timeout: 8))
-        XCTAssertFalse(app.staticTexts["Welcome to Winky Sticker House"].exists)
+        XCTAssertFalse(app.staticTexts["Welcome to Winky Sticker Factory"].exists)
         XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].exists)
     }
 

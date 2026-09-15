@@ -1,3 +1,4 @@
+import { readablePlayback } from "./playback";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
@@ -13,6 +14,7 @@ import {
   type CreateUploadRequest,
 } from "@/lib/contracts/api";
 import { MAX_RENDITION_SECONDS, RENDITION_TIMING_EPSILON_SECONDS, SHARING_APNG_DIMENSIONS, type StickerDocument } from "@/lib/contracts/sticker";
+import { compositeSpriteFrame } from "@/lib/render/sprite-registration";
 import { firstRow, type Database } from "@/lib/db/client";
 import { previewAssetIdSql } from "@/lib/db/columns";
 import { assets, stickerPackItems, stickerPacks, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -160,6 +162,66 @@ export async function ensureAtlasPoster(
     // and a card's thumbnail — and neither is worth failing a save or a planning turn over.
     return undefined;
   }
+}
+
+/**
+ * The still a sprite layer is served as wherever it cannot be composited: its default clip's first
+ * frame with its default face drawn in, fitted into the same 1024x1024 transparent square every
+ * other image asset is.
+ *
+ * Unlike a capture's poster this one is required — the layer schema says so — so a failure throws
+ * rather than returning nothing. Idempotent on the id, which is derived from the sheets and the
+ * face, so a replayed build costs one lookup.
+ */
+export async function ensureSpritePoster(
+  db: Database,
+  ownerId: string,
+  stickerId: string,
+  sprite: {
+    clip: { assetId: string; columns: number; rows: number; frames: readonly { faceX: number; faceY: number; faceSize: number }[] };
+    expressions: { assetId: string };
+    tile: { id: string; x: number; y: number; width: number; height: number };
+  },
+): Promise<string> {
+  const posterId = derivedAssetId(sprite.clip.assetId, `sprite-poster:${sprite.expressions.assetId}:${sprite.tile.id}`);
+  const existing = await db.select({ id: assets.id, state: assets.state }).from(assets)
+    .where(and(eq(assets.id, posterId), eq(assets.ownerId, ownerId))).then(firstRow);
+  if (existing?.state === "ready") return posterId;
+
+  const [atlas, sheet] = await getReadyOwnedAssets(db, ownerId, [sprite.clip.assetId, sprite.expressions.assetId]);
+  const store = getObjectStore();
+  const frame = await compositeSpriteFrame({
+    atlas: (await store.get(atlas.r2Key)).bytes,
+    clip: sprite.clip,
+    index: 0,
+    sheet: (await store.get(sheet.r2Key)).bytes,
+    tile: sprite.tile,
+  });
+  const bytes = await sharp(Buffer.from(frame))
+    .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+  const inspection = await inspectImage(bytes);
+  const r2Key = objectKey(ownerId, posterId, "image/png");
+  await store.put(r2Key, { bytes, contentType: "image/png", metadata: { sha256: inspection.sha256 } });
+  await db.insert(assets).values({
+    id: posterId,
+    ownerId,
+    stickerId,
+    kind: "master",
+    state: "ready",
+    r2Key,
+    mimeType: "image/png",
+    byteSize: inspection.byteSize,
+    width: inspection.width,
+    height: inspection.height,
+    sha256: inspection.sha256,
+    hasAlpha: inspection.hasTransparentPixels,
+    originalFilename: "sprite-poster.png",
+    createdAt: new Date(),
+    readyAt: new Date(),
+  }).onConflictDoUpdate({ target: assets.id, set: { state: "ready", byteSize: inspection.byteSize, sha256: inspection.sha256, width: inspection.width, height: inspection.height, hasAlpha: inspection.hasTransparentPixels, readyAt: new Date() } });
+  return posterId;
 }
 
 async function assertOwnedSticker(db: Database, ownerId: string, stickerId?: string): Promise<void> {
@@ -580,6 +642,11 @@ export async function getReadableAsset(
   const asset = await db.select().from(assets).where(eq(assets.id, assetId)).then(firstRow);
   if (!asset || asset.state === "deleted") throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
   if (asset.ownerId === requesterId) return { asset, audience: "owner" };
+  if (asset.kind === "playback" && asset.stickerId) {
+    const row = await readablePlayback(db, requesterId, asset.stickerId);
+    if (row.revision.playbackJson?.assetIds.includes(asset.id)) return { asset, audience: "pack-member" };
+    throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
+  }
   if (await isPackPublishedAsset(db, asset)) return { asset, audience: "pack-member" };
   throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
 }

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { StickerConfigurationSchema, configurationIssues, configurationCoverage, configurationKeepingLayers, normalizedControlValues, type StickerControlValues, type StickerConfiguration } from "./configuration";
+import { SpriteLayerFieldsV1, selectSpriteState, spriteDocumentIssues, spriteLayerIssues } from "./sprite";
 import { compileLayerAnimation, countKeyframes, type AnimationTiming } from "@/lib/animation/compile";
 import {
   ANIMATION_CHANNELS,
@@ -55,8 +57,12 @@ export const LayerIdSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/)
  * v4 adds the `video` layer: a short generated clip on a chroma backdrop, keyed out on device. Also
  * purely additive, and downcast the same way — a client that predates it is served the clip's
  * poster still as an image layer.
+ *
+ * v5 adds `configuration` — controls a viewer can set and the layer variants they select — and the
+ * `sprite` layer, a character whose body clips and face expressions compose at draw time. A client
+ * below v5 is served the resolved default with each sprite replaced by its poster still.
  */
-export const CURRENT_DOCUMENT_VERSION = 4;
+export const CURRENT_DOCUMENT_VERSION = 5;
 
 /**
  * How big a stored document may get, serialized.
@@ -67,6 +73,8 @@ export const CURRENT_DOCUMENT_VERSION = 4;
  * keeps all three honest, and the editor surfaces the same limit while authoring.
  */
 export const MAX_DOCUMENT_BYTES = 512 * 1024;
+/** Every layer's compiled keyframes together, across the heaviest states its controls can reach. */
+const MAX_KEYFRAMES = 128;
 
 /**
  * The layer's resting state, from which declarative animations depart and to which they return.
@@ -268,6 +276,24 @@ export const VideoLayerV1Schema = LayerBaseSchema.extend({
 }).strict();
 
 /**
+ * A controllable character: body clips and face expressions that compose at draw time.
+ *
+ * This is the layer a configurable sticker's mood and pose controls act on. `clipId` picks which
+ * sheet of body frames plays and `expressionId` picks which face is drawn into every frame's slot,
+ * so a mood and a pose are independent choices rather than a table of pre-drawn combinations. The
+ * renderer draws the body cell, then the expression tile centred on that frame's face slot;
+ * `SpriteFrameCache` on iOS and `compositeSpriteFrame` on the server are the two implementations
+ * and a pixel test pins each. The fields and the helpers live in `./sprite`.
+ */
+export const SpriteLayerV1Schema = LayerBaseSchema.extend(SpriteLayerFieldsV1).strict().superRefine((layer, context) => {
+  for (const message of spriteLayerIssues(layer)) context.addIssue({ code: "custom", message });
+});
+
+export type SpriteLayerV1 = z.infer<typeof SpriteLayerV1Schema>;
+export { spriteClip, spriteExpressionTile } from "./sprite";
+export type { SpriteClipV1, SpriteExpressionTileV1, SpriteFrameV1 } from "./sprite";
+
+/**
  * The v2 layer union, frozen so v2 documents keep parsing as v2.
  *
  * It shares the five layer schemas by reference rather than snapshotting them, which is sound only
@@ -292,6 +318,9 @@ const LegacyStickerLayerV3Schema = z.union([
   SequenceLayerV1Schema,
 ]);
 
+/** The v4 layer union, frozen the same way: v5 only adds `sprite` (and `configuration`). */
+const LegacyStickerLayerV4Schema = z.union([ImageLayerV1Schema, TextLayerV1Schema, ShapeLayerV1Schema, SVGLayerV1Schema, ParticleLayerV1Schema, SequenceLayerV1Schema, VideoLayerV1Schema]);
+
 export const StickerLayerV1Schema = z.union([
   ImageLayerV1Schema,
   TextLayerV1Schema,
@@ -302,6 +331,7 @@ export const StickerLayerV1Schema = z.union([
   ParticleLayerV1Schema,
   SequenceLayerV1Schema,
   VideoLayerV1Schema,
+  SpriteLayerV1Schema,
 ]);
 
 export const Mp4BackgroundV1Schema = z.discriminatedUnion("type", [
@@ -343,6 +373,8 @@ export const CANVAS_MIN_DIMENSION = 16;
 export const CANVAS_MAX_DIMENSION = 4096;
 
 const DocumentBaseSchema = z.object({
+  /** Controls and the variants they select. Only legal on an animated document; see the refinement. */
+  configuration: StickerConfigurationSchema.optional(),
   version: z.literal(CURRENT_DOCUMENT_VERSION),
   canvas: z.object({
     // v1 pinned this to exactly 1024x1024. It is a validated range in v2 so one engine can drive a
@@ -466,7 +498,7 @@ function keyframeCount(layer: z.infer<typeof StickerLayerV1Schema>): number {
 }
 
 /** Key-order-independent structural comparison, since zod and the compiler build objects differently. */
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
@@ -612,7 +644,7 @@ export function upcastV1ToV2(document: z.infer<typeof LegacyStickerDocumentV1Sch
  * narrowing of the current base rather than as a copy is safe here because v3 added a layer and
  * changed nothing else; see the note on `LegacyStickerLayerV2Schema`.
  */
-const LegacyDocumentBaseV2Schema = DocumentBaseSchema.extend({
+const LegacyDocumentBaseV2Schema = DocumentBaseSchema.omit({ configuration: true }).extend({
   version: z.literal(2),
   layers: z.array(LegacyStickerLayerV2Schema),
 });
@@ -648,7 +680,7 @@ export function upcastV2ToV3(document: z.infer<typeof LegacyStickerDocumentV2Sch
  * The v3 document, frozen like v2: v4 only widens the layer union with `video`, so v3 is the
  * current base with an older stamp and the narrower union.
  */
-const LegacyDocumentBaseV3Schema = DocumentBaseSchema.extend({
+const LegacyDocumentBaseV3Schema = DocumentBaseSchema.omit({ configuration: true }).extend({
   version: z.literal(3),
   layers: z.array(LegacyStickerLayerV3Schema),
 });
@@ -679,6 +711,11 @@ export function upcastV3ToV4(document: z.infer<typeof LegacyStickerDocumentV3Sch
  * The oldest document version a client may ask for. Anything below this is not a client we ever
  * shipped, so a header claiming it is treated as the floor rather than honoured.
  */
+const LegacyStickerDocumentV4Schema = z.discriminatedUnion("kind", [
+  StaticDocumentV1Schema.omit({ configuration: true }).extend({ version: z.literal(4), layers: z.array(LegacyStickerLayerV4Schema) }),
+  AnimatedDocumentV1Schema.omit({ configuration: true }).extend({ version: z.literal(4), layers: z.array(LegacyStickerLayerV4Schema) }),
+]);
+const upcastV4ToV5 = (document: z.infer<typeof LegacyStickerDocumentV4Schema>): unknown => ({ ...document, version: 5 as const });
 export const MIN_CLIENT_DOCUMENT_VERSION = 2;
 
 /**
@@ -709,8 +746,12 @@ export const MIN_CLIENT_DOCUMENT_VERSION = 2;
 export function downcastForClient(document: StickerDocument, clientVersion: number): unknown {
   if (clientVersion >= CURRENT_DOCUMENT_VERSION) return document;
 
-  let layers: StickerLayerV1[] = document.layers;
-  let version = CURRENT_DOCUMENT_VERSION;
+  document = resolveStickerConfiguration(document);
+  // A sprite composes at draw time, which nothing below v5 can do; its poster is the resting pose
+  // with the default face already drawn in, so the still a v4 client gets is the sticker at rest.
+  let layers: StickerLayerV1[] = document.layers.map((layer): StickerLayerV1 => (layer.type === "sprite"
+    ? { ...layerBaseOf(layer), type: "image" as const, assetId: layer.posterAssetId, contentMode: layer.contentMode } : layer));
+  let version = 4;
 
   if (clientVersion < 4) {
     layers = layers.flatMap((layer): StickerLayerV1[] => {
@@ -767,13 +808,36 @@ const CurrentDocumentSchema = z.discriminatedUnion("kind", [
  */
 export const StickerDocumentSchema = z.union([
   CurrentDocumentSchema,
-  LegacyStickerDocumentV3Schema.transform(upcastV3ToV4).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV4Schema.transform(upcastV4ToV5).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV3Schema.transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(CurrentDocumentSchema),
   LegacyStickerDocumentV2Schema.transform(upcastV2ToV3)
-    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(CurrentDocumentSchema),
+    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(CurrentDocumentSchema),
   LegacyStickerDocumentV1Schema.transform(upcastV1ToV2)
     .pipe(LegacyStickerDocumentV2Schema).transform(upcastV2ToV3)
-    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(CurrentDocumentSchema),
+    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(CurrentDocumentSchema),
 ]).superRefine((document, context) => {
+  if (document.configuration) {
+    const issues = configurationIssues(document.configuration, new Set(document.layers.map((layer) => layer.id)));
+    if (document.kind !== "animated") issues.push("Configurable stickers need an animated document");
+    for (const message of issues) context.addIssue({ code: "custom", message });
+    if (!issues.length) {
+      const heaviest = new Map<string, number>();
+      for (const values of configurationCoverage(document.configuration)) {
+        try {
+          const resolved = resolveStickerConfiguration(document, values);
+          const result = StickerDocumentSchema.safeParse(resolved);
+          if (!result.success) context.addIssue({ code: "custom", message: `Invalid configuration ${JSON.stringify(values)}: ${result.error.message}` });
+          for (const layer of resolved.layers) heaviest.set(layer.id, Math.max(heaviest.get(layer.id) ?? 0, keyframeCount(layer)));
+        } catch (error) { context.addIssue({ code: "custom", message: error instanceof Error ? error.message : String(error) }); }
+      }
+      // Coverage resolves each layer's alternatives on its own, so no single resolution holds two
+      // layers at their heaviest at once. The keyframe budget is the one rule that adds up across
+      // layers, so it is bounded here against the worst case the controls can actually reach.
+      const reachable = [...heaviest.values()].reduce((sum, count) => sum + count, 0);
+      if (reachable > MAX_KEYFRAMES) context.addIssue({ code: "custom", message: `StickerDocument allows at most `
+        + `${MAX_KEYFRAMES} keyframes, but its controls can reach ${reachable}. Reduce the motion on a configurable layer or drop an option.` });
+    }
+  }
   const layerIds = new Set<string>();
   let totalKeyframes = 0;
   const timing: AnimationTiming = { kind: document.kind, durationSeconds: document.durationSeconds };
@@ -804,6 +868,10 @@ export const StickerDocumentSchema = z.union([
             + `renders at ${document.fps}, so frames would be dropped. Raise the document's fps.`,
         });
       }
+    }
+
+    if (layer.type === "sprite") {
+      for (const message of spriteDocumentIssues(layer, document)) context.addIssue({ code: "custom", message });
     }
 
     // The same two rules, for the same two reasons: a clip is footage with a frame rate of its own.
@@ -864,8 +932,8 @@ export const StickerDocumentSchema = z.union([
     }
   }
 
-  if (totalKeyframes > 128) {
-    context.addIssue({ code: "custom", message: "StickerDocument allows at most 128 keyframes" });
+  if (totalKeyframes > MAX_KEYFRAMES) {
+    context.addIssue({ code: "custom", message: `StickerDocument allows at most ${MAX_KEYFRAMES} keyframes` });
   }
 
   // Inline SVG makes a document's byte size unbounded in a way v1's never was: twelve layers at the
@@ -886,7 +954,7 @@ export const StickerDocumentSchema = z.union([
  * The highest stack position an operation can name.
  *
  * The layers array itself is unbounded, so this is a sanity bound on model output rather than a
- * document limit — but it has to sit well above anything a plan can build (8 layers) or a reorder
+ * document limit — but it has to sit well above anything a plan can build (12 layers) or a reorder
  * of a grown document could never reach the top of the stack.
  */
 export const MAX_LAYER_INDEX = 31;
@@ -985,6 +1053,10 @@ export function layerImageAssetIds(layer: StickerLayerV1): string[] {
   // The server draws a video layer's poster, never its clip: the clip is not a bitmap it can open.
   case "video":
     return [layer.posterAssetId];
+  // Every clip sheet and the expression sheet: a resolved layer draws one clip, but the artwork a
+  // document *needs* is whatever any control can select, and the poster is asked for explicitly.
+  case "sprite":
+    return [...layer.clips.map((clip) => clip.assetId), layer.expressions.assetId];
   case "text":
   case "shape":
   case "svg":
@@ -1017,6 +1089,7 @@ export function layerScaleIsAspectLocked(type: StickerLayerV1["type"]): boolean 
   case "image":
   case "sequence":
   case "video":
+  case "sprite":
   // Glyphs are fitted, never stretched: the native renderer squares a text layer's scale before
   // drawing it, and a layout that reads a wide text box as wide letters places its neighbours
   // around type that is not there.
@@ -1108,6 +1181,7 @@ export function applyStickerOperationsV1(
 
     if (operation.op === "removeLayer") {
       document.layers.splice(index, 1);
+      document.configuration = configurationKeepingLayers(document.configuration, new Set(document.layers.map((layer) => layer.id)));
     } else if (operation.op === "reorderLayer") {
       const [layer] = document.layers.splice(index, 1);
       document.layers.splice(operation.index, 0, layer);
@@ -1164,4 +1238,56 @@ export function applyStickerOperationsV1(
   }
 
   return StickerDocumentSchema.parse(document);
+}
+
+/** The fields every layer shares, for rebuilding one as another type. */
+function layerBaseOf(layer: StickerLayerV1) {
+  return { id: layer.id, name: layer.name, hidden: layer.hidden, anchor: layer.anchor, animation: layer.animation, animations: layer.animations, blendMode: layer.blendMode };
+}
+
+/** Resolve once before interpolation; resolved documents carry no mutable control state. */
+export function resolveStickerConfiguration<T extends { configuration?: StickerConfiguration; layers: StickerLayerV1[]; kind: "static" | "animated"; durationSeconds: number; speed: number }>(original: T, selected: StickerControlValues = {}): T {
+  const document = structuredClone(original);
+  const configuration = document.configuration;
+  delete document.configuration;
+  if (!configuration) return document;
+  StickerConfigurationSchema.parse(configuration);
+  const issues = configurationIssues(configuration, new Set(document.layers.map((layer) => layer.id)));
+  if (issues.length) throw new Error(issues.join("; "));
+  const values = normalizedControlValues(configuration, selected);
+  for (const variant of configuration.variants) {
+    if (!Object.entries(variant.selections).every(([id, value]) => values[id] === value)) continue;
+    for (const patch of variant.layers) {
+      const index = document.layers.findIndex((layer) => layer.id === patch.layerId);
+      if (index < 0) throw new Error(`Missing configurable layer ${patch.layerId}`);
+      let layer = document.layers[index];
+      if (patch.source && patch.source.kind !== "base") {
+        const { kind, ...source } = patch.source;
+        layer = StickerLayerV1Schema.parse({ ...layerBaseOf(layer), ...source, type: kind, contentMode: "fit" });
+      }
+      if (patch.animations !== undefined) {
+        layer.animations = patch.animations;
+        layer.animation = compileLayerAnimation(patch.animations, layer.anchor, { kind: document.kind, durationSeconds: document.durationSeconds });
+      }
+      if (patch.clip !== undefined || patch.expression !== undefined) {
+        if (layer.type !== "sprite") throw new Error(`Layer ${patch.layerId} is not a sprite layer, so it has no clips or expressions to select`);
+        selectSpriteState(layer, patch);
+      }
+      document.layers[index] = layer;
+    }
+  }
+  for (const control of configuration.controls) {
+    if (control.type === "number") document.speed = values[control.id] as number;
+    if (control.type === "toggle") {
+      for (const layer of document.layers) if (control.layerIds.includes(layer.id)) layer.hidden = !values[control.id];
+    }
+  }
+  return document;
+}
+
+/** Includes every alternative so validation and publication cannot miss unselected artwork. */
+export function documentRenderableLayers(document: StickerDocument): StickerLayerV1[] {
+  if (!document.configuration) return document.layers;
+  const layers = configurationCoverage(document.configuration).flatMap((values) => resolveStickerConfiguration(document, values).layers);
+  return [...new Map([...document.layers, ...layers].map((layer) => [canonicalJson(layer), layer])).values()];
 }

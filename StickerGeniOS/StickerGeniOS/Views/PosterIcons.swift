@@ -229,13 +229,24 @@ struct PosterToolbarIcon: View {
 /// already used throughout the poster design system.
 struct PosterSymbol: View {
     let name: String
+    @ScaledMetric(relativeTo: .body) private var generatedIconSize = 20
 
     init(_ name: String) { self.name = name }
 
     var body: some View {
-        Text(Self.art(for: name))
-            .fontDesign(.rounded)
-            .accessibilityHidden(true)
+        Group {
+            if name == "list.number" || name == "slider.horizontal.3" {
+                Image(name == "list.number" ? "WorkflowSteps" : "ControllableSticker")
+                    .renderingMode(.original)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: generatedIconSize, height: generatedIconSize)
+            } else {
+                Text(Self.art(for: name))
+                    .fontDesign(.rounded)
+            }
+        }
+        .accessibilityHidden(true)
     }
 
     /// SF Symbol name → the poster glyph drawn in its place.
@@ -326,6 +337,18 @@ struct PosterSymbol: View {
 
     private nonisolated static func art(for name: String) -> String {
         glyphs[name] ?? PosterIcon.mark
+    }
+}
+
+/// A consistent cartoon indicator for the app's custom dropdown labels.
+struct PosterDropdownIcon: View {
+    var body: some View {
+        Image("DropdownIndicator")
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 20, height: 20)
+            .accessibilityHidden(true)
     }
 }
 

@@ -7,6 +7,14 @@ nonisolated struct Sticker: Codable, Identifiable, Hashable, Sendable {
     var kind: StickerKind
     var status: StickerStatus
     var activeRevisionId: String?
+    /// The revision whose controls this sticker can be posed with, when it has any.
+    ///
+    /// Only a published revision that carries a playback bundle gets an id here, so this is the one
+    /// field that says "this sticker is controllable" without fetching its document — which is what
+    /// the library and pack grids need to mark a member, and what the preview reads before asking
+    /// the server for the bundle. Optional so a response from a server that predates it still
+    /// decodes, and nil for every sticker that has no configuration.
+    var playbackRevisionId: String?
     var createdAt: Date
     var updatedAt: Date
     var previewAsset: AssetRecord?
@@ -30,6 +38,7 @@ nonisolated struct Sticker: Codable, Identifiable, Hashable, Sendable {
         kind: StickerKind,
         status: StickerStatus,
         activeRevisionId: String? = nil,
+        playbackRevisionId: String? = nil,
         createdAt: Date,
         updatedAt: Date,
         previewAsset: AssetRecord? = nil,
@@ -43,6 +52,7 @@ nonisolated struct Sticker: Codable, Identifiable, Hashable, Sendable {
         self.kind = kind
         self.status = status
         self.activeRevisionId = activeRevisionId
+        self.playbackRevisionId = playbackRevisionId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.previewAsset = previewAsset
@@ -51,6 +61,10 @@ nonisolated struct Sticker: Codable, Identifiable, Hashable, Sendable {
         self.telegramAsset = telegramAsset
         self.messengerEmoji = messengerEmoji
     }
+
+    /// Whether this sticker is posed rather than simply sent: it has controls, and the server is
+    /// holding the bundle they are answered against.
+    var isControllable: Bool { playbackRevisionId != nil }
 }
 
 nonisolated enum StickerStatus: String, Codable, CaseIterable, Hashable, Sendable { case draft, published, deleting }
@@ -61,6 +75,7 @@ nonisolated struct StickerDetail: Codable, Identifiable, Hashable, Sendable {
     var kind: StickerKind
     var status: StickerStatus
     var activeRevisionId: String?
+    var playbackRevisionId: String?
     var createdAt: Date
     var updatedAt: Date
     var previewAsset: AssetRecord?
@@ -77,6 +92,7 @@ nonisolated struct StickerDetail: Codable, Identifiable, Hashable, Sendable {
             kind: kind,
             status: status,
             activeRevisionId: activeRevisionId,
+            playbackRevisionId: playbackRevisionId,
             createdAt: createdAt,
             updatedAt: updatedAt,
             previewAsset: previewAsset,
@@ -118,7 +134,7 @@ nonisolated struct StickerRevision: Codable, Identifiable, Hashable, Sendable {
     }
 
     var containsMotion: Bool {
-        document.kind == .animated && document.layers.contains { !$0.animation.allKeyframes.isEmpty }
+        document.hasMotion || document.configuration != nil
     }
 
     var canPublishExports: Bool {
@@ -171,7 +187,7 @@ nonisolated struct AssetRecord: Codable, Identifiable, Hashable, Sendable {
 }
 
 nonisolated enum AssetKind: String, Codable, CaseIterable, Hashable, Sendable {
-    case reference, mask, master, preview, apng, mp4, system
+    case reference, mask, master, preview, apng, mp4, system, playback
     /// The copy WhatsApp accepts: a transparent 512 px WebP, still or animated.
     case messengerWhatsApp = "messenger_whatsapp"
     /// The copy Telegram accepts: a transparent 512 px PNG for a static sticker, a VP9 WebM for an
@@ -290,6 +306,7 @@ nonisolated struct Plan: Codable, Hashable, Sendable {
     var timing: PlanTiming
     var layers: [PlanLayer]
     var conceptPrompt: String?
+    var configuration: AnimatedControlConfiguration?
 }
 
 nonisolated struct PlanTiming: Codable, Hashable, Sendable {
@@ -311,6 +328,24 @@ nonisolated struct PlanLayer: Codable, Identifiable, Hashable, Sendable {
     var id: String { layerId }
 }
 
+/// One pose of a planned sprite character: what the body does across its frames, and how long each holds.
+nonisolated struct PlanSpriteClip: Codable, Hashable, Sendable, Identifiable {
+    nonisolated struct Frame: Codable, Hashable, Sendable {
+        var duration: Double
+    }
+    var id: String
+    var label: String
+    var prompt: String
+    var frames: [Frame]
+}
+
+/// One face of a planned sprite character.
+nonisolated struct PlanSpriteExpression: Codable, Hashable, Sendable, Identifiable {
+    var id: String
+    var label: String
+    var prompt: String
+}
+
 /// What a planned layer is made of. Only `.generate` costs an image generation.
 nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
     case generate(prompt: String)
@@ -325,11 +360,14 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
     /// A short generated clip of the whole subject, for motion keyframes cannot express — a
     /// turnaround, a change of angle, physics. Costs a still *and* a video generation.
     case video(prompt: String, motion: String, durationSeconds: Int)
+    /// A controllable character: a still, one sprite sheet per named pose, and a sheet of face
+    /// expressions the sticker's mood and pose controls select between. Costs `1 + poses + 1`.
+    case sprite(prompt: String, clips: [PlanSpriteClip], expressions: [PlanSpriteExpression])
     /// A layer kind this build does not know about, kept so the card still renders.
     case unknown(kind: String)
 
     private enum CodingKeys: String, CodingKey {
-        case kind, prompt, assetId, text, color, shape, fill, preset, frameCount, motion, durationSeconds
+        case kind, prompt, assetId, text, color, shape, fill, preset, frameCount, motion, durationSeconds, clips, expressions
     }
 
     init(from decoder: any Decoder) throws {
@@ -366,6 +404,12 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
                 motion: (try? container.decode(String.self, forKey: .motion)) ?? "",
                 durationSeconds: (try? container.decode(Int.self, forKey: .durationSeconds)) ?? 3
             )
+        case "sprite":
+            self = .sprite(
+                prompt: (try? container.decode(String.self, forKey: .prompt)) ?? "",
+                clips: (try? container.decode([PlanSpriteClip].self, forKey: .clips)) ?? [],
+                expressions: (try? container.decode([PlanSpriteExpression].self, forKey: .expressions)) ?? []
+            )
         default:
             self = .unknown(kind: kind)
         }
@@ -401,6 +445,11 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
             try container.encode(prompt, forKey: .prompt)
             try container.encode(motion, forKey: .motion)
             try container.encode(durationSeconds, forKey: .durationSeconds)
+        case .sprite(let prompt, let clips, let expressions):
+            try container.encode("sprite", forKey: .kind)
+            try container.encode(prompt, forKey: .prompt)
+            try container.encode(clips, forKey: .clips)
+            try container.encode(expressions, forKey: .expressions)
         case .unknown(let kind):
             try container.encode(kind, forKey: .kind)
         }
@@ -418,17 +467,25 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
                 ? String(localized: "Capture")
                 : String(localized: "Capture · \(frameCount) frames")
         case .video(_, _, let durationSeconds): String(localized: "Video · \(durationSeconds)s")
+        case .sprite(_, let clips, let expressions):
+            String(localized: "Character · \(clips.count) poses · \(expressions.count) moods")
         case .unknown(let kind): Self.humanized(kind)
         }
     }
 
     /// The generated prompt, for the card. A video layer's prompt describes the whole subject the
-    /// same way a generate prompt describes a part.
+    /// same way a generate prompt describes a part, and so does a sprite's.
     var prompt: String? {
         switch self {
-        case .generate(let prompt), .video(let prompt, _, _): prompt.isEmpty ? nil : prompt
+        case .generate(let prompt), .video(let prompt, _, _), .sprite(let prompt, _, _): prompt.isEmpty ? nil : prompt
         default: nil
         }
+    }
+
+    /// The poses and moods a sprite offers, for the configuration editor. Nil for everything else.
+    var sprite: (clips: [PlanSpriteClip], expressions: [PlanSpriteExpression])? {
+        if case .sprite(_, let clips, let expressions) = self { return (clips, expressions) }
+        return nil
     }
 
     /// What the subject or camera does, for a video layer. Nil for everything else.
@@ -460,7 +517,7 @@ nonisolated enum PlanLayerSource: Codable, Hashable, Sendable {
     /// from a still that has to be drawn first — and then pays for the clip on top.
     var isGenerated: Bool {
         switch self {
-        case .generate, .video: true
+        case .generate, .video, .sprite: true
         default: false
         }
     }
@@ -584,6 +641,18 @@ nonisolated struct ChatMessagePage: Codable, Sendable {
     var items: [ChatMessage] { data }
 }
 
+/// Whether this account is counting down to deletion, and until when.
+///
+/// `deletionScheduledAt` is the instant both this server and the identity provider act on, so the
+/// app can show the real date rather than computing "seven days from now" and drifting from it.
+nonisolated struct AccountDeletionState: Codable, Equatable, Sendable {
+    var pendingDeletion: Bool
+    var deletionScheduledAt: Date?
+    var deletionRequestedAt: Date?
+
+    static let none = AccountDeletionState(pendingDeletion: false, deletionScheduledAt: nil, deletionRequestedAt: nil)
+}
+
 nonisolated struct APIErrorEnvelope: Codable, Error, Equatable, Sendable { var error: APIErrorBody }
 
 /// Without this the server's own words never reach the user.
@@ -650,6 +719,12 @@ nonisolated struct CreateStickerRequest: Codable, Sendable {
     var kind: StickerKind
     var prompt: String
     var referenceAssetIds: [String]
+    /// Build the character as a sprite the viewer can pose and change the mood of.
+    ///
+    /// Stored on the project, not on this turn: every later plan for it has to keep the controls,
+    /// so a revision two turns from now cannot quietly flatten the character back into one drawing.
+    /// Animated only, and refused in quick mode.
+    var controllable = false
 }
 
 /// Turns an image the app already holds into a static sticker project, with nothing generated.
@@ -804,6 +879,7 @@ nonisolated struct PublishExportsRequest: Codable, Sendable {
     /// under Apple's 500 KB ceiling at any rung of the export ladder. Omitting it means the ordinary
     /// case — an animated rendition for an animated sticker — which is what the server assumes.
     var systemRenditionKind: SystemRenditionKind?
+    var playbackDocument: AnimatedDocument?
 }
 
 nonisolated enum SystemRenditionKind: String, Codable, Sendable {
@@ -938,16 +1014,4 @@ nonisolated struct AssetDownload: Codable, Sendable {
     var url: URL
     var expiresAt: Date
     var asset: AssetRecord
-}
-
-nonisolated enum StickerExportFormat: String, Codable, CaseIterable, Hashable, Sendable { case png, gif, apng, mp4, webp }
-
-nonisolated struct LocalExportMetadata: Codable, Hashable, Sendable {
-    var format: StickerExportFormat
-    var width: Int
-    var height: Int
-    var byteCount: Int
-    var durationSeconds: Double?
-    var fps: Int?
-    var hasAlpha: Bool
 }

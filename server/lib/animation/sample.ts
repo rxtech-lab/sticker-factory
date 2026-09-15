@@ -144,6 +144,29 @@ export function sequenceFrameIndex(
 }
 
 /**
+ * Which frame of a sprite clip is showing at a given document time.
+ *
+ * A clip carries a duration per frame rather than a rate, so this walks the durations modulo their
+ * sum: the clip loops on its own clock, however long the document is. Like `sequenceFrameIndex` it
+ * is a pure function of document time, so `speed` and the document's own `loop` apply for free.
+ * Negative time holds the first frame. Mirrored by `AnimationInterpolator.spriteFrameIndex` in
+ * Swift and pinned from both sides by `fixtures/sprite-frame-index-parity.json` — the arithmetic
+ * order (clamp, remainder, walk) is the parity contract, so do not simplify it.
+ */
+export function spriteFrameIndex(frames: readonly { duration: number }[], documentTime: number): number {
+  if (frames.length <= 1) return 0;
+  let total = 0;
+  for (const frame of frames) total += frame.duration;
+  if (!(total > 0) || !Number.isFinite(documentTime)) return 0;
+  let remaining = Math.max(0, documentTime) % total;
+  for (let index = 0; index < frames.length; index += 1) {
+    if (remaining < frames[index].duration) return index;
+    remaining -= frames[index].duration;
+  }
+  return 0;
+}
+
+/**
  * Wall-clock seconds mapped into the authored timeline, honouring `loop`.
  *
  * Mirrors `AnimationInterpolator.mappedTime`. `speed` is deliberately not applied: callers that

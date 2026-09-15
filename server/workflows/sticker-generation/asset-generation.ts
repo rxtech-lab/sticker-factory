@@ -4,9 +4,10 @@
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
 import sharp from "sharp";
+import { configurationFromPlan } from "./configurable-artwork";
 import { preferredChromaKey, type ChromaKeyColor } from "@/lib/ai/chroma-key";
 import { compilePlanAnimations, planLayerAnchor, type PlanV1 } from "@/lib/contracts/plan";
-import { applyStickerOperationsV1, CURRENT_DOCUMENT_VERSION, StickerDocumentSchema, type StickerDocument, type StickerLayerV1 } from "@/lib/contracts/sticker";
+import { applyStickerOperationsV1, CURRENT_DOCUMENT_VERSION, DOCUMENT_DURATION_SECONDS, StickerDocumentSchema, type StickerDocument, type StickerLayerV1 } from "@/lib/contracts/sticker";
 import { DEFAULT_ANCHOR } from "@/lib/contracts/animation";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, generationJobs, stickers } from "@/lib/db/schema";
@@ -49,6 +50,11 @@ export async function generateAndStoreAsset(
      * deliberately opaque, so they skip the transparency gate and land as a `preview` asset.
      */
     concept?: boolean;
+    keepFrame?: boolean;
+    sequence?: { columns: number; rows: number; frameCount: number; frameRate: number };
+    /** Ask the model for a sprite sheet rather than one subject. See `AiImageInput.sheet`. */
+    sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean };
+    quality?: "low" | "medium" | "high";
   },
 ): Promise<{ subject?: SubjectBounds }> {
   const db = await getDatabase();
@@ -84,6 +90,9 @@ export async function generateAndStoreAsset(
       mask: params.mask,
       conversationContext: params.conversationContext,
       mode: params.mode,
+      keepFrame: params.keepFrame,
+      sheet: params.sheet,
+      quality: params.quality,
       // Read off the job rather than passed down through every call site, because it is a property
       // of the turn: whatever a quick turn ends up drawing — one sticker, or each separated part of
       // a composed one — is drawn by the same model. The concept branch above is deliberately left
@@ -140,7 +149,8 @@ export async function generateAndStoreAsset(
       id: params.assetId,
       ownerId: job.ownerId,
       stickerId,
-      kind: params.concept ? "preview" : "master",
+      kind: params.concept ? "preview" : params.sequence ? "sequence" : "master",
+      ...(params.sequence ? { sequenceColumns: params.sequence.columns, sequenceRows: params.sequence.rows, frameCount: params.sequence.frameCount, fps: params.sequence.frameRate, durationSeconds: params.sequence.frameCount / params.sequence.frameRate } : {}),
       state: "ready",
       r2Key,
       mimeType: "image/png",
@@ -281,6 +291,11 @@ export function generatedLayers(plan: PlanV1, jobId: string) {
     if (layer.source.kind === "generate") {
       return [{ layer, prompt: layer.source.prompt, assetId: derivedAssetId(jobId, index++) }];
     }
+    // A sprite's still is separated from the approved reference exactly like a part: it is what
+    // every clip sheet is drawn from, and what the expression sheet copies the face of.
+    if (layer.source.kind === "sprite") {
+      return [{ layer, prompt: layer.source.prompt, assetId: derivedAssetId(jobId, index++) }];
+    }
     if (layer.source.kind === "video") {
       // The clip's still shares the generate index space, so its poster is stored and replayed
       // exactly like any other part. The clip and its scratch backdrop get their own slots, named
@@ -310,6 +325,28 @@ interface GeneratedLayer {
   assetId: string;
   /** Present for a `video` source: what to animate the still into, and where to store the clip. */
   video?: VideoGeneration;
+}
+
+/**
+ * Everything a built sprite layer needs that the plan could not know: which sheets were stored,
+ * where the face slot landed in every frame, and the poster. Produced by
+ * `workflows/sticker-generation/sprite-artwork.ts`, consumed by `documentFromPlan`.
+ */
+export interface SpriteBuild {
+  clips: Array<{
+    id: string;
+    assetId: string;
+    columns: number;
+    rows: number;
+    frames: Array<{ duration: number; faceX: number; faceY: number; faceSize: number }>;
+  }>;
+  expressions: {
+    assetId: string;
+    columns: number;
+    rows: number;
+    tiles: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+  };
+  posterAssetId: string;
 }
 
 /**
@@ -486,6 +523,8 @@ export function documentFromPlan(
   jobId: string,
   /** Timing of every stored clip, by plan layer id. Required for each `video` source. */
   videoTimings: ReadonlyMap<string, StoredVideoTiming> = new Map(),
+  /** The registered sheets of every sprite, by plan layer id. Required for each `sprite` source. */
+  spriteBuilds: ReadonlyMap<string, SpriteBuild> = new Map(),
 ): StickerDocument {
   const compiled = compilePlanAnimations(plan);
   const generated = generatedLayers(plan, jobId);
@@ -581,6 +620,22 @@ export function documentFromPlan(
         posterAssetId: assetIds.get(layer.layerId)!,
       };
     }
+    // The clips and faces come from the build; the defaults are the plan's first entries, which the
+    // planner is told to make the idle clip and the neutral face.
+    case "sprite": {
+      const build = spriteBuilds.get(layer.layerId);
+      if (!build) throw new Error(`Sprite layer ${layer.layerId} has no registered sheets`);
+      return {
+        ...base,
+        type: "sprite",
+        clips: build.clips,
+        expressions: build.expressions,
+        clipId: source.clips[0].id,
+        expressionId: source.expressions[0].id,
+        contentMode: "fit",
+        posterAssetId: build.posterAssetId,
+      };
+    }
     }
   });
 
@@ -593,7 +648,15 @@ export function documentFromPlan(
   const captureRate = Math.max(0, ...plan.layers.map(
     (layer) => (layer.source.kind === "sequence" ? layer.source.frameRate : 0),
   ), ...[...videoTimings.values()].map((timing) => timing.fps));
-  const clipSeconds = Math.max(0, ...[...videoTimings.values()].map((timing) => timing.durationSeconds));
+  // A sprite's longest clip is footage too: the document has to run at least one whole loop of it,
+  // and sample fast enough to show its shortest frame.
+  const spriteClipSeconds = [...spriteBuilds.values()].flatMap((build) => build.clips.map(
+    (clip) => clip.frames.reduce((total, frame) => total + frame.duration, 0),
+  ));
+  const spriteFrameRate = [...spriteBuilds.values()].flatMap((build) => build.clips.flatMap(
+    (clip) => clip.frames.map((frame) => 1 / frame.duration),
+  ));
+  const clipSeconds = Math.max(0, ...[...videoTimings.values()].map((timing) => timing.durationSeconds), ...spriteClipSeconds);
   return plan.kind === "static"
     ? StickerDocumentSchema.parse({
       version: CURRENT_DOCUMENT_VERSION, canvas, layers, kind: "static", durationSeconds: 0, fps: 0, loop: "once",
@@ -602,9 +665,10 @@ export function documentFromPlan(
       version: CURRENT_DOCUMENT_VERSION,
       canvas,
       layers,
+      configuration: configurationFromPlan(plan, jobId),
       kind: "animated",
-      durationSeconds: Math.max(plan.timing.durationSeconds, clipSeconds),
-      fps: Math.min(60, Math.max(plan.timing.fps, Math.ceil(captureRate))),
+      durationSeconds: Math.min(DOCUMENT_DURATION_SECONDS.max, Math.max(plan.timing.durationSeconds, clipSeconds)),
+      fps: Math.min(60, Math.max(plan.timing.fps, Math.ceil(captureRate), ...spriteFrameRate.map(Math.ceil))),
       loop: plan.timing.loop,
     });
 }

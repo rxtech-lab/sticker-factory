@@ -317,12 +317,17 @@ final class StickerStore {
     }
 
     @discardableResult
-    func create(kind: StickerKind, prompt: String, references: [PendingMediaAttachment]) async throws -> Sticker {
+    func create(
+        kind: StickerKind,
+        prompt: String,
+        controllable: Bool = false,
+        references: [PendingMediaAttachment]
+    ) async throws -> Sticker {
         return try await AppTelemetry.measure(.createSticker) {
             let assetIDs = try await upload(references, stickerID: nil, kind: .reference)
             let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
             let response = try await api.createSticker(
-                .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs),
+                .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs, controllable: controllable),
                 idempotencyKey: UUID().uuidString
             )
             let detail = try await api.sticker(id: response.stickerId)

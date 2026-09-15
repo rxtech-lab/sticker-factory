@@ -16,7 +16,7 @@ public struct AnimatedIconRenderer {
     public var assets: any AnimatedAssetProvider
 
     public init(document: AnimatedDocument, assets: any AnimatedAssetProvider = EmptyAnimatedAssets()) {
-        self.document = document
+        self.document = (try? document.resolvingConfiguration()) ?? document
         self.assets = assets
     }
 

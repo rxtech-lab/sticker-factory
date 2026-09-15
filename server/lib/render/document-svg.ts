@@ -1,6 +1,6 @@
-import { sampleLayerState, sequenceFrameIndex, type LayerState } from "@/lib/animation/sample";
+import { sampleLayerState, sequenceFrameIndex, spriteFrameIndex, type LayerState } from "@/lib/animation/sample";
 import type { PaintV2, StrokeV2 } from "@/lib/contracts/paint";
-import { effectiveLayerScale, type StickerDocument, type StickerLayerV1 } from "@/lib/contracts/sticker";
+import { effectiveLayerScale, spriteClip, type StickerDocument, type StickerLayerV1 } from "@/lib/contracts/sticker";
 import { LAYER_FIT } from "@/lib/layout/composition";
 import { particleGlyph, particlePosition, shapeGeometry } from "@/lib/render/shapes";
 
@@ -20,6 +20,15 @@ export type RenderAssets = Map<string, { bytes: Uint8Array; mimeType: string }>;
  */
 export function sequenceCellKey(assetId: string, index: number): string {
   return `${assetId}#${index}`;
+}
+
+/**
+ * The key one composited sprite frame — a body cell with an expression drawn into its face slot —
+ * is stored under in `RenderAssets`. Keyed by layer rather than by sheet because the same sheets
+ * can be shown with different faces, and `#` keeps it clear of asset ids as above.
+ */
+export function spriteCellKey(layerId: string, clipId: string, index: number, expressionId: string): string {
+  return `${layerId}#${clipId}#${index}#${expressionId}`;
 }
 
 const escapeText = (value: string) =>
@@ -253,6 +262,24 @@ function layerBody(
       + `<image x="0" y="0" width="${layer.columns}" height="${layer.rows}" `
       + `preserveAspectRatio="none" href="${href}"/>`
       + `</svg>`;
+  }
+  case "sprite": {
+    // Sprites are only ever drawn from cells `sticker-render` composited ahead of time: the body
+    // cell is not square, and the face has to be drawn into it at the frame's own anchor, neither
+    // of which a nested viewport over the whole sheet could do.
+    const clip = spriteClip(layer);
+    const index = spriteFrameIndex(clip.frames, time);
+    const cell = assets.get(spriteCellKey(layer.id, clip.id, index, layer.expressionId));
+    if (!cell) {
+      return `<rect x="${-half}" y="${-half}" width="${box}" height="${box}" rx="${round(box * 0.12)}" `
+        + `fill="#B39DDB" opacity="0.5"/>`
+        + `<text x="0" y="0" font-size="${round(box * 0.1)}" fill="#311B92" text-anchor="middle" `
+        + `dominant-baseline="middle" font-family="${FONT_STACKS.system}">character</text>`;
+    }
+    const fit = layer.contentMode === "fill" ? "xMidYMid slice" : "xMidYMid meet";
+    const href = `data:${cell.mimeType};base64,${Buffer.from(cell.bytes).toString("base64")}`;
+    return `<image x="${round(-half)}" y="${round(-half)}" width="${round(box)}" `
+      + `height="${round(box)}" preserveAspectRatio="${fit}" href="${href}"/>`;
   }
   case "text": {
     // Sized by character count rather than measured: librsvg has no text-fitting equivalent to

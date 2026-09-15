@@ -61,7 +61,7 @@ describe("withApiAuth user provisioning", () => {
       expect(await response.json()).toMatchObject({
         error: {
           code: "IOS_APP_UPDATE_REQUIRED",
-          message: "Update Winky Sticker House to version 1.2 or later to view your stickers.",
+          message: "Update Winky Sticker Factory to version 1.2 or later to view your stickers.",
           details: { currentVersion: "1.1", minimumVersion: "1.2" },
         },
       });

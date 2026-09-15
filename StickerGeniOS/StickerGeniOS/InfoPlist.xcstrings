@@ -56,19 +56,19 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Winky Sticker House saves plan images you choose to your photo library."
+            "value" : "Winky Sticker Factory saves plan images you choose to your photo library."
           }
         },
         "zh-CN" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Winky Sticker House 会将你选择的方案图片保存到照片图库。"
+            "value" : "Winky Sticker Factory 会将你选择的方案图片保存到照片图库。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Winky Sticker House 會將你選擇的方案影像儲存到相片圖庫。"
+            "value" : "Winky Sticker Factory 會將你選擇的方案影像儲存到相片圖庫。"
           }
         }
       }
@@ -80,19 +80,19 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Winky Sticker House uses the photos you choose as private references for sticker generation and editing."
+            "value" : "Winky Sticker Factory uses the photos you choose as private references for sticker generation and editing."
           }
         },
         "zh-CN" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Winky Sticker House 会使用你选择的照片作为贴纸生成和编辑的私密参考图。"
+            "value" : "Winky Sticker Factory 会使用你选择的照片作为贴纸生成和编辑的私密参考图。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Winky Sticker House 會使用你選擇的相片作為產生及編輯貼圖的私人參考影像。"
+            "value" : "Winky Sticker Factory 會使用你選擇的相片作為產生及編輯貼圖的私人參考影像。"
           }
         }
       }

@@ -169,6 +169,8 @@ struct AnimatedEditorInspector: View {
             AnimatedSequenceLayerInspector(editor: editor, layer: value, assets: assets)
         case .video(let value):
             AnimatedVideoLayerInspector(editor: editor, layer: value, assets: assets)
+        case .sprite(let value):
+            AnimatedSpriteLayerInspector(editor: editor, layer: value, assets: assets)
         case .unsupported:
             AnimatedUnsupportedLayerInspector()
         }

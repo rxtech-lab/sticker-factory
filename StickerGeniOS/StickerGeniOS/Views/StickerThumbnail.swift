@@ -28,6 +28,12 @@ struct StickerLibraryCard: View {
                         lineWidth: Poster.hairline,
                         offset: Poster.noShadow
                     )
+                    // On the artwork rather than in the meta row below it: a tile in a wall of
+                    // stickers is scanned as pictures, and the one thing that distinguishes a
+                    // sticker with controls is what it *does* when opened, not what it is called.
+                    .overlay(alignment: .topTrailing) {
+                        if sticker.isControllable { StickerControlsBadge() }
+                    }
 
                 Text(sticker.title)
                     .font(.posterDisplay(16, weight: .bold))
@@ -51,6 +57,30 @@ struct StickerLibraryCard: View {
         // a plain navigation link can derive its tappable area from the text below and leave the
         // artwork out. Make the entire visible card one interaction surface.
         .contentShape(.rect(cornerRadius: Poster.cardRadius))
+    }
+}
+
+/// Marks a sticker that is posed before it is used.
+///
+/// The same generated configuration icon on the same cream disc the Messages grid draws, because it means the same thing
+/// in both places and a reader who has learned it in the drawer should not have to learn it twice.
+private struct StickerControlsBadge: View {
+    var body: some View {
+        Image("ControllableSticker")
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+            .padding(2)
+            .frame(width: 22, height: 22)
+            .posterSurface(
+                cornerRadius: 11,
+                fill: AppColors.card,
+                lineWidth: Poster.hairline,
+                offset: Poster.noShadow
+            )
+            .padding(4)
+            .accessibilityLabel("Has controls")
+            .accessibilityIdentifier("sticker-controllable-badge")
     }
 }
 

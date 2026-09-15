@@ -1,4 +1,5 @@
 import Messages
+import SwiftUI
 import UIKit
 
 /// A sticker grid that keeps Apple's peel/drag interaction (`MSStickerView` owns it) while
@@ -36,13 +37,14 @@ final class StickerGridViewController: UIViewController {
         didSet {
             guard oldValue != suppressesPeelDrag, isViewLoaded else { return }
             for case let cell as StickerCell in collectionView.visibleCells {
-                cell.setPeelDragEnabled(!suppressesPeelDrag)
+                cell.setPeelDragEnabled(!suppressesPeelDrag && !cellIsConfigurable(cell))
             }
         }
     }
 
     private(set) var sections: [StickerSection] = []
     private var stickersByID: [StickerItemID: MSSticker] = [:]
+    private var cachedByID: [StickerItemID: CachedSticker] = [:]
     /// Flat display order, so a global index still maps to an item.
     private var orderedIDs: [StickerItemID] = []
     private var sectionHeaders: [String: (title: String, subtitle: String?)] = [:]
@@ -58,7 +60,7 @@ final class StickerGridViewController: UIViewController {
 
     private var isActive = false
 
-    var stickers: [MSSticker] { orderedIDs.compactMap { stickersByID[$0] } }
+    var stickers: [MSSticker] { orderedIDs.compactMap { sticker(for: $0) } }
     var stickerCount: Int { orderedIDs.count }
 
     override func viewDidLoad() {
@@ -89,6 +91,15 @@ final class StickerGridViewController: UIViewController {
         view.addSubview(collectionView)
     }
 
+    func cachedItem(for id: StickerItemID) -> CachedSticker? {
+        cachedByID[id]
+    }
+    private func isConfigurable(_ id: StickerItemID) -> Bool { cachedItem(for: id)?.playbackRevisionID != nil }
+    private func cellIsConfigurable(_ cell: StickerCell) -> Bool {
+        guard let index = collectionView.indexPath(for: cell), let id = dataSource.itemIdentifier(for: index) else { return false }
+        return isConfigurable(id)
+    }
+
     private func configureDataSource() {
         dataSource = UICollectionViewDiffableDataSource<String, StickerItemID>(
             collectionView: collectionView
@@ -97,7 +108,7 @@ final class StickerGridViewController: UIViewController {
                 withReuseIdentifier: StickerCell.reuseIdentifier,
                 for: indexPath
             )
-            guard let self, let stickerCell = cell as? StickerCell, let sticker = stickersByID[itemID] else {
+            guard let self, let stickerCell = cell as? StickerCell, let sticker = self.sticker(for: itemID) else {
                 return cell
             }
             // Captures the item id, never the index path: index paths go stale the moment a
@@ -109,7 +120,8 @@ final class StickerGridViewController: UIViewController {
             // Set both ways, not just off: one controller now serves both presentation contexts,
             // and a cell recycled from the full-size surface must come back draggable rather than
             // silently inert.
-            stickerCell.setPeelDragEnabled(!suppressesPeelDrag)
+            stickerCell.setPeelDragEnabled(!suppressesPeelDrag && !isConfigurable(itemID))
+            stickerCell.setConfigurable(self.isConfigurable(itemID))
             return stickerCell
         }
 
@@ -156,7 +168,9 @@ final class StickerGridViewController: UIViewController {
         let populated = sections.filter { !$0.stickers.isEmpty }
         self.sections = populated
 
-        stickersByID = [:]
+        let previous = cachedByID
+        let previousHeaders = sectionHeaders
+        cachedByID = [:]
         orderedIDs = []
         sectionHeaders = [:]
         var snapshot = NSDiffableDataSourceSnapshot<String, StickerItemID>()
@@ -164,15 +178,11 @@ final class StickerGridViewController: UIViewController {
         for section in populated {
             var itemIDs: [StickerItemID] = []
             for cached in section.stickers {
-                guard let sticker = try? MSSticker(
-                    contentsOfFileURL: cached.fileURL,
-                    localizedDescription: String(cached.title.prefix(150))
-                ) else { continue }
                 let id = StickerItemID(sectionID: section.id, stickerID: cached.stickerID)
                 // The same sticker in two packs is two items; a duplicate within one section
                 // would crash the diffable data source.
-                guard stickersByID[id] == nil else { continue }
-                stickersByID[id] = sticker
+                guard cachedByID[id] == nil else { continue }
+                cachedByID[id] = cached
                 itemIDs.append(id)
                 orderedIDs.append(id)
             }
@@ -182,23 +192,35 @@ final class StickerGridViewController: UIViewController {
             snapshot.appendItems(itemIDs, toSection: section.id)
         }
 
+        // Retain prepared stickers while their file and metadata stay the same. Offscreen items
+        // are prepared lazily by the cell provider, rather than opening every file on the main actor.
+        stickersByID = stickersByID.filter { cachedByID[$0.key] == previous[$0.key] && cachedByID[$0.key] != nil }
+
         // Keep the busy marks whose items survived the reload — their downloads are still running
         // — and drop the rest, which nothing will ever clear.
         busyItemIDs.formIntersection(orderedIDs)
 
         loadViewIfNeeded()
-        // Without animation: the drawer is small, and a cross-fade on a full library reload reads
-        // as flicker rather than as motion.
-        dataSource.applySnapshotUsingReloadData(snapshot)
-        // Cells the layout has already produced do not re-fire `willDisplay`. The library usually
-        // lands before the drawer finishes its first layout pass, so without this the freshly
-        // loaded stickers sit on their first frame — invisible for any sticker that fades in.
-        if isActive { resumeAnimations() }
+        let existingIDs = Set(dataSource.snapshot().itemIdentifiers)
+        snapshot.reconfigureItems(orderedIDs.filter { existingIDs.contains($0) && previous[$0] != cachedByID[$0] })
+        // Apply only the difference, preserving scroll position and existing cells' animation
+        // while downloads add items. Header metadata may also change without item identity changing.
+        let previousSections = Set(dataSource.snapshot().sectionIdentifiers)
+        let changedHeaders = populated.filter { section in
+            previousSections.contains(section.id) && (
+                previousHeaders[section.id]?.title != section.title || previousHeaders[section.id]?.subtitle != section.subtitle
+            )
+        }.map(\.id)
+        snapshot.reloadSections(changedHeaders)
+        dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            guard let self, self.isActive else { return }
+            self.resumeAnimations()
+        }
     }
 
     /// The single funnel every tap goes through.
     func select(_ itemID: StickerItemID) {
-        guard let sticker = stickersByID[itemID] else { return }
+        guard let sticker = sticker(for: itemID) else { return }
         // A busy item is already working; a second tap must not queue a second send.
         guard !busyItemIDs.contains(itemID) else { return }
         onSelect?(sticker)
@@ -210,7 +232,15 @@ final class StickerGridViewController: UIViewController {
     /// The full-size surface needs it as well as the item id: a sticker send inserts this object
     /// directly, exactly as the Stickers drawer does, while an image send resolves a file the grid
     /// has never seen.
-    func sticker(for itemID: StickerItemID) -> MSSticker? { stickersByID[itemID] }
+    func sticker(for itemID: StickerItemID) -> MSSticker? {
+        if let sticker = stickersByID[itemID] { return sticker }
+        guard let cached = cachedByID[itemID], let sticker = try? MSSticker(
+            contentsOfFileURL: cached.fileURL,
+            localizedDescription: String(cached.title.prefix(150))
+        ) else { return nil }
+        stickersByID[itemID] = sticker
+        return sticker
+    }
 
     /// Marks one item as working, so it shows a spinner and stops accepting taps.
     func setBusy(_ busy: Bool, for itemID: StickerItemID) {
@@ -415,6 +445,13 @@ final class StickerCell: UICollectionViewCell {
     private let stickerView = MSStickerView(frame: .zero, sticker: nil)
     private let tapRecognizer = UITapGestureRecognizer()
     private let spinner = UIActivityIndicatorView(style: .medium)
+    /// Marks a sticker that has to be posed before it can be sent.
+    ///
+    /// These are the only cells whose tap does not insert straight away, and the only ones with no
+    /// peel/drag — a configurable sticker has no single artwork to peel until its controls have
+    /// been answered. Without a mark the two kinds are indistinguishable in the grid, and the one
+    /// that opens a sheet instead of sending reads as a sticker that failed to send.
+    private let controlsBadge = UIView()
     private var onTap: (() -> Void)?
     private var peelDragEnabled = true
     private(set) var isBusy = false
@@ -451,9 +488,46 @@ final class StickerCell: UICollectionViewCell {
             spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
         ])
 
+        configureControlsBadge()
+
         isAccessibilityElement = true
         accessibilityTraits = [.button, .image]
         accessibilityIdentifier = "sticker-cell"
+    }
+
+    /// Cream, ink-outlined and carrying the generated configuration icon for controls, so the mark reads
+    /// as part of the app rather than as a system badge borrowed onto it.
+    private func configureControlsBadge() {
+        let glyph = UIImageView(image: UIImage(named: "ControllableSticker"))
+        glyph.contentMode = .scaleAspectFit
+        glyph.translatesAutoresizingMaskIntoConstraints = false
+
+        controlsBadge.translatesAutoresizingMaskIntoConstraints = false
+        controlsBadge.backgroundColor = UIColor(AppColors.card)
+        controlsBadge.layer.borderColor = UIColor(AppColors.ink).cgColor
+        controlsBadge.layer.borderWidth = 1.5
+        controlsBadge.layer.cornerRadius = 11
+        controlsBadge.isUserInteractionEnabled = false
+        controlsBadge.isHidden = true
+        controlsBadge.addSubview(glyph)
+        contentView.addSubview(controlsBadge)
+
+        NSLayoutConstraint.activate([
+            controlsBadge.widthAnchor.constraint(equalToConstant: 22),
+            controlsBadge.heightAnchor.constraint(equalToConstant: 22),
+            controlsBadge.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 2),
+            controlsBadge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -2),
+            glyph.widthAnchor.constraint(equalToConstant: 18),
+            glyph.heightAnchor.constraint(equalToConstant: 18),
+            glyph.centerXAnchor.constraint(equalTo: controlsBadge.centerXAnchor),
+            glyph.centerYAnchor.constraint(equalTo: controlsBadge.centerYAnchor)
+        ])
+    }
+
+    /// Whether this sticker opens its controls rather than sending on a tap.
+    func setConfigurable(_ isConfigurable: Bool) {
+        controlsBadge.isHidden = !isConfigurable
+        accessibilityHint = isConfigurable ? String(localized: "Opens controls for posing this sticker") : nil
     }
 
     @available(*, unavailable)
@@ -478,6 +552,7 @@ final class StickerCell: UICollectionViewCell {
             spinner.stopAnimating()
         }
         stickerView.alpha = busy ? 0.35 : 1
+        controlsBadge.alpha = busy ? 0.35 : 1
         stickerView.isUserInteractionEnabled = !busy
         if busy {
             accessibilityTraits.insert(.notEnabled)
@@ -525,6 +600,7 @@ final class StickerCell: UICollectionViewCell {
         setBusy(false)
         stickerView.sticker = nil
         onTap = nil
+        setConfigurable(false)
         accessibilityLabel = nil
     }
 

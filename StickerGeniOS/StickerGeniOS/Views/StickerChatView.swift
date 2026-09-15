@@ -50,6 +50,7 @@ struct StickerChatView: View {
     /// looking failed once the replacement stream opens — well after the tap.
     @State var isRetrying = false
     @State private var presentedDocument: PresentedStickerDocument?
+    @State private var controlsApplied = 0
     /// Measured, not fixed: the bar grows with reference chips, a multi-line draft and the
     /// candidate banner, and the transcript has to keep exactly that much room free under it.
     @State private var bottomBarHeight: CGFloat = 0
@@ -372,13 +373,17 @@ struct StickerChatView: View {
         .fullScreenCover(item: $presentedDocument) { presented in
             FullScreenStickerPlayer(
                 document: presented.document,
+                startsEditing: presented.startsEditing,
+                settings: presented.settings,
                 assets: assetStore.images,
                 videos: assetStore.videos,
                 // Editing needs a revision to parent the save onto. A bubble whose document came
                 // from a live generation stream has none yet, so that one opens view-only.
                 editing: presented.revisionID.map {
                     .init(store: store, stickerID: stickerID, revisionID: $0, assetStore: assetStore)
-                }
+                },
+                controls: .init(store: store, stickerID: stickerID, assetStore: assetStore,
+                    onApply: { controlsApplied += 1 })
             )
         }
         .stickerRenameAlert(
@@ -496,6 +501,10 @@ struct StickerChatView: View {
         }
     }
 
+    private func openSticker(_ document: AnimatedDocument, revisionID: String?) {
+        presentedDocument = PresentedStickerDocument(document: document, revisionID: revisionID)
+    }
+
     @ViewBuilder
     private func transcriptRow(_ message: ChatMessage) -> some View {
         if message.kind == .deviceEdit {
@@ -507,7 +516,7 @@ struct StickerChatView: View {
                 if let document = revisionDocument(for: message) {
                     HStack(spacing: 0) {
                         Button {
-                            presentedDocument = .init(document: document, revisionID: message.revisionId)
+                            openSticker(document, revisionID: message.revisionId)
                         } label: {
                             // Sized outright rather than left to `aspectRatio` inside a full-width
                             // row: an unbounded height proposal there resolves to the row's width,
@@ -550,12 +559,18 @@ struct StickerChatView: View {
             }
         } else {
             ChatBubble(
+                configurationSettings: revisionDocument(for: message).flatMap { doc in
+                    guard doc.configuration != nil else { return nil }
+                    _ = controlsApplied
+                    let account = (try? SharedKeychainTokenVault().load()?.subject) ?? "local"
+                    return StickerControlPreferences().load(accountID: account, stickerID: stickerID, document: doc)
+                },
                 message: message,
                 sticker: revisionDocument(for: message),
                 assets: assetStore.images,
                 videos: assetStore.videos,
                 toolAPI: store.api,
-                onOpenSticker: { presentedDocument = .init(document: $0, revisionID: message.revisionId) }
+                onOpenSticker: { openSticker($0, revisionID: message.revisionId) }
             )
         }
     }

@@ -63,7 +63,12 @@ final class AppEnvironment {
                 issuer: configuration.oauthIssuer.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
                 clientID: configuration.oauthClientID,
                 redirectURI: configuration.oauthRedirectURI,
-                scopes: ["openid"],
+                // `write:profile` is what the identity provider requires to schedule or cancel a
+                // deletion of this account (`grantsAccountDeletionScope`). Reading the pending
+                // state deliberately needs no extra scope, but the button does — an install
+                // authorized before this was added gets a consent screen on its next sign-in, and
+                // until then the delete call comes back as ACCOUNT_DELETION_SCOPE_REQUIRED.
+                scopes: ["openid", "write:profile"],
                 passkeyChallengePath: "/api/oauth/passkey/authenticate/options",
                 passkeyVerificationPath: "/api/oauth/passkey/authenticate/verify",
                 passkeyRegistrationChallengePath: "/api/oauth/passkey/register/options",

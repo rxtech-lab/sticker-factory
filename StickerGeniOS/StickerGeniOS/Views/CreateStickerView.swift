@@ -8,6 +8,11 @@ struct CreateStickerView: View {
     /// Generation always continues in the project's chat; the caller owns that navigation.
     var onCreated: (Sticker) -> Void
     @State private var kind: StickerKind = .static
+    /// Asks for a character the recipient can pose and change the mood of, without the user having
+    /// to work out that they need to say "moods I can switch between" to the agent to get one.
+    /// Animated only — a still has no clips to switch between — so `generate` reads it through
+    /// `wantsControls` rather than on its own.
+    @State private var controllable = false
     @State private var prompt = ""
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var references: [PendingMediaAttachment] = []
@@ -52,6 +57,23 @@ struct CreateStickerView: View {
                                     posterSymbol: "list.number"
                                 )
                                 .font(.system(size: 14, design: .rounded))
+                                .foregroundStyle(AppColors.muted)
+
+                                PosterToggleRow(
+                                    title: String(localized: "Switchable moods and poses"),
+                                    isOn: $controllable,
+                                    identifier: "sticker-controllable-toggle"
+                                )
+                                PosterSymbolLabel(
+                                    """
+                                        We’ll draw each character once, then a sheet of poses and a strip of \
+                                        faces for them. You and anyone you send it to pick the mood and pose \
+                                        on the sticker itself. Costs a few more images per character than a \
+                                        plain animation.
+                                        """,
+                                    posterSymbol: "slider.horizontal.3"
+                                )
+                                .font(.system(size: 12, design: .rounded))
                                 .foregroundStyle(AppColors.muted)
                             }
                         }
@@ -116,12 +138,12 @@ struct CreateStickerView: View {
                                 .accessibilityIdentifier("add-reference-images")
                             }
 
-                            PosterSymbolLabel(
+                            Label(
                                 """
                                     Personal photos are uploaded privately to create or edit this sticker. \
                                     Sources, chat, and revisions remain until you delete the project.
                                     """,
-                                posterSymbol: "hand.raised.fill"
+                                systemImage: "hand.raised.fill"
                             )
                             .font(.system(size: 12, design: .rounded))
                             .foregroundStyle(AppColors.muted)
@@ -222,11 +244,21 @@ struct CreateStickerView: View {
         if !loaded.isEmpty { Haptics.selection() }
     }
 
+    /// The switch only means anything on an animated sticker, and it stays on screen across a
+    /// change of type — so a user who turns it on, switches to Static and generates sends a request
+    /// the server would refuse rather than one it silently ignores.
+    private var wantsControls: Bool { kind == .animated && controllable }
+
     private func generate() async {
         isGenerating = true
         defer { isGenerating = false }
         do {
-            let sticker = try await store.create(kind: kind, prompt: prompt, references: references)
+            let sticker = try await store.create(
+                kind: kind,
+                prompt: prompt,
+                controllable: wantsControls,
+                references: references
+            )
             Haptics.success()
             onCreated(sticker)
             localError = nil

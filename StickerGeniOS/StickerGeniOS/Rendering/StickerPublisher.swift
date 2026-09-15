@@ -123,7 +123,7 @@ final class StickerPublisher {
             progress: progress
         )
         Self.log.info("render seconds=\(Date().timeIntervalSince(renderStarted))")
-        let document = revision.document
+        let document = try revision.document.resolvingConfiguration()
 
         let uploadStarted = Date()
         progress?.begin(.upload)
@@ -149,6 +149,7 @@ final class StickerPublisher {
         // running until the job it returns reaches a terminal state.
         try Task.checkCancellation()
         progress?.begin(.publish)
+        let playbackDocument = try await StickerPlaybackPreparer.prepare(document: revision.document, stickerID: stickerID, api: api)
         let registerStarted = Date()
         let response = try await api.registerExport(
             stickerID: stickerID,
@@ -166,7 +167,8 @@ final class StickerPublisher {
                 // An animated sticker whose motion could not be squeezed under 500 KB ships a still.
                 // Saying so is what separates the bottom of the ladder from a client that uploaded
                 // the wrong file, which the server would otherwise have to treat as the same thing.
-                systemRenditionKind: system.isStillFallback ? .still : nil
+                systemRenditionKind: system.isStillFallback ? .still : nil,
+                playbackDocument: playbackDocument
             ),
             idempotencyKey: UUID().uuidString
         )
@@ -311,7 +313,7 @@ final class StickerPublisher {
         verifiedAssetIDs: Set<String>
     ) throws -> AnimatedDocument {
         guard revision.state == .accepted else { throw StickerPublishError.revisionNotAccepted }
-        let document = try revision.document.validated()
+        let document = try revision.document.validated().resolvingConfiguration()
         let requiredAssetIDs = Set(document.layers.flatMap(\.referencedImageAssetIDs))
         var missing = requiredAssetIDs.filter { assets.images[$0]?.cgImage == nil || !verifiedAssetIDs.contains($0) }
         // A video layer without its clip would export as its poster — a still where the user

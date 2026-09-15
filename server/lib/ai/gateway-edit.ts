@@ -336,6 +336,15 @@ export function validateEditOperation(
       "A clip has to be generated; turn an image layer into one with create_video instead",
     );
   }
+  // A sprite's sheets and face slots are registered by the build; an `addLayer` naming them by hand
+  // would point at sheets this turn never drew, or at anchors nothing measured.
+  if (operation.op === "addLayer" && operation.layer.type === "sprite") {
+    throw new ApiError(
+      422,
+      "UNSAFE_EDIT_OPERATION",
+      "A sprite character has to be planned and built; it cannot be introduced by an edit",
+    );
+  }
   return operation;
 }
 
@@ -360,6 +369,7 @@ export function validatePlannedAnimationOperation(
     operation.op === "removeLayer" ||
     (operation.op === "addLayer" && (
       operation.layer.type === "image" || operation.layer.type === "sequence" || operation.layer.type === "video"
+      || operation.layer.type === "sprite"
     ))
   ) {
     throw new ApiError(

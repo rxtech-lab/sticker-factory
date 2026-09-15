@@ -38,6 +38,17 @@ export interface AiImageInput {
    * parts separated from it are later measured against.
    */
   keepFrame?: boolean;
+  /**
+   * Draw a sprite sheet rather than one subject: `count` cells on a `columns` x `rows` grid.
+   *
+   * The ordinary instruction forbids grids outright — one sticker, never a contact sheet — so this
+   * is what turns that rule off and says what to draw instead. `facePlaceholder` asks for a flat
+   * magenta oval where the face goes in every cell, which `lib/render/sprite-registration.ts`
+   * measures and paints out; `tiles` asks for face plates alone, one expression per cell.
+   */
+  sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean };
+  /** The image model's quality tier. Sheets ask for more than the default, since a cell is a third of the canvas. */
+  quality?: "low" | "medium" | "high";
 }
 
 export interface AiImageReferenceCandidate {
@@ -126,6 +137,12 @@ export interface AiPlanContext {
   instruction: string;
   history: string;
   stickerKind: "static" | "animated";
+  /**
+   * The project was created with the controllable switch on, so every plan for it has to build the
+   * character as a sprite with mood and pose controls. The user turned it on instead of asking for
+   * it in words, so nothing in `instruction` need mention it.
+   */
+  controllable: boolean;
   document?: StickerDocument;
   /** Reasons the user gave for turning down earlier plans, so the agent does not repeat them. */
   rejectedReasons: string[];
@@ -374,6 +391,9 @@ function describeLayer(layer: StickerDocument["layers"][number]): string {
     return `${layer.frameCount}-frame live capture ${layer.assetId}`;
   case "video":
     return `${layer.frameCount}-frame generated clip ${layer.assetId}`;
+  case "sprite":
+    return `sprite character: clips ${layer.clips.map((clip) => clip.id).join("/")}, `
+      + `expressions ${layer.expressions.tiles.map((tile) => tile.id).join("/")}, showing ${layer.clipId} ${layer.expressionId}`;
   }
 }
 

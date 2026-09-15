@@ -21,6 +21,22 @@ enum FrameAtlasEncoder {
     /// Comfortably under the 25 MB upload cap, with room for the base64 the AI path adds.
     private static let byteBudget = 20 * 1024 * 1024
 
+    /// Playback derivatives preserve the entire registered frame, without subject recropping.
+    static func encodePlayback(frames: [CGImage], frameRate: Double) throws -> Encoded {
+        guard let first = frames.first, frames.count <= 64 else { throw MediaNormalizationError.liftProducedNoSubject }
+        let columns = min(8, max(1, Int(Double(frames.count).squareRoot().rounded(.up))))
+        let rows = Int(ceil(Double(frames.count) / Double(columns)))
+        let side = CGFloat(max(first.width, first.height))
+        let crop = CGRect(x: (CGFloat(first.width) - side) / 2, y: (CGFloat(first.height) - side) / 2, width: side, height: side)
+        for tile in tileLadder {
+            let data = try draw(frames, crop: crop, columns: columns, rows: rows, tile: tile, outlinePixels: 0)
+            if data.count <= byteBudget {
+                return .init(data: data, metadata: .init(columns: columns, rows: rows, frameCount: frames.count, frameRate: frameRate))
+            }
+        }
+        throw MediaNormalizationError.imageTooLarge
+    }
+
     /// Packs `frames` into an atlas.
     ///
     /// Frames that failed to lift are dropped and the remainder renumbered, so a sequence is always

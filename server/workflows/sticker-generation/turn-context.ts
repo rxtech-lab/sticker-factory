@@ -1,3 +1,4 @@
+import { documentRenderableLayers } from "@/lib/contracts/sticker";
 // The scaffolding every AI turn runs inside: the job row it advances, the assistant message
 // it writes into, the tool-call records the client streams, and the guards that stop a turn
 // from touching assets it does not own.
@@ -355,7 +356,7 @@ export async function renderWorkingDocument(document: StickerDocument, ownerId: 
 
 export async function assertDocumentAssetsOwned(document: StickerDocument, ownerId: string, stickerId: string): Promise<void> {
   const db = await getDatabase();
-  const ids = document.layers.flatMap((layer) => [
+  const ids = documentRenderableLayers(document).flatMap((layer) => [
     ...layerImageAssetIds(layer),
     // The clip itself: `layerImageAssetIds` deliberately reports a video layer's poster instead,
     // because that is what the server draws, but the MP4 is the asset the client plays.
@@ -363,6 +364,7 @@ export async function assertDocumentAssetsOwned(document: StickerDocument, owner
     // The poster is derived from the atlas and belongs to the same sticker, so an unowned one is
     // the same ownership hole as an unowned atlas — and it is the asset older clients are served.
     ...(layer.type === "sequence" && layer.posterAssetId ? [layer.posterAssetId] : []),
+    ...(layer.type === "sprite" ? [layer.posterAssetId] : []),
   ]);
   if (ids.length === 0) return;
   const rows = await db.select().from(assets).where(and(eq(assets.ownerId, ownerId), eq(assets.stickerId, stickerId)));

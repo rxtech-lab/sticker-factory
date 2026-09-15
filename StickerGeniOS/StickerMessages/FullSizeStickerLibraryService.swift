@@ -28,7 +28,7 @@ struct ResolvedAttachment: Sendable {
 /// The full-size surface's library.
 ///
 /// Deliberately two caches. `MessagesLibraryService` keeps doing exactly what it does for the
-/// sticker surface — fetch the listing, download every ≤500 KB rendition, reconcile — and that
+/// sticker surface — show cached stickers, then stream new ≤500 KB renditions — and that
 /// cache backs the grid's thumbnails here. The full-size files are much larger and most of them are
 /// never sent, so they are fetched one at a time on tap into a second, LRU-bounded cache.
 ///
@@ -45,7 +45,7 @@ actor FullSizeStickerLibraryService {
     /// through this rather than re-fetching the listing.
     private var descriptorsByKey: [CacheKey: SystemStickerDescriptor] = [:]
     /// The system-cache file for each sticker, so a fallback send needs no network at all.
-    private var systemFileURLsByKey: [CacheKey: URL] = [:]
+    private var systemStickersByKey: [CacheKey: CachedSticker] = [:]
     private var subject: String?
 
     private let logger = Logger(
@@ -61,16 +61,35 @@ actor FullSizeStickerLibraryService {
         fullCache = try SharedStickerCache(policy: .fullSize)
     }
 
-    func refresh() async throws -> MessagesLibrarySnapshot {
-        let snapshot = try await inner.refresh()
+    init(inner: MessagesLibraryService, tokenBroker: SharedTokenBroker, client: StickerLibraryClient, fullCache: SharedStickerCache) {
+        self.inner = inner
+        self.tokenBroker = tokenBroker
+        self.client = client
+        self.fullCache = fullCache
+    }
+
+    func refresh(onUpdate: MessagesLibraryUpdate = { _ in }) async throws -> MessagesLibrarySnapshot {
+        let snapshot = try await inner.refresh { [weak self] snapshot in
+            guard let self, !Task.isCancelled else { return }
+            await self.accept(snapshot)
+            guard !Task.isCancelled else { return }
+            await onUpdate(snapshot)
+        }
+        try Task.checkCancellation()
+        await accept(snapshot)
+        return snapshot
+    }
+
+    /// Resolve taps against every displayed update, including while the remaining files load.
+    private func accept(_ snapshot: MessagesLibrarySnapshot) async {
         // `uniquingKeysWith` rather than `uniqueKeysWithValues`: a duplicate key would be a cache
         // bug, and trapping the extension over one is a far worse outcome than showing it twice.
         descriptorsByKey = Dictionary(
             await inner.lastDescriptors().map { ($0.key, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        systemFileURLsByKey = Dictionary(
-            snapshot.stickers.map { ($0.key, $0.fileURL) },
+        systemStickersByKey = Dictionary(
+            snapshot.stickers.map { ($0.key, $0) },
             uniquingKeysWith: { first, _ in first }
         )
 
@@ -78,8 +97,8 @@ actor FullSizeStickerLibraryService {
         // library must not keep its file on disk. Only stickers actually sent as images are in the
         // index, so this is a no-op for everything never tapped — and an entry written under an
         // older variant scheme matches no key here and is swept for it.
-        if let session = try? await tokenBroker.cachedSession() {
-            subject = session.subject
+        subject = try? await tokenBroker.cachedSession()?.subject
+        if !snapshot.isRefreshing, !snapshot.isOffline, let subject {
             let live = Set(descriptorsByKey.keys.map { key in
                 CacheKey(
                     sectionID: key.sectionID,
@@ -87,9 +106,8 @@ actor FullSizeStickerLibraryService {
                     variant: SystemStickerDescriptor.fullSizeVariant
                 )
             })
-            try? await fullCache.removeEntries(notIn: live, for: session.subject)
+            try? await fullCache.removeEntries(notIn: live, for: subject)
         }
-        return snapshot
     }
 
     /// The file to attach for one sticker in `.image` mode, fetched once if it is not already
@@ -99,9 +117,26 @@ actor FullSizeStickerLibraryService {
     /// is a legitimate send rather than a degraded one — for that sticker, it is the only rendition
     /// there is — and it needs no network at all.
     func attachment(for key: CacheKey) async throws -> ResolvedAttachment {
-        guard let descriptor = descriptorsByKey[key] else {
+        guard let system = systemStickersByKey[key] else {
             throw FullSizeStickerLibraryError.unknownSticker
         }
+        // An early Image tap needs only the listing, never the remaining thumbnail downloads.
+        // Do not mistake metadata still loading for a sticker that has no full-size rendition.
+        if descriptorsByKey[key] == nil {
+            let session = try await tokenBroker.authenticatedSession()
+            let fetched: [SystemStickerDescriptor]
+            do {
+                fetched = try await client.fetchSections(accessToken: session.accessToken)
+            } catch StickerLibraryError.unauthorized {
+                let refreshed = try await tokenBroker.authenticatedSession(forceRefresh: true)
+                guard refreshed.subject == session.subject else { throw SharedAuthenticationError.missingCredentials }
+                fetched = try await client.fetchSections(accessToken: refreshed.accessToken)
+            }
+            try Task.checkCancellation()
+            guard subject == session.subject else { throw SharedAuthenticationError.missingCredentials }
+            descriptorsByKey = Dictionary(fetched.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+        guard let descriptor = descriptorsByKey[key] else { throw FullSizeStickerLibraryError.unknownSticker }
 
         if let sized = descriptor.fullSizeDescriptor() {
             let session = try await resolvedSubject()
@@ -117,10 +152,7 @@ actor FullSizeStickerLibraryService {
             )
         }
 
-        guard let fileURL = systemFileURLsByKey[key] else {
-            throw FullSizeStickerLibraryError.unknownSticker
-        }
-        return ResolvedAttachment(fileURL: fileURL, title: descriptor.title, isFullSize: false)
+        return ResolvedAttachment(fileURL: system.fileURL, title: descriptor.title, isFullSize: false)
     }
 
     /// True when a tap would need the network, so the caller can say so before spinning.

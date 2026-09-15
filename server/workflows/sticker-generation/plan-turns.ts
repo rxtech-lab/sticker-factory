@@ -3,7 +3,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { assertAnimatedPlanUsesReferenceBackedArtwork, assertPlanAllowedForJob, assertPlanReuseIsResolvable, planRequiresConcept, type PlanV1 } from "@/lib/contracts/plan";
+import { assertAnimatedPlanUsesReferenceBackedArtwork, assertControllablePlan, assertPlanAllowedForJob, assertPlanReuseIsResolvable, planRequiresConcept, type PlanV1 } from "@/lib/contracts/plan";
 import { applyStickerOperationsV1, type StickerDocument, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import { chatMessages, generationJobs, plans, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -196,6 +196,7 @@ export async function executePlanTurn(
       const call = await beginToolCall(job, "create_plan");
       try {
         assertPlanAllowedForJob(plan, job);
+        if (sticker.controllable) assertControllablePlan(plan);
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const created = await createPlan(db, {
@@ -223,6 +224,7 @@ export async function executePlanTurn(
       const call = await beginToolCall(job, "update_plan", undefined, `update_plan #${updates}`);
       try {
         assertPlanAllowedForJob(plan, job);
+        if (sticker.controllable) assertControllablePlan(plan);
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const updated = await updatePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId, plan });
@@ -267,6 +269,7 @@ export async function executePlanTurn(
     instruction,
     history,
     stickerKind: sticker.kind,
+    controllable: sticker.controllable,
     document: activeDocument,
     rejectedReasons: rejected.map((row) => row.decisionReason).filter((reason): reason is string => Boolean(reason)),
     sequenceAssets,

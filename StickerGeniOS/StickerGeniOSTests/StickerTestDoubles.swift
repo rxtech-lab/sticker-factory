@@ -121,6 +121,7 @@ extension StickerAPIClientProtocol {
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse { throw TestFixtureError.stub }
     func importSticker(_ request: ImportStickerRequest, idempotencyKey: String) async throws -> ImportStickerResponse { throw TestFixtureError.stub }
     func sticker(id: String) async throws -> StickerDetail { throw TestFixtureError.stub }
+    func stickerPlayback(stickerID: String, revisionID: String?) async throws -> StickerPlaybackBundle { throw TestFixtureError.stub }
     func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail { throw TestFixtureError.stub }
     func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse { throw TestFixtureError.stub }
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage { throw TestFixtureError.stub }
@@ -143,6 +144,13 @@ extension StickerAPIClientProtocol {
     /// other request, and a stub with no opinion about it must not fail a test about the library.
     func registerDevice(token: String, environment: PushEnvironment, bundleID: String?, appVersion: String?) async throws {}
     func unregisterDevice(token: String) async throws {}
+
+    /// Nothing pending rather than throwing: account deletion is a state every double is asked
+    /// about and none of them is a test *about*, and a stub that throws here fails suites that
+    /// only wanted to exercise the library.
+    func accountDeletionState() async throws -> AccountDeletionState { .none }
+    func requestAccountDeletion() async throws -> AccountDeletionState { .none }
+    func cancelAccountDeletion() async throws -> AccountDeletionState { .none }
 
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }
     func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack> { throw TestFixtureError.stub }

@@ -140,6 +140,7 @@ extension AnimatedDocument {
         case .particle(let particle): appendParticleIssues(particle, to: &found)
         case .sequence(let sequence): appendSequenceIssues(sequence, to: &found)
         case .video(let video): appendVideoIssues(video, to: &found)
+        case .sprite(let sprite): appendSpriteIssues(sprite, to: &found)
         case .unsupported:
             found.add(
                 "unsupported",
@@ -244,6 +245,37 @@ extension AnimatedDocument {
                 .warning,
                 "\(found.name) was generated at \(Int(video.frameRate)) fps but this sticker "
                     + "renders at \(fps), so some frames will be dropped."
+            )
+        }
+    }
+
+    private func appendSpriteIssues(_ sprite: AnimatedSpriteLayer, to found: inout LayerIssues) {
+        if !sprite.posterAssetId.isAnimatedUUID {
+            found.add("poster", .blocking, "\(found.name)'s still frame is not a valid image.")
+        }
+        let clipIDs = Set(sprite.clips.map(\.id))
+        if sprite.clips.isEmpty || sprite.clips.contains(where: { !$0.isValid }) || clipIDs.count != sprite.clips.count {
+            found.add("clips", .blocking, "\(found.name) has a pose whose frames or sheet are not valid.")
+        }
+        if !sprite.expressions.isValid || Set(sprite.expressions.tiles.map(\.id)).count != sprite.expressions.tiles.count {
+            found.add("expressions", .blocking, "\(found.name) has an expression sheet that is not valid.")
+        }
+        if !sprite.clips.contains(where: { $0.id == sprite.clipId }) {
+            found.add("clip", .blocking, "\(found.name) is set to a pose it does not have.")
+        }
+        if !sprite.expressions.tiles.contains(where: { $0.id == sprite.expressionId }) {
+            found.add("expression", .blocking, "\(found.name) is set to an expression it does not have.")
+        }
+        // Advisory, as for a capture: a frame shorter than one render tick is never shown, so a
+        // blink the plan timed would vanish, but lowering the frame rate mid-edit should not stop
+        // the author dead.
+        let shortest = sprite.clips.flatMap(\.frames).map(\.duration).min()
+        if kind == .animated, let shortest, 1 / Double(max(fps, 1)) > shortest + 1e-9 {
+            found.add(
+                "rate-mismatch",
+                .warning,
+                "\(found.name) has a \(String(format: "%.2f", shortest))s frame but this sticker renders at \(fps) fps, "
+                    + "so that frame will be skipped."
             )
         }
     }

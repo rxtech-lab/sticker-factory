@@ -40,6 +40,24 @@ nonisolated enum PreviewFixtures {
         return document
     }()
 
+    static let configurableDocument: AnimatedDocument = {
+        var document = animatedDocument
+        let id = document.layers[0].id
+        document.configuration = .init(controls: [
+            .init(
+                id: "mood", label: "Mood", type: .choice, defaultValue: .string("happy"),
+                options: [.init(id: "happy", label: "Happy"), .init(id: "calm", label: "Calm")]
+            ),
+            .init(id: "visible", label: "Show character", type: .toggle, defaultValue: .bool(true), layerIds: [id])
+        ], variants: [
+            .init(id: "happy", selections: ["mood": "happy"], layers: [
+                .init(layerId: id, animations: [.init(.bounce(height: 0.08, bounces: 2), duration: 0.5)])
+            ]),
+            .init(id: "calm", selections: ["mood": "calm"], layers: [.init(layerId: id, animations: [])])
+        ])
+        return document
+    }()
+
     static let staticDocument = AnimatedPreviewDocuments.staticDocument
 
     /// The accepted first stage of an animated project is still an animated document; it simply
@@ -89,6 +107,8 @@ nonisolated enum PreviewFixtures {
         kind: .static,
         status: .published,
         activeRevisionId: "revision-borrowed",
+        // Controllable, so the pack screens have something to mark and something to pose.
+        playbackRevisionId: "revision-borrowed",
         createdAt: Date().addingTimeInterval(-7_200),
         updatedAt: Date().addingTimeInterval(-600),
         previewAsset: .init(

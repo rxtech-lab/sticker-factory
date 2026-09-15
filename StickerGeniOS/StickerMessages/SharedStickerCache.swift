@@ -13,6 +13,27 @@ struct StickerSection: Equatable, Sendable {
     /// The creator byline, for a pack section. Nil for the user's own stickers.
     let subtitle: String?
     let stickers: [CachedSticker]
+
+    static func grouped(_ stickers: [CachedSticker]) -> [StickerSection] {
+        return Dictionary(grouping: stickers, by: \.sectionID)
+            .map { _, members in
+                let ordered = members.sorted {
+                    $0.position != $1.position ? $0.position < $1.position : $0.updatedAt > $1.updatedAt
+                }
+                let first = ordered[0]
+                return StickerSection(
+                    id: first.sectionID,
+                    title: first.sectionTitle,
+                    subtitle: first.sectionSubtitle,
+                    stickers: ordered
+                )
+            }
+            .sorted { left, right in
+                let leftPosition = left.stickers[0].sectionPosition
+                let rightPosition = right.stickers[0].sectionPosition
+                return leftPosition != rightPosition ? leftPosition < rightPosition : left.id < right.id
+            }
+    }
 }
 
 /// Identity of one cached sticker. A sticker in two packs is two entries — pointing at one file.
@@ -40,6 +61,8 @@ struct CachedSticker: Equatable, Sendable {
     var sectionPosition: Int = 0
     var position: Int = 0
     var variant: String?
+
+    var playbackRevisionID: String?
 
     var key: CacheKey { CacheKey(sectionID: sectionID, stickerID: stickerID, variant: variant) }
 }
@@ -83,6 +106,7 @@ struct SystemStickerDescriptor: Equatable, Sendable {
     /// `nil` for a sticker whose only asset is the ≤500 KB Messages file, which is a legitimate
     /// state rather than a broken one — an `.image` send then attaches that file instead.
     var fullSize: FullSizeRendition?
+    var playbackRevisionID: String?
 
     var key: CacheKey { CacheKey(sectionID: sectionID, stickerID: stickerID, variant: variant) }
 
@@ -247,6 +271,46 @@ actor SharedStickerCache {
         try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
     }
 
+    init(rootURL: URL, policy: StickerCachePolicy = .systemSticker) throws {
+        self.fileManager = .default
+        self.policy = policy
+        self.rootURL = rootURL
+        indexURL = rootURL.appending(path: "cache-index.json")
+        try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    }
+
+    /// Reconcile the complete listing once, reusing verified asset files across pack placements.
+    /// Updating a title or order must not read, validate and rewrite every image on each opening.
+    func reconcile(_ descriptors: [SystemStickerDescriptor], for subject: String) throws -> [StickerSection] {
+        try Task.checkCancellation()
+        _ = try cachedSections(for: subject, validateFiles: false)
+        var current = try loadIndex()
+        let previous = current.entries
+        let byAsset = Dictionary(previous.map { ($0.assetID, $0) }, uniquingKeysWith: { first, _ in first })
+        let byKey = Dictionary(previous.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        var seen: Set<CacheKey> = []
+        current.entries = descriptors.compactMap { descriptor in
+            guard seen.insert(descriptor.key).inserted else { return nil }
+            guard let asset = byAsset[descriptor.assetID] else {
+                // Keep a previous rendition usable if its replacement cannot be downloaded.
+                return byKey[descriptor.key]
+            }
+            return CacheEntry(
+                stickerID: descriptor.stickerID, assetID: descriptor.assetID,
+                title: String(descriptor.title.prefix(150)), filename: asset.filename,
+                updatedAt: descriptor.updatedAt, sectionID: descriptor.sectionID,
+                sectionTitle: descriptor.sectionTitle, sectionSubtitle: descriptor.sectionSubtitle,
+                sectionPosition: descriptor.sectionPosition, position: descriptor.position,
+                lastUsedAt: asset.lastUsedAt, variant: descriptor.variant,
+                playbackRevisionID: descriptor.playbackRevisionID
+            )
+        }
+        for entry in previous { deleteFileIfUnreferenced(entry.filename, in: current.entries) }
+        index = current
+        try persistIndex()
+        return try cachedSections(for: subject, validateFiles: false)
+    }
+
     func prepare(for subject: String) throws {
         let fingerprint = Self.fingerprint(subject)
         let current = try loadIndex()
@@ -266,16 +330,20 @@ actor SharedStickerCache {
     /// Sections are ordered by their server position and stickers by theirs, falling back to
     /// `updatedAt` descending — which is exactly the ordering this cache had before sections
     /// existed, so a migrated v1 index reads unchanged.
-    func cachedSections(for subject: String) throws -> [StickerSection] {
+    /// `validateFiles: false` reads the index without reopening every image. These files were
+    /// verified on store; the grid opens individual images lazily when it needs an MSSticker.
+    func cachedSections(for subject: String, validateFiles: Bool = true) throws -> [StickerSection] {
         try prepare(for: subject)
         var current = try loadIndex()
         current.entries.removeAll { entry in
             let url = rootURL.appending(path: entry.filename)
             return !fileManager.fileExists(atPath: url.path)
-                || (try? Self.validateFile(at: url, policy: policy)) == nil
+                || (validateFiles && (try? Self.validateFile(at: url, policy: policy)) == nil)
         }
-        index = current
-        try persistIndex()
+        if current.entries.count != index?.entries.count {
+            index = current
+            try persistIndex()
+        }
 
         let stickers = current.entries.map { entry in
             CachedSticker(
@@ -289,31 +357,16 @@ actor SharedStickerCache {
                 sectionSubtitle: entry.sectionSubtitle,
                 sectionPosition: entry.sectionPosition,
                 position: entry.position,
-                variant: entry.variant
+                variant: entry.variant,
+                playbackRevisionID: entry.playbackRevisionID
             )
         }
 
-        return Dictionary(grouping: stickers, by: \.sectionID)
-            .map { _, members in
-                let ordered = members.sorted {
-                    $0.position != $1.position ? $0.position < $1.position : $0.updatedAt > $1.updatedAt
-                }
-                let first = ordered[0]
-                return StickerSection(
-                    id: first.sectionID,
-                    title: first.sectionTitle,
-                    subtitle: first.sectionSubtitle,
-                    stickers: ordered
-                )
-            }
-            .sorted { left, right in
-                let leftPosition = left.stickers[0].sectionPosition
-                let rightPosition = right.stickers[0].sectionPosition
-                return leftPosition != rightPosition ? leftPosition < rightPosition : left.id < right.id
-            }
+        return StickerSection.grouped(stickers)
     }
 
     func store(_ data: Data, descriptor: SystemStickerDescriptor, for subject: String) throws -> CachedSticker {
+        try Task.checkCancellation()
         try prepare(for: subject)
         guard data.count < policy.maximumByteCount else {
             throw policy.tooLargeError
@@ -351,7 +404,8 @@ actor SharedStickerCache {
             sectionPosition: descriptor.sectionPosition,
             position: descriptor.position,
             lastUsedAt: Date(),
-            variant: descriptor.variant
+            variant: descriptor.variant,
+            playbackRevisionID: descriptor.playbackRevisionID
         )
         current.entries.append(entry)
         // Only now, with the new entry in place, is it safe to drop the superseded file — and only
@@ -373,7 +427,8 @@ actor SharedStickerCache {
             sectionSubtitle: entry.sectionSubtitle,
             sectionPosition: entry.sectionPosition,
             position: entry.position,
-            variant: entry.variant
+            variant: entry.variant,
+                playbackRevisionID: entry.playbackRevisionID
         )
     }
 
@@ -402,7 +457,8 @@ actor SharedStickerCache {
             sectionSubtitle: entry.sectionSubtitle,
             sectionPosition: entry.sectionPosition,
             position: entry.position,
-            variant: entry.variant
+            variant: entry.variant,
+                playbackRevisionID: entry.playbackRevisionID
         )
     }
 
@@ -633,6 +689,7 @@ private struct CacheEntry: Codable, Sendable {
     var lastUsedAt: Date
     /// Which rendition this entry holds — see `CacheKey.variant`. Nil throughout the system cache.
     let variant: String?
+    let playbackRevisionID: String?
 
     var key: CacheKey { CacheKey(sectionID: sectionID, stickerID: stickerID, variant: variant) }
 
@@ -648,7 +705,8 @@ private struct CacheEntry: Codable, Sendable {
         sectionPosition: Int,
         position: Int,
         lastUsedAt: Date,
-        variant: String?
+        variant: String?,
+        playbackRevisionID: String? = nil
     ) {
         self.stickerID = stickerID
         self.assetID = assetID
@@ -662,6 +720,7 @@ private struct CacheEntry: Codable, Sendable {
         self.position = position
         self.lastUsedAt = lastUsedAt
         self.variant = variant
+        self.playbackRevisionID = playbackRevisionID
     }
 
     /// A v1 entry has no section fields and describes a sticker the user owns, so it migrates
@@ -683,6 +742,7 @@ private struct CacheEntry: Codable, Sendable {
         position = try container.decodeIfPresent(Int.self, forKey: .position) ?? 0
         lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt) ?? updatedAt
         variant = try container.decodeIfPresent(String.self, forKey: .variant)
+        playbackRevisionID = try container.decodeIfPresent(String.self, forKey: .playbackRevisionID)
     }
 }
 

@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import type { PlaybackBundle } from "@/lib/services/playback";
 import type { PlanV1 } from "@/lib/contracts/plan";
 import type { StickerDocument } from "@/lib/contracts/sticker";
 
@@ -49,7 +50,7 @@ const messageStatuses = ["complete", "streaming", "failed"] as const;
 const imagePlacements = ["replace", "add"] as const;
 const assetKinds = [
   "reference", "mask", "master", "preview", "apng", "gif", "mp4", "system", "chat_attachment",
-  "sequence", "attachment", "video", "webp", "messenger_whatsapp", "messenger_telegram",
+  "sequence", "attachment", "video", "webp", "messenger_whatsapp", "messenger_telegram", "playback",
 ] as const;
 const assetStates = ["pending", "ready", "failed", "deleted"] as const;
 const candidateStates = ["candidate", "accepted", "rejected", "superseded"] as const;
@@ -66,13 +67,32 @@ const acquisitions = ["free", "purchase", "gift", "promo"] as const;
 const devicePlatforms = ["ios"] as const;
 const apnsEnvironments = ["sandbox", "production"] as const;
 
+/**
+ * The stable OAuth subject, plus the record of a delayed account deletion.
+ *
+ * The row is never deleted, even when the account is. Every owner FK below cascades from here, so
+ * dropping it would take the creator's *published* packs with it — and a published pack outlives
+ * its author by design. Deletion therefore purges and anonymizes instead: see
+ * `lib/services/account-deletion.ts`. `deletedAt` is what marks the row as a tombstone.
+ *
+ * An account is pending deletion iff `deletionScheduledAt` is non-null. `deletionRequestId` is a
+ * fencing token: a finalize only proceeds while it still matches, which is what makes
+ * schedule -> cancel -> re-schedule safe against an in-flight sweep.
+ */
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email"),
   displayName: text("display_name"),
+  deletionScheduledAt: timestampColumn("deletion_scheduled_at"),
+  deletionRequestedAt: timestampColumn("deletion_requested_at"),
+  deletionRequestId: text("deletion_request_id"),
+  /** Set once the deletion has run. The account is gone; only public pack attribution remains. */
+  deletedAt: timestampColumn("deleted_at"),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
-});
+}, (table) => [
+  index("users_deletion_scheduled_at_idx").on(table.deletionScheduledAt),
+]);
 
 export const stickers = pgTable("stickers", {
   id: text("id").primaryKey(),
@@ -89,6 +109,15 @@ export const stickers = pgTable("stickers", {
    * falls back to its own default. A device-local choice still overrides this.
    */
   messengerEmoji: text("messenger_emoji"),
+  /**
+   * The user asked for a character whose mood and pose they can switch, so every plan for this
+   * project must build one as a sprite layer with the controls bound to it.
+   *
+   * On the sticker rather than the job, for the same reason `kind` is: it is a standing choice made
+   * once when the project was created, and a revision two turns later still has to honour it.
+   * Animated projects only — a still has no clips to switch between.
+   */
+  controllable: boolean("controllable").notNull().default(false),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
   deletedAt: timestampColumn("deleted_at"),
@@ -236,6 +265,7 @@ export const stickerRevisions = pgTable("sticker_revisions", {
   kind: text("kind", { enum: stickerKinds }).notNull(),
   candidateState: text("candidate_state", { enum: candidateStates }).notNull().default("candidate"),
   documentJson: jsonb("document_json").$type<StickerDocument>().notNull(),
+  playbackJson: jsonb("playback_json").$type<PlaybackBundle>(),
   masterAssetId: text("master_asset_id").references(() => assets.id, { onDelete: "set null" }),
   previewAssetId: text("preview_asset_id").references(() => assets.id, { onDelete: "set null" }),
   pngAssetId: text("png_asset_id").references(() => assets.id, { onDelete: "set null" }),

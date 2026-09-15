@@ -1,3 +1,4 @@
+import AnimatedView
 import SwiftUI
 import TipKit
 import UIKit
@@ -344,11 +345,17 @@ struct PlanCard: View {
         let video = videoCount == 0
             ? ""
             : videoCount == 1 ? String(localized: " · 1 VIDEO") : String(localized: " · \(videoCount) VIDEOS")
+        if plan.configuration != nil { return layers + String(localized: " · \(generationCount) IMAGES") + video }
         guard generationCount < plan.layers.count else { return layers + video }
         return String(localized: "\(layers) · \(generationCount) GENERATED") + video
     }
 
     private var confirmLabel: String {
+        if plan.configuration != nil {
+            return generationCount == 0
+                ? String(localized: "Build configurable sticker")
+                : String(localized: "Generate \(generationCount) images")
+        }
         if plan.kind == .animated {
             return generationCount == 0
                 ? String(localized: "Build animation")
@@ -371,6 +378,12 @@ struct PlanCard: View {
     }
 
     private var baseConfirmationMessage: String {
+        if let configuration = plan.configuration {
+            return String(localized: """
+                This prepares \(generationCount) images for \(configuration.combinationCount) combinations \
+                using the approved reference. You can choose an expression and motion locally before sending.
+                """)
+        }
         if plan.kind == .animated {
             return generationCount == 0
                 ? String(localized: """
