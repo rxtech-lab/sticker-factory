@@ -9,7 +9,9 @@ afterEach(() => { vi.unstubAllEnvs(); generateImage.mockReset(); });
 
 it.each([
   { columns: 3, rows: 2, count: 4, facePlaceholder: true },
+  { columns: 3, rows: 2, count: 4, facePlaceholder: true, faceRegion: "the windshield" },
   { columns: 2, rows: 2, count: 3, tiles: true },
+  { columns: 2, rows: 2, count: 3, tiles: true, faceRegion: "the windshield" },
 ])("preserves sheet layout during background removal: %j", async (sheet) => {
   vi.stubEnv("FIRECRAWL_API_KEY", "");
   const opaque = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "white" } }).png().toBuffer();
@@ -27,5 +29,7 @@ it.each([
   expect(retry.providerOptions.openai.quality).toBe("medium");
   if (sheet.facePlaceholder) expect(retry.prompt.text).toContain("#FF00FF");
   if (sheet.tiles) expect(retry.prompt.text).toContain("inner facial patch");
+  if (sheet.faceRegion) expect(retry.prompt.text).toContain("the windshield");
+  else expect(retry.prompt.text).not.toContain("face region is");
   expect(retry.prompt.images).toHaveLength(1);
 });

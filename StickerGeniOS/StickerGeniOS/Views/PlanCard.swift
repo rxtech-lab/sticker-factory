@@ -333,8 +333,11 @@ struct PlanCard: View {
                 confirming = true
             } label: {
                 HStack(spacing: 6) {
+                    // The button is disabled while busy, so it is drawn paper-on-paper; the
+                    // system indicator tinted cream vanished into it. Ink, and drawn by hand,
+                    // for the reasons on `PosterSpinner`.
                     if isBusy || isWaitingForReference {
-                        ProgressView().controlSize(.small).tint(AppColors.card)
+                        PosterSpinner(color: AppColors.ink, size: 16)
                     }
                     if isWaitingForReference {
                         Text("Loading reference…")

@@ -44,6 +44,7 @@ struct StickerControlsSheet: View {
     var onApply: @MainActor (StickerControlSettings, AnimatedDocument, StickerRenderAssets) async throws -> Void
     var onClose: () -> Void
     var showsPreview: Bool
+    var editsAnimationsInPlace: Bool
     var onPreviewChange: ((StickerControlSettings, StickerRenderAssets, Date) -> Void)?
     var preparedSending: PreparedSending?
     var onOutputReadinessChange: ((Bool) -> Void)?
@@ -56,6 +57,7 @@ struct StickerControlsSheet: View {
     @State private var phase: Phase?
     @State private var workTask: Task<Void, Never>?
     @State private var selectedDetent: PresentationDetent = .medium
+    @State private var editingEntryID: UUID?
     /// The settings the host's artwork was prepared from.
     ///
     /// Keeping the whole value rather than a flag is what makes the cache free: posing away from a
@@ -69,15 +71,19 @@ struct StickerControlsSheet: View {
          onApply: @escaping @MainActor (StickerControlSettings, AnimatedDocument, StickerRenderAssets) async throws -> Void,
          onClose: @escaping () -> Void,
          initialSettings: StickerControlSettings? = nil, showsPreview: Bool = true,
+         editsAnimationsInPlace: Bool = false,
          onPreviewChange: ((StickerControlSettings, StickerRenderAssets, Date) -> Void)? = nil,
          preparedSending: PreparedSending? = nil,
-         onOutputReadinessChange: ((Bool) -> Void)? = nil) {
+         onOutputReadinessChange: ((Bool) -> Void)? = nil)
+    {
         self.document = document; self.stickerID = stickerID; self.accountID = accountID; self.actionTitle = actionTitle
         self.loadAssets = loadAssets; self.onApply = onApply; self.onClose = onClose
         self.onOutputReadinessChange = onOutputReadinessChange
         self.showsPreview = showsPreview; self.onPreviewChange = onPreviewChange; self.preparedSending = preparedSending
+        self.editsAnimationsInPlace = editsAnimationsInPlace
         _settings = State(initialValue: initialSettings ?? StickerControlPreferences().load(accountID: accountID, stickerID: stickerID, document: document))
     }
+
     private var resolved: AnimatedDocument? { try? settings.resolvedDocument(document) }
     private var playbackDocuments: [AnimatedDocument]? { try? settings.playbackDocuments(document) }
     private var artworkIsReady: Bool { settings.canPlay && playbackDocuments != nil && loadedDocuments == playbackDocuments }
@@ -134,6 +140,19 @@ struct StickerControlsSheet: View {
                     }
                 }
             }
+            .navigationDestination(item: $editingEntryID) { id in
+                if let index = settings.entries.firstIndex(where: { $0.id == id }) {
+                    let original = settings.entries[index]
+                    StickerSequenceEntryEditor(document: document, number: index + 1, entry: Binding(
+                        get: { settings.entries.first { $0.id == id } ?? original },
+                        set: { updated in
+                            guard let current = settings.entries.firstIndex(where: { $0.id == id }) else { return }
+                            settings.entries[current] = updated
+                        }
+                    ), onDone: { editingEntryID = nil })
+                        .navigationBarBackButtonHidden()
+                }
+            }
         }
         // The extension hosts this without `ContentView`'s root modifiers, so the two are set here
         // rather than being inherited: without them the same sheet is rounded ink in the app and
@@ -141,7 +160,7 @@ struct StickerControlsSheet: View {
         .fontDesign(.rounded)
         .tint(AppColors.accent)
         .accessibilityIdentifier("sticker-controls-sheet")
-        .presentationDetents([.medium, .large], selection: $selectedDetent)
+        .presentationDetents(editingEntryID == nil ? [.medium, .large] : [.medium], selection: $selectedDetent)
         .presentationDragIndicator(.visible)
         // Paper all the way to the sheet's own edges: the system's translucent grey otherwise shows
         // through at the corners and while the detent is being dragged.
@@ -159,7 +178,6 @@ struct StickerControlsSheet: View {
     }
 
     // MARK: - Posing
-
     @ViewBuilder private var posing: some View {
         VStack(alignment: .leading, spacing: 18) {
             if showsPreview {
@@ -168,7 +186,11 @@ struct StickerControlsSheet: View {
                 PosterProgress(message: String(localized: "Loading artwork…"))
             }
 
-            StickerPlaybackControls(document: document, settings: $settings, origin: playbackOrigin)
+            StickerPlaybackControls(document: document, settings: $settings, origin: playbackOrigin,
+                                    onEditEntry: editsAnimationsInPlace ? { id in
+                                        selectedDetent = .medium
+                                        editingEntryID = id
+                                    } : nil)
 
             resetButton
 
@@ -185,13 +207,13 @@ struct StickerControlsSheet: View {
     @ViewBuilder private var preview: some View {
         if artworkIsReady {
             StickerConfiguredPreview(document: document, settings: settings, assets: assets, origin: playbackOrigin)
-            .frame(height: 155)
-            .frame(maxWidth: .infinity)
-            .padding(12)
-            .posterSurface(cornerRadius: Poster.cardRadius, offset: Poster.smallShadow)
-            .padding(.trailing, Poster.smallShadow.width)
-            .padding(.bottom, Poster.smallShadow.height)
-            .accessibilityIdentifier("sticker-controls-preview")
+                .frame(height: 155)
+                .frame(maxWidth: .infinity)
+                .padding(12)
+                .posterSurface(cornerRadius: Poster.cardRadius, offset: Poster.smallShadow)
+                .padding(.trailing, Poster.smallShadow.width)
+                .padding(.bottom, Poster.smallShadow.height)
+                .accessibilityIdentifier("sticker-controls-preview")
         } else if !settings.canPlay {
             Text("Add animation").frame(height: 155).frame(maxWidth: .infinity)
         } else {

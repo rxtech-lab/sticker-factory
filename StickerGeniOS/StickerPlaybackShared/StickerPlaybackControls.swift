@@ -5,6 +5,7 @@ struct StickerPlaybackControls: View {
     let document: AnimatedDocument
     @Binding var settings: StickerControlSettings
     var origin: Date
+    var onEditEntry: ((UUID) -> Void)?
     @State private var selectedID: UUID?
     @State private var editingEntry: EditingEntry?
     private struct EditingEntry: Identifiable { let id: UUID }
@@ -31,8 +32,7 @@ struct StickerPlaybackControls: View {
                     List {
                         ForEach(Array(settings.entries.enumerated()), id: \.element.id) { index, entry in
                             Button {
-                                selectedID = entry.id
-                                editingEntry = .init(id: entry.id)
+                                edit(entry.id)
                             } label: {
                                 HStack(spacing: 10) {
                                     Image(systemName: playing == index ? "play.circle.fill" : "circle")
@@ -79,8 +79,7 @@ struct StickerPlaybackControls: View {
                     let source = settings.entries.first { $0.id == selectedID } ?? settings.entries.last
                     let entry = StickerControlSettings.Entry(settings: source?.settings ?? settings)
                     settings.entries.append(entry)
-                    selectedID = entry.id
-                    editingEntry = .init(id: entry.id)
+                    edit(entry.id)
                 } label: {
                     Label("Add animation", systemImage: "plus")
                 }
@@ -102,6 +101,15 @@ struct StickerPlaybackControls: View {
         }
     }
 
+    private func edit(_ id: UUID) {
+        selectedID = id
+        if let onEditEntry {
+            onEditEntry(id)
+        } else {
+            editingEntry = .init(id: id)
+        }
+    }
+
     private func summary(_ entry: StickerControlSettings.Entry) -> String {
         let controls = document.configuration?.controls ?? []
         let choices = controls.filter { $0.type == .choice }.compactMap { control in
@@ -114,39 +122,52 @@ struct StickerPlaybackControls: View {
     }
 }
 
-/// Owns the editing state so a parent preview refresh cannot replace an open picker.
 private struct StickerSequenceEntrySheet: View {
     let document: AnimatedDocument
     let number: Int
     @Binding var entry: StickerControlSettings.Entry
-    @State private var draft: StickerControlSettings
     @Environment(\.dismiss) private var dismiss
-
-    init(document: AnimatedDocument, number: Int, entry: Binding<StickerControlSettings.Entry>) {
-        self.document = document
-        self.number = number
-        _entry = entry
-        _draft = State(initialValue: entry.wrappedValue.settings)
-    }
 
     var body: some View {
         NavigationStack {
-            StickerBackground {
-                ScrollView {
-                    StickerControlRows(document: document, settings: $draft, sequenceEntry: true)
-                        .padding(20)
-                }
-            }
-            .navigationTitle("Animation \(number)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
+            StickerSequenceEntryEditor(document: document, number: number, entry: $entry, onDone: { dismiss() })
         }
         .fontDesign(.rounded)
         .tint(AppColors.accent)
         .presentationDetents([.large])
         .presentationBackgroundInteraction(.disabled)
+    }
+}
+
+/// Owns the editing state so a parent preview refresh cannot replace an open picker.
+struct StickerSequenceEntryEditor: View {
+    let document: AnimatedDocument
+    let number: Int
+    @Binding var entry: StickerControlSettings.Entry
+    @State private var draft: StickerControlSettings
+    let onDone: () -> Void
+
+    init(document: AnimatedDocument, number: Int, entry: Binding<StickerControlSettings.Entry>, onDone: @escaping () -> Void) {
+        self.document = document
+        self.number = number
+        _entry = entry
+        _draft = State(initialValue: entry.wrappedValue.settings)
+        self.onDone = onDone
+    }
+
+    var body: some View {
+        StickerBackground {
+            ScrollView {
+                StickerControlRows(document: document, settings: $draft, sequenceEntry: true)
+                    .padding(20)
+            }
+        }
+        .accessibilityIdentifier("sticker-sequence-editor")
+        .navigationTitle("Animation \(number)")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) { Button("Done", action: onDone) }
+        }
         .onChange(of: draft) { _, updated in
             var value = StickerControlSettings.Entry(settings: updated)
             value.id = entry.id

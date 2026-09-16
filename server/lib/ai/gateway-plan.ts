@@ -248,6 +248,9 @@ export async function planSticker(
       "Lettering the sticker itself carries is not on that list: if the design has words, the",
       "conceptPrompt spells them out and describes how they are drawn, so the approved image is",
       "the source the word layer is separated from.",
+      "When the plan has sprite layers, the conceptPrompt describes each character's face exactly as",
+      "that layer's `face` field does — every facial feature inside that one region and none anywhere",
+      "else on the body — because the approved still is what the sprite sheets are drawn from.",
       "",
       "Likeness. The photos the user uploaded to this project are handed to the image model along",
       "with your conceptPrompt and your layer prompts, on every turn, including turns where the",
@@ -314,9 +317,17 @@ export async function planSticker(
       "    id, a label, a prompt saying what the body does frame by frame, and 1 to 8 frames — six is",
       "    the norm — each with a duration in seconds that you author: a loop runs 2 to 4 seconds,",
       "    holds are long (1 to 2.5 s), a blink is 0.15 to 0.3 s, and frame 1 is the resting pose the",
-      "    loop returns to. Clips move the body only; the face is drawn separately.",
+      "    loop returns to. Clips move the body only; the face is drawn separately into the face region.",
+      "    face: one sentence naming the single contiguous region that holds ALL of the character's",
+      "    facial features, and what is in it. The build cuts exactly one oval out of the body there and",
+      "    draws every expression inside it, so the design must put the eyes AND the mouth (and nose and",
+      "    brows, if any) in that one area — never split them, such as eyes on a windshield and a mouth on",
+      "    a bumper. An animal or a person simply names its face; a vehicle, robot, object or food picks",
+      "    one surface (a windshield, a screen, a front panel) and carries the whole face on it, while",
+      "    grilles, bumpers, badges and panels elsewhere carry no facial features at all.",
       "    expressions: 1 to 8 faces, the first always id `neutral`; each has an id, a label, and a",
-      "    prompt for the face alone — eyes, brows, mouth, cheeks — never the body or a pose.",
+      "    prompt for the face alone — eyes, brows, mouth, cheeks — all inside the face region; never",
+      "    the body or a pose.",
       "    A sprite costs 1 + clips + 1 image generations, cannot be reused with existing on a later",
       "    plan (plan it as sprite again with the same ids), and is only for animated plans. Plan one",
       "    sprite layer per character the user wants to control — two characters are two sprite",
@@ -495,7 +506,8 @@ export async function planSticker(
           + " for — one for a single subject, one each when they name several. If their words imply a"
           + " pair (a cat and a dog, two friends, a couple), that is two sprites, not one drawing of"
           + " both, because a group drawn as one sprite cannot be posed apart. Give each the clips and"
-          + " expressions its own subject calls for, and give every one of them a mood control, a pose"
+          + " expressions its own subject calls for, set each sprite's face to the one region all of its"
+          + " facial features share, and give every one of them a mood control, a pose"
           + " control, or both. Everything else about the sticker still follows their request."
         : "",
       priorArtNote(priorArt),

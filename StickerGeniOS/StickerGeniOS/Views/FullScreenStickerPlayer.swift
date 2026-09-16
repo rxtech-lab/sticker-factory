@@ -170,6 +170,7 @@ struct FullScreenStickerPlayer: View {
                     onApply: { _, _, _ in controls.onApply() },
                     onClose: { isPresentingControls = false },
                     initialSettings: previewSettings, showsPreview: false,
+                    editsAnimationsInPlace: true,
                     onPreviewChange: { selected, loaded, origin in
                         guard isPresentingControls else { return }
                         previewSettings = selected
@@ -244,7 +245,6 @@ struct StickerEditorSheet: View {
     let context: FullScreenStickerPlayer.EditingContext
     let onFinished: (Bool) -> Void
 
-    @State private var showingControlEditor = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var confirmingUnpublish = false
@@ -278,11 +278,6 @@ struct StickerEditorSheet: View {
                     }
                     .disabled(isSaving)
                 }
-                ToolbarItem(placement: .bottomBar) {
-                    if document.kind == .animated {
-                        Button("Configurable layers", systemImage: "slider.horizontal.3") { showingControlEditor = true }
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving {
                         ProgressView()
@@ -292,34 +287,6 @@ struct StickerEditorSheet: View {
                             if isPublished { confirmingUnpublish = true } else { Task { await save() } }
                         }
                         .accessibilityIdentifier("save-edited-sticker-button")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingControlEditor) {
-                NavigationStack {
-                    StickerBackground {
-                        ScrollView {
-                            StickerConfigurationEditor(
-                                configuration: $document.configuration,
-                                layers: document.layers.map {
-                                    .init(id: $0.id, name: $0.name, sprite: StickerConfigurationEditor.sprite(of: $0))
-                                },
-                                onRequestArtwork: { instruction in
-                                showingControlEditor = false
-                                Task { await requestArtwork(instruction) }
-                            })
-                            .padding(20)
-                        }
-                    }
-                    .navigationTitle("Configurable layers")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") {
-                                Haptics.tap(.light)
-                                showingControlEditor = false
-                            }
-                        }
                     }
                 }
             }
@@ -353,22 +320,6 @@ struct StickerEditorSheet: View {
             }
         }
         .interactiveDismissDisabled(isSaving)
-    }
-
-    private func requestArtwork(_ instruction: String) async {
-        isSaving = true
-        errorMessage = nil
-        defer { isSaving = false }
-        do {
-            let saved = try await context.store.saveEditedDocument(
-                stickerID: context.stickerID, parentRevisionID: context.revisionID, document: document.validated()
-            )
-            try await context.store.sendMessage(
-                stickerID: context.stickerID, content: instruction, references: [], mask: nil,
-                targetLayerID: nil, intent: .animate, baseRevisionID: saved.revisionId
-            )
-            onFinished(true)
-        } catch { errorMessage = error.localizedDescription }
     }
 
     private func save() async {

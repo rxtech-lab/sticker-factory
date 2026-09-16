@@ -11,7 +11,7 @@ import { recordImageApiCost, recordTextApiCost, recordVideoApiCost, reportAiStep
 import { ApiError } from "@/lib/http/errors";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
 import { downscaleForModelInput, inspectImage, normalizeTransparentPng } from "@/lib/storage/r2";
-import type { AiImageInput, AiImageOutput, AiReferenceSelectionContext, AiVideoInput, AiVideoOutput } from "./gateway-contracts";
+import type { AiImageInput, AiImageOutput, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiVideoInput, AiVideoOutput } from "./gateway-contracts";
 import { IMAGE_TIMEOUT_MS, VIDEO_FPS, VIDEO_MODEL, VIDEO_RESOLUTION, VIDEO_TIMEOUT_MS, assertImageInputBounds, generateKeyedStickerImage, generateThroughImageModel, userTurn, videoInstruction } from "./gateway-models";
 
 export async function selectImageReferences(
@@ -87,6 +87,68 @@ export async function selectImageReferences(
   return [...new Set([...required, ...selected])]
     .filter((index) => index >= 0 && index < input.candidates.length)
     .slice(0, input.maxReferences);
+}
+
+/**
+ * Looks at a generated sprite sheet before the build registers it.
+ *
+ * The pixel gates in `lib/render/sprite-registration.ts` prove a magenta oval exists in every cell;
+ * they cannot tell that the model also kept a mouth on the bumper, which the expression plate then
+ * draws a second time. A body sheet is shown raw, opening still visible, so the inspector can see
+ * both the oval and anything facial outside it. The answer is a single required tool call, like
+ * `select_references`, so a rejection always carries the problems the redraw is told to fix.
+ */
+export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promise<AiSheetInspection> {
+  const { columns, rows, count } = input.sheet;
+  const face = input.face ?? "the character's head, where the eyes and mouth are";
+  const rules = input.kind === "clips"
+    ? [
+      `Character: ${input.character}. Face region: ${face}.`,
+      `Grid: ${columns} columns by ${rows} rows; the first ${count} cells are used.`,
+      "In every used cell, all of these must hold:",
+      "1. Exactly one flat, solid magenta (#FF00FF) oval sits on the face region, with no eyes, mouth, outline or other features drawn inside it.",
+      "2. No eye, brow, nose, mouth, or teeth remain anywhere on the body outside that oval: not on a grille, bumper, chest, screen, belly, or panel.",
+      "3. One character only, with no second head or miniature portrait.",
+      "Report ok=false when any used cell breaks a rule, one short problem per failing cell naming the cell number and the leftover feature and where it sits.",
+    ]
+    : [
+      `Character: ${input.character}. Face region: ${face}.`,
+      `Grid: ${columns} columns by ${rows} rows; the first ${count} cells are used, in this order: ${(input.expressions ?? []).map((label, index) => `${index + 1}. ${label}`).join("; ")}.`,
+      "Each used cell must contain only an inner face patch: eyes, brows, nose, mouth, cheeks and the surface directly beneath them, with no head outline, ears, hair, body, second character, sticker border, or magenta.",
+      "Each cell's expression should plausibly match its label.",
+      "Report ok=false when a cell is a complete head or portrait, contains a body, is empty, or the cells are out of order, one short problem per failing cell naming the cell number.",
+    ];
+  const result = await generateText({
+    // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
+    onLanguageModelCallEnd: reportAiStepUsage,
+    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    system: [
+      "You inspect a generated sprite sheet before it is used, and call report_sheet exactly once.",
+      "Cells are read left to right, then top to bottom; only the first N cells are used and the rest stay empty.",
+      "Be strict about the listed rules and lenient about style, colour, and drawing quality.",
+    ].join(" "),
+    messages: userTurn(rules.join("\n"), [await downscaleForModelInput(input.image.bytes)]),
+    tools: {
+      report_sheet: tool({
+        description: "Report whether the sheet follows every rule, with one short problem per failing cell.",
+        inputSchema: z.object({
+          ok: z.boolean(),
+          problems: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+        }).strict(),
+      }),
+    },
+    toolChoice: "required",
+    stopWhen: [hasToolCall("report_sheet"), stepCountIs(3)],
+    maxRetries: 2,
+    abortSignal: AbortSignal.timeout(60_000),
+  });
+  await recordTextApiCost(result);
+  const call = result.toolCalls.find((item) => item.toolName === "report_sheet");
+  if (!call) throw new Error("Sheet inspector must call report_sheet exactly once");
+  const report = z.object({ ok: z.boolean(), problems: z.array(z.string()).default([]) }).parse(call.input);
+  const problems = report.problems.map((problem) => problem.trim()).filter(Boolean);
+  traceEvent("ai.sheet.inspected", { kind: input.kind, character: input.character, ok: report.ok, problems: problems.length });
+  return report.ok || problems.length === 0 ? { ok: true } : { ok: false, problems };
 }
 
 export async function generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {

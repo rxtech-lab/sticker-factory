@@ -186,7 +186,7 @@ struct CreateStickerView: View {
                         Task { await generate() }
                     } label: {
                         HStack(spacing: 8) {
-                            if isGenerating { ProgressView().controlSize(.small).tint(AppColors.card) }
+                            if isGenerating { PosterSpinner(color: AppColors.ink, size: 16) }
                             Label {
                                 Text(
                                     isGenerating

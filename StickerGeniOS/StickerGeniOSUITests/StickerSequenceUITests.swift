@@ -2,6 +2,26 @@ import XCTest
 
 @MainActor
 final class StickerSequenceUITests: XCTestCase {
+    private func assertHalfHeight(in app: XCUIApplication, title: String) {
+        let bar = app.navigationBars[title]
+        XCTAssertTrue(bar.waitForExistence(timeout: 8))
+        let settled = NSPredicate { _, _ in bar.frame.minY > app.frame.height * 0.4 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 8), .completed)
+        XCTAssertLessThan(bar.frame.minY, app.frame.height * 0.65)
+        let player = app.descendants(matching: .any).matching(identifier: "full-screen-sticker-player").firstMatch
+        XCTAssertTrue(player.exists)
+        XCTAssertGreaterThan(player.frame.height, 100)
+        XCTAssertLessThanOrEqual(player.frame.maxY, bar.frame.minY + 30)
+    }
+
+    override func setUp() async throws {
+        // `StickerGeniOSUITestsLaunchTests` runs once per target application UI configuration and
+        // leaves the device in landscape; this suite sorts right after it. In that height the
+        // controls sheet has to scroll, which slides the mode picker under the navigation bar and
+        // sends its taps to the bar instead, so start every test from a known portrait device.
+        await MainActor.run { XCUIDevice.shared.orientation = .portrait }
+    }
+
     override func tearDown() async throws {
         await MainActor.run {
             let shot = XCTAttachment(screenshot: XCUIApplication().screenshot())
@@ -18,6 +38,9 @@ final class StickerSequenceUITests: XCTestCase {
                                "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
         func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+        func assertHalfHeight(_ title: String) {
+            self.assertHalfHeight(in: app, title: title)
+        }
         let card = element("library-sticker-sticker-demo")
         XCTAssertTrue(card.waitForExistence(timeout: 10)); card.tap()
         let preview = element("show-sticker-attachment")
@@ -27,16 +50,26 @@ final class StickerSequenceUITests: XCTestCase {
         app.navigationBars["Sticker Controls"].swipeUp()
         element("sticker-controls-reset").tap()
         app.segmentedControls["sticker-playback-mode"].buttons["Multiple"].tap()
-        XCTAssertTrue(element("sticker-sequence-entry-0").waitForExistence(timeout: 3))
+        XCTAssertTrue(element("sticker-sequence-entry-0").waitForExistence(timeout: 8))
         element("sticker-sequence-add").tap()
-        XCTAssertTrue(app.navigationBars["Animation 2"].waitForExistence(timeout: 3))
-        XCTAssertTrue(element("sticker-control-mood").waitForExistence(timeout: 3))
+        assertHalfHeight("Animation 2")
+        app.navigationBars["Animation 2"].swipeUp()
+        assertHalfHeight("Animation 2")
+        XCTAssertTrue(element("sticker-control-mood").waitForExistence(timeout: 8))
         element("sticker-control-mood").tap()
-        XCTAssertTrue(app.buttons["Calm"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Calm"].waitForExistence(timeout: 8))
+        XCTAssertGreaterThan(app.buttons["Calm"].frame.minY, app.frame.height * 0.4)
         app.buttons["Calm"].tap()
         app.sliders["sticker-controls-speed"].adjust(toNormalizedSliderPosition: 0.8)
         app.buttons["Done"].tap()
-        XCTAssertTrue(element("sticker-sequence-entry-1").waitForExistence(timeout: 3))
+        XCTAssertTrue(element("sticker-sequence-entry-1").waitForExistence(timeout: 8))
+        assertHalfHeight("Sticker Controls")
+        element("sticker-sequence-entry-1").tap()
+        assertHalfHeight("Animation 2")
+        XCTAssertTrue(element("sticker-control-mood").label.contains("Calm"))
+        app.buttons["Done"].tap()
+        // The main drawer can expand again after returning from the editor.
+        app.navigationBars["Sticker Controls"].swipeUp()
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Multiple animation controls"
         attachment.lifetime = .keepAlways
@@ -58,9 +91,19 @@ final class StickerSequenceUITests: XCTestCase {
         app.buttons["Delete"].tap()
         XCTAssertFalse(element("sticker-sequence-entry-1").exists)
         XCTAssertFalse(app.navigationBars["Sticker Controls"].buttons["sticker-viewer-export"].exists)
-        // Collapse the controls to reach the viewer toolbar without applying the draft.
-        app.navigationBars["Sticker Controls"].swipeUp()
-        app.navigationBars["Sticker Controls"].swipeDown()
+        // Collapse the controls to reach the viewer toolbar without applying the draft. A flick
+        // carries the drawer past `.medium` often enough to dismiss the sheet outright, so the
+        // way back down is a held drag at a controlled speed — the same reason `pullToRefresh`
+        // in `StickerGeniOSUITests` does not use `swipeDown()`.
+        let controlsBar = app.navigationBars["Sticker Controls"]
+        controlsBar.swipeUp()
+        XCTAssertTrue(controlsBar.waitForExistence(timeout: 8))
+        controlsBar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(
+            forDuration: 0.1,
+            thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)),
+            withVelocity: .slow,
+            thenHoldForDuration: 0.5
+        )
         XCTAssertTrue(element("sticker-controls-sheet").exists)
         XCTAssertFalse(element("sticker-sequence-entry-1").exists)
         let export = app.buttons["sticker-viewer-export"]
@@ -72,4 +115,5 @@ final class StickerSequenceUITests: XCTestCase {
         element("viewer-export-start").tap()
         XCTAssertTrue(app.buttons["Copy"].waitForExistence(timeout: 30) || app.otherElements["ActivityListView"].exists)
     }
+
 }

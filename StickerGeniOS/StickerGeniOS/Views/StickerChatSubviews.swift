@@ -311,7 +311,7 @@ private struct ToolCallRow: View {
                         .frame(width: 26, height: 26)
                     switch message.status {
                     case .streaming:
-                        ProgressView().controlSize(.small).scaleEffect(0.7).tint(AppColors.ink)
+                        PosterSpinner(color: AppColors.ink, size: 15, lineWidth: 2.5)
                     case .complete:
                         PosterSymbol("checkmark").font(.caption.weight(.black)).foregroundStyle(AppColors.ink)
                     case .failed:

@@ -39,7 +39,13 @@ struct StickerViewerExportSheet: View {
                         .disabled(busy)
                     }
                     if busy {
-                        ProgressView(progress.isEmpty ? String(localized: "Preparing files…") : progress)
+                        HStack(spacing: 12) {
+                            PosterSpinner(color: AppColors.coral)
+                            Text(progress.isEmpty ? String(localized: "Preparing files…") : progress)
+                                .foregroundStyle(AppColors.ink)
+                                .lineLimit(1)
+                        }
+                        .accessibilityElement(children: .combine)
                         Button("Cancel export", role: .cancel) { work?.cancel() }
                     } else {
                         Button(error == nil ? "Export" : "Retry export") { export() }

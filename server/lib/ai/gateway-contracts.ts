@@ -48,8 +48,10 @@ export interface AiImageInput {
    * is what turns that rule off and says what to draw instead. `facePlaceholder` asks for a flat
    * magenta oval where the face goes in every cell, which `lib/render/sprite-registration.ts`
    * measures and paints out; `tiles` asks for face plates alone, one expression per cell.
+   * `faceRegion` is the plan's description of where that face sits, so the sheet paragraph can
+   * name it rather than assume a head.
    */
-  sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean };
+  sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean; faceRegion?: string };
   /** The image model's quality tier. Sheets ask for more than the default, since a cell is a third of the canvas. */
   quality?: "low" | "medium" | "high";
 }
@@ -68,6 +70,27 @@ export interface AiReferenceSelectionContext {
   candidates: AiImageReferenceCandidate[];
   maxReferences: number;
 }
+
+/**
+ * A generated sprite sheet to look at before it is registered and paid for again.
+ *
+ * `clips` sheets arrive raw, with the magenta face opening still visible, so the inspector can see
+ * both the opening and anything facial the model left outside it; `expressions` sheets are the
+ * face plates, checked for being plates alone and in the planned order.
+ */
+export interface AiSheetInspectionContext {
+  kind: "clips" | "expressions";
+  /** The plan layer's name. */
+  character: string;
+  /** The plan's `face` region, when the sprite has one. */
+  face?: string;
+  sheet: { columns: number; rows: number; count: number };
+  image: AiReferenceImage;
+  /** Expression labels in cell order, for `expressions` sheets. */
+  expressions?: string[];
+}
+
+export type AiSheetInspection = { ok: true } | { ok: false; problems: string[] };
 
 export interface AiImageOutput {
   bytes: Uint8Array;
@@ -596,6 +619,12 @@ export interface AiProvider {
   /** Chooses which candidate images the image model needs for one concrete draw. */
   selectImageReferences(input: AiReferenceSelectionContext): Promise<number[]>;
   generateStickerImage(input: AiImageInput): Promise<AiImageOutput>;
+  /**
+   * Looks at a generated sprite sheet for what the pixel gates cannot see: facial features left on
+   * the body outside the face opening, or an expression plate drawn as a whole head. A rejection
+   * lists the problems so the sheet can be redrawn once with them as feedback.
+   */
+  inspectSpriteSheet(input: AiSheetInspectionContext): Promise<AiSheetInspection>;
   /**
    * Drafts a sticker plan, revising it as many times as it needs before finalizing.
    *

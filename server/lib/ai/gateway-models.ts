@@ -338,10 +338,18 @@ function sheetInstruction(sheet: NonNullable<AiImageInput["sheet"]>): string {
     `Cells after the ${sheet.count}th stay completely transparent.`,
     "No dividers, borders, numbers, labels, arrows, captions, or text anywhere.",
     sheet.tiles
-      ? "Each cell contains only an inner facial patch that will fill the body's face opening: eyes, brows, mouth, cheeks, nose, facial markings, and the skin or fur directly beneath them. No enclosing outline, sticker border, rim, shadow, head silhouette, ears, hair, outer head fur, neck, body, or background. Never draw a complete head or miniature portrait inside this patch. Match the surrounding head's colour and texture so the patch blends into it. Keep transparent padding outside the patch. The patch is the same size, at the same position, and facing the same way in every cell; only the expression changes. Preserve hard pixel edges and the original pixel grid for pixel art."
+      ? [
+        "Each cell contains only an inner facial patch that will fill the body's face opening: eyes, brows, mouth, cheeks, nose, facial markings, and the skin, fur, paint, glass or surface directly beneath them.",
+        sheet.faceRegion ? `The opening sits on ${sheet.faceRegion}; the patch contains everything that belongs to that face region and nothing outside it.` : "",
+        "No enclosing outline, sticker border, rim, shadow, head or body silhouette, ears, hair, fur, shell, casing, neck, body, or background. Never draw a complete head or miniature portrait inside this patch. Match the surrounding surface's colour and texture so the patch blends into it. Keep transparent padding outside the patch. The patch is the same size, at the same position, and facing the same way in every cell; only the expression changes. Preserve hard pixel edges and the original pixel grid for pixel art.",
+      ].filter(Boolean).join(" ")
       : "Draw the same character at exactly the same scale and body position in every cell, so the frames register when flipped through.",
     sheet.facePlaceholder
-      ? "Keep the head silhouette, ears, hair, and outer head fur. Replace the entire inner face from brow to chin and cheek to cheek with a single flat, solid, pure magenta (#FF00FF) filled oval with no outline, features, highlights, shading, or gradient, the same size relative to the head in every cell. Remove all original eyes, brows, nose, and mouth; none may remain outside or beneath the opening. This is the opening for an inner facial patch, not for another complete head. Use magenta nowhere else in the image."
+      ? [
+        "Keep the complete outer silhouette of the head or front of the character: ears, hair, fur, shell, casing, frames and trim.",
+        sheet.faceRegion ? `The face region is ${sheet.faceRegion}.` : "",
+        "Replace the entire face region with a single flat, solid, pure magenta (#FF00FF) filled oval: one shape, with no outline, features, highlights, shading, or gradient, the same size relative to the body in every cell. Every eye, brow, nose, mouth and tooth the reference has anywhere on the body must be inside that oval: none may remain outside or beneath it, whether on a grille, bumper, chest, screen, belly, or panel. This is the opening for an inner facial patch, not for another complete head. Use magenta nowhere else in the image.",
+      ].filter(Boolean).join(" ")
       : "",
   ].filter(Boolean).join(" ");
 }

@@ -29,6 +29,7 @@ export const unusedAiProvider: AiProvider = {
   // override it to inspect or narrow candidates; other stubs preserve the legacy all-reference path.
   selectImageReferences: async (input) => input.candidates.map((_, index) => index),
   generateStickerImage: () => { throw new Error("Unexpected generateStickerImage"); },
+  inspectSpriteSheet: () => { throw new Error("Unexpected inspectSpriteSheet"); },
   planSticker: () => { throw new Error("Unexpected planSticker"); },
   generateConceptImage: () => { throw new Error("Unexpected generateConceptImage"); },
   generateStickerVideo: () => { throw new Error("Unexpected generateStickerVideo"); },

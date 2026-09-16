@@ -123,6 +123,16 @@ export const PlanLayerSourceV1Schema = z.discriminatedUnion("kind", [
     kind: z.literal("sprite"),
     /** What to draw: the complete character at rest, same rules as a generate prompt. */
     prompt: z.string().trim().min(1).max(2_000),
+    /**
+     * Where the character's single face region is and what sits inside it, e.g. "the windshield:
+     * both eyes and the mouth are inside the glass; grille and bumper carry no facial features".
+     *
+     * The build cuts exactly one oval out of the body there and draws every expression inside it,
+     * so every eye, brow, nose and mouth has to live in this one contiguous area and nothing facial
+     * may be drawn anywhere else. Optional in the schema so plans stored before it existed still
+     * parse; `assertSpriteFaces` requires it of every newly drafted plan.
+     */
+    face: z.string().trim().min(1).max(300).optional(),
     clips: z.array(z.object({
       id: LayerIdSchema,
       label: z.string().trim().min(1).max(80),
@@ -444,6 +454,26 @@ export function assertPlanPosePreset(plan: Pick<PlanV1, "layers" | "configuratio
       throw new Error(`The ${preset} pose preset requires exactly ${count} distinct body clips per character, including idle. Give ${layer.name} matching pose options and a variant binding for every clip. Keep facial expressions and frame timing separate.`);
     }
   }
+}
+
+/**
+ * Every sprite names the one region its facial features share.
+ *
+ * A character whose eyes sit on a windshield and whose mouth sits on a bumper cannot be built: the
+ * body sheet gets one face opening, so whatever facial feature lands outside it stays on the body
+ * and is drawn a second time by the expression plate. Checked on the drafting path only, not from
+ * the schema, so plans stored before `face` existed still parse. The message is the planner's
+ * repair instruction, returned from `create_plan` / `update_plan` like `assertControllablePlan`'s.
+ */
+export function assertSpriteFaces(plan: Pick<PlanV1, "layers">): void {
+  const missing = planSpriteLayers(plan).filter(({ source }) => !source.face);
+  if (!missing.length) return;
+  throw new Error(
+    `Sprite ${missing.map(({ layer }) => layer.layerId).join(", ")} ${missing.length > 1 ? "need" : "needs"} \`face\`: `
+    + "one sentence naming the single contiguous region that holds ALL of the character's eyes, brows, nose and mouth, "
+    + "and what is in it (e.g. \"the windshield: both eyes and the mouth are inside the glass; grille and bumper carry no "
+    + "facial features\"). Never split the face across two areas. The conceptPrompt must describe the face the same way.",
+  );
 }
 
 /**

@@ -59,7 +59,7 @@ it.each(["missing face", "clipped frame", "drifted grid", "saved drift"])("recov
 
     const plan = PlanV1Schema.parse({ title: "Cat", summary: "A cat with moods and poses", kind: "animated", timing: { durationSeconds: 3, fps: 24, loop: "loop" },
       layers: [{ layerId: "hero", name: "Cat", x: 0.5, y: 0.5, scaleX: 1, scaleY: 1, source: {
-        kind: "sprite", prompt: "A round orange cat",
+        kind: "sprite", prompt: "A round orange cat", face: "the round head",
         clips: [
           { id: "idle", label: "Idle", prompt: "breathes and blinks", frames: [{ duration: 2.4 }, { duration: 0.18 }, { duration: 0.28 }, { duration: 0.22 }, { duration: 0.3 }, { duration: 1.2 }] },
           { id: "wave", label: "Wave", prompt: "raises a paw", frames: [{ duration: 0.4 }, { duration: 0.3 }, { duration: 0.35 }, { duration: 0.3 }] },
@@ -116,6 +116,10 @@ it.each(["missing face", "clipped frame", "drifted grid", "saved drift"])("recov
       expect(request.quality).toBe("medium");
       expect(request.references).toHaveLength(request.sheet?.tiles ? 3 : 2);
       expect(request.sheet).toBeDefined();
+      // The plan's face region reaches both the sheet paragraph and the layer prompt.
+      expect(request.sheet?.faceRegion).toBe("the round head");
+      if (request.sheet?.facePlaceholder) expect(request.prompt).toContain("The face region is the round head");
+      else expect(request.prompt).toContain("filling the round head edge to edge");
     }
     if (failure !== "saved drift") expect(requests[requestCount - 3].sheet).toMatchObject({ columns: 3, rows: 2, count: 6, facePlaceholder: true });
     expect(requests[requestCount - 2].sheet).toMatchObject({ columns: 3, rows: 2, count: 4, facePlaceholder: true });

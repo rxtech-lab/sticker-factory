@@ -10,7 +10,7 @@ import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -219,6 +219,12 @@ export class MockAiProvider implements AiProvider {
    * testing — `inspectMp4` has to accept the container, the asset row has to carry its timing, and
    * the document's fps has to be raised to match.
    */
+  /** The mock's sheets are drawn to spec by construction, so there is never anything to reject. */
+  async inspectSpriteSheet(input: AiSheetInspectionContext): Promise<AiSheetInspection> {
+    void input;
+    return { ok: true };
+  }
+
   async generateStickerVideo(): Promise<AiVideoOutput> {
     const bytes = await readFile(path.join(process.cwd(), "fixtures", "video-480.mp4"));
     return { bytes: new Uint8Array(bytes), mimeType: "video/mp4", modelId: "mock/video" };
@@ -266,6 +272,7 @@ export class MockAiProvider implements AiProvider {
         conceptPrompt: "A polished sticker of one round friendly character at rest, in a coherent bold style.",
         layers: [{ layerId: "hero", name: "Character", x: 0.5, y: 0.5, scaleX: 0.9, scaleY: 0.9, source: {
           kind: "sprite", prompt: "One round friendly character filling the frame on a transparent background.",
+          face: "the round head: both eyes and the mouth sit in its centre; nothing facial elsewhere on the body",
           clips,
           expressions: [
             { id: "neutral", label: "Neutral", prompt: "calm open eyes and a small smile" },

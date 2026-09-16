@@ -4,7 +4,7 @@
 import { renderPlanAnimationPreview } from "./plan-animation-preview";
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { assertAnimatedPlanUsesReferenceBackedArtwork, assertControllablePlan, assertPlanPosePreset, assertPlanAllowedForJob, assertPlanReuseIsResolvable, planRequiresConcept, type PlanV1 } from "@/lib/contracts/plan";
+import { assertAnimatedPlanUsesReferenceBackedArtwork, assertControllablePlan, assertPlanPosePreset, assertPlanAllowedForJob, assertPlanReuseIsResolvable, assertSpriteFaces, planRequiresConcept, type PlanV1 } from "@/lib/contracts/plan";
 import { applyStickerOperationsV1, type StickerDocument, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import { chatMessages, generationJobs, plans, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -210,6 +210,7 @@ export async function executePlanTurn(
       try {
         assertPlanAllowedForJob(plan, job);
         if (sticker.controllable) assertControllablePlan(plan);
+        assertSpriteFaces(plan);
         if (sticker.posePreset) {
           assertPlanPosePreset(plan, sticker.posePreset);
           plan = { ...plan, posePreset: sticker.posePreset };
@@ -239,6 +240,7 @@ export async function executePlanTurn(
       try {
         assertPlanAllowedForJob(plan, job);
         if (sticker.controllable) assertControllablePlan(plan);
+        assertSpriteFaces(plan);
         if (sticker.posePreset) {
           assertPlanPosePreset(plan, sticker.posePreset);
           plan = { ...plan, posePreset: sticker.posePreset };

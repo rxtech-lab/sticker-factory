@@ -55,7 +55,7 @@ export async function generateAndStoreAsset(
     keepFrame?: boolean;
     sequence?: { columns: number; rows: number; frameCount: number; frameRate: number };
     /** Ask the model for a sprite sheet rather than one subject. See `AiImageInput.sheet`. */
-    sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean };
+    sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean; faceRegion?: string };
     quality?: "low" | "medium" | "high";
   },
 ): Promise<{ subject?: SubjectBounds }> {
