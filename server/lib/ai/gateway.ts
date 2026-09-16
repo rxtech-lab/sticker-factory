@@ -14,7 +14,7 @@ export class GatewayAiProvider implements AiProvider {
   generateStickerImage(input: AiImageInput) { return generateStickerImage(input); }
   inspectSpriteSheet(input: AiSheetInspectionContext) { return inspectSpriteSheet(input); }
   generateStickerVideo(input: AiVideoInput) { return generateStickerVideo(input); }
-  generateConceptImage(input: { purpose?: "animation-summary"; prompt: string; references: Array<{ bytes: Uint8Array; mimeType: string }> }) {
+  generateConceptImage(input: { purpose?: "animation-summary" | "extension"; prompt: string; references: Array<{ bytes: Uint8Array; mimeType: string }> }) {
     return generateConceptImage(input);
   }
   refineStickerLayout(input: AiLayoutContext, session: LayoutDraftingSession) {

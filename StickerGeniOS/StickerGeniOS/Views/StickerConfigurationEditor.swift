@@ -244,6 +244,18 @@ struct StickerConfigurationEditor: View {
                             }, set: { prompt in patchUpdate(variant.id, index: index) { $0.source?.prompt = prompt } }), lineLimit: 2...4)
                         }
                     }
+                    if patch.text != nil {
+                        PosterField(placeholder: String(localized: "Caption"), text: Binding(
+                            get: { configuration?.variants.first { $0.id == variant.id }?.layers[index].text ?? "" },
+                            set: { text in patchUpdate(variant.id, index: index) { $0.text = text } }
+                        ))
+                    }
+                    if let hidden = patch.hidden {
+                        PosterToggleRow(title: String(localized: "Visible"), isOn: Binding(
+                            get: { !(configuration?.variants.first { $0.id == variant.id }?.layers[index].hidden ?? hidden) },
+                            set: { visible in patchUpdate(variant.id, index: index) { $0.hidden = !visible } }
+                        ))
+                    }
                     let spriteInfo = layers.first { $0.id == patch.layerId }?.sprite
                     if let clip = patch.clip, let options = spriteInfo?.clips {
                         let label = options.first { $0.id == clip }?.label ?? clip

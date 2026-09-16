@@ -174,6 +174,11 @@ struct StickerControlsSheet: View {
         .onChange(of: artworkIsReady && !busy, initial: true) { _, ready in
             onOutputReadinessChange?(ready)
         }
+        .onChange(of: document) { _, updated in
+            settings = settings.reconciled(with: updated)
+            loadedDocuments = nil
+            playbackOrigin = Date()
+        }
         .onChange(of: settings) { _, updated in
             onControlsUsed?()
             playbackOrigin = Date()

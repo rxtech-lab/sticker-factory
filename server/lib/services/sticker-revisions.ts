@@ -1,3 +1,4 @@
+import { requiresConfigurationV6 } from "@/lib/contracts/configuration";
 // The revision lifecycle - candidate, accept, reject, revert - and the device-side edit that
 // saves a new revision directly.
 
@@ -188,7 +189,7 @@ export async function saveEditedRevision(
   stickerId: string,
   request: SaveEditedDocumentRequest,
   revisionId = crypto.randomUUID(),
-  clientVersion = 5,
+  clientVersion = 6,
 ) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
 
@@ -231,6 +232,7 @@ export async function saveEditedRevision(
     eq(stickerRevisions.stickerId, stickerId),
   )).then(firstRow);
   if (!parent) throw new ApiError(422, "INVALID_PARENT_REVISION", "The revision parent does not belong to this sticker");
+  if (requiresConfigurationV6(parent.documentJson.configuration) && clientVersion < 6) throw new ApiError(409, "STICKER_CLIENT_UPDATE_REQUIRED", "Update the app before editing these caption controls");
   if (parent.documentJson.configuration && clientVersion < 5) throw new ApiError(409, "STICKER_CLIENT_UPDATE_REQUIRED", "Update the app before editing this configurable sticker");
   // Editing forward from a branch that was already turned down would resurrect it silently.
   if (parent.candidateState === "rejected" || parent.candidateState === "superseded") {

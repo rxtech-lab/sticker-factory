@@ -1,3 +1,4 @@
+import type { StickerControlValues } from "@/lib/contracts/configuration";
 // The shape of every AI turn: what a caller hands the provider, what the provider hands back,
 // and the drafting sessions a long turn streams its partial work through.
 
@@ -172,6 +173,7 @@ export interface AiSequenceAsset {
 }
 
 export interface AiPlanContext {
+  baseRevisionId?: string;
   /** Immutable project guidance, separate from the compacted transcript. */
   presetGuidance?: string;
   /** Labelled cover artwork, distinct from subject/approved references. */
@@ -348,6 +350,9 @@ export type StickerRenderResult = {
   bytes: Uint8Array;
   /** The encoding of `bytes`; see `SHEET_MIME`. Never assume PNG. */
   mimeType: string;
+  controlValues?: StickerControlValues;
+  /** Control selections still needing inspection for the current edit draft. */
+  pendingReviewSelections?: StickerControlValues[];
   /** The instants drawn, in document seconds. One entry for a static sticker. */
   times: number[];
   width: number;
@@ -356,7 +361,7 @@ export type StickerRenderResult = {
 
 /** Sessions that can show the model what it has built. Shared by the animate and edit loops. */
 export interface RenderableSession {
-  renderSticker(): Promise<StickerRenderResult>;
+  renderSticker(values?: StickerControlValues): Promise<StickerRenderResult>;
 }
 
 export interface AiLayoutContext {
@@ -462,6 +467,7 @@ function describeLayer(layer: StickerDocument["layers"][number]): string {
  */
 export function summarizeDocument(document: StickerDocument) {
   return {
+    configuration: document.configuration,
     durationSeconds: document.durationSeconds,
     fps: document.fps,
     loop: document.loop,
@@ -572,6 +578,7 @@ export interface EditDraftingSession extends RenderableSession {
 }
 
 export type EditDraftState = {
+  pendingReviewSelections?: StickerControlValues[];
   /** How many tool calls have changed the document. Drives the transcript's `#N` labels. */
   revision: number;
   document: StickerDocument;
@@ -666,7 +673,7 @@ export interface AiProvider {
    * while the ordinary path produces one transparent, independently animatable part.
    */
   generateConceptImage(input: {
-    purpose?: "animation-summary";
+    purpose?: "animation-summary" | "extension";
     prompt: string;
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
   }): Promise<AiImageOutput>;

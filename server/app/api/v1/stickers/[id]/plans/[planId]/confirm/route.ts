@@ -1,3 +1,4 @@
+import { clientDocumentVersion } from "@/lib/contracts/sticker";
 import { noStoreJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
 import { confirmPlan } from "@/lib/services/plans";
@@ -23,7 +24,7 @@ export async function POST(request: Request, context: Context) {
       key,
       request: { planId },
     }, async () => {
-      const turn = await confirmPlan(db, principal.sub, id, planId);
+      const turn = await confirmPlan(db, principal.sub, id, planId, clientDocumentVersion(request));
       let workflowRunId: string | null = null;
       let state: "queued" | "failed" = "queued";
       try {

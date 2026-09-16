@@ -296,10 +296,14 @@ export async function generateStickerVideo(input: AiVideoInput): Promise<AiVideo
 }
 
 export async function generateConceptImage(input: {
-  purpose?: "animation-summary";
+  purpose?: "animation-summary" | "extension";
   prompt: string;
   references: Array<{ bytes: Uint8Array; mimeType: string }>;
 }): Promise<AiImageOutput> {
+  if (input.purpose === "extension") return generateStickerImage({
+    prompt: input.prompt + " Draw ONLY the proposed additions at their planned positions on a transparent 1024x1024 canvas. Existing reference subjects are style context only; never copy them into this image. Do not add backgrounds, panels or labels.",
+    references: input.references, mode: "generate", keepFrame: true, isolatedLayer: true,
+  });
   const isSummary = input.purpose === "animation-summary";
   if (!isSummary && input.references.length > 0) {
     return generateStickerImage({

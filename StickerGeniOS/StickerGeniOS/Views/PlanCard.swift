@@ -84,6 +84,15 @@ struct PlanCard: View {
                         onSaveToPhotoLibrary: onSaveImageToPhotoLibrary
                     )
                 }
+                if plan.baseRevisionId != nil {
+                    Text("Existing layers and controls are kept. This plan adds or updates the items below.")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppColors.muted)
+                        .accessibilityIdentifier("extension-plan-preservation")
+                    ForEach(plan.configurationChanges?.upsertControls ?? []) { control in
+                        Text(control.label).font(.system(size: 13, weight: .bold, design: .rounded))
+                    }
+                }
                 PlanLayoutPreview(layers: plan.layers)
                 layerList
                 if plan.kind == .animated { timingNote }
@@ -376,13 +385,15 @@ struct PlanCard: View {
         let video = videoCount == 0
             ? ""
             : videoCount == 1 ? String(localized: " · 1 VIDEO") : String(localized: " · \(videoCount) VIDEOS")
-        if plan.configuration != nil { return layers + String(localized: " · \(generationCount) IMAGES") + video }
+        if plan.configuration != nil || plan.baseRevisionId != nil {
+            return layers + String(localized: " · \(generationCount) IMAGES") + video
+        }
         guard generationCount < plan.layers.count else { return layers + video }
         return String(localized: "\(layers) · \(generationCount) GENERATED") + video
     }
 
     private var confirmLabel: String {
-        if plan.configuration != nil {
+        if plan.configuration != nil || plan.baseRevisionId != nil {
             return generationCount == 0
                 ? String(localized: "Build configurable sticker")
                 : String(localized: "Generate \(generationCount) images")
@@ -409,6 +420,9 @@ struct PlanCard: View {
     }
 
     private var baseConfirmationMessage: String {
+        if plan.baseRevisionId != nil {
+            return String(localized: "This generates \(generationCount) new images and keeps the existing artwork and controls.")
+        }
         if let configuration = plan.configuration {
             return String(localized: """
                 This prepares \(generationCount) images for \(configuration.combinationCount) combinations \

@@ -15,6 +15,7 @@ const eslintConfig = defineConfig([
     "app/.well-known/workflow/**",
     // Build and tooling output that is git-ignored but still on disk locally.
     ".next-e2e/**",
+    ".next-tutorial/**",
     ".swc/**",
     "coverage/**",
     "playwright-report/**",

@@ -157,6 +157,11 @@ struct FullScreenStickerPlayer: View {
                 isPresentingControls = true
             }
         }
+        .onChange(of: document) { _, updated in
+            previewSettings = previewSettings?.reconciled(with: updated)
+            controlsOutputReady = false
+            playbackOrigin = Date()
+        }
         .sheet(isPresented: $isPresentingControls, onDismiss: controlsDismissed) {
             if let controls {
                 StickerControlsSheet(

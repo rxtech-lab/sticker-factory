@@ -1984,6 +1984,9 @@
         }
       }
     },
+    "Caption" : {
+
+    },
     "Capture" : {
       "localizations" : {
         "zh-CN" : {
@@ -3730,6 +3733,9 @@
           }
         }
       }
+    },
+    "Existing layers and controls are kept. This plan adds or updates the items below." : {
+
     },
     "Export" : {
       "localizations" : {
@@ -10516,6 +10522,9 @@
         }
       }
     },
+    "This generates %lld new images and keeps the existing artwork and controls." : {
+
+    },
     "This generates %lld separate images and assembles them. It takes longer than a single sticker." : {
       "localizations" : {
         "zh-CN" : {
@@ -11609,6 +11618,9 @@
           }
         }
       }
+    },
+    "Visible" : {
+
     },
     "Visible by default" : {
 

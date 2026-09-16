@@ -1,3 +1,5 @@
+import { renderExtensionPreview } from "./extension-preview";
+import { loadPlanBase } from "@/lib/services/plan-base";
 import { creationPresetReferences } from "@/lib/creation-presets/references";
 // The two turns that work from a plan: drafting one for the user to confirm, and animating a
 // document the user has already accepted.
@@ -125,6 +127,11 @@ async function renderPlanConcept(
   history: string,
 ): Promise<void> {
   const db = await getDatabase();
+  if (plan.baseRevisionId) {
+    await renderExtensionPreview(job, stickerId, planId, plan, references);
+    await renderPlanAnimationPreview(job, stickerId, planId, revision, plan);
+    return;
+  }
   const prompt = planReferencePrompt(plan);
   if (!prompt) return attachCapturePreview(db, stickerId, planId, plan);
   const row = await db.select({ conceptAssetId: plans.conceptAssetId }).from(plans)
@@ -193,6 +200,14 @@ export async function executePlanTurn(
   toolCallId: string | undefined,
 ): Promise<AiTurnResult> {
   const db = await getDatabase();
+  const source = job.sourceMessageId ? await db.select({ baseRevisionId: chatMessages.baseRevisionId }).from(chatMessages)
+    .where(eq(chatMessages.id, job.sourceMessageId)).then(firstRow) : undefined;
+  const baseRevisionId = activeDocument ? source?.baseRevisionId ?? sticker.activeRevisionId ?? undefined : undefined;
+  const checkBase = async (plan: PlanV1) => {
+    if (activeDocument?.configuration && !plan.baseRevisionId) throw new Error(`Preserve this configurable sticker with an extension plan using baseRevisionId ${baseRevisionId}, only changed layers, and configurationChanges`);
+    if (plan.baseRevisionId && plan.baseRevisionId !== baseRevisionId) throw new Error(`Use the current revision ${baseRevisionId} as the extension base`);
+    await loadPlanBase(db, job.ownerId, sticker.id, plan);
+  };
   const rejected = await recentlyRejectedPlans(db, job.ownerId, sticker.id);
   // The message the plan is anchored to must exist before the row that references it, and the
   // drafting turn has not written its assistant message yet. The tool-call row for `plan-sticker`
@@ -210,6 +225,7 @@ export async function executePlanTurn(
     createPlan: async (plan) => {
       const call = await beginToolCall(job, "create_plan", undefined, nextLabel("create_plan"));
       try {
+        await checkBase(plan);
         assertPlanAllowedForJob(plan, job);
         if (sticker.controllable) assertControllablePlan(plan);
         assertSpriteFaces(plan);
@@ -240,6 +256,7 @@ export async function executePlanTurn(
     updatePlan: async (planId, plan) => {
       const call = await beginToolCall(job, "update_plan", undefined, nextLabel("update_plan"));
       try {
+        await checkBase(plan);
         assertPlanAllowedForJob(plan, job);
         if (sticker.controllable) assertControllablePlan(plan);
         assertSpriteFaces(plan);
@@ -296,6 +313,7 @@ export async function executePlanTurn(
     controllable: sticker.controllable,
     posePreset: sticker.posePreset ?? undefined,
     document: activeDocument,
+    baseRevisionId,
     rejectedReasons: rejected.map((row) => row.decisionReason).filter((reason): reason is string => Boolean(reason)),
     sequenceAssets,
     references: references.length ? references : attachedImages,

@@ -35,7 +35,7 @@ describe("configurable document v5", () => {
     const legacy = downcastForClient(source, 4);
     expect(legacy).toMatchObject({ version: 4, layers: [{ assetId: "22222222-2222-4222-8222-222222222222" }, {}] });
     expect(legacy).not.toHaveProperty("configuration");
-    expect(StickerDocumentSchema.parse(legacy).version).toBe(5);
+    expect(StickerDocumentSchema.parse(legacy).version).toBe(6);
   });
   it.each(["coverage", "conflict", "asset", "layer", "default"])("rejects invalid %s before rendering", (failure) => {
     const source = structuredClone(fixture);

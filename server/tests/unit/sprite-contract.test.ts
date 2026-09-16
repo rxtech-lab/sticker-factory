@@ -11,9 +11,9 @@ import {
 const document = () => StickerDocumentSchema.parse(fixture);
 
 describe("sprite layer contract", () => {
-  it("round trips the shared Swift fixture byte for byte", () => {
+  it("upcasts the shared Swift fixture without changing its content", () => {
     const source = document();
-    expect(JSON.parse(JSON.stringify(source))).toEqual(fixture);
+    expect(JSON.parse(JSON.stringify(source))).toEqual({ ...fixture, version: 6 });
     expect(configurationSelections(source.configuration!)).toHaveLength(6);
     expect(configurationCoverage(source.configuration!)).toHaveLength(6);
     expect(configurationLayerCombinations(source.configuration!)).toEqual(new Map([["hero", 6]]));
@@ -107,7 +107,7 @@ describe("sprite layer contract", () => {
     const legacy = downcastForClient(source, 4);
     expect(legacy).toMatchObject({ version: 4, layers: [{ type: "image", assetId: "34444444-4444-4444-8444-444444444444", name: "Cat" }, {}] });
     expect(legacy).not.toHaveProperty("configuration");
-    expect(StickerDocumentSchema.parse(legacy).version).toBe(5);
+    expect(StickerDocumentSchema.parse(legacy).version).toBe(6);
   });
 
   it.each(["static", "clip", "expression", "default", "source", "fps", "layer"])("rejects an invalid %s before rendering", (failure) => {
