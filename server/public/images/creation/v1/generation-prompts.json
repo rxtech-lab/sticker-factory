@@ -1,0 +1,90 @@
+{
+  "version": "2026-09-16.1",
+  "generator": "imagegen",
+  "assets": [
+    {
+      "id": "clay",
+      "file": "server/public/images/creation/v1/clay.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create ONE finished sticker cover using the supplied orange cat as the identity reference. Preserve its recognizable orange stripes, cream muzzle and belly, friendly personality. Render soft sculpted clay forms with rounded edges, subtle handmade texture, and gentle studio lighting. Full body centered, a single die-cut sticker silhouette, generous margin, square image 1024x1024. Transparent background with actual alpha. No text, labels, logos, borders around the image, grids, or watermark."
+    },
+    {
+      "id": "kawaii",
+      "file": "server/public/images/creation/v1/kawaii.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create ONE finished sticker cover using the supplied orange cat as the identity reference. Preserve its recognizable orange stripes, cream muzzle and belly, friendly personality. Use rounded shapes, cute simplified features, soft pastel colors, gentle expressions, and clean outlines. Full body centered, a single die-cut sticker silhouette, generous margin, square image 1024x1024. Transparent background with actual alpha. No text, labels, logos, borders around the image, grids, or watermark."
+    },
+    {
+      "id": "pixel",
+      "file": "server/public/images/creation/v1/pixel.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create ONE finished sticker cover using the supplied orange cat as the identity reference. Preserve its recognizable orange stripes, cream muzzle and belly, friendly personality. Use a consistent pixel grid, crisp stepped edges, a limited palette, and readable retro sprite shading. Full body centered, a single die-cut sticker silhouette, generous margin, square image 1024x1024. Transparent background with actual alpha. No text, labels, logos, borders around the image, grids, or watermark."
+    },
+    {
+      "id": "watercolor",
+      "file": "server/public/images/creation/v1/watercolor.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create a watercolor portrait sticker of this same orange tabby cat sitting, translucent pigment textures. Use a completely solid warm ivory background #FFF8E9. No checkerboard pattern anywhere. Square, full body in the center with generous clear margin. No text or logos. The image supplied is the identity and framing reference."
+    },
+    {
+      "id": "everyday",
+      "file": "server/public/images/creation/v1/everyday.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create ONE finished sticker cover using the supplied orange cat as the identity reference. Preserve its recognizable orange stripes, cream muzzle and belly, friendly personality. Keep the exact Bold Cartoon style of the reference. Show an expressive delighted everyday reaction with both paws up. Full body centered, a single die-cut sticker silhouette, generous margin, square image 1024x1024. Transparent background with actual alpha. No text, labels, logos, borders around the image, grids, or watermark."
+    },
+    {
+      "id": "paper-cut",
+      "file": "server/public/images/creation/v1/paper-cut.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create ONE finished sticker cover using the supplied orange cat as the identity reference. Preserve its recognizable orange stripes, cream muzzle and belly, friendly personality. Build the subject from layered colored-paper shapes with tactile edges, restrained depth shadows, and bold silhouettes. Full body centered, a single die-cut sticker silhouette, generous margin, square image 1024x1024. Transparent background with actual alpha. No text, labels, logos, borders around the image, grids, or watermark."
+    },
+    {
+      "id": "nature",
+      "file": "server/public/images/creation/v1/nature.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create ONE finished sticker cover using the supplied orange cat as the identity reference. Preserve its recognizable orange stripes, cream muzzle and belly, friendly personality. Keep the exact Bold Cartoon style. Show this cat with little leaves and flowers, holding a sprig of leaves, charming woodland mood. Full body centered, a single die-cut sticker silhouette, generous margin, square image 1024x1024. Transparent background with actual alpha. No text, labels, logos, borders around the image, grids, or watermark."
+    },
+    {
+      "id": "space",
+      "file": "server/public/images/creation/v1/space.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create a Bold Cartoon sticker of this same orange tabby cat sitting in an astronaut helmet with a tiny planet and two stars. Use a completely solid warm ivory background #FFF8E9. No checkerboard pattern anywhere. Square, full body in the center with generous clear margin. No text or logos. The image supplied is the identity and framing reference."
+    },
+    {
+      "id": "cozy",
+      "file": "server/public/images/creation/v1/cozy.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create ONE finished sticker cover using the supplied orange cat as the identity reference. Preserve its recognizable orange stripes, cream muzzle and belly, friendly personality. Keep the exact Bold Cartoon style. Show this cat with a cozy lilac scarf holding a tiny warm mug, comfortable relaxed expression. Full body centered, a single die-cut sticker silhouette, generous margin, square image 1024x1024. Transparent background with actual alpha. No text, labels, logos, borders around the image, grids, or watermark."
+    },
+    {
+      "id": "fantasy",
+      "file": "server/public/images/creation/v1/fantasy.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create ONE finished sticker cover using the supplied orange cat as the identity reference. Preserve its recognizable orange stripes, cream muzzle and belly, friendly personality. Keep the exact Bold Cartoon style. Show this cat with a small purple wizard hat and tiny magic wand with three sparkles. Full body centered, a single die-cut sticker silhouette, generous margin, square image 1024x1024. Transparent background with actual alpha. No text, labels, logos, borders around the image, grids, or watermark."
+    },
+    {
+      "id": "celebration",
+      "file": "server/public/images/creation/v1/celebration.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create a Bold Cartoon sticker of this same orange tabby cat in a party hat celebrating with raised paws and confetti. Use a completely solid warm ivory background #FFF8E9. No checkerboard pattern anywhere. Square, full body in the center with generous clear margin. No text or logos. The image supplied is the identity and framing reference."
+    },
+    {
+      "id": "calm",
+      "file": "StickerGeniOS/StickerGeniOS/Creation/Resources/creation-cat-calm.png",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create this same orange tabby cat with closed calm eyes and a tiny content smile. Match the exact sitting body pose and illustration style. TRANSPARENT BACKGROUND, enable actual transparency in the output PNG. No backdrop or checkerboard drawn into the image. The entire space outside the white sticker silhouette must be transparent. Square, full body in the center with generous clear margin. No text or logos. The image supplied is the identity and framing reference."
+    },
+    {
+      "id": "surprised",
+      "file": "StickerGeniOS/StickerGeniOS/Creation/Resources/creation-cat-surprised.png",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Create this same orange tabby cat with wide round surprised eyes and an O-shaped open mouth. Match the exact sitting body pose and illustration style. TRANSPARENT BACKGROUND, enable actual transparency in the output PNG. No backdrop or checkerboard drawn into the image. The entire space outside the white sticker silhouette must be transparent. Square, full body in the center with generous clear margin. No text or logos. The image supplied is the identity and framing reference."
+    },
+    {
+      "id": "bold-cartoon",
+      "file": "server/public/images/creation/v1/bold-cartoon.webp",
+      "reference": "creation-cat-happy.png",
+      "prompt": "Friendly orange tabby cat, cream muzzle and belly, bold cartoon outlines, expressive friendly face, full body sitting centered, transparent background, crisp white die-cut sticker edge. No text."
+    }
+  ]
+}

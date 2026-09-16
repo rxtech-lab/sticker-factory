@@ -34,13 +34,16 @@ it("lists the planned expressions in order for a face-plate sheet and accepts a 
   generateText.mockResolvedValueOnce({ toolCalls: [{ toolName: "report_sheet", input: { ok: true, problems: [] } }] });
   const verdict = await inspectSpriteSheet({
     kind: "expressions", character: "Car", sheet: { columns: 2, rows: 2, count: 3 }, image: await image(),
-    expressions: ["Neutral", "Excited", "Surprised"],
+    expressions: ["Neutral", "Excited", "Surprised"], faceGuide: await image(),
   });
   expect(verdict).toEqual({ ok: true });
   const text = textOf(generateText.mock.calls[0][0]);
   expect(text).toContain("Face region: the character's head, where the eyes and mouth are.");
   expect(text).toContain("1. Neutral; 2. Excited; 3. Surprised");
   expect(text).toContain("only an inner face patch");
+  expect(text).toContain("Image 2 is the actual body frame");
+  expect(text).toContain("Reject actual enclosing head outlines");
+  expect(generateText.mock.calls[0][0].messages[0].content.filter((part: { type: string }) => part.type === "image")).toHaveLength(2);
 });
 
 it("fails loudly when the inspector never reports", async () => {

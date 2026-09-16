@@ -48,6 +48,8 @@ struct StickerControlsSheet: View {
     var onPreviewChange: ((StickerControlSettings, StickerRenderAssets, Date) -> Void)?
     var preparedSending: PreparedSending?
     var onOutputReadinessChange: ((Bool) -> Void)?
+    var education: (() -> AnyView)?
+    var onControlsUsed: (() -> Void)?
 
     @State private var settings: StickerControlSettings
     @State private var assets = StickerRenderAssets()
@@ -74,8 +76,10 @@ struct StickerControlsSheet: View {
          editsAnimationsInPlace: Bool = false,
          onPreviewChange: ((StickerControlSettings, StickerRenderAssets, Date) -> Void)? = nil,
          preparedSending: PreparedSending? = nil,
-         onOutputReadinessChange: ((Bool) -> Void)? = nil)
+         onOutputReadinessChange: ((Bool) -> Void)? = nil,
+         education: (() -> AnyView)? = nil, onControlsUsed: (() -> Void)? = nil)
     {
+        self.education = education; self.onControlsUsed = onControlsUsed
         self.document = document; self.stickerID = stickerID; self.accountID = accountID; self.actionTitle = actionTitle
         self.loadAssets = loadAssets; self.onApply = onApply; self.onClose = onClose
         self.onOutputReadinessChange = onOutputReadinessChange
@@ -171,6 +175,7 @@ struct StickerControlsSheet: View {
             onOutputReadinessChange?(ready)
         }
         .onChange(of: settings) { _, updated in
+            onControlsUsed?()
             playbackOrigin = Date()
             if artworkIsReady || !updated.canPlay { onPreviewChange?(updated, assets, playbackOrigin) }
         }
@@ -186,6 +191,7 @@ struct StickerControlsSheet: View {
                 PosterProgress(message: String(localized: "Loading artwork…"))
             }
 
+            if let education { education() }
             StickerPlaybackControls(document: document, settings: $settings, origin: playbackOrigin,
                                     onEditEntry: editsAnimationsInPlace ? { id in
                                         selectedDetent = .medium

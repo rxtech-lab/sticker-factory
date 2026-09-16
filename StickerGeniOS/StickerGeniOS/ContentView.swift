@@ -37,6 +37,7 @@ struct ContentView: View {
         // The poster look is a printed one: cream paper, near-black ink. It has no dark
         // counterpart on the web either, and inverting it would mean inventing a second palette
         // that agrees with nothing. So the app stays in daylight.
+        .environment(\.tutorialCoordinator, environment.tutorials)
         .preferredColorScheme(.light)
         // Set once, here, so every label in the app inherits the rounded display face rather
         // than each view asking for it.
@@ -58,6 +59,9 @@ struct StickerFactoryTabView: View {
     @State private var defersLibraryErrors = true
     @State private var featureStore = FeatureAnnouncementStore()
     @State private var showingQuickMode = false
+    @State private var tutorialRequest: TutorialRequest?
+    @State private var tutorialAfterLaunch = false
+    @State private var pendingTutorialAction: TutorialAction?
     /// Driven only from outside the UI — a tapped "sticker ready" banner. Tapping around the
     /// Library still pushes through its own `NavigationLink`s, which this path also records.
     @State private var libraryPath = NavigationPath()
@@ -125,6 +129,8 @@ struct StickerFactoryTabView: View {
                 }
             }
         }
+        .onChange(of: environment.pendingTutorialLink) { _, _ in openTutorialLink() }
+        .onChange(of: environment.tutorials.navigation?.id) { _, _ in openTutorialDestination() }
         .onChange(of: environment.pendingShareRoute) { _, _ in openShareRoute() }
         .onChange(of: environment.pendingStickerID) { _, _ in openPendingSticker() }
         .task {
@@ -134,11 +140,33 @@ struct StickerFactoryTabView: View {
             openShareRoute()
             StickerOnboardingTips.setWelcomeCompleted(hasSeenWelcome)
             presentLaunchFlowIfNeeded()
+            openTutorialLink()
             defersLibraryErrors = launchFlow != nil
         }
-        .sheet(item: $launchFlow, onDismiss: { defersLibraryErrors = false }, content: { flow in
+        .sheet(item: $tutorialRequest, onDismiss: {
+            defersLibraryErrors = false
+            if let action = pendingTutorialAction {
+                pendingTutorialAction = nil
+                environment.tutorials.open(action)
+            }
+        }) { request in
+            TutorialSheet(coordinator: environment.tutorials, request: request) { action in
+                pendingTutorialAction = action; tutorialRequest = nil
+            }
+        }
+        .sheet(item: $launchFlow, onDismiss: {
+            if tutorialAfterLaunch {
+                tutorialAfterLaunch = false
+                tutorialRequest = .init()
+            } else {
+                defersLibraryErrors = false
+                openTutorialLink()
+            }
+        }, content: { flow in
             LaunchFlowView(
                 steps: flow.steps,
+                allowsWelcomeTutorial: flow.steps.count == 1 && hasSeenWelcome,
+                onReadTutorial: { tutorialAfterLaunch = true; launchFlow = nil },
                 onWelcomeSeen: {
                     AppTelemetry.event("tutorial_complete")
                     hasSeenWelcome = true
@@ -179,6 +207,41 @@ struct StickerFactoryTabView: View {
         }
         guard !steps.isEmpty else { return }
         launchFlow = LaunchFlowPresentation(steps: steps)
+    }
+
+    private func openTutorialLink() {
+        guard launchFlow == nil, let link = environment.pendingTutorialLink else { return }
+        environment.pendingTutorialLink = nil
+        switch link {
+        case .tutorial(let request): tutorialRequest = request
+        case .action(let action): environment.tutorials.open(action)
+        }
+    }
+
+    private func openTutorialDestination() {
+        let tutorials = environment.tutorials
+        guard let route = tutorials.navigation else { return }
+        tutorials.navigation = nil
+        switch route.action {
+        case .create:
+            selection = 0; tutorials.creationRequest = route
+        case .library:
+            selection = 0; libraryPath = NavigationPath()
+        case .packs, .newPack:
+            selection = 1; tutorials.packRequest = route
+        case .pack:
+            selection = 1; tutorials.packRequest = route
+            if route.context.packID == nil { tutorials.selectionNotice = TutorialCopy.text("Choose a pack to try this feature.") }
+        case .sticker:
+            selection = 0
+            if let id = route.context.stickerID {
+                tutorials.stickerRequest = route
+                environment.pendingStickerID = id
+            } else {
+                libraryPath = NavigationPath()
+                tutorials.selectionNotice = TutorialCopy.text("Choose a sticker to try this feature.")
+            }
+        }
     }
 
     private func openShareRoute() {

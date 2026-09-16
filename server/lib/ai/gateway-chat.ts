@@ -183,6 +183,7 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
     onLanguageModelCallEnd: reportAiStepUsage,
     model: chatModel ?? gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,
       "When the user refers to a pose, expression or panel in the animation summary, inspect the labelled storyboard in the project images. Resolve what they mean and include that concrete visual description in any delegated action instruction. Do not mistake the storyboard layout or annotations for the sticker itself.",
       "You are Sticker Factory's tool-routing agent.",
@@ -264,7 +265,7 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
         : "There is no failed or stopped generation to retry.",
       `Recoverable chat history:\n${input.history}`,
       `Latest user message:\n${input.instruction}`,
-    ].filter(Boolean).join("\n\n"), [...priorArt.map((visual) => visual.image), ...viewable]),
+    ].filter(Boolean).join("\n\n"), [...priorArt.map((visual) => visual.image), ...viewable], input.presetReferences),
     tools,
     toolChoice: "required",
     stopWhen: [

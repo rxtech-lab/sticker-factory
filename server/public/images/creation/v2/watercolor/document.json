@@ -1,0 +1,649 @@
+{
+  "configuration": {
+    "controls": [
+      {
+        "id": "pose",
+        "label": "Pose",
+        "type": "choice",
+        "defaultValue": "idle",
+        "options": [
+          {
+            "id": "idle",
+            "label": "Idle breathing blink"
+          },
+          {
+            "id": "wave",
+            "label": "Friendly wave"
+          },
+          {
+            "id": "bounce",
+            "label": "Cheery bounce"
+          },
+          {
+            "id": "sway",
+            "label": "Side-to-side sway"
+          },
+          {
+            "id": "wiggle",
+            "label": "Playful wiggle"
+          },
+          {
+            "id": "hop",
+            "label": "Happy hop"
+          },
+          {
+            "id": "spin",
+            "label": "Playful partial twist"
+          },
+          {
+            "id": "dance",
+            "label": "Joyful dance"
+          }
+        ]
+      },
+      {
+        "id": "mood",
+        "label": "Mood",
+        "type": "choice",
+        "defaultValue": "neutral",
+        "options": [
+          {
+            "id": "neutral",
+            "label": "Neutral"
+          },
+          {
+            "id": "happy",
+            "label": "Happy"
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised"
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": "pose_idle",
+        "selections": {
+          "pose": "idle"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "idle"
+          }
+        ]
+      },
+      {
+        "id": "pose_wave",
+        "selections": {
+          "pose": "wave"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "wave"
+          }
+        ]
+      },
+      {
+        "id": "pose_bounce",
+        "selections": {
+          "pose": "bounce"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "bounce"
+          }
+        ]
+      },
+      {
+        "id": "pose_sway",
+        "selections": {
+          "pose": "sway"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "sway"
+          }
+        ]
+      },
+      {
+        "id": "pose_wiggle",
+        "selections": {
+          "pose": "wiggle"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "wiggle"
+          }
+        ]
+      },
+      {
+        "id": "pose_hop",
+        "selections": {
+          "pose": "hop"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "hop"
+          }
+        ]
+      },
+      {
+        "id": "pose_spin",
+        "selections": {
+          "pose": "spin"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "spin"
+          }
+        ]
+      },
+      {
+        "id": "pose_dance",
+        "selections": {
+          "pose": "dance"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "dance"
+          }
+        ]
+      },
+      {
+        "id": "mood_neutral",
+        "selections": {
+          "mood": "neutral"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "mood_happy",
+        "selections": {
+          "mood": "happy"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "mood_surprised",
+        "selections": {
+          "mood": "surprised"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ]
+      }
+    ]
+  },
+  "version": 5,
+  "canvas": {
+    "width": 1024,
+    "height": 1024,
+    "coordinateSpace": "normalized",
+    "transparent": true
+  },
+  "layers": [
+    {
+      "id": "catSprite",
+      "name": "Friendly orange cat",
+      "hidden": false,
+      "anchor": {
+        "position": {
+          "x": 0.5,
+          "y": 0.52
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "rotationDegrees": 0,
+        "opacity": 1,
+        "trim": {
+          "start": 0,
+          "end": 1
+        }
+      },
+      "animations": [],
+      "animation": {
+        "position": [
+          {
+            "timeSeconds": 0,
+            "easing": "linear",
+            "x": 0.5,
+            "y": 0.52
+          }
+        ],
+        "scale": [],
+        "rotation": [],
+        "opacity": [],
+        "effects": [],
+        "trim": [],
+        "wipe": [],
+        "sheen": [],
+        "glow": []
+      },
+      "blendMode": "normal",
+      "type": "sprite",
+      "clips": [
+        {
+          "id": "idle",
+          "assetId": "7da406c7-f51d-4354-8a2c-05aac48bb6a3",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.4,
+              "faceX": 0.4853838333039425,
+              "faceY": 0.4182731011043059,
+              "faceSize": 0.3020527859237537
+            },
+            {
+              "duration": 0.2,
+              "faceX": 0.48111419082354884,
+              "faceY": 0.3942511483720487,
+              "faceSize": 0.2991202346041056
+            },
+            {
+              "duration": 0.4,
+              "faceX": 0.4754374896664549,
+              "faceY": 0.41941099081973293,
+              "faceSize": 0.3020527859237537
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.4875463700443084,
+              "faceY": 0.38166865174239595,
+              "faceSize": 0.2991202346041056
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.47807196216550163,
+              "faceY": 0.3638786870400184,
+              "faceSize": 0.2991202346041056
+            },
+            {
+              "duration": 0.4,
+              "faceX": 0.47858202620859036,
+              "faceY": 0.3908482887566726,
+              "faceSize": 0.3020527859237537
+            }
+          ]
+        },
+        {
+          "id": "wave",
+          "assetId": "81409f37-f393-4f90-a8d2-89afb4768b1a",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.4863532669203845,
+              "faceY": 0.4116017078939206,
+              "faceSize": 0.30498533724340177
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.47473146360647944,
+              "faceY": 0.41195050272149986,
+              "faceSize": 0.31085043988269795
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.4840756627641713,
+              "faceY": 0.41229881299369586,
+              "faceSize": 0.30791788856304986
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.48239756667267875,
+              "faceY": 0.3867758459092635,
+              "faceSize": 0.30791788856304986
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.4744440138092027,
+              "faceY": 0.38649210394385025,
+              "faceSize": 0.30791788856304986
+            },
+            {
+              "duration": 0.55,
+              "faceX": 0.4845022899283575,
+              "faceY": 0.38754304575181564,
+              "faceSize": 0.31378299120234604
+            }
+          ]
+        },
+        {
+          "id": "bounce",
+          "assetId": "959ab1c1-f67d-4578-8027-0191f1733f56",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.44677102892466086,
+              "faceY": 0.42769957362598293,
+              "faceSize": 0.2961876832844575
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.4712159320868841,
+              "faceY": 0.5456280583866915,
+              "faceSize": 0.3020527859237537
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.4263496360270554,
+              "faceY": 0.39922770991409384,
+              "faceSize": 0.2903225806451613
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.47069312056598295,
+              "faceY": 0.3750514862935772,
+              "faceSize": 0.2961876832844575
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.46538087850089677,
+              "faceY": 0.4216461978377126,
+              "faceSize": 0.2961876832844575
+            },
+            {
+              "duration": 0.55,
+              "faceX": 0.4638023850758584,
+              "faceY": 0.4013375697662174,
+              "faceSize": 0.2961876832844575
+            }
+          ]
+        },
+        {
+          "id": "sway",
+          "assetId": "c39fcd6f-d032-42f8-a7e7-013a72c3f266",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.4737806573051456,
+              "faceY": 0.41737447175266906,
+              "faceSize": 0.2932551319648094
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5252664623204161,
+              "faceY": 0.43221196687561453,
+              "faceSize": 0.2932551319648094
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.50589893610431,
+              "faceY": 0.4213849731881703,
+              "faceSize": 0.2932551319648094
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.45349090967286076,
+              "faceY": 0.3997441590354721,
+              "faceSize": 0.2873900293255132
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.5107338626139005,
+              "faceY": 0.39280522162373616,
+              "faceSize": 0.2961876832844575
+            },
+            {
+              "duration": 0.45,
+              "faceX": 0.5563830290417179,
+              "faceY": 0.4045183341733871,
+              "faceSize": 0.2961876832844575
+            }
+          ]
+        },
+        {
+          "id": "wiggle",
+          "assetId": "9a1711c5-d7aa-494d-9903-da99f76bb2ac",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.5054403166519774,
+              "faceY": 0.4253123046060859,
+              "faceSize": 0.26099706744868034
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.4614947087120531,
+              "faceY": 0.4283651849817831,
+              "faceSize": 0.26099706744868034
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.4579547063984554,
+              "faceY": 0.43467199097062514,
+              "faceSize": 0.25806451612903225
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5061377129040222,
+              "faceY": 0.3890152120978692,
+              "faceSize": 0.26099706744868034
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.5209298112523919,
+              "faceY": 0.39671186253217505,
+              "faceSize": 0.25513196480938416
+            },
+            {
+              "duration": 0.55,
+              "faceX": 0.47487255533481704,
+              "faceY": 0.3946879265539689,
+              "faceSize": 0.26392961876832843
+            }
+          ]
+        },
+        {
+          "id": "hop",
+          "assetId": "908ae845-c7e3-4247-a171-7fdf47a6c2bf",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.4872794055847952,
+              "faceY": 0.4240491564194423,
+              "faceSize": 0.2961876832844575
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.46286092586407496,
+              "faceY": 0.4945173776791302,
+              "faceSize": 0.2932551319648094
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.4426701957375088,
+              "faceY": 0.38520866664946324,
+              "faceSize": 0.2873900293255132
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.4918736877337793,
+              "faceY": 0.370626447708265,
+              "faceSize": 0.2903225806451613
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.4690731255528091,
+              "faceY": 0.4304644776365161,
+              "faceSize": 0.2873900293255132
+            },
+            {
+              "duration": 0.55,
+              "faceX": 0.45998636147187205,
+              "faceY": 0.393418257067037,
+              "faceSize": 0.2961876832844575
+            }
+          ]
+        },
+        {
+          "id": "spin",
+          "assetId": "7b935613-25c7-4469-8c3e-461d00c20786",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.49560469523138234,
+              "faceY": 0.4171638483379257,
+              "faceSize": 0.3196480938416422
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.47181487572079367,
+              "faceY": 0.42056328925695463,
+              "faceSize": 0.31085043988269795
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.43314505159388916,
+              "faceY": 0.4312083560629676,
+              "faceSize": 0.30498533724340177
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.569320918215847,
+              "faceY": 0.39254910961751666,
+              "faceSize": 0.31378299120234604
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.5127902360569631,
+              "faceY": 0.39604586176633005,
+              "faceSize": 0.30498533724340177
+            },
+            {
+              "duration": 0.45,
+              "faceX": 0.4700864001345199,
+              "faceY": 0.395741709207481,
+              "faceSize": 0.31378299120234604
+            }
+          ]
+        },
+        {
+          "id": "dance",
+          "assetId": "bd3ec4db-2524-406a-9e38-f34880a00082",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.487594456139497,
+              "faceY": 0.415836396325407,
+              "faceSize": 0.2991202346041056
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.47379903150007646,
+              "faceY": 0.41923128313148117,
+              "faceSize": 0.3020527859237537
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.47399476408967645,
+              "faceY": 0.41366703507292973,
+              "faceSize": 0.3020527859237537
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.49267224548996796,
+              "faceY": 0.38044726984862526,
+              "faceSize": 0.30791788856304986
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.47840588173609927,
+              "faceY": 0.3791952450678175,
+              "faceSize": 0.30498533724340177
+            },
+            {
+              "duration": 0.55,
+              "faceX": 0.4771604191370423,
+              "faceY": 0.38681003258627156,
+              "faceSize": 0.30791788856304986
+            }
+          ]
+        }
+      ],
+      "expressions": {
+        "assetId": "8b9e864f-4332-4ecc-993b-091da03a2481",
+        "columns": 2,
+        "rows": 2,
+        "tiles": [
+          {
+            "id": "neutral",
+            "x": 0.0625,
+            "y": 0.095703125,
+            "width": 0.400390625,
+            "height": 0.33203125
+          },
+          {
+            "id": "happy",
+            "x": 0.53125,
+            "y": 0.095703125,
+            "width": 0.4013671875,
+            "height": 0.33203125
+          },
+          {
+            "id": "surprised",
+            "x": 0.0615234375,
+            "y": 0.5703125,
+            "width": 0.4013671875,
+            "height": 0.33203125
+          }
+        ]
+      },
+      "clipId": "idle",
+      "expressionId": "neutral",
+      "contentMode": "fit",
+      "posterAssetId": "ffdbc9d2-983e-4180-9ef5-cebe79da095d"
+    }
+  ],
+  "background": {
+    "type": "none"
+  },
+  "mp4Background": {
+    "type": "solid",
+    "color": "#FFFFFF"
+  },
+  "kind": "animated",
+  "durationSeconds": 2,
+  "fps": 30,
+  "loop": "loop",
+  "speed": 1
+}

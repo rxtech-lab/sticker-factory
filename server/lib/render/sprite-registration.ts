@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { SpriteSheetValidationError } from "./sprite-atlas";
 
 /**
  * Reading a sprite character's sheets back into numbers, and drawing them back together.
@@ -124,12 +125,12 @@ export async function registerFaceSlots(
       }
     }
     const area = cellWidth * cellHeight;
-    if (count < area * 0.002) throw new Error(`Sprite frame ${frame + 1} has no face placeholder: draw a flat magenta oval where the face goes`);
-    if (count > area * 0.3) throw new Error(`Sprite frame ${frame + 1} has a face placeholder covering most of the cell`);
+    if (count < area * 0.002) throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has no face placeholder: draw a flat magenta oval where the face goes`);
+    if (count > area * 0.3) throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has a face placeholder covering most of the cell`);
     const boxWidth = maxX - minX + 1, boxHeight = maxY - minY + 1;
-    if (boxWidth * boxHeight > count * 4) throw new Error(`Sprite frame ${frame + 1} has magenta scattered outside the face placeholder`);
+    if (boxWidth * boxHeight > count * 4) throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has magenta scattered outside the face placeholder`);
     if (minX <= 0 || minY <= 0 || maxX >= cellWidth - 1 || maxY >= cellHeight - 1) {
-      throw new Error(`Sprite frame ${frame + 1} has its face placeholder clipped at the cell edge`);
+      throw new SpriteSheetValidationError("clipped", `Sprite frame ${frame + 1} has its face placeholder clipped at the cell edge`);
     }
     frames.push({
       faceX: (sumX / count + 0.5) / cellWidth,
@@ -194,9 +195,9 @@ export async function registerExpressionTiles(bytes: Uint8Array, grid: SheetGrid
         if (y < minY) minY = y; if (y > maxY) maxY = y;
       }
     }
-    if (count < cellWidth * cellHeight * 0.005) throw new Error(`Expression ${frame + 1} is empty`);
+    if (count < cellWidth * cellHeight * 0.005) throw new SpriteSheetValidationError("empty", `Expression ${frame + 1} is empty`);
     if (minX <= 0 || minY <= 0 || maxX >= cellWidth - 1 || maxY >= cellHeight - 1) {
-      throw new Error(`Expression ${frame + 1} is clipped at its cell boundary`);
+      throw new SpriteSheetValidationError("clipped", `Expression ${frame + 1} is clipped at its cell boundary`);
     }
     const pad = 2;
     const left = Math.max(0, minX - pad), top = Math.max(0, minY - pad);

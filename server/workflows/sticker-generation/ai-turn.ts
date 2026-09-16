@@ -1,6 +1,8 @@
+import { creationPresetReferences } from "@/lib/creation-presets/references";
 // The router: one turn's worth of agent work, from reading the transcript to deciding which
 // of the turn kinds above should run.
 
+import { creationPresetGuidance } from "@/lib/creation-presets/selection";
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { FatalError } from "workflow";
 import { withAiApiCostRecorder, withAiStepUsageReporter } from "@/lib/ai/cost";
@@ -516,13 +518,15 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     // Fetched before the span rather than inside it, so the router's own latency stays the model's
     // and not the object store's.
     const [attachedImages, routerPriorArt] = await Promise.all([
-      loadAttachedImages(),
+      loadReferenceImages(),
       loadPlanPriorArt(),
     ]);
     const retryableGeneration = execution?.original.id === job.id
       ? await latestRetryableGeneration(db, job)
       : undefined;
-    const action = execution?.routedAction ?? await traceSpan("routeChatTurn", { jobId }, () => getAiProvider().routeChatTurn({
+    const action = execution?.routedAction ?? await traceSpan("routeChatTurn", { jobId }, async () => getAiProvider().routeChatTurn({
+      presetGuidance: creationPresetGuidance(sticker.creationPresets),
+      presetReferences: await creationPresetReferences(sticker.creationPresets),
       instruction: sourceMessage.content,
       history,
       stickerKind: sticker.kind,
@@ -717,7 +721,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
       instruction,
       history,
       targetLayerId,
-      await loadAttachedImages(),
+      await loadReferenceImages(),
       primaryToolCallId,
     );
   }

@@ -3,6 +3,7 @@ import { WebAnalytics } from "@/components/web-analytics";
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import { SiteChrome } from "@/components/site-chrome";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
@@ -26,9 +27,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en">
       <body>
         <Suspense fallback={null}><WebAnalytics /></Suspense>
-        <SiteHeader />
+        <SiteChrome><SiteHeader /></SiteChrome>
         {children}
-        <footer className="site-footer">
+        <SiteChrome><footer className="site-footer">
           <div className="shell">
             <div className="footer-grid">
               <div className="footer-brand">
@@ -49,7 +50,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <span>WhatsApp · Telegram · iMessage</span>
             </div>
           </div>
-        </footer>
+        </footer></SiteChrome>
       </body>
     </html>
   );

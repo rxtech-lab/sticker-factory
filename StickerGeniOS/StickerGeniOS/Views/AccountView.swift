@@ -77,6 +77,7 @@ struct AccountView: View {
             }
 
             Section {
+                TutorialButton()
                 Button {
                     Haptics.tap(.light)
                     onShowWelcome()

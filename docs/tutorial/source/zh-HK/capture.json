@@ -1,0 +1,8 @@
+{
+  "capturedAt": 1789539186.2485251,
+  "simulator": "iPhone 17 / iOS 26.5",
+  "source": "TutorialCaptureTests with --ui-tutorial-capture; mock service, actual app UI",
+  "screenshots": 14,
+  "demonstrations": 5,
+  "presentation": "Original pixels; decorations applied separately in SwiftUI and CSS"
+}

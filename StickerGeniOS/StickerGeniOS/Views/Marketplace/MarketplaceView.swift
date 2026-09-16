@@ -20,6 +20,9 @@ private enum MarketplaceTab: String, CaseIterable, Identifiable {
 /// thing to do with it is on that screen.
 struct MarketplaceView: View {
     @Bindable var store: MarketplaceStore
+    var tutorialStartsInMyPacks = false
+    var onTutorialClose: (() -> Void)? = nil
+    @Environment(\.tutorialCoordinator) private var tutorials
     @State private var tab: MarketplaceTab = .browse
     @State private var showingComposer = false
     @State private var path = NavigationPath()
@@ -55,12 +58,32 @@ struct MarketplaceView: View {
         NavigationStack(path: $path) {
             content
         }
+        .onChange(of: tutorials?.packRequest?.id, initial: true) { _, _ in
+            guard let request = tutorials?.packRequest else { return }
+            switch request.action {
+            case .newPack: showingComposer = true; tutorials?.packRequest = nil
+            case .packs(let mine): tab = mine ? .mine : .browse; path = NavigationPath(); tutorials?.packRequest = nil
+            case .pack:
+                if let id = request.context.packID { path = NavigationPath(); path.append(PackRoute(packID: id)) }
+                else { tab = .mine; path = NavigationPath(); tutorials?.packRequest = nil }
+            default: break
+            }
+        }
+        .onAppear { if tutorialStartsInMyPacks { tab = .mine } }
         .telemetryScreen("marketplace")
     }
 
     private var content: some View {
         StickerBackground {
-            Group {
+            VStack(spacing: 0) {
+                if !store.isLoading {
+                    TutorialButton(chapter: .packs, title: TutorialCopy.text("Learn about sticker packs"))
+                        .font(.callout)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                }
+
                 if store.isLoading && visible.isEmpty {
                     PosterProgress(message: String(localized: "Loading packs…"))
                 } else if visible.isEmpty {
@@ -111,6 +134,13 @@ struct MarketplaceView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if let notice = tutorials?.selectionNotice {
+                HStack { Text(notice).font(.callout); Button(TutorialCopy.text("Close")) { tutorials?.selectionNotice = nil } }
+                    .padding(10)
+                    .background(AppColors.paper)
+            }
+        }
         .navigationTitle("Sticker Packs")
         .navigationDestination(for: PackRoute.self) { route in
             PackDetailView(store: store, packID: route.packID)
@@ -124,6 +154,7 @@ struct MarketplaceView: View {
         .onChange(of: store.searchQuery) { store.searchQueryChanged() }
         .onSubmit(of: .search) { Task { await store.refresh() } }
         .toolbar {
+            if let onTutorialClose { ToolbarItem(placement: .cancellationAction) { Button(TutorialCopy.text("Close"), action: onTutorialClose).accessibilityIdentifier("tutorial-feature-close") } }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Haptics.tap(.light)

@@ -1,0 +1,111 @@
+{
+  "revision": "20260916",
+  "source": "Fresh simulator screenshots of actual app views with mock service and curated demo stickers",
+  "screenshots": [
+    {
+      "id": "controls-20260916",
+      "capturedAt": 1789546519.327,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "de78b10eeede7900f3eb778ae389df768edf1db15baf90dc69d4f548ea72936d"
+    },
+    {
+      "id": "create-animated-20260916",
+      "capturedAt": 1789546488.381,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "55a6ff2f034f3db91033c20cc4414b3f708742d033283b88087fe4fa90fdb4da"
+    },
+    {
+      "id": "create-controllable-20260916",
+      "capturedAt": 1789546494.708,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "ac68c50cb6983602a3fc0d64b5fae127ae2f2e6cf1e53050443232b69a1a46d1"
+    },
+    {
+      "id": "create-prompt-20260916",
+      "capturedAt": 1789546479.525,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "6c0e4b826511c28150f4242e22a3f91ffc8f7f023550e93d945eb8cbb3a745bf"
+    },
+    {
+      "id": "create-references-20260916",
+      "capturedAt": 1789546483.668,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "e72c9cb3f38dedc9cb61513f945076b7294c80f7393b1e629b14676a395fd9bc"
+    },
+    {
+      "id": "create-static-20260916",
+      "capturedAt": 1789546485.98,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "5e39196fd1693fcff8d1edf2e5a265955891b2f058ecc02e7c26b7bad3c02455"
+    },
+    {
+      "id": "export-20260916",
+      "capturedAt": 1789546535.365,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "d7d56e368c5223dc01202e67263031bc074bb38ad8f159f4a37430d5de6944e5"
+    },
+    {
+      "id": "new-pack-20260916",
+      "capturedAt": 1789546555.207,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "f3d1aad42398ebf5c2f2113a7d3224067f44cf0d38c776a505b3a341b633e736"
+    },
+    {
+      "id": "pack-detail-20260916",
+      "capturedAt": 1789546565.123,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "2cf06489cc1f0142226af42a008c909ed87553232298e947a8a3f8fc6ba31cf2"
+    },
+    {
+      "id": "pack-picker-20260916",
+      "capturedAt": 1789546551.676,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "132b15c3f4b2c9410c18b61e79abc0c32195c1ace7afc499ba028127a88c7247"
+    },
+    {
+      "id": "packs-20260916",
+      "capturedAt": 1789546543.615,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "bdbcc0adc2042ec4a1089c555ccf32809cc07ff55e49eb107808efcf95964775"
+    },
+    {
+      "id": "plan-20260916",
+      "capturedAt": 1789546508.664,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "603728eefa317c1598d7173232be97ae77eca16ccb734d6cd854cb195ce39c22"
+    },
+    {
+      "id": "sticker-20260916",
+      "capturedAt": 1789546516.656,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "9a23f75024a59512c0e7cc3bb12533ebc9a5708b8266b280fc9e9a7bdaf52d3d"
+    },
+    {
+      "id": "telegram-20260916",
+      "capturedAt": 1789546577.568,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "c8448dc11cadff153a36bd72730b1aec42be38c867f7d8f9321b67732f026ca3"
+    },
+    {
+      "id": "whatsapp-20260916",
+      "capturedAt": 1789546569.039,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureTraditionalChinese()",
+      "sha256": "9db6bc092fce63c9276f1b2ac704b86270766886987e52fbef8d78f0af146f1d"
+    }
+  ]
+}

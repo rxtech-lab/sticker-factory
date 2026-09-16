@@ -397,7 +397,7 @@ final class StickerGeniOSUITests: XCTestCase {
     @MainActor
     func testStaticCreationOpensChat() {
         openCreateSheet()
-        XCTAssertTrue(element("sticker-kind-picker").exists)
+        XCTAssertFalse(element("sticker-kind-picker").exists)
         XCTAssertTrue(element("add-reference-images").exists)
         XCTAssertFalse(app.buttons["Review privacy"].exists)
 
@@ -406,6 +406,7 @@ final class StickerGeniOSUITests: XCTestCase {
         prompt.tap()
         prompt.typeText("A cheerful blue cloud with a thick white outline")
 
+        finishCreationChoices()
         let generate = element("generate-sticker-button")
         XCTAssertTrue(generate.isEnabled)
         generate.tap()
@@ -508,6 +509,7 @@ final class StickerGeniOSUITests: XCTestCase {
     @MainActor
     func testChatUsesInlineComposerAndStickerAttachments() {
         openCreateSheet()
+        enterCreationIdea()
         let picker = app.segmentedControls.firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 3))
         picker.buttons["Animated"].tap()
@@ -551,6 +553,7 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(prompt.waitForExistence(timeout: 3))
         prompt.tap()
         prompt.typeText("A recoverable upload failure")
+        finishCreationChoices()
         element("generate-sticker-button").tap()
 
         let error = element("error-banner")
@@ -724,26 +727,32 @@ final class StickerGeniOSUITests: XCTestCase {
     @MainActor
     func testControllableSwitchFollowsTheStickerType() {
         openCreateSheet()
+        enterCreationIdea()
         let picker = element("sticker-kind-picker")
         XCTAssertTrue(picker.waitForExistence(timeout: 3))
-        XCTAssertFalse(element("sticker-controllable-toggle").exists)
-
         picker.buttons.element(boundBy: 1).tap()
+        element("creation-next").tap()
+        element("preset-option-style-bold-cartoon").tap()
+        element("creation-next").tap()
+        element("creation-next").tap()
         let toggle = element("sticker-controllable-toggle")
         XCTAssertTrue(toggle.waitForExistence(timeout: 3))
         toggle.switches.firstMatch.tap()
         XCTAssertEqual(toggle.switches.firstMatch.value as? String, "1")
-
-        picker.buttons.element(boundBy: 0).tap()
-        XCTAssertFalse(element("sticker-controllable-toggle").exists)
+        element("creation-next").tap()
+        element("creation-overview-kind").tap()
+        element("sticker-kind-picker").buttons.element(boundBy: 0).tap()
+        element("creation-next").tap()
+        XCTAssertFalse(element("creation-overview-animation").exists)
     }
 
     @MainActor
     func testAdaptiveLayoutKeepsPrimaryActionsVisible() {
         openCreateSheet()
-        XCTAssertTrue(element("sticker-kind-picker").waitForExistence(timeout: 3))
+        XCTAssertTrue(element("sticker-prompt").waitForExistence(timeout: 3))
         XCTAssertTrue(element("sticker-prompt").isHittable)
-        XCTAssertTrue(element("generate-sticker-button").exists)
+        XCTAssertTrue(element("creation-next").isHittable)
+        XCTAssertFalse(element("generate-sticker-button").exists)
     }
 
     /// A pack you created stays editable once it exists — the whole point of the editor is that
@@ -873,6 +882,20 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(whatsapp.waitForExistence(timeout: 3))
     }
 
+    private func enterCreationIdea() {
+        element("sticker-prompt").tap()
+        element("sticker-prompt").typeText("A friendly cat")
+        element("creation-next").tap()
+    }
+    private func finishCreationChoices() {
+        element("creation-next").tap()
+        element("creation-next").tap()
+        XCTAssertTrue(element("preset-option-style-bold-cartoon").waitForExistence(timeout: 5))
+        element("preset-option-style-bold-cartoon").tap()
+        element("creation-next").tap()
+        element("creation-next").tap()
+        XCTAssertTrue(element("generate-sticker-button").waitForExistence(timeout: 5))
+    }
     private func openCreateSheet() {
         let create = element("create-sticker-button")
         XCTAssertTrue(create.waitForExistence(timeout: 3))

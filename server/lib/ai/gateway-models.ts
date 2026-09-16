@@ -53,10 +53,10 @@ export function assertImageInputBounds(input: AiImageInput): void {
  *
  * The image models take up to eight, because a redraw wants every scrap of likeness it can get and
  * pays for them once. A tool loop is the opposite case: its first message is re-sent on every step,
- * so each attached image is billed ten or fourteen times over a turn. Four covers what a person
- * actually attaches — a subject, a couple of angles, a style — and the rest still reach the artwork.
+ * so each attached image is billed ten or fourteen times over a turn. The guided flow permits eight references, and each must remain available to the agents.
+ * Preset covers are passed separately with explicit labels.
  */
-const VIEWABLE_REFERENCE_LIMIT = 4;
+const VIEWABLE_REFERENCE_LIMIT = 8;
 
 /**
  * Prepares a turn's attachments for a model that is going to *look* at them.
@@ -134,8 +134,8 @@ export async function viewablePlanVisuals(
  * in the second — so a turn with attachments becomes a single user message with the text first and
  * the images after it, which is the order every provider's own guidance asks for.
  */
-export function userTurn(text: string, images: AiReferenceImage[]): ModelMessage[] {
-  if (images.length === 0) return [{ role: "user", content: text }];
+export function userTurn(text: string, images: AiReferenceImage[], presets: AiPlanVisual[] = []): ModelMessage[] {
+  if (images.length === 0 && presets.length === 0) return [{ role: "user", content: text }];
   return [
     {
       role: "user",
@@ -146,6 +146,10 @@ export function userTurn(text: string, images: AiReferenceImage[]): ModelMessage
           image: image.bytes,
           mediaType: image.mimeType,
         })),
+        ...presets.flatMap(visual => [
+          { type: "text" as const, text: `Preset example — ${visual.label}. Creative style/theme guidance only. Do not copy this example's cat, subject, text or background; preserve the user's subject and approved artwork.` },
+          { type: "image" as const, image: visual.image.bytes, mediaType: visual.image.mimeType },
+        ]),
       ],
     },
   ];
@@ -161,7 +165,7 @@ export function attachedImagesNote(count: number, extra?: string): string {
   if (count === 0) return "";
   return [
     `The user attached ${count} image${count === 1 ? "" : "s"} to this turn, shown to you as the`,
-    "last images in this message. They are reference material the user handed over, not the sticker",
+    "user reference images, followed separately by any labelled preset examples. They are reference material the user handed over, not the sticker",
     "itself, so never treat their background, framing, or surroundings as something the sticker",
     "contains.",
     extra ?? "",

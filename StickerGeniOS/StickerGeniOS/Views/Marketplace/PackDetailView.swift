@@ -11,6 +11,9 @@ import TipKit
 struct PackDetailView: View {
     @Bindable var store: MarketplaceStore
     let packID: String
+    @Environment(\.tutorialCoordinator) private var tutorials
+    @Environment(\.tutorialMessenger) private var tutorialMessenger
+    @State private var consumedTutorial = false
     @State private var isWorking = false
     @State private var previewedSticker: Sticker?
     @State private var isEditing = false
@@ -32,6 +35,12 @@ struct PackDetailView: View {
                 if let detail {
                     VStack(alignment: .leading, spacing: 24) {
                         header(detail)
+                        HStack {
+                            TutorialButton(chapter: .whatsapp, title: "WhatsApp", onAction: handleTutorialAction)
+                            TutorialButton(chapter: .telegram, title: "Telegram", onAction: handleTutorialAction)
+                        }.font(.footnote)
+                        TutorialButton(chapter: .packs, title: TutorialCopy.text("Learn about sticker packs"), onAction: handleTutorialAction)
+                            .font(.footnote)
                         stats(detail)
                         members(detail)
                     }
@@ -45,6 +54,7 @@ struct PackDetailView: View {
                 }
             }
         }
+        .environment(\.tutorialContext, TutorialContext(packID: packID))
         .navigationTitle(detail?.title ?? String(localized: "Pack"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
@@ -84,13 +94,27 @@ struct PackDetailView: View {
                 }
             }
         })
-        .task(id: packID) { await store.loadDetail(packID: packID) }
+        .task(id: packID) {
+            await store.loadDetail(packID: packID)
+            if !consumedTutorial, let tutorialMessenger {
+                consumedTutorial = true; _ = handleTutorialAction(.pack(destination: tutorialMessenger))
+            }
+            if let request = tutorials?.packRequest, request.context.packID == packID {
+                tutorials?.packRequest = nil; _ = handleTutorialAction(request.action)
+            }
+        }
         .telemetryScreen("pack_detail")
     }
 
     // MARK: - Header
 
-    @ViewBuilder
+    private func handleTutorialAction(_ action: TutorialAction) -> Bool {
+        if case .pack(let destination) = action, let value = MessengerDestination(rawValue: destination) {
+            messengerDestination = value; return true
+        }
+        return false
+    }
+
     private func header(_ detail: StickerPackDetail) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             // A draft or unlisted pack looks exactly like a published one otherwise, so the state

@@ -206,7 +206,8 @@ describe("durable sticker workflow: agent context", () => {
     // where the user attached nothing — every "make it bigger", every re-plan — was designed from
     // JSON and prose with no sight of the artwork, and came back having redrawn things nobody had
     // asked it to touch.
-    expect(planned?.references).toBe(0);
+    // Saved artwork is now passed alongside labelled prior-art visuals on follow-up turns.
+    expect(planned?.references).toBe(1);
     expect(planned?.priorArt.length).toBeGreaterThan(0);
     // An animated project renders as a sheet of sampled frames, and the label has to say so — a
     // planner that reads one as a single composition sees the same subject drawn six times over.
@@ -301,7 +302,8 @@ describe("durable sticker workflow: agent context", () => {
     // from view but from `sequenceAssets`, which made the `sequence` source illegal and left the
     // planner no way to keep the user's own footage. It answered by replacing them with a generate
     // layer describing their face.
-    expect(textOnlyTurn.attached).toBe(0);
+    // The reference list includes the carried capture even without a new attachment.
+    expect(textOnlyTurn.attached).toBe(1);
     expect(textOnlyTurn.captures).toEqual([`${captureId}:4x3:12@24`]);
     // And it is shown the footage, not merely told the numbers.
     expect(textOnlyTurn.priorArt[0]).toContain("captured");
@@ -526,7 +528,8 @@ describe("durable sticker workflow: agent context", () => {
 
     // The animation loop draws nothing, so an attachment on an animate turn is only ever there to
     // be looked at — and until now it was the one turn that never loaded it at all.
-    expect(animated).toEqual([photo.bytes]);
+    expect(animated?.[0]).toEqual(photo.bytes);
+    expect(animated).toHaveLength(2); // New photo plus the saved artwork being animated.
     await close();
   }, 30_000);
 

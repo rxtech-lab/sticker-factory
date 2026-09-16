@@ -1,0 +1,651 @@
+{
+  "kind": "animated",
+  "title": "Friendly Orange Cat — Controllable Clay Sprite",
+  "layers": [
+    {
+      "x": 0.5,
+      "y": 0.52,
+      "name": "Friendly orange cat",
+      "scaleX": 0.86,
+      "scaleY": 0.86,
+      "source": {
+        "face": "One stable contiguous oval face region covering the cat's full face, containing both eyes, eyebrows, nose, muzzle details, whiskers, and mouth together; no facial features appear anywhere else on the body.",
+        "kind": "sprite",
+        "clips": [
+          {
+            "id": "idle",
+            "label": "Idle",
+            "frames": [
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.6
+              }
+            ],
+            "prompt": "The cat visibly breathes with a gentle chest rise and fall, makes one natural blink, and returns smoothly to the same seated front-facing resting pose; move the body only and keep the face region stable."
+          },
+          {
+            "id": "wave",
+            "label": "Wave",
+            "frames": [
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.6
+              }
+            ],
+            "prompt": "The seated cat lifts one front paw and gives a friendly repeated wave, with a small shoulder shift and a smooth return toward the resting pose; the other paw, tail, and stable front-facing face remain controlled and readable."
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce",
+            "frames": [
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.6
+              }
+            ],
+            "prompt": "The cat performs a cheerful soft full-body bounce in place: crouch slightly, spring upward, settle, and return to the seated base pose; keep the face region stable and the cat fully front-facing."
+          },
+          {
+            "id": "sway",
+            "label": "Sway",
+            "frames": [
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.6
+              }
+            ],
+            "prompt": "The seated cat gently sways its body and tail from side to side in a relaxed looping rhythm, returning through center each cycle; keep the face region visible and front-facing while the body moves."
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle",
+            "frames": [
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.6
+              }
+            ],
+            "prompt": "The cat makes a playful side-to-side body wiggle with tiny shoulder and rump shifts and a lightly wagging tail, then returns to center; preserve the stable front-facing face region and readable silhouette."
+          },
+          {
+            "id": "hop",
+            "label": "Hop",
+            "frames": [
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.6
+              }
+            ],
+            "prompt": "The cat makes a distinct playful hop: compress, lift all four body mass slightly with paws tucked, land softly, and recover to the seated pose; keep the face region visible and forward throughout."
+          },
+          {
+            "id": "spin",
+            "label": "Spin",
+            "frames": [
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.6
+              }
+            ],
+            "prompt": "The cat performs a playful partial body twist, rotating its torso and tail through a lively three-quarter turn and back while keeping the face clearly forward and the face region stable; this is a body twist, not a whole-image transform or full face turn."
+          },
+          {
+            "id": "dance",
+            "label": "Dance",
+            "frames": [
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.6
+              }
+            ],
+            "prompt": "The cat performs a cheerful looping dance with alternating paw lifts, a small bounce, and a rhythmic tail swish, ending back in the seated front-facing base pose; keep the face region stable and all motion in the body."
+          }
+        ],
+        "prompt": "Create one controllable character sprite based on the friendly orange cat in the supplied reference artwork. Preserve that cat's exact identity, recognizable proportions, orange tabby colours and markings, cream muzzle/chest/paws, pink inner ears and nose, eyes, whiskers, curled striped tail, and all visible accessories exactly; do not substitute a different cat. Render soft sculpted 3D Clay forms with rounded edges, subtle handmade texture, gentle studio lighting, and a clean transparent sticker silhouette. Keep the cat front-facing overall and keep the face stable and clearly visible in every body clip. The cat's body may perform the named actions, but the face region remains one stable contiguous oval containing all facial features. No text, scenery, props, or extra characters.",
+        "expressions": [
+          {
+            "id": "neutral",
+            "label": "Neutral",
+            "prompt": "A calm friendly neutral cat face inside the single face region: relaxed open eyes, soft brows, closed gentle mouth, subtle cheek warmth, with every feature contained in the oval face region."
+          },
+          {
+            "id": "happy",
+            "label": "Happy",
+            "prompt": "A delighted happy cat face inside the single face region: bright smiling eyes, lifted brows, cheerful open smile, rosy cheeks, and a joyful expression, with every feature contained in the oval face region."
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised",
+            "prompt": "A pleasantly surprised cat face inside the single face region: widened eyes, raised brows, small rounded open mouth, and lifted cheeks, with every feature contained in the oval face region."
+          }
+        ]
+      },
+      "layerId": "catSprite",
+      "animations": [],
+      "rotationDegrees": 0
+    }
+  ],
+  "timing": {
+    "fps": 30,
+    "loop": "loop",
+    "durationSeconds": 2
+  },
+  "summary": "One controllable sprite of the friendly orange cat from the supplied artwork, preserving its identity, orange tabby colours, cream markings, accessories, front-facing face region, and soft 3D Clay finish. The sprite provides eight selectable looping body poses and three independently selectable moods; the approval reference is rendered first before the sprite is built.",
+  "version": 1,
+  "posePreset": "ultra",
+  "conceptPrompt": "A polished square sticker visual reference of the friendly orange cat in the supplied reference artwork, preserving the exact cat identity, proportions, orange tabby colouring and stripe pattern, cream muzzle and chest, pink inner ears and nose, large expressive eyes, whiskers, paws, curled striped tail, and every visible accessory from the reference. Render the cat as soft sculpted 3D clay with rounded edges, subtle handmade texture, gentle studio lighting, and a clean transparent sticker silhouette with a restrained light outline. Show the cat centered, front-facing, seated in its neutral resting pose with the face clearly visible and stable: all facial features share one contiguous oval face region. Fill the square frame with the cat, with no lettering, no unrelated scenery, no props, no labels, no arrows, no watermark, no UI, and no animation frames or contact sheet.",
+  "configuration": {
+    "controls": [
+      {
+        "id": "pose",
+        "type": "choice",
+        "label": "Pose",
+        "options": [
+          {
+            "id": "idle",
+            "label": "Idle"
+          },
+          {
+            "id": "wave",
+            "label": "Wave"
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce"
+          },
+          {
+            "id": "sway",
+            "label": "Sway"
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle"
+          },
+          {
+            "id": "hop",
+            "label": "Hop"
+          },
+          {
+            "id": "spin",
+            "label": "Spin"
+          },
+          {
+            "id": "dance",
+            "label": "Dance"
+          }
+        ],
+        "defaultValue": "idle"
+      },
+      {
+        "id": "mood",
+        "type": "choice",
+        "label": "Mood",
+        "options": [
+          {
+            "id": "neutral",
+            "label": "Neutral"
+          },
+          {
+            "id": "happy",
+            "label": "Happy"
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised"
+          }
+        ],
+        "defaultValue": "neutral"
+      }
+    ],
+    "variants": [
+      {
+        "id": "idleNeutral",
+        "layers": [
+          {
+            "clip": "idle",
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral",
+          "pose": "idle"
+        }
+      },
+      {
+        "id": "waveNeutral",
+        "layers": [
+          {
+            "clip": "wave",
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral",
+          "pose": "wave"
+        }
+      },
+      {
+        "id": "bounceNeutral",
+        "layers": [
+          {
+            "clip": "bounce",
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral",
+          "pose": "bounce"
+        }
+      },
+      {
+        "id": "swayNeutral",
+        "layers": [
+          {
+            "clip": "sway",
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral",
+          "pose": "sway"
+        }
+      },
+      {
+        "id": "wiggleNeutral",
+        "layers": [
+          {
+            "clip": "wiggle",
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral",
+          "pose": "wiggle"
+        }
+      },
+      {
+        "id": "hopNeutral",
+        "layers": [
+          {
+            "clip": "hop",
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral",
+          "pose": "hop"
+        }
+      },
+      {
+        "id": "spinNeutral",
+        "layers": [
+          {
+            "clip": "spin",
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral",
+          "pose": "spin"
+        }
+      },
+      {
+        "id": "danceNeutral",
+        "layers": [
+          {
+            "clip": "dance",
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral",
+          "pose": "dance"
+        }
+      },
+      {
+        "id": "idleHappy",
+        "layers": [
+          {
+            "clip": "idle",
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy",
+          "pose": "idle"
+        }
+      },
+      {
+        "id": "idleSurprised",
+        "layers": [
+          {
+            "clip": "idle",
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised",
+          "pose": "idle"
+        }
+      },
+      {
+        "id": "waveHappy",
+        "layers": [
+          {
+            "clip": "wave",
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy",
+          "pose": "wave"
+        }
+      },
+      {
+        "id": "waveSurprised",
+        "layers": [
+          {
+            "clip": "wave",
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised",
+          "pose": "wave"
+        }
+      },
+      {
+        "id": "bounceHappy",
+        "layers": [
+          {
+            "clip": "bounce",
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy",
+          "pose": "bounce"
+        }
+      },
+      {
+        "id": "bounceSurprised",
+        "layers": [
+          {
+            "clip": "bounce",
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised",
+          "pose": "bounce"
+        }
+      },
+      {
+        "id": "swayHappy",
+        "layers": [
+          {
+            "clip": "sway",
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy",
+          "pose": "sway"
+        }
+      },
+      {
+        "id": "swaySurprised",
+        "layers": [
+          {
+            "clip": "sway",
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised",
+          "pose": "sway"
+        }
+      },
+      {
+        "id": "wiggleHappy",
+        "layers": [
+          {
+            "clip": "wiggle",
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy",
+          "pose": "wiggle"
+        }
+      },
+      {
+        "id": "wiggleSurprised",
+        "layers": [
+          {
+            "clip": "wiggle",
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised",
+          "pose": "wiggle"
+        }
+      },
+      {
+        "id": "hopHappy",
+        "layers": [
+          {
+            "clip": "hop",
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy",
+          "pose": "hop"
+        }
+      },
+      {
+        "id": "hopSurprised",
+        "layers": [
+          {
+            "clip": "hop",
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised",
+          "pose": "hop"
+        }
+      },
+      {
+        "id": "spinHappy",
+        "layers": [
+          {
+            "clip": "spin",
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy",
+          "pose": "spin"
+        }
+      },
+      {
+        "id": "spinSurprised",
+        "layers": [
+          {
+            "clip": "spin",
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised",
+          "pose": "spin"
+        }
+      },
+      {
+        "id": "danceHappy",
+        "layers": [
+          {
+            "clip": "dance",
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy",
+          "pose": "dance"
+        }
+      },
+      {
+        "id": "danceSurprised",
+        "layers": [
+          {
+            "clip": "dance",
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised",
+          "pose": "dance"
+        }
+      }
+    ]
+  }
+}

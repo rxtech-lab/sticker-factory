@@ -1,5 +1,6 @@
 import { buildAssetsReady, completedBuildSteps } from "./build-checkpoints";
 import sharp from "sharp";
+import { SpriteSheetValidationError } from "@/lib/render/sprite-atlas";
 import { eq } from "drizzle-orm";
 import type { PlanV1 } from "@/lib/contracts/plan";
 import type { StickerConfiguration } from "@/lib/contracts/configuration";
@@ -43,8 +44,8 @@ export async function validateGeneratedAtlas(bytes: Uint8Array, grid: { columns:
       const alpha = data[((oy + y) * info.width + ox + x) * info.channels + info.channels - 1];
       if (alpha > 24) { visible++; if (x === 0 || y === 0 || x === width - 1 || y === height - 1) border++; }
     }
-    if (visible < width * height * 0.005) throw new Error(`Generated pose frame ${frame + 1} is empty`);
-    if (border > (width + height) * 0.1) throw new Error(`Generated pose frame ${frame + 1} is clipped at its cell boundary`);
+    if (visible < width * height * 0.005) throw new SpriteSheetValidationError("empty", `Generated pose frame ${frame + 1} is empty`);
+    if (border > (width + height) * 0.1) throw new SpriteSheetValidationError("clipped", `Generated pose frame ${frame + 1} is clipped at its cell boundary`);
   }
 }
 

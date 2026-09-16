@@ -1,6 +1,7 @@
 import AnimatedView
 import PhotosUI
 import SwiftUI
+import TipKit
 import UIKit
 
 /// A document presented full screen.
@@ -177,7 +178,9 @@ struct FullScreenStickerPlayer: View {
                         previewAssets = loaded
                         playbackOrigin = origin
                     },
-                    onOutputReadinessChange: { controlsOutputReady = $0 }
+                    onOutputReadinessChange: { controlsOutputReady = $0 },
+                    education: { AnyView(ControllableTutorialHelp(kind: .controls)) },
+                    onControlsUsed: { StickerControlsTutorialTip().invalidate(reason: .actionPerformed) }
                 )
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .onGeometryChange(for: CGFloat.self) { geometry in

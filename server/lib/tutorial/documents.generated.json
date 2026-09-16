@@ -1,0 +1,1994 @@
+{
+  "en": {
+    "version": 1,
+    "locale": "en",
+    "strings": {
+      "title": "Tutorials",
+      "intro": "A little guidance. A lot of sticker magic.",
+      "create": "Create stickers",
+      "finish": "Finish your sticker",
+      "packs": "Sticker packs",
+      "next": "Next",
+      "scrollDown": "Scroll down",
+      "back": "Back",
+      "done": "Finish chapter",
+      "index": "All chapters",
+      "resume": "Continue reading",
+      "tryIt": "Try it in the app",
+      "completed": "Completed",
+      "step": "Step",
+      "of": "of",
+      "play": "Play demonstration",
+      "pause": "Pause demonstration",
+      "restart": "Read again",
+      "nextChapter": "Next chapter",
+      "mediaError": "This image could not load. Try again when you are online.",
+      "retry": "Retry",
+      "language": "Language",
+      "tip": "A little tip",
+      "appHint": "Opens Winky Sticker Factory. It will not generate or send anything.",
+      "read": "Read chapter"
+    },
+    "sections": [
+      {
+        "id": "create",
+        "title": "Create stickers"
+      },
+      {
+        "id": "finish",
+        "title": "Finish your sticker"
+      },
+      {
+        "id": "packs",
+        "title": "Sticker packs"
+      }
+    ],
+    "chapters": [
+      {
+        "id": "static",
+        "title": "Make a static sticker",
+        "section": "create",
+        "steps": [
+          {
+            "id": "choose",
+            "title": "Start with Static",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open Create from Library, describe your idea, then tap Next and choose Static. Continue to choose a style and, optionally, themes before reviewing your choices."
+              },
+              {
+                "type": "media",
+                "id": "create-static-20260916",
+                "caption": "Start with Static",
+                "poster": "/tutorial/media/en/create-static-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "describe",
+            "title": "Describe your idea",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Describe the subject, expression, colors and style. For example: a cheerful corgi in a yellow raincoat with a thick white sticker border."
+              },
+              {
+                "type": "media",
+                "id": "create-prompt-20260916",
+                "caption": "Describe your idea",
+                "poster": "/tutorial/media/en/create-prompt-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "references",
+            "title": "Add references if they help",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "On the idea screen, tap Add to attach up to eight reference images. Use Back to return there if you have already moved on. Photos help preserve a particular character or style. They are optional; review your selection before starting."
+              },
+              {
+                "type": "media",
+                "id": "create-references-20260916",
+                "caption": "Add references if they help",
+                "poster": "/tutorial/media/en/create-references-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "review",
+            "title": "Review, build and accept",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "On the review screen, check your idea, type, style and themes. Tap any section to edit it, then tap Generate one candidate to start the project. Review the assistant’s plan in chat, confirm when it looks right, then accept or reject the candidate. Generation uses credits; check the plan before confirming."
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "Review, build and accept",
+                "poster": "/tutorial/media/en/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          }
+        ]
+      },
+      {
+        "id": "animated",
+        "title": "Make an animated sticker",
+        "section": "create",
+        "steps": [
+          {
+            "id": "choose",
+            "title": "Choose Animated",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "In Create, describe your idea first, tap Next, and choose Animated. Continue through style and optional themes to the animation settings, then review your choices. Describe the character and the motion you want, such as a small wave or a gentle bounce. Add reference images when the look matters."
+              },
+              {
+                "type": "media",
+                "id": "create-animated-20260916",
+                "caption": "Choose Animated",
+                "poster": "/tutorial/media/en/create-animated-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated"
+          },
+          {
+            "id": "reference",
+            "title": "Check the visual reference",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "The assistant proposes a plan and a static visual reference for generated artwork. Check the character, composition and style. Ask for changes before confirming."
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "Check the visual reference",
+                "poster": "/tutorial/media/en/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "build",
+            "title": "Confirm the animation plan",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Review the motion and timing, then confirm the plan. The approved artwork is prepared for animation. More generated artwork can use more credits."
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "Confirm the animation plan",
+                "poster": "/tutorial/media/en/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "preview",
+            "title": "Watch before accepting",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open the candidate preview and watch the movement. Accept the version you like, or explain what should change. An animated project needs motion before it can be published as an animation."
+              },
+              {
+                "type": "media",
+                "id": "sticker-20260916",
+                "caption": "Watch before accepting",
+                "poster": "/tutorial/media/en/sticker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          }
+        ]
+      },
+      {
+        "id": "controllable",
+        "title": "Make it controllable",
+        "section": "create",
+        "steps": [
+          {
+            "id": "enable",
+            "title": "Switch on moods and poses",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Describe your idea, choose Animated, select a style and optional themes, then turn on Switchable moods and poses on the animation screen. The character can offer selectable expressions and poses after generation."
+              },
+              {
+                "type": "media",
+                "id": "create-controllable-20260916",
+                "caption": "Switch on moods and poses",
+                "poster": "/tutorial/media/en/create-controllable-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated&controllable=1"
+          },
+          {
+            "id": "variety",
+            "title": "Choose pose variety",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Min, Medium, High and Ultra request 2, 3, 5 and 8 selectable poses per character, respectively. Higher presets need more generated artwork and cost more. Start with Medium if you are exploring."
+              },
+              {
+                "type": "media",
+                "id": "create-controllable-20260916",
+                "caption": "Choose pose variety",
+                "poster": "/tutorial/media/en/create-controllable-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated&controllable=1"
+          },
+          {
+            "id": "build",
+            "title": "Confirm the character",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Review the visual reference and plan before building. Check the character and the proposed poses. Accept the finished candidate when it matches your idea."
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "Confirm the character",
+                "poster": "/tutorial/media/en/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "controls",
+            "title": "Try the controls",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open a controllable sticker. Choose the available mood or pose, adjust Speed, or turn Animate off to pick a still frame. Some stickers also offer a sequence of actions."
+              },
+              {
+                "type": "media",
+                "id": "controls-20260916",
+                "caption": "Try the controls",
+                "poster": "/tutorial/media/en/controls-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          },
+          {
+            "id": "apply",
+            "title": "Keep the version you like",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Apply saves your chosen settings; Cancel leaves saved settings unchanged. Reset returns the controls to their defaults. Exported images and videos contain a rendered result, not the interactive controls."
+              },
+              {
+                "type": "media",
+                "id": "controls-20260916",
+                "caption": "Keep the version you like",
+                "poster": "/tutorial/media/en/controls-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          }
+        ]
+      },
+      {
+        "id": "finish",
+        "title": "Plan, confirm and export",
+        "section": "finish",
+        "steps": [
+          {
+            "id": "plan",
+            "title": "Make the plan yours",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Review the visual reference, layers, timing and generation count. Use the plan’s editing controls or tell the assistant what to change. Confirm only the current actionable plan."
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "Make the plan yours",
+                "poster": "/tutorial/media/en/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "confirm",
+            "title": "Build after checking",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Confirm to start generation. Keep the app’s progress visible and wait for the candidate. Generation spends credits; a tutorial link only opens a screen and never starts generation for you."
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "Build after checking",
+                "poster": "/tutorial/media/en/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "accept",
+            "title": "Accept or request changes",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Compare the candidate with your current sticker. Accept to keep it, or reject and explain what needs work. Accepted revisions remain in version history."
+              },
+              {
+                "type": "media",
+                "id": "sticker-20260916",
+                "caption": "Accept or request changes",
+                "poster": "/tutorial/media/en/sticker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "export",
+            "title": "Export and publish",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open Export from Sticker actions. Choose the available size and formats, then export and publish the accepted version. Wait for completion. Published stickers can be added to packs and used from the Messages app drawer; exported files can also be shared."
+              },
+              {
+                "type": "media",
+                "id": "export-20260916",
+                "caption": "Export and publish",
+                "poster": "/tutorial/media/en/export-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=export"
+          }
+        ]
+      },
+      {
+        "id": "packs",
+        "title": "Explore sticker packs",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "browse",
+            "title": "Find a pack",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open Sticker Packs. Browse or search for something you like. My packs holds packs you created; Browse shows available packs from creators."
+              },
+              {
+                "type": "media",
+                "id": "packs-20260916",
+                "caption": "Find a pack",
+                "poster": "/tutorial/media/en/packs-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "preview",
+            "title": "Look inside",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open a pack and tap a sticker to preview it. Controllable stickers expose their available settings; your choices do not edit the creator’s artwork."
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "Look inside",
+                "poster": "/tutorial/media/en/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "install",
+            "title": "Add a pack to your library",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Use the pack’s add control to install another creator’s pack. Your own packs offer Edit pack instead because your stickers are already in your library."
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "Add a pack to your library",
+                "poster": "/tutorial/media/en/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "share",
+            "title": "Take it to a messenger",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "The pack page offers WhatsApp and Telegram export. Open the matching chapter for a walkthrough. A controllable sticker is rendered into the format the messenger accepts."
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "Take it to a messenger",
+                "poster": "/tutorial/media/en/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          }
+        ]
+      },
+      {
+        "id": "new-pack",
+        "title": "Create a sticker pack",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "name",
+            "title": "Start a new pack",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "In Sticker Packs, tap New pack. Give your collection a name and an optional description."
+              },
+              {
+                "type": "media",
+                "id": "new-pack-20260916",
+                "caption": "Start a new pack",
+                "poster": "/tutorial/media/en/new-pack-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "select",
+            "title": "Choose published stickers",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Add stickers from your published library. If a sticker is missing, finish exporting and publishing it first. Reorder the selected stickers to tell your story."
+              },
+              {
+                "type": "media",
+                "id": "pack-picker-20260916",
+                "caption": "Choose published stickers",
+                "poster": "/tutorial/media/en/pack-picker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "save",
+            "title": "Save or publish",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Choose Save as draft to keep working, or Create and publish to make the pack available. Wait while the app creates the pack and updates your list."
+              },
+              {
+                "type": "media",
+                "id": "new-pack-20260916",
+                "caption": "Save or publish",
+                "poster": "/tutorial/media/en/new-pack-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "prepare",
+            "title": "Prepare it for sharing",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "When messenger files are missing, the app prepares them on this device after saving. Keep the preparation screen open until it finishes. The pack page then offers WhatsApp and Telegram."
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "Prepare it for sharing",
+                "poster": "/tutorial/media/en/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          }
+        ]
+      },
+      {
+        "id": "whatsapp",
+        "title": "Add a pack to WhatsApp",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "open",
+            "title": "Open the pack",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open a prepared pack and tap Add to WhatsApp. The app downloads its prepared sticker files. If files are missing from your own pack, edit and save the pack to prepare them."
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "Open the pack",
+                "poster": "/tutorial/media/en/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "parts",
+            "title": "Review the parts",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Still and animated stickers are separated. Large packs are split into supported parts. Review any skipped stickers and wait for downloading to finish."
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "Review the parts",
+                "poster": "/tutorial/media/en/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "emoji",
+            "title": "Choose sticker emoji",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Choose the emoji associated with each sticker before sending the pack. Install WhatsApp if the app says it is unavailable, then return to this screen."
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "Choose sticker emoji",
+                "poster": "/tutorial/media/en/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "handoff",
+            "title": "Add one part at a time",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Tap a ready part to open WhatsApp and finish adding it there. Return to Winky for any remaining parts. The final import is confirmed in WhatsApp."
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "Add one part at a time",
+                "poster": "/tutorial/media/en/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          }
+        ]
+      },
+      {
+        "id": "telegram",
+        "title": "Add a pack to Telegram",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "open",
+            "title": "Choose Telegram",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open a prepared pack and tap Add to Telegram. The app downloads the prepared files; missing files in your own pack can be prepared by editing and saving it."
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "Choose Telegram",
+                "poster": "/tutorial/media/en/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "parts",
+            "title": "Check your export",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Stills and animations are exported in Telegram-compatible formats and separate parts. Review the list and any skipped stickers before continuing."
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "Check your export",
+                "poster": "/tutorial/media/en/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "emoji",
+            "title": "Set emoji and get ready",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Choose the emoji for each sticker. If Telegram is not installed, install it and return. Wait until the export part is ready before opening Telegram."
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "Set emoji and get ready",
+                "poster": "/tutorial/media/en/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "handoff",
+            "title": "Finish in Telegram",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "Open a ready part in Telegram, choose the pack name when asked, and finish the import there. Return to Winky to add additional parts."
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "Finish in Telegram",
+                "poster": "/tutorial/media/en/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          }
+        ]
+      }
+    ]
+  },
+  "zh-CN": {
+    "version": 1,
+    "locale": "zh-CN",
+    "strings": {
+      "title": "教程",
+      "intro": "一点指引，开启贴纸创作。",
+      "create": "创建贴纸",
+      "finish": "完成你的贴纸",
+      "packs": "贴纸包",
+      "next": "下一步",
+      "scrollDown": "向下滚动",
+      "back": "上一步",
+      "done": "完成章节",
+      "index": "全部章节",
+      "resume": "继续阅读",
+      "tryIt": "在应用中试试",
+      "completed": "已完成",
+      "step": "步骤",
+      "of": "/",
+      "play": "播放演示",
+      "pause": "暂停演示",
+      "restart": "重新阅读",
+      "nextChapter": "下一章节",
+      "mediaError": "图片加载失败。联网后请重试。",
+      "retry": "重试",
+      "language": "语言",
+      "tip": "小提示",
+      "appHint": "打开 Winky Sticker Factory，不会自动生成或发送。",
+      "read": "阅读章节"
+    },
+    "sections": [
+      {
+        "id": "create",
+        "title": "创建贴纸"
+      },
+      {
+        "id": "finish",
+        "title": "完成你的贴纸"
+      },
+      {
+        "id": "packs",
+        "title": "贴纸包"
+      }
+    ],
+    "chapters": [
+      {
+        "id": "static",
+        "title": "制作静态贴纸",
+        "section": "create",
+        "steps": [
+          {
+            "id": "choose",
+            "title": "先选择静态",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "从图库打开「创建」，先描述想法，再点击「下一步」并选择「静态」。接着选择风格和可选主题，最后检查所有选项。"
+              },
+              {
+                "type": "media",
+                "id": "create-static-20260916",
+                "caption": "先选择静态",
+                "poster": "/tutorial/media/zh-CN/create-static-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "describe",
+            "title": "描述你的想法",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "描述主体、表情、颜色和风格。例如：一只穿黄色雨衣的开心柯基，带有粗白色贴纸描边。"
+              },
+              {
+                "type": "media",
+                "id": "create-prompt-20260916",
+                "caption": "描述你的想法",
+                "poster": "/tutorial/media/zh-CN/create-prompt-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "references",
+            "title": "按需添加参考图片",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在描述想法的页面点击「添加」，最多附加八张参考图片。如果已经进入后续步骤，可以点击「返回」回到该页面。照片有助于保持角色或风格一致，也可以不添加。开始前检查所选图片。"
+              },
+              {
+                "type": "media",
+                "id": "create-references-20260916",
+                "caption": "按需添加参考图片",
+                "poster": "/tutorial/media/zh-CN/create-references-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "review",
+            "title": "检查、生成并接受",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在总览页检查想法、类型、风格和主题，点击相应部分即可修改。确认后，点击「生成一个候选」启动项目。在聊天中检查助手的方案，确认无误后生成，再接受或拒绝候选结果。生成会消耗点数，请先检查方案。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "检查、生成并接受",
+                "poster": "/tutorial/media/zh-CN/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          }
+        ]
+      },
+      {
+        "id": "animated",
+        "title": "制作动态贴纸",
+        "section": "create",
+        "steps": [
+          {
+            "id": "choose",
+            "title": "选择动态",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在「创建」中先描述想法，点击「下一步」并选择「动态」。继续选择风格和可选主题，设置动画后检查所有选项。描述角色和想要的动作，例如轻轻挥手或弹跳。需要保持外观时，可添加参考图片。"
+              },
+              {
+                "type": "media",
+                "id": "create-animated-20260916",
+                "caption": "选择动态",
+                "poster": "/tutorial/media/zh-CN/create-animated-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated"
+          },
+          {
+            "id": "reference",
+            "title": "检查视觉参考",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "助手会为生成的画面提供方案和静态视觉参考。检查角色、构图和风格；如需修改，请先提出再确认。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "检查视觉参考",
+                "poster": "/tutorial/media/zh-CN/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "build",
+            "title": "确认动画方案",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "检查动作和时长，然后确认方案。获批的画面会被准备为动画。生成的图片越多，可能消耗的点数也越多。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "确认动画方案",
+                "poster": "/tutorial/media/zh-CN/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "preview",
+            "title": "先预览，再接受",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打开候选预览并查看动作。接受喜欢的版本，或说明需要修改的地方。动态项目需要具有动作，才能作为动画发布。"
+              },
+              {
+                "type": "media",
+                "id": "sticker-20260916",
+                "caption": "先预览，再接受",
+                "poster": "/tutorial/media/zh-CN/sticker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          }
+        ]
+      },
+      {
+        "id": "controllable",
+        "title": "制作可操控贴纸",
+        "section": "create",
+        "steps": [
+          {
+            "id": "enable",
+            "title": "开启心情和姿势切换",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "先描述想法，选择「动态」、风格和可选主题，然后在动画设置页面开启「可切换心情和姿势」。生成后，角色可以提供可选的表情和姿势。"
+              },
+              {
+                "type": "media",
+                "id": "create-controllable-20260916",
+                "caption": "开启心情和姿势切换",
+                "poster": "/tutorial/media/zh-CN/create-controllable-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated&controllable=1"
+          },
+          {
+            "id": "variety",
+            "title": "选择姿势丰富程度",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "四档预设分别提供每个角色 2、3、5 和 8 个可选姿势。更高的预设需要更多生成画面，费用也更高。初次尝试可以选择「中」。"
+              },
+              {
+                "type": "media",
+                "id": "create-controllable-20260916",
+                "caption": "选择姿势丰富程度",
+                "poster": "/tutorial/media/zh-CN/create-controllable-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated&controllable=1"
+          },
+          {
+            "id": "build",
+            "title": "确认角色",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "生成前检查视觉参考和方案，确认角色及计划的姿势。完成的候选符合想法时，再接受它。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "确认角色",
+                "poster": "/tutorial/media/zh-CN/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "controls",
+            "title": "试试操控功能",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打开可操控贴纸。选择可用的心情或姿势，调整速度，或关闭动画以选择静止帧。部分贴纸还支持动作序列。"
+              },
+              {
+                "type": "media",
+                "id": "controls-20260916",
+                "caption": "试试操控功能",
+                "poster": "/tutorial/media/zh-CN/controls-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          },
+          {
+            "id": "apply",
+            "title": "保存喜欢的效果",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "「应用」保存所选设置；「取消」保留原有设置。「重置」恢复默认控制值。导出的图片和视频包含渲染结果，不包含交互控件。"
+              },
+              {
+                "type": "media",
+                "id": "controls-20260916",
+                "caption": "保存喜欢的效果",
+                "poster": "/tutorial/media/zh-CN/controls-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          }
+        ]
+      },
+      {
+        "id": "finish",
+        "title": "方案、确认与导出",
+        "section": "finish",
+        "steps": [
+          {
+            "id": "plan",
+            "title": "调整你的方案",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "检查视觉参考、图层、时长和生成数量。使用方案编辑控件，或告诉助手需要修改什么。仅确认当前可操作的方案。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "调整你的方案",
+                "poster": "/tutorial/media/zh-CN/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "confirm",
+            "title": "检查后再生成",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "确认后开始生成。查看应用中的进度并等待候选结果。生成会消耗点数；教程链接只打开页面，不会替你启动生成。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "检查后再生成",
+                "poster": "/tutorial/media/zh-CN/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "accept",
+            "title": "接受或要求修改",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "将候选与当前贴纸比较。接受以保留结果，或拒绝并说明需要改进的地方。已接受的版本会保留在版本历史中。"
+              },
+              {
+                "type": "media",
+                "id": "sticker-20260916",
+                "caption": "接受或要求修改",
+                "poster": "/tutorial/media/zh-CN/sticker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "export",
+            "title": "导出并发布",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "从「贴纸操作」打开「导出」。选择可用尺寸和格式，然后导出并发布已接受的版本。等待完成后，可将已发布的贴纸加入贴纸包并在信息应用中使用，也可分享导出的文件。"
+              },
+              {
+                "type": "media",
+                "id": "export-20260916",
+                "caption": "导出并发布",
+                "poster": "/tutorial/media/zh-CN/export-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=export"
+          }
+        ]
+      },
+      {
+        "id": "packs",
+        "title": "探索贴纸包",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "browse",
+            "title": "寻找贴纸包",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打开「贴纸包」，浏览或搜索喜欢的内容。「我的贴纸包」显示你创建的包，「浏览」显示创作者提供的包。"
+              },
+              {
+                "type": "media",
+                "id": "packs-20260916",
+                "caption": "寻找贴纸包",
+                "poster": "/tutorial/media/zh-CN/packs-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "preview",
+            "title": "查看内容",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打开贴纸包，点击贴纸进行预览。可操控贴纸会显示可用设置；你的选择不会修改创作者的画面。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "查看内容",
+                "poster": "/tutorial/media/zh-CN/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "install",
+            "title": "加入你的图库",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "使用贴纸包的添加按钮安装其他创作者的包。你自己的包会显示「编辑贴纸包」，因为其中的贴纸已在你的图库中。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "加入你的图库",
+                "poster": "/tutorial/media/zh-CN/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "share",
+            "title": "在聊天应用中使用",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "贴纸包页面提供 WhatsApp 和 Telegram 导出。打开对应章节了解步骤。可操控贴纸会被渲染为聊天应用支持的格式。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "在聊天应用中使用",
+                "poster": "/tutorial/media/zh-CN/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          }
+        ]
+      },
+      {
+        "id": "new-pack",
+        "title": "创建贴纸包",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "name",
+            "title": "新建贴纸包",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在「贴纸包」中点击「新建贴纸包」，为合集填写名称和可选的描述。"
+              },
+              {
+                "type": "media",
+                "id": "new-pack-20260916",
+                "caption": "新建贴纸包",
+                "poster": "/tutorial/media/zh-CN/new-pack-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "select",
+            "title": "选择已发布贴纸",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "从已发布的图库中添加贴纸。如果找不到某张贴纸，请先完成导出和发布。调整所选贴纸的顺序，讲述你的故事。"
+              },
+              {
+                "type": "media",
+                "id": "pack-picker-20260916",
+                "caption": "选择已发布贴纸",
+                "poster": "/tutorial/media/zh-CN/pack-picker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "save",
+            "title": "保存或发布",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "选择「保存为草稿」以继续编辑，或选择「创建并发布」让贴纸包可供使用。等待应用创建贴纸包并更新列表。"
+              },
+              {
+                "type": "media",
+                "id": "new-pack-20260916",
+                "caption": "保存或发布",
+                "poster": "/tutorial/media/zh-CN/new-pack-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "prepare",
+            "title": "准备分享文件",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "保存后，如果缺少聊天应用所需的文件，应用会在本设备上进行准备。请保持准备页面打开直到完成。随后可从贴纸包页面导出到 WhatsApp 和 Telegram。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "准备分享文件",
+                "poster": "/tutorial/media/zh-CN/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          }
+        ]
+      },
+      {
+        "id": "whatsapp",
+        "title": "添加到 WhatsApp",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "open",
+            "title": "打开贴纸包",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打开准备好的贴纸包，点击「添加到 WhatsApp」。应用会下载已准备的贴纸文件。如果自己的包缺少文件，请编辑并保存以准备文件。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "打开贴纸包",
+                "poster": "/tutorial/media/zh-CN/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "parts",
+            "title": "检查分组",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "静态和动态贴纸会分开。大贴纸包会拆分为支持的分组。检查被跳过的贴纸，并等待下载完成。"
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "检查分组",
+                "poster": "/tutorial/media/zh-CN/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "emoji",
+            "title": "选择贴纸表情符号",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "发送贴纸包前，为每张贴纸选择关联的表情符号。如果提示 WhatsApp 不可用，请先安装，再返回此页面。"
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "选择贴纸表情符号",
+                "poster": "/tutorial/media/zh-CN/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "handoff",
+            "title": "逐组添加",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "点击已就绪的分组打开 WhatsApp，并在那里完成添加。返回 Winky 继续添加剩余分组。最终导入需要在 WhatsApp 中确认。"
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "逐组添加",
+                "poster": "/tutorial/media/zh-CN/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          }
+        ]
+      },
+      {
+        "id": "telegram",
+        "title": "添加到 Telegram",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "open",
+            "title": "选择 Telegram",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打开准备好的贴纸包，点击「添加到 Telegram」。应用会下载已准备的文件；自己的包缺少文件时，可通过编辑并保存来准备。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "选择 Telegram",
+                "poster": "/tutorial/media/zh-CN/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "parts",
+            "title": "检查导出内容",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "静态和动态贴纸会以 Telegram 兼容格式导出，并分别分组。继续前请检查列表及被跳过的贴纸。"
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "检查导出内容",
+                "poster": "/tutorial/media/zh-CN/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "emoji",
+            "title": "设置表情符号",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "为每张贴纸选择表情符号。如果尚未安装 Telegram，请安装后返回。等待导出分组就绪后，再打开 Telegram。"
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "设置表情符号",
+                "poster": "/tutorial/media/zh-CN/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "handoff",
+            "title": "在 Telegram 中完成",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在 Telegram 中打开已就绪的分组，按提示填写贴纸包名称并完成导入。返回 Winky 添加其他分组。"
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "在 Telegram 中完成",
+                "poster": "/tutorial/media/zh-CN/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          }
+        ]
+      }
+    ]
+  },
+  "zh-HK": {
+    "version": 1,
+    "locale": "zh-HK",
+    "strings": {
+      "title": "教學",
+      "intro": "一點指引，開啟貼紙創作。",
+      "create": "建立貼紙",
+      "finish": "完成你的貼紙",
+      "packs": "貼紙包",
+      "next": "下一步",
+      "scrollDown": "向下捲動",
+      "back": "上一步",
+      "done": "完成章節",
+      "index": "全部章節",
+      "resume": "繼續閱讀",
+      "tryIt": "在應用程式中試試",
+      "completed": "已完成",
+      "step": "步驟",
+      "of": "/",
+      "play": "播放示範",
+      "pause": "暫停示範",
+      "restart": "重新閱讀",
+      "nextChapter": "下一章節",
+      "mediaError": "圖片載入失敗。連線後請重試。",
+      "retry": "重試",
+      "language": "語言",
+      "tip": "小提示",
+      "appHint": "打開 Winky Sticker Factory，不會自動產生或傳送。",
+      "read": "閱讀章節"
+    },
+    "sections": [
+      {
+        "id": "create",
+        "title": "建立貼紙"
+      },
+      {
+        "id": "finish",
+        "title": "完成你的貼紙"
+      },
+      {
+        "id": "packs",
+        "title": "貼紙包"
+      }
+    ],
+    "chapters": [
+      {
+        "id": "static",
+        "title": "製作靜態貼紙",
+        "section": "create",
+        "steps": [
+          {
+            "id": "choose",
+            "title": "先選擇靜態",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "從圖庫打開「建立」，先描述想法，再點按「下一步」並選擇「靜態」。接着選擇風格和可選主題，最後檢查所有選項。"
+              },
+              {
+                "type": "media",
+                "id": "create-static-20260916",
+                "caption": "先選擇靜態",
+                "poster": "/tutorial/media/zh-HK/create-static-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "describe",
+            "title": "描述你的想法",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "描述主體、表情、顏色和風格。例如：一隻穿黃色雨衣的開心哥基，帶有粗白色貼紙描邊。"
+              },
+              {
+                "type": "media",
+                "id": "create-prompt-20260916",
+                "caption": "描述你的想法",
+                "poster": "/tutorial/media/zh-HK/create-prompt-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "references",
+            "title": "按需要加入參考圖片",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在描述想法的頁面點按「加入」，最多附加八張參考圖片。如果已經進入後續步驟，可以點按「返回」回到該頁面。照片有助於保持角色或風格一致，也可以不加入。開始前檢查所選圖片。"
+              },
+              {
+                "type": "media",
+                "id": "create-references-20260916",
+                "caption": "按需要加入參考圖片",
+                "poster": "/tutorial/media/zh-HK/create-references-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=static"
+          },
+          {
+            "id": "review",
+            "title": "檢查、產生並接受",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在總覽頁檢查想法、類型、風格和主題，點按相應部分即可修改。確認後，點按「產生一個候選」啟動項目。在聊天中檢查助手的方案，確認無誤後產生，再接受或拒絕候選結果。產生會消耗點數，請先檢查方案。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "檢查、產生並接受",
+                "poster": "/tutorial/media/zh-HK/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          }
+        ]
+      },
+      {
+        "id": "animated",
+        "title": "製作動態貼紙",
+        "section": "create",
+        "steps": [
+          {
+            "id": "choose",
+            "title": "選擇動態",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在「建立」中先描述想法，點按「下一步」並選擇「動態」。繼續選擇風格和可選主題，設定動畫後檢查所有選項。描述角色和想要的動作，例如輕輕揮手或彈跳。需要保持外觀時，可加入參考圖片。"
+              },
+              {
+                "type": "media",
+                "id": "create-animated-20260916",
+                "caption": "選擇動態",
+                "poster": "/tutorial/media/zh-HK/create-animated-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated"
+          },
+          {
+            "id": "reference",
+            "title": "檢查視覺參考",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "助手會為產生的畫面提供方案和靜態視覺參考。檢查角色、構圖和風格；如需修改，請先提出再確認。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "檢查視覺參考",
+                "poster": "/tutorial/media/zh-HK/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "build",
+            "title": "確認動畫方案",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "檢查動作和時長，然後確認方案。獲批的畫面會被準備為動畫。產生的圖片越多，可能消耗的點數也越多。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "確認動畫方案",
+                "poster": "/tutorial/media/zh-HK/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "preview",
+            "title": "先預覽，再接受",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打開候選預覽並查看動作。接受喜歡的版本，或說明需要修改的地方。動態項目需要具有動作，才能作為動畫發佈。"
+              },
+              {
+                "type": "media",
+                "id": "sticker-20260916",
+                "caption": "先預覽，再接受",
+                "poster": "/tutorial/media/zh-HK/sticker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          }
+        ]
+      },
+      {
+        "id": "controllable",
+        "title": "製作可操控貼紙",
+        "section": "create",
+        "steps": [
+          {
+            "id": "enable",
+            "title": "開啟心情和姿勢切換",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "先描述想法，選擇「動態」、風格和可選主題，然後在動畫設定頁面開啟「可切換心情和姿勢」。產生後，角色可以提供可選的表情和姿勢。"
+              },
+              {
+                "type": "media",
+                "id": "create-controllable-20260916",
+                "caption": "開啟心情和姿勢切換",
+                "poster": "/tutorial/media/zh-HK/create-controllable-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated&controllable=1"
+          },
+          {
+            "id": "variety",
+            "title": "選擇姿勢豐富程度",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "四檔預設分別提供每個角色 2、3、5 和 8 個可選姿勢。更高的預設需要更多產生的畫面，費用也更高。初次嘗試可以選擇「中」。"
+              },
+              {
+                "type": "media",
+                "id": "create-controllable-20260916",
+                "caption": "選擇姿勢豐富程度",
+                "poster": "/tutorial/media/zh-HK/create-controllable-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/create?kind=animated&controllable=1"
+          },
+          {
+            "id": "build",
+            "title": "確認角色",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "產生前檢查視覺參考和方案，確認角色及計劃的姿勢。完成的候選符合想法時，再接受它。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "確認角色",
+                "poster": "/tutorial/media/zh-HK/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "controls",
+            "title": "試試操控功能",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打開可操控貼紙。選擇可用的心情或姿勢，調整速度，或關閉動畫以選擇靜止影格。部分貼紙還支援動作序列。"
+              },
+              {
+                "type": "media",
+                "id": "controls-20260916",
+                "caption": "試試操控功能",
+                "poster": "/tutorial/media/zh-HK/controls-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          },
+          {
+            "id": "apply",
+            "title": "儲存喜歡的效果",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "「套用」儲存所選設定；「取消」保留原有設定。「重設」恢復預設控制值。匯出的圖片和影片包含算繪結果，不包含互動控制項。"
+              },
+              {
+                "type": "media",
+                "id": "controls-20260916",
+                "caption": "儲存喜歡的效果",
+                "poster": "/tutorial/media/zh-HK/controls-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=controls"
+          }
+        ]
+      },
+      {
+        "id": "finish",
+        "title": "方案、確認與匯出",
+        "section": "finish",
+        "steps": [
+          {
+            "id": "plan",
+            "title": "調整你的方案",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "檢查視覺參考、圖層、時長和產生數量。使用方案編輯控制項，或告訴助手需要修改甚麼。只確認目前可操作的方案。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "調整你的方案",
+                "poster": "/tutorial/media/zh-HK/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "confirm",
+            "title": "檢查後再產生",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "確認後開始產生。查看應用程式中的進度並等待候選結果。產生會消耗點數；教學連結只打開頁面，不會替你啟動產生。"
+              },
+              {
+                "type": "media",
+                "id": "plan-20260916",
+                "caption": "檢查後再產生",
+                "poster": "/tutorial/media/zh-HK/plan-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "accept",
+            "title": "接受或要求修改",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "將候選與目前貼紙比較。接受以保留結果，或拒絕並說明需要改進的地方。已接受的版本會保留在版本記錄中。"
+              },
+              {
+                "type": "media",
+                "id": "sticker-20260916",
+                "caption": "接受或要求修改",
+                "poster": "/tutorial/media/zh-HK/sticker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=plan"
+          },
+          {
+            "id": "export",
+            "title": "匯出並發佈",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "從「貼紙操作」打開「匯出」。選擇可用尺寸和格式，然後匯出並發佈已接受的版本。等待完成後，可將已發佈的貼紙加入貼紙包並在訊息應用程式中使用，也可分享匯出的檔案。"
+              },
+              {
+                "type": "media",
+                "id": "export-20260916",
+                "caption": "匯出並發佈",
+                "poster": "/tutorial/media/zh-HK/export-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/sticker?action=export"
+          }
+        ]
+      },
+      {
+        "id": "packs",
+        "title": "探索貼紙包",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "browse",
+            "title": "尋找貼紙包",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打開「貼紙包」，瀏覽或搜尋喜歡的內容。「我的貼紙包」顯示你建立的包，「瀏覽」顯示創作者提供的包。"
+              },
+              {
+                "type": "media",
+                "id": "packs-20260916",
+                "caption": "尋找貼紙包",
+                "poster": "/tutorial/media/zh-HK/packs-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "preview",
+            "title": "查看內容",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打開貼紙包，點按貼紙進行預覽。可操控貼紙會顯示可用設定；你的選擇不會修改創作者的畫面。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "查看內容",
+                "poster": "/tutorial/media/zh-HK/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "install",
+            "title": "加入你的圖庫",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "使用貼紙包的加入按鈕安裝其他創作者的包。你自己的包會顯示「編輯貼紙包」，因為其中的貼紙已在你的圖庫中。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "加入你的圖庫",
+                "poster": "/tutorial/media/zh-HK/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          },
+          {
+            "id": "share",
+            "title": "在聊天應用程式中使用",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "貼紙包頁面提供 WhatsApp 和 Telegram 匯出。打開對應章節了解步驟。可操控貼紙會被算繪為聊天應用程式支援的格式。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "在聊天應用程式中使用",
+                "poster": "/tutorial/media/zh-HK/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs?tab=browse"
+          }
+        ]
+      },
+      {
+        "id": "new-pack",
+        "title": "建立貼紙包",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "name",
+            "title": "新增貼紙包",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在「貼紙包」中點按「新增貼紙包」，為合集填寫名稱和可選的描述。"
+              },
+              {
+                "type": "media",
+                "id": "new-pack-20260916",
+                "caption": "新增貼紙包",
+                "poster": "/tutorial/media/zh-HK/new-pack-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "select",
+            "title": "選擇已發佈貼紙",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "從已發佈的圖庫中加入貼紙。如果找不到某張貼紙，請先完成匯出和發佈。調整所選貼紙的順序，講述你的故事。"
+              },
+              {
+                "type": "media",
+                "id": "pack-picker-20260916",
+                "caption": "選擇已發佈貼紙",
+                "poster": "/tutorial/media/zh-HK/pack-picker-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "save",
+            "title": "儲存或發佈",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "選擇「儲存為草稿」以繼續編輯，或選擇「建立並發佈」讓貼紙包可供使用。等待應用程式建立貼紙包並更新列表。"
+              },
+              {
+                "type": "media",
+                "id": "new-pack-20260916",
+                "caption": "儲存或發佈",
+                "poster": "/tutorial/media/zh-HK/new-pack-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          },
+          {
+            "id": "prepare",
+            "title": "準備分享檔案",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "儲存後，如果缺少聊天應用程式所需的檔案，應用程式會在本裝置上進行準備。請保持準備頁面打開直到完成。隨後可從貼紙包頁面匯出到 WhatsApp 和 Telegram。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "準備分享檔案",
+                "poster": "/tutorial/media/zh-HK/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/packs/new"
+          }
+        ]
+      },
+      {
+        "id": "whatsapp",
+        "title": "加入 WhatsApp",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "open",
+            "title": "打開貼紙包",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打開準備好的貼紙包，點按「加入 WhatsApp」。應用程式會下載已準備的貼紙檔案。如果自己的包缺少檔案，請編輯並儲存以準備檔案。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "打開貼紙包",
+                "poster": "/tutorial/media/zh-HK/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "parts",
+            "title": "檢查分組",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "靜態和動態貼紙會分開。大貼紙包會拆分為支援的分組。檢查被略過的貼紙，並等待下載完成。"
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "檢查分組",
+                "poster": "/tutorial/media/zh-HK/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "emoji",
+            "title": "選擇貼紙表情符號",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "傳送貼紙包前，為每張貼紙選擇關聯的表情符號。如果提示 WhatsApp 無法使用，請先安裝，再返回此頁面。"
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "選擇貼紙表情符號",
+                "poster": "/tutorial/media/zh-HK/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          },
+          {
+            "id": "handoff",
+            "title": "逐組加入",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "點按已就緒的分組打開 WhatsApp，並在那裡完成加入。返回 Winky 繼續加入其餘分組。最終匯入需要在 WhatsApp 中確認。"
+              },
+              {
+                "type": "media",
+                "id": "whatsapp-20260916",
+                "caption": "逐組加入",
+                "poster": "/tutorial/media/zh-HK/whatsapp-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=whatsapp"
+          }
+        ]
+      },
+      {
+        "id": "telegram",
+        "title": "加入 Telegram",
+        "section": "packs",
+        "steps": [
+          {
+            "id": "open",
+            "title": "選擇 Telegram",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "打開準備好的貼紙包，點按「加入 Telegram」。應用程式會下載已準備的檔案；自己的包缺少檔案時，可透過編輯並儲存來準備。"
+              },
+              {
+                "type": "media",
+                "id": "pack-detail-20260916",
+                "caption": "選擇 Telegram",
+                "poster": "/tutorial/media/zh-HK/pack-detail-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "parts",
+            "title": "檢查匯出內容",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "靜態和動態貼紙會以 Telegram 相容格式匯出，並分別分組。繼續前請檢查列表及被略過的貼紙。"
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "檢查匯出內容",
+                "poster": "/tutorial/media/zh-HK/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "emoji",
+            "title": "設定表情符號",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "為每張貼紙選擇表情符號。如果尚未安裝 Telegram，請安裝後返回。等待匯出分組就緒後，再打開 Telegram。"
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "設定表情符號",
+                "poster": "/tutorial/media/zh-HK/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          },
+          {
+            "id": "handoff",
+            "title": "在 Telegram 中完成",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "text": "在 Telegram 中打開已就緒的分組，按提示填寫貼紙包名稱並完成匯入。返回 Winky 加入其他分組。"
+              },
+              {
+                "type": "media",
+                "id": "telegram-20260916",
+                "caption": "在 Telegram 中完成",
+                "poster": "/tutorial/media/zh-HK/telegram-20260916.webp"
+              }
+            ],
+            "action": "stickerfactory://open/pack?action=telegram"
+          }
+        ]
+      }
+    ]
+  }
+}

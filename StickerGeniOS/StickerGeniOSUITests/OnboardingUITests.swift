@@ -70,6 +70,9 @@ final class OnboardingUITests: XCTestCase {
         next.tap()
         expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: app.staticTexts["Controllable animation"])
         waitForExpectations(timeout: 3)
+        next.tap()
+        XCTAssertTrue(app.staticTexts["Learn with tutorials"].waitForExistence(timeout: 3))
+        XCTAssertTrue(element("feature-read-tutorials").exists)
         XCTAssertTrue(app.buttons["Got it"].exists)
         app.buttons["Got it"].tap()
         XCTAssertFalse(app.staticTexts["Controllable animation"].waitForExistence(timeout: 2))
@@ -94,6 +97,7 @@ final class OnboardingUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
+        element("feature-card-next-button").tap()
         element("feature-card-next-button").tap()
         element("feature-card-next-button").tap()
         XCTAssertTrue(app.buttons["Got it"].waitForExistence(timeout: 3))

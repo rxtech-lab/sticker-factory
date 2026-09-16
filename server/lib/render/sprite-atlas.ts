@@ -1,5 +1,13 @@
 import sharp from "sharp";
 
+/** Invalid generated artwork can be redrawn; decoding, storage and provider errors cannot. */
+export class SpriteSheetValidationError extends Error {
+  constructor(readonly reason: "clipped" | "empty" | "face-placeholder", message: string) {
+    super(message);
+    this.name = "SpriteSheetValidationError";
+  }
+}
+
 type Grid = { columns: number; rows: number; frameCount: number };
 
 /**

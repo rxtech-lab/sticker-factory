@@ -95,6 +95,7 @@ struct StickerWelcomeSlide: Identifiable, Equatable {
 /// short tour is what unlocks the contextual tips that follow it.
 struct StickerWelcomeSheet: View {
     var onContinue: () -> Void
+    var onReadTutorial: (() -> Void)? = nil
 
     /// One per slide, cycled if the tour ever grows past them.
     private static let slideColors: [Color] = [
@@ -151,6 +152,15 @@ struct StickerWelcomeSheet: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
 
+                if isLastSlide, let onReadTutorial {
+                    Button(action: onReadTutorial) {
+                        Label(TutorialCopy.text("Read tutorials"), systemImage: "book.closed")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.posterSecondary)
+                    .padding(.horizontal, 32)
+                    .accessibilityIdentifier("welcome-read-tutorials")
+                }
                 Button {
                     if isLastSlide {
                         onContinue()

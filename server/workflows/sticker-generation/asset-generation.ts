@@ -1,6 +1,8 @@
 // Turning a model's answer into stored artwork: the image and video generations, the subject
 // measurement kept beside them, and the document a plan's layers assemble into.
 
+import { withPresetArtworkReferences } from "@/lib/creation-presets/references";
+import { loadCreationPresetGuidance, loadCreationPresetReferences } from "@/lib/creation-presets/guidance";
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
 import sharp from "sharp";
@@ -85,6 +87,10 @@ export async function generateAndStoreAsset(
     // is the crop. It was written next to the object for exactly this replay.
     return stored;
   }
+  const presetGuidance = await loadCreationPresetGuidance(stickerId);
+  const visualReferences = await withPresetArtworkReferences(params.references, await loadCreationPresetReferences(stickerId));
+  params = { ...params, references: visualReferences.references,
+    prompt: [params.prompt, presetGuidance, visualReferences.note].filter(Boolean).join("\n\n") };
   await reportTurnNote(job, imageNote(params));
   const generated = await traceSpan("generateImage", trace, () => params.concept
     ? provider.generateConceptImage({ prompt: params.prompt, references: params.references, purpose: params.conceptPurpose })
@@ -456,9 +462,9 @@ export async function generateAndStoreVideoAsset(
     const { url } = await objectStore.signedGet(backdropKey, undefined, 900);
 
     await reportTurnNote(job, "Filming the clip");
-    const generated = await traceSpan("generateVideo", trace, () => provider.generateStickerVideo({
+    const generated = await traceSpan("generateVideo", trace, async () => provider.generateStickerVideo({
       imageUrl: url,
-      motion: video.motion,
+      motion: [video.motion, await loadCreationPresetGuidance(stickerId)].filter(Boolean).join("\n\n"),
       durationSeconds: video.durationSeconds,
       keyColor: video.keyColor,
     })).catch((error: unknown) => {

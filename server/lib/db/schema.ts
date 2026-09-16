@@ -1,3 +1,4 @@
+import type { CreationPresetSnapshot } from "@/lib/contracts/creation-presets";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -117,6 +118,7 @@ export const stickers = pgTable("stickers", {
    * once when the project was created, and a revision two turns later still has to honour it.
    * Animated projects only — a still has no clips to switch between.
    */
+  creationPresets: jsonb("creation_presets").$type<CreationPresetSnapshot>(),
   controllable: boolean("controllable").notNull().default(false),
   posePreset: text("pose_preset", { enum: ["low", "medium", "high", "ultra"] }),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),

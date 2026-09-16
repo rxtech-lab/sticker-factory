@@ -35,6 +35,11 @@ struct PackComposerView: View {
     var body: some View {
         Form {
             Section {
+                TutorialButton(chapter: .newPack, title: TutorialCopy.text("How to create a pack"), onAction: { action in
+                    if action == .newPack { return true }; return false
+                })
+            }
+            Section {
                 TextField("Name", text: $title)
                     .accessibilityIdentifier("pack-title-field")
                 TextField("Description", text: $summary, axis: .vertical)

@@ -1,6 +1,8 @@
+import { creationPresetReferences } from "@/lib/creation-presets/references";
 // The edit turn: the agent loop that revises an existing sticker, drawing only what the edit
 // it chose actually needs.
 
+import { creationPresetGuidance } from "@/lib/creation-presets/selection";
 import { and, eq } from "drizzle-orm";
 import { chromaKeyForArtwork } from "@/lib/ai/chroma-key";
 import { aspectLockedScale, applyStickerOperationsV1, type StickerDocument, type StickerLayerV1, type StickerOperationV1 } from "@/lib/contracts/sticker";
@@ -407,13 +409,15 @@ export async function executeEditTurn(
     result = { revision: finalized.revision, finalized: true };
   } else {
     result = await getAiProvider().editSticker({
+      presetGuidance: creationPresetGuidance(sticker.creationPresets),
+      presetReferences: await creationPresetReferences(sticker.creationPresets),
       document: base,
       instruction,
       history,
       targetLayerId: options.targetLayerId,
       imagePlacement: options.imagePlacement,
       attachmentCount: options.references.length,
-      references: options.attachedImages,
+      references: options.references,
     }, session);
   }
 
@@ -425,7 +429,7 @@ export async function executeEditTurn(
   // the turn: nothing was lost, and the user is told why rather than shown a red error.
   if (changes === 0) {
     await finishToolCall(job, toolCallId);
-    const message = await getAiProvider().reply(instruction, history);
+    const message = await getAiProvider().reply(instruction, [history, creationPresetGuidance(sticker.creationPresets)].filter(Boolean).join("\n\n"));
     return turnResult(await insertAssistantMessage(job, message, "text"));
   }
   // The loop can also stop on its step cap, or because finalize_edit itself threw. A candidate the

@@ -61,6 +61,10 @@ struct PlanCard: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 header
+                TutorialButton(chapter: .finish, title: TutorialCopy.text("How plans and confirmation work"), onAction: { action in
+                    if case .sticker(let screen) = action, screen == "plan" { return true }
+                    return false
+                }).font(.footnote)
                 if plan.kind == .animated, record.conceptAssetId != nil {
                     PlanReferencePreview(
                         image: referenceImage,

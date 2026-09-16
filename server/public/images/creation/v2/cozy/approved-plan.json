@@ -1,0 +1,447 @@
+{
+  "kind": "animated",
+  "title": "Cozy Orange Cat — Controllable Sticker",
+  "layers": [
+    {
+      "x": 0.5,
+      "y": 0.5,
+      "name": "Controllable cozy orange cat",
+      "scaleX": 0.9,
+      "scaleY": 0.9,
+      "source": {
+        "face": "The single contiguous oval face region is the cat's head and muzzle area inside the outline, containing both eyes, eyebrows, nose, mouth, whisker roots, and cheek marks; every facial feature stays inside this one stable region and the scarf, cup, paws, chest, tail, and body carry no facial features.",
+        "kind": "sprite",
+        "clips": [
+          {
+            "id": "idle",
+            "label": "Idle",
+            "frames": [
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.2
+              },
+              {
+                "duration": 0.47
+              },
+              {
+                "duration": 0.47
+              }
+            ],
+            "prompt": "Frame-by-frame body action only: the cat remains seated front-facing while its torso gently rises and falls with visible breathing, the scarf and cup make a tiny natural settling motion, and it performs one soft blink before returning to the exact resting pose. Keep the face region position stable; no whole-image transform."
+          },
+          {
+            "id": "wave",
+            "label": "Wave",
+            "frames": [
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.33
+              }
+            ],
+            "prompt": "Frame-by-frame body action only: while staying seated and front-facing, the cat carefully lifts one paw beside its body, gives a friendly side-to-side wave, then lowers it back to the resting pose. Keep the cup supported by the other paw, face region stable, and motion looping cleanly."
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce",
+            "frames": [
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.33
+              }
+            ],
+            "prompt": "Frame-by-frame body action only: the seated cat makes two gentle cheerful vertical bounces by flexing its body and paws, scarf and cup bobbing naturally with the body, then returns to its resting height. Keep the face region visible and stable; no whole-image transform."
+          },
+          {
+            "id": "sway",
+            "label": "Sway",
+            "frames": [
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.33
+              }
+            ],
+            "prompt": "Frame-by-frame body action only: the seated cat slowly sways its torso and scarf left, through center, then right and back toward center in a relaxed cozy rhythm, while the cup stays held securely. Keep the face region front-facing and stable."
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle",
+            "frames": [
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.33
+              }
+            ],
+            "prompt": "Frame-by-frame body action only: the seated cat makes a playful small side-to-side wiggle through its shoulders, scarf, paws, and tail base, with the cup moving subtly but remaining held. Keep the head and stable face region readable and forward-facing; return cleanly to rest."
+          },
+          {
+            "id": "hop",
+            "label": "Hop",
+            "frames": [
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.33
+              }
+            ],
+            "prompt": "Frame-by-frame body action only: the seated cat performs a small buoyant hop, paws and lower body lifting slightly together, scarf and cup following naturally, then lands softly in the original seated pose. Keep the face region visible and stable and do not rotate the whole character."
+          },
+          {
+            "id": "spin",
+            "label": "Spin",
+            "frames": [
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.33
+              }
+            ],
+            "prompt": "Frame-by-frame body action only: the seated cat performs a playful partial body twist through the shoulders, torso, scarf, paws, and tail while keeping its face and gaze forward toward the viewer; twist one way, return through center, and settle back into rest. The face region stays stable and visible; this is not a whole-image rotation."
+          },
+          {
+            "id": "dance",
+            "label": "Dance",
+            "frames": [
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.33
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.33
+              }
+            ],
+            "prompt": "Frame-by-frame body action only: the seated cat performs a compact happy dance with alternating paw lifts, a gentle shoulder bob, a small tail swish, and a soft scarf bounce, then returns to the resting pose. Keep the cup secure, face region forward and stable, and make the loop seamless."
+          }
+        ],
+        "prompt": "A single complete controllable sticker character based directly on the friendly orange cat in the supplied reference artwork. Preserve its exact likeness, identity, orange tabby colors and markings, large expressive eyes, cream muzzle and chest, purple scarf, steaming cup held in both paws, bold cartoon linework, saturated colors, simple shading, and crisp die-cut sticker silhouette. Keep the cat front-facing and centered, with the face unobstructed and the cozy scarf and cup retained across every body pose. Transparent background, no lettering, no scenery, no extra characters, and no unrelated props.",
+        "expressions": [
+          {
+            "id": "neutral",
+            "label": "Neutral",
+            "prompt": "Face alone inside the stable cat face region: calm friendly open eyes, relaxed brows, small closed gentle smile, natural cream muzzle and cheek marks; no body, scarf, cup, or pose."
+          },
+          {
+            "id": "happy",
+            "label": "Happy",
+            "prompt": "Face alone inside the stable cat face region: bright joyful eyes, lifted friendly brows, open delighted smile with a small visible tongue, warm rosy cheek accents; no body, scarf, cup, or pose."
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised",
+            "prompt": "Face alone inside the stable cat face region: widened eyes, raised brows, small round surprised open mouth, subtle lifted cheek accents; no body, scarf, cup, or pose."
+          }
+        ]
+      },
+      "layerId": "catSprite",
+      "animations": [],
+      "rotationDegrees": 0
+    }
+  ],
+  "timing": {
+    "fps": 30,
+    "loop": "loop",
+    "durationSeconds": 2
+  },
+  "summary": "An animated, front-facing controllable sticker of the friendly orange cat from the supplied artwork, preserving its exact identity, colors, scarf, cup, bold cartoon style, and cozy atmosphere. The cat uses the Ultra pose preset with independently combinable selectable body actions and three moods; no lettering or unrelated scenery.",
+  "version": 1,
+  "posePreset": "ultra",
+  "conceptPrompt": "One polished square still image of the finished animated sticker in its resting pose: the friendly orange cat in the supplied reference artwork, preserving the exact recognizable identity, orange tabby colors and markings, large expressive eyes, cream muzzle and chest, purple scarf, and steaming cup held in both paws. Use the supplied cat as the likeness and design source rather than inventing a new cat. Bold Cartoon style with expressive proportions, bold clean dark outlines, saturated orange and purple colors, simple warm shading, and a crisp clean white die-cut sticker edge on a transparent background. Cozy Days atmosphere is expressed only through the cat's comfortable purple scarf, warm steaming drink, and relaxed welcoming presentation; no unrelated scenery and no lettering. Show the complete cat centered and filling most of the square frame, seated front-facing with the face unobstructed and stable, tail visible, cup and scarf readable, in the neutral resting pose. No animation frames, contact sheet, labels, arrows, watermark, or UI.",
+  "configuration": {
+    "controls": [
+      {
+        "id": "pose",
+        "type": "choice",
+        "label": "Pose",
+        "options": [
+          {
+            "id": "idle",
+            "label": "Idle"
+          },
+          {
+            "id": "wave",
+            "label": "Wave"
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce"
+          },
+          {
+            "id": "sway",
+            "label": "Sway"
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle"
+          },
+          {
+            "id": "hop",
+            "label": "Hop"
+          },
+          {
+            "id": "spin",
+            "label": "Spin"
+          },
+          {
+            "id": "dance",
+            "label": "Dance"
+          }
+        ],
+        "defaultValue": "idle"
+      },
+      {
+        "id": "mood",
+        "type": "choice",
+        "label": "Mood",
+        "options": [
+          {
+            "id": "neutral",
+            "label": "Neutral"
+          },
+          {
+            "id": "happy",
+            "label": "Happy"
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised"
+          }
+        ],
+        "defaultValue": "neutral"
+      }
+    ],
+    "variants": [
+      {
+        "id": "pose_idle",
+        "layers": [
+          {
+            "clip": "idle",
+            "layerId": "catSprite"
+          }
+        ],
+        "selections": {
+          "pose": "idle"
+        }
+      },
+      {
+        "id": "pose_wave",
+        "layers": [
+          {
+            "clip": "wave",
+            "layerId": "catSprite"
+          }
+        ],
+        "selections": {
+          "pose": "wave"
+        }
+      },
+      {
+        "id": "pose_bounce",
+        "layers": [
+          {
+            "clip": "bounce",
+            "layerId": "catSprite"
+          }
+        ],
+        "selections": {
+          "pose": "bounce"
+        }
+      },
+      {
+        "id": "pose_sway",
+        "layers": [
+          {
+            "clip": "sway",
+            "layerId": "catSprite"
+          }
+        ],
+        "selections": {
+          "pose": "sway"
+        }
+      },
+      {
+        "id": "pose_wiggle",
+        "layers": [
+          {
+            "clip": "wiggle",
+            "layerId": "catSprite"
+          }
+        ],
+        "selections": {
+          "pose": "wiggle"
+        }
+      },
+      {
+        "id": "pose_hop",
+        "layers": [
+          {
+            "clip": "hop",
+            "layerId": "catSprite"
+          }
+        ],
+        "selections": {
+          "pose": "hop"
+        }
+      },
+      {
+        "id": "pose_spin",
+        "layers": [
+          {
+            "clip": "spin",
+            "layerId": "catSprite"
+          }
+        ],
+        "selections": {
+          "pose": "spin"
+        }
+      },
+      {
+        "id": "pose_dance",
+        "layers": [
+          {
+            "clip": "dance",
+            "layerId": "catSprite"
+          }
+        ],
+        "selections": {
+          "pose": "dance"
+        }
+      },
+      {
+        "id": "mood_neutral",
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral"
+        }
+      },
+      {
+        "id": "mood_happy",
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy"
+        }
+      },
+      {
+        "id": "mood_surprised",
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised"
+        }
+      }
+    ]
+  }
+}

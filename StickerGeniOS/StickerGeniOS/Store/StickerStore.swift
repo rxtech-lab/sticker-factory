@@ -365,13 +365,14 @@ final class StickerStore {
         prompt: String,
         controllable: Bool = false,
         posePreset: PosePreset? = nil,
-        references: [PendingMediaAttachment]
+        references: [PendingMediaAttachment],
+        presets: CreationPresetSubmission? = nil
     ) async throws -> Sticker {
         return try await AppTelemetry.measure(.createSticker) {
             let assetIDs = try await upload(references, stickerID: nil, kind: .reference)
             let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
             let response = try await api.createSticker(
-                .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs,
+                .init(presets: presets, title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs,
                       controllable: controllable, posePreset: controllable ? posePreset : nil),
                 idempotencyKey: UUID().uuidString
             )

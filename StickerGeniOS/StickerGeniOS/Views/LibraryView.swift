@@ -55,6 +55,8 @@ struct LibraryView: View {
     /// Defaulted so previews and tests keep working; an unconfigured store shows no chip.
     @Bindable var subscription: SubscriptionStore = .init()
     var defersErrors = false
+    @Environment(\.tutorialCoordinator) private var tutorials
+    @State private var tutorialCreationMode: TutorialAction?
     @State private var filter: LibraryFilter = .all
     @State private var searchText = ""
     @State private var showingCreation = false
@@ -358,6 +360,16 @@ struct LibraryView: View {
                 .accessibilityIdentifier("library-filter-menu")
             }
         }
+        .onChange(of: tutorials?.creationRequest?.id, initial: true) { _, _ in
+            guard let request = tutorials?.creationRequest else { return }
+            tutorialCreationMode = request.action; tutorials?.creationRequest = nil; showingCreation = true
+        }
+        .safeAreaInset(edge: .top) {
+            if let notice = tutorials?.selectionNotice {
+                HStack { Text(notice).font(.callout); Button(TutorialCopy.text("Close")) { tutorials?.selectionNotice = nil } }
+                    .padding(12).background(AppColors.lime)
+            }
+        }
         .sheet(isPresented: $showingHomeShareSheet) {
             HomeShareSheet(items: [StickerShareRoute.homeURL])
         }
@@ -366,7 +378,7 @@ struct LibraryView: View {
                 CreateStickerView(store: store, onCreated: { sticker in
                     showingCreation = false
                     openedStickerID = sticker.id
-                })
+                }, tutorialMode: tutorialCreationMode)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Close") {

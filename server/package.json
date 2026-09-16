@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "bun run tutorial:compile && next dev",
+    "build": "bun run tutorial:compile && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -19,15 +19,20 @@
     "cleanup:uploads": "bun --env-file=.env scripts/cleanup-stale-uploads.ts",
     "cleanup:retry": "bun --env-file=.env scripts/retry-failed-cleanups.ts",
     "dev:e2e": "bun scripts/prepare-e2e.ts && next dev -p 3105",
-    "workflow:inspect": "workflow inspect runs"
+    "workflow:inspect": "workflow inspect runs",
+    "tutorial:compile": "bun scripts/compile-tutorials.ts"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.62",
     "@apple/app-store-server-library": "^3.1.0",
     "@aws-sdk/client-s3": "^3.1116.0",
     "@aws-sdk/s3-request-presigner": "^3.1116.0",
+    "@mdx-js/loader": "^3.1.1",
+    "@mdx-js/react": "^3.1.1",
     "@neondatabase/serverless": "^1.1.0",
+    "@next/mdx": "16.3.2",
     "@rxtech-lab/authjs-rxlab": "1.6.1",
+    "@types/mdx": "^2.0.14",
     "@vercel/oidc": "3.2.0",
     "ai": "^7.0.77",
     "drizzle-orm": "^0.45.2",
@@ -41,7 +46,8 @@
     "vercel": "^59.10.0",
     "workflow": "^4.8.4",
     "ws": "^8.21.3",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@mdx-js/mdx": "^3.1.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
