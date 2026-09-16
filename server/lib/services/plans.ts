@@ -1,3 +1,4 @@
+import { loadPlanBase } from "./plan-base";
 import { currentBillingEnvironment } from "@/lib/subscription/client";
 import { and, desc, eq, inArray, isNotNull, isNull, max, ne } from "drizzle-orm";
 import { ZodError } from "zod";
@@ -198,6 +199,7 @@ export async function editPlan(
         : error instanceof Error ? error.message : String(error);
       throw new ApiError(422, "PLAN_EDIT_INVALID", reason);
     }
+    await loadPlanBase(tx, ownerId, stickerId, next);
     if (JSON.stringify(next) === JSON.stringify(before)) {
       // Nothing actually changed — saving a version identical to the one above it would only make
       // the picker harder to read.
@@ -352,6 +354,7 @@ export async function createPlan(
   },
 ): Promise<CreatePlanResult> {
   const plan = PlanV1Schema.parse(input.plan);
+  await loadPlanBase(db, input.ownerId, input.stickerId, plan);
   const planId = input.planId ?? crypto.randomUUID();
   const now = new Date();
 
@@ -428,6 +431,7 @@ export async function updatePlan(
   input: { ownerId: string; stickerId: string; planId: string; plan: PlanV1 },
 ): Promise<{ planId: string; revision: number }> {
   const plan = PlanV1Schema.parse(input.plan);
+  await loadPlanBase(db, input.ownerId, input.stickerId, plan);
   const row = await loadPlan(db, input.ownerId, input.stickerId, input.planId);
   if (!isEditablePlanState(row.state)) {
     throw new ApiError(409, "PLAN_NOT_EDITABLE", `This plan is ${row.state} and can no longer be edited`);
@@ -483,6 +487,7 @@ export async function confirmPlan(
   ownerId: string,
   stickerId: string,
   planId: string,
+  clientVersion = 6,
 ) {
   const sticker = await db.select().from(stickers).where(and(
     eq(stickers.id, stickerId),
@@ -500,6 +505,8 @@ export async function confirmPlan(
   }
 
   const plan = PlanV1Schema.parse(row.planJson);
+  if (plan.baseRevisionId && clientVersion < 6) throw new ApiError(409, "STICKER_CLIENT_UPDATE_REQUIRED", "Update the app before confirming this extension plan");
+  await loadPlanBase(db, ownerId, stickerId, plan);
   if (plan.kind !== sticker.kind) {
     throw new ApiError(422, "PLAN_KIND_MISMATCH", `This plan builds a ${plan.kind} sticker but the project is ${sticker.kind}`);
   }
@@ -572,6 +579,7 @@ export async function confirmPlan(
         ownerId,
         role: "user",
         kind: "text",
+        baseRevisionId: plan.baseRevisionId,
         content: generations > 0
           ? `Build this plan: ${plan.layers.length} layers, ${generations} to generate.`
           : `Build this plan: ${plan.layers.length} layers.`,

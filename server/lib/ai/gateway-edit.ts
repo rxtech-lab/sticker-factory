@@ -3,12 +3,13 @@
 
 import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { gateway } from "@ai-sdk/gateway";
-import { generateText, hasToolCall, stepCountIs, tool } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { MAX_LAYER_INDEX, type StickerOperationV1 } from "@/lib/contracts/sticker";
+import { MAX_REVIEWED_STATES } from "@/lib/contracts/configuration";
 import { ApiError } from "@/lib/http/errors";
 import { layoutDiagnostics } from "@/lib/layout/composition";
 import { EditOperationsSchema, describeToolError, isTurnAbort, summarizeDocument } from "./gateway-contracts";
@@ -26,6 +27,14 @@ export async function editSticker(
   let fatal: unknown;
   const viewable = await viewableReferences(input.references);
 
+  const toolError = (error: unknown): never => {
+    if (isTurnAbort(error)) {
+      fatal = error.reason ?? error;
+      throw new Error("This edit turn has been stopped. Do not call any more tools.");
+    }
+    throw new Error(describeToolError(error));
+  };
+
   const guard = async (run: () => Promise<EditDraftState>) => {
     try {
       const landed = await run();
@@ -34,21 +43,24 @@ export async function editSticker(
         revision: landed.revision,
         sticker: summarizeDocument(landed.document),
         diagnostics: layoutDiagnostics(landed.document),
+        pendingReviewSelections: landed.pendingReviewSelections,
       };
     } catch (error) {
-      if (isTurnAbort(error)) {
-        fatal = error.reason ?? error;
-        throw new Error(
-          "This edit turn has been stopped. Do not call any more tools.",
-        );
-      }
-      throw new Error(describeToolError(error));
+      return toolError(error);
     }
   };
 
   const tools = {
     ...createWebTools(),
-    view_sticker: viewStickerTool(session, {
+    view_sticker: viewStickerTool({
+      renderSticker: async (values) => {
+        try {
+          return await session.renderSticker(values);
+        } catch (error) {
+          return toolError(error);
+        }
+      },
+    }, {
       animated: input.document?.kind === "animated",
     }),
     edit_layers: tool({
@@ -56,6 +68,15 @@ export async function editSticker(
         "Change the layer stack: this is how layers are added, removed, reordered, renamed, and",
         "moved. It draws nothing and costs nothing, so it is the right tool for every request that",
         "does not need new artwork.",
+        "updateConfiguration changes controls using changes.upsertControls, removeControlIds,",
+        "upsertVariants, and removeVariantIds. Omitted definitions survive. An upsert replaces the",
+        "whole definition with that id: preserve other bindings when extending an existing variant.",
+        "Add a layer and its controls in one call. Variant layer patches can bind text (native text",
+        "layers only), hidden, animations, source, clip, or expression. Every choice family must",
+        "cover every option and bind the same properties. For captions linked to pose AND mood,",
+        "use a complete combined table for the caption while keeping the sprite's own bindings.",
+        "For a caption selector create a choice control with text variants. For a visibility",
+        "switch use a toggle with layerIds. Keep all existing control and option ids.",
         "addLayer adds a text, shape, or particle layer — send the whole layer object.",
         "Use text layers for app-rendered typography. Requests for cartoon or illustrated lettering",
         "belong to add_image_layer, which generates the lettering artwork.",
@@ -177,8 +198,9 @@ export async function editSticker(
       : {}),
     finalize_edit: tool({
       description: [
-        "Finish and show the edited sticker to the user. Call this once, when the sticker matches",
+        "Finish and show the edited sticker to the user. Call this when the sticker matches",
         "what they asked for. Do not call it before you have actually changed something.",
+        "If it reports missing reviews, inspect those states with view_sticker and then call it again.",
       ].join(" "),
       inputSchema: z.object({}).strict(),
       execute: async () => {
@@ -199,6 +221,13 @@ export async function editSticker(
       "You change an existing sticker. It is a stack of layers, and you own all of it: you can",
       "redraw artwork, draw new artwork, and add, remove, reorder, rename, restyle, and move any",
       "layer of any type. Finish by calling finalize_edit.",
+      "Requests to change controls MUST change configuration using updateConfiguration; changing",
+      "layer animations alone does not make text change with mood or pose. Inspect pendingReviewSelections",
+      "using view_sticker before finalizing; omitted controlValues advances to the next pending state.",
+      "Finish layout adjustments first, then review every remaining selection. Edits can invalidate",
+      "earlier previews. Use the pendingReviewSelections in each tool result, not the count of past calls.",
+      "Never claim a caption switches if every option still shows identical text or artwork.",
+      "New sprite characters or new illustrated artwork variants need an extension plan, not invented assets.",
       "Change only what the user asked for. Everything you do not touch stays exactly as drawn,",
       "which is the whole reason this is an edit and not a redraw — so never remove or redraw a",
       "layer just to rebuild it the way it already was.",
@@ -287,11 +316,12 @@ export async function editSticker(
     // the context that must not be forgotten cheaply — hence the wide retention window rather than
     // the SDK example's three messages.
     prepareStep: compactingPrepareStep({ loop: "edit" }),
-    // The model ends the turn by calling finalize_edit. The step cap is the backstop for a model
-    // that keeps polishing forever; the caller ships whatever landed when it trips.
+    // A rejected finalize is recoverable inside this same draft. Stopping on the call itself
+    // discarded review progress and caused the workflow to replay the entire edit. Leave room
+    // beyond the original editing budget for every required control-state review.
     stopWhen: [
-      hasToolCall("finalize_edit"),
-      stepCountIs(14),
+      () => state?.finalized === true,
+      stepCountIs(14 + MAX_REVIEWED_STATES),
       () => fatal !== undefined,
     ],
     maxRetries: 2,

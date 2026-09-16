@@ -62,7 +62,12 @@ nonisolated struct StickerControlSettings: Codable, Hashable, Sendable {
         var result = self
         guard let configuration = document.configuration else { return .init() }
         let signatures = Self.signatures(configuration)
-        let compatible = values.filter { self.signatures[$0.key] == nil || self.signatures[$0.key] == signatures[$0.key] }
+        // Binding targets can grow without changing what an option means. A stable id and kind
+        // preserve the user's pose; normalization removes options that no longer exist.
+        let compatible = values.filter { id, _ in
+            guard let old = self.signatures[id], let current = signatures[id] else { return self.signatures[id] == nil }
+            return old.split(separator: ":").first == current.split(separator: ":").first
+        }
         result.values = configuration.normalizedValues(compatible)
         result.signatures = signatures
         result.speed = speed.isFinite ? min(2, max(0.25, speed)) : 1

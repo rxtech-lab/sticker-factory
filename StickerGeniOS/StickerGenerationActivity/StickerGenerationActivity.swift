@@ -147,10 +147,6 @@ struct GenerationActivityCard: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if !state.isFinished && state.unitProgress == nil {
-                ProgressView().tint(.black).padding(.top, 12)
-                    .accessibilityLabel("Generation in progress")
-            }
         }
         .foregroundStyle(.black)
         .padding(16)

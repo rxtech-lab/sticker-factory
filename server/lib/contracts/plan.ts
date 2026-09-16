@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PosePresetSchema, POSE_COUNTS, type PosePreset } from "./pose-preset";
-import { PlanConfigurationSchema, configurationIssues, configurationKeepingLayers } from "./configuration";
+import { PlanConfigurationSchema, PlanConfigurationChangesSchema, configurationIssues, configurationKeepingLayers } from "./configuration";
 import {
   compileLayerAnimations,
   type AnimationTiming,
@@ -223,6 +223,8 @@ export const PlanTimingV1Schema = z.object({
  * generates images.
  */
 export const PlanV1Schema = z.object({
+  baseRevisionId: z.string().uuid().optional(),
+  configurationChanges: PlanConfigurationChangesSchema.optional(),
   posePreset: PosePresetSchema.optional(),
   configuration: PlanConfigurationSchema.optional(),
   version: z.literal(1).default(1),
@@ -232,7 +234,7 @@ export const PlanV1Schema = z.object({
   kind: z.enum(["static", "animated"]),
   timing: PlanTimingV1Schema.default({ durationSeconds: 2, fps: 30, loop: "loop" }),
   /** Twelve rather than eight: a two-character scene spends two of them before any scenery. */
-  layers: z.array(PlanLayerV1Schema).min(1).max(12),
+  layers: z.array(PlanLayerV1Schema).max(12),
   /**
    * How to draw the finished static reference the user approves before animated parts are made.
    *
@@ -242,7 +244,11 @@ export const PlanV1Schema = z.object({
    */
   conceptPrompt: z.string().trim().min(1).max(2_000).optional(),
 }).strict().superRefine((plan, context) => {
-  if (plan.posePreset) {
+  if (!plan.baseRevisionId && !plan.layers.length) context.addIssue({ code: "custom", message: "A new plan needs layers" });
+  if (plan.configurationChanges && !plan.baseRevisionId) context.addIssue({ code: "custom", message: "Configuration changes need a base revision" });
+  if (plan.baseRevisionId && plan.configuration) context.addIssue({ code: "custom", message: "Extension plans use configurationChanges; omitted controls are preserved" });
+  if (plan.baseRevisionId && !plan.layers.length && !plan.configurationChanges) context.addIssue({ code: "custom", message: "An extension needs layer or control changes" });
+  if (plan.posePreset && !plan.baseRevisionId) {
     try { assertPlanPosePreset(plan, plan.posePreset); }
     catch (error) { context.addIssue({ code: "custom", path: ["posePreset"], message: (error as Error).message }); }
   }
@@ -339,6 +345,14 @@ export type PlanLayerSourceV1 = z.infer<typeof PlanLayerSourceV1Schema>;
 export type PlanLayerV1 = z.infer<typeof PlanLayerV1Schema>;
 export type PlanV1 = z.infer<typeof PlanV1Schema>;
 
+/** Only authored definitions: extension builds must never regenerate the base configuration. */
+export function plannedConfiguration(plan: Pick<PlanV1, "configuration" | "configurationChanges">) {
+  return plan.configuration ?? (plan.configurationChanges ? {
+    controls: plan.configurationChanges.upsertControls ?? [],
+    variants: plan.configurationChanges.upsertVariants ?? [],
+  } : undefined);
+}
+
 export const PlanStates = ["draft", "finalized", "confirmed", "superseded", "cancelled"] as const;
 export type PlanState = (typeof PlanStates)[number];
 
@@ -423,8 +437,8 @@ export function compilePlanAnimations(plan: Pick<PlanV1, "kind" | "timing" | "la
  * A video layer counts: its clip is animated from a still that is separated from the approved
  * reference exactly the way a generate layer's artwork is, so it pays for that image first.
  */
-export function planGenerationCount(plan: Pick<PlanV1, "layers" | "configuration">): number {
-  const alternatives = plan.configuration?.variants.flatMap((variant) => variant.layers).filter((layer) => layer.source?.kind === "generate" || layer.source?.kind === "frames").length ?? 0;
+export function planGenerationCount(plan: Pick<PlanV1, "layers" | "configuration" | "configurationChanges" | "baseRevisionId">): number {
+  const alternatives = plannedConfiguration(plan)?.variants.flatMap((variant) => variant.layers).filter((layer) => layer.source?.kind === "generate" || layer.source?.kind === "frames").length ?? 0;
   const stills = plan.layers.filter((layer) => layer.source.kind === "generate" || layer.source.kind === "video" || layer.source.kind === "sprite").length;
   return alternatives + stills + planSpriteSheetCount(plan);
 }
@@ -444,11 +458,11 @@ export function planVideoCount(plan: Pick<PlanV1, "layers">): number {
 }
 
 /** Ensures the selected preset produces real, selectable clips on every character. */
-export function assertPlanPosePreset(plan: Pick<PlanV1, "layers" | "configuration">, preset: PosePreset): void {
+export function assertPlanPosePreset(plan: Pick<PlanV1, "layers" | "configuration" | "configurationChanges" | "baseRevisionId">, preset: PosePreset): void {
   assertControllablePlan(plan);
   const count = POSE_COUNTS[preset];
   for (const { layer, source } of planSpriteLayers(plan)) {
-    const selectable = new Set((plan.configuration?.variants ?? []).flatMap((variant) =>
+    const selectable = new Set((plannedConfiguration(plan)?.variants ?? []).flatMap((variant) =>
       variant.layers.filter((patch) => patch.layerId === layer.layerId && patch.clip !== undefined).map((patch) => patch.clip)));
     if (source.clips.length !== count || source.clips.some((clip) => !selectable.has(clip.id))) {
       throw new Error(`The ${preset} pose preset requires exactly ${count} distinct body clips per character, including idle. Give ${layer.name} matching pose options and a variant binding for every clip. Keep facial expressions and frame timing separate.`);
@@ -491,9 +505,9 @@ export function assertSpriteFaces(plan: Pick<PlanV1, "layers">): void {
  * The message is the model's repair instruction: it is returned from the `create_plan` tool, and the
  * planner is told to fix what the error describes with `update_plan`.
  */
-export function assertControllablePlan(plan: Pick<PlanV1, "layers" | "configuration">): void {
+export function assertControllablePlan(plan: Pick<PlanV1, "layers" | "configuration" | "configurationChanges" | "baseRevisionId">): void {
   const sprites = planSpriteLayers(plan);
-  if (sprites.length === 0) {
+  if (sprites.length === 0 && !plan.baseRevisionId) {
     throw new Error(
       "This project is controllable: every character needs a layer with a sprite source — a still, "
       + "named body clips, and a strip of face expressions — so the user can switch mood and pose. "
@@ -502,7 +516,7 @@ export function assertControllablePlan(plan: Pick<PlanV1, "layers" | "configurat
   }
   // Every sprite, not merely some sprite: a second character the user can see but cannot pose is
   // the more confusing half-built outcome, and it is the one a plan drifts into.
-  const bound = new Set((plan.configuration?.variants ?? []).flatMap((variant) => variant.layers.flatMap((patch) => (
+  const bound = new Set((plannedConfiguration(plan)?.variants ?? []).flatMap((variant) => variant.layers.flatMap((patch) => (
     patch.clip !== undefined || patch.expression !== undefined ? [patch.layerId] : []
   ))));
   // All of them at once, not the first: a three-character plan that binds only the cat would
@@ -560,8 +574,9 @@ export function assertPlanAllowedForJob(plan: Pick<PlanV1, "layers">, job: { qui
  * reference that was deliberately never made: `confirmPlan`, `planReferencePrompt`, and
  * `executePlanBuildTurn`.
  */
-export function planRequiresConcept(plan: Pick<PlanV1, "kind" | "layers" | "configuration">): boolean {
+export function planRequiresConcept(plan: Pick<PlanV1, "kind" | "layers" | "configuration" | "configurationChanges" | "baseRevisionId">): boolean {
   if (plan.kind !== "animated") return false;
+  if (plan.baseRevisionId) return planGenerationCount(plan) > 0;
   const capturesSubject = plan.layers.some((layer) => layer.source.kind === "sequence");
   return !capturesSubject || planGenerationCount(plan) > 0;
 }
@@ -583,7 +598,7 @@ export function planRequiresConcept(plan: Pick<PlanV1, "kind" | "layers" | "conf
  * image, so it inherits that image's look the same way a generate layer does.
  */
 export function assertAnimatedPlanUsesReferenceBackedArtwork(plan: PlanV1): void {
-  if (plan.kind !== "animated") return;
+  if (plan.kind !== "animated" || plan.baseRevisionId) return;
   // A capture-led plan has no generated concept to diverge from — the footage *is* the reference,
   // and the build path skips concept rendering for exactly that reason. With nothing to match, this
   // rule has no work to do, and enforcing it anyway would forbid the sparkles and captions that are
@@ -624,7 +639,7 @@ export function reusableAssetIds(document?: StickerDocument): string[] {
  * the user confirmed it.
  */
 export function assertPlanReuseIsResolvable(
-  plan: Pick<PlanV1, "layers" | "configuration">,
+  plan: Pick<PlanV1, "layers" | "configuration" | "configurationChanges" | "baseRevisionId">,
   document?: StickerDocument,
   /**
    * Capture atlases attached to the message being planned against.
@@ -640,7 +655,7 @@ export function assertPlanReuseIsResolvable(
     (layer.source.kind === "existing" && !available.has(layer.source.assetId))
     || (layer.source.kind === "sequence" && !resolvableCaptures.has(layer.source.assetId))
   ));
-  for (const variant of plan.configuration?.variants ?? []) for (const patch of variant.layers) {
+  for (const variant of plannedConfiguration(plan)?.variants ?? []) for (const patch of variant.layers) {
     if ((patch.source?.kind === "existing" || patch.source?.kind === "sequence") && !available.has(patch.source.assetId)) throw new Error(`Variant ${variant.id} reuses unavailable artwork ${patch.source.assetId}`);
   }
   if (unknown.length === 0) return;

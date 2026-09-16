@@ -331,7 +331,16 @@ nonisolated struct PlanPoseUpdate: Codable, Sendable {
     var edit: PlanEdit?
 }
 
+nonisolated struct PlanConfigurationChanges: Codable, Hashable, Sendable {
+    var upsertControls: [AnimatedControl]?
+    var removeControlIds: [String]?
+    var upsertVariants: [AnimatedVariant]?
+    var removeVariantIds: [String]?
+}
+
 nonisolated struct Plan: Codable, Hashable, Sendable {
+    var baseRevisionId: String?
+    var configurationChanges: PlanConfigurationChanges?
     var version: Int
     var title: String
     var summary: String

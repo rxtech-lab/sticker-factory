@@ -526,6 +526,7 @@ export async function planSticker(
             + " and design the sticker around that movement."
           : ""),
       ),
+      input.baseRevisionId ? `To extend this sticker, set baseRevisionId to ${input.baseRevisionId}. List ONLY added or explicitly replaced layers. Unlisted layers and their complete artwork and motion survive unchanged. Use configurationChanges with upsertControls, upsertVariants, removeControlIds and removeVariantIds; do not send configuration. Preserve existing ids and untouched bindings in upserted variant rows. New captions can bind text or hidden; artwork choices use generate sources. Captions alone can have an empty layers list. Do not repeat existing sprites to preserve them: that would pay to redraw them. Native text overlays are allowed in extension plans. Keep the original timing unless the additions require more time.` : "",
       input.document
         ? `Current StickerDocument: ${JSON.stringify(input.document)}`
         : "There is no current sticker document.",
@@ -552,11 +553,9 @@ export async function planSticker(
               + `frameCount ${asset.frameCount}, frameRate ${asset.frameRate}`)
             .join("\n")}`
         : "",
-      // A sprite cannot be reused with `existing`, so a revision has to plan it again; naming the ids
-      // it already has is what keeps the user's saved control choices valid across the re-plan.
+      // Extension plans retain complete sprites. Only explicit replacements need their declarations.
       (input.document?.layers ?? []).some((layer) => layer.type === "sprite")
-        ? "The current sticker has controllable characters. When you keep one, plan it as a sprite "
-          + "again with the same layerId, clip ids, and expression ids, adding or removing only what "
+        ? "The current sticker has controllable characters. Keep unchanged characters out of an extension plan's layers. For a character explicitly being replaced, preserve its layerId, clip ids and expression ids, changing only what "
           + `the user asked for:\n${(input.document?.layers ?? []).flatMap((layer) => (layer.type === "sprite"
             ? [`- layer ${layer.id}: clips ${layer.clips.map((clip) => clip.id).join(", ")}; expressions ${layer.expressions.tiles.map((tile) => tile.id).join(", ")}`]
             : [])).join("\n")}`

@@ -106,8 +106,16 @@ public struct AnimatedVariantLayer: Codable, Hashable, Sendable {
     public var clip: String?
     /// For a sprite layer: which face is drawn into every frame's slot. A mood control binds this.
     public var expression: String?
-    public init(layerId: String, source: AnimatedVariantSource? = nil, animations: [AnimationSpec]? = nil, clip: String? = nil, expression: String? = nil) {
-        self.layerId = layerId; self.source = source; self.animations = animations; self.clip = clip; self.expression = expression
+    public var text: String?
+    public var hidden: Bool?
+    public init(layerId: String, source: AnimatedVariantSource? = nil, animations: [AnimationSpec]? = nil, clip: String? = nil, expression: String? = nil, text: String? = nil, hidden: Bool? = nil) {
+        self.layerId = layerId
+        self.source = source
+        self.animations = animations
+        self.clip = clip
+        self.expression = expression
+        self.text = text
+        self.hidden = hidden
     }
 }
 
@@ -118,6 +126,13 @@ public struct AnimatedVariant: Codable, Hashable, Sendable, Identifiable {
     public init(id: String, selections: [String: String], layers: [AnimatedVariantLayer]) {
         self.id = id; self.selections = selections; self.layers = layers
     }
+}
+
+/// Throws `AnimatedConfigurationError.invalid` when a configuration check fails.
+///
+/// File-scoped so `validated` and the helper it delegates to raise identical errors.
+private func require(_ condition: Bool, _ message: String) throws {
+    if !condition { throw AnimatedConfigurationError.invalid(message) }
 }
 
 public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
@@ -248,9 +263,6 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
     }
 
     public func validated(layerIds: Set<String>, planned: Bool = false) throws {
-        func require(_ condition: Bool, _ message: String) throws {
-            if !condition { throw AnimatedConfigurationError.invalid(message) }
-        }
         func validID(_ id: String) -> Bool { id.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil }
         // Sixteen controls and a hundred and twenty-eight variants: a cast of four characters needs
         // a pose and a mood each before it has spent anything on speed or on hiding an accessory.
@@ -309,49 +321,7 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
                 used.insert(axis); expected *= control.options?.count ?? 0
             }
             let family = axes.joined(separator: "|")
-            var targets = Set<String>()
-            for patch in variant.layers {
-                try require(layerIds.contains(patch.layerId), "Missing configurable layer \(patch.layerId)")
-                let bound = patch.source != nil || patch.animations != nil || patch.clip != nil || patch.expression != nil
-                try require(bound, "Empty variant layer")
-                // Clip and expression are separate properties on purpose: that is what lets a mood
-                // control and a pose control act on one character without a combined table.
-                if patch.clip != nil {
-                    try require(targets.insert("\(patch.layerId).clip").inserted, "Duplicate clip binding")
-                }
-                if patch.expression != nil {
-                    try require(targets.insert("\(patch.layerId).expression").inserted, "Duplicate expression binding")
-                }
-                if let source = patch.source {
-                    try require(targets.insert("\(patch.layerId).source").inserted, "Duplicate artwork binding")
-                    if planned {
-                        let plannable: [AnimatedVariantSource.Kind] = [.base, .generate, .existing, .frames, .sequence]
-                        try require(plannable.contains(source.kind), "Invalid planned variant source")
-                    } else {
-                        try require([.base, .image, .sequence].contains(source.kind) && source.prompt == nil, "Unbuilt variant artwork")
-                    }
-                    if [.image, .sequence, .existing].contains(source.kind) {
-                        try require(source.assetId.flatMap(UUID.init(uuidString:)) != nil, "Invalid artwork id")
-                    } else if source.kind != .base {
-                        let described = source.prompt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                        try require(described && (source.prompt?.count ?? 0) <= 2000, "Describe the variant artwork")
-                    }
-                    if [.sequence, .frames].contains(source.kind) {
-                        guard let columns = source.columns, let rows = source.rows,
-                              let frames = source.frameCount, let rate = source.frameRate else {
-                            throw AnimatedConfigurationError.invalid("Incomplete frame sequence")
-                        }
-                        let grid = (1...8).contains(columns) && (1...8).contains(rows)
-                            && (1...64).contains(frames) && frames <= columns * rows
-                        let rated = rate >= 1 && rate <= (planned ? 30 : 60) && source.playback != nil
-                        try require(grid && rated, "Invalid frame sequence")
-                    }
-                }
-                if let animations = patch.animations {
-                    try require(animations.count <= 12, "Too many animation effects")
-                    try require(targets.insert("\(patch.layerId).animations").inserted, "Duplicate animation binding")
-                }
-            }
+            let targets = try variantTargets(for: variant.layers, layerIds: layerIds, planned: planned)
             for target in targets { try claim(target, "choices:\(family)") }
             var entry = families[family] ?? (expected, [], targets)
             try require(entry.targets == targets, "Every option must bind the same properties")
@@ -374,6 +344,69 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
             preparedStateCount <= Self.maximumPreparedStates,
             "At most \(Self.maximumPreparedStates) states in total can be prepared, and these controls reach \(preparedStateCount)"
         )
+    }
+
+    /// Checks one variant's layer patches and returns the properties they bind.
+    ///
+    /// Split out of `validated` so neither half runs long: this is the per-patch shape check,
+    /// and the set it returns is what the caller compares across a family's variants.
+    private func variantTargets(
+        for layers: [AnimatedVariantLayer],
+        layerIds: Set<String>,
+        planned: Bool
+    ) throws -> Set<String> {
+        var targets = Set<String>()
+        for patch in layers {
+            try require(layerIds.contains(patch.layerId), "Missing configurable layer \(patch.layerId)")
+            let bound = patch.source != nil || patch.animations != nil || patch.clip != nil
+                || patch.expression != nil || patch.text != nil || patch.hidden != nil
+            try require(bound, "Empty variant layer")
+            // Clip and expression are separate properties on purpose: that is what lets a mood
+            // control and a pose control act on one character without a combined table.
+            if patch.clip != nil {
+                try require(targets.insert("\(patch.layerId).clip").inserted, "Duplicate clip binding")
+            }
+            if patch.expression != nil {
+                try require(targets.insert("\(patch.layerId).expression").inserted, "Duplicate expression binding")
+            }
+            if let text = patch.text {
+                try require(!text.isEmpty && text.count <= 160, "Caption must contain 1 to 160 characters")
+                try require(targets.insert("\(patch.layerId).text").inserted, "Duplicate text binding")
+            }
+            if patch.hidden != nil {
+                try require(targets.insert("\(patch.layerId).hidden").inserted, "Duplicate visibility binding")
+            }
+            if let source = patch.source {
+                try require(targets.insert("\(patch.layerId).source").inserted, "Duplicate artwork binding")
+                if planned {
+                    let plannable: [AnimatedVariantSource.Kind] = [.base, .generate, .existing, .frames, .sequence]
+                    try require(plannable.contains(source.kind), "Invalid planned variant source")
+                } else {
+                    try require([.base, .image, .sequence].contains(source.kind) && source.prompt == nil, "Unbuilt variant artwork")
+                }
+                if [.image, .sequence, .existing].contains(source.kind) {
+                    try require(source.assetId.flatMap(UUID.init(uuidString:)) != nil, "Invalid artwork id")
+                } else if source.kind != .base {
+                    let described = source.prompt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                    try require(described && (source.prompt?.count ?? 0) <= 2000, "Describe the variant artwork")
+                }
+                if [.sequence, .frames].contains(source.kind) {
+                    guard let columns = source.columns, let rows = source.rows,
+                          let frames = source.frameCount, let rate = source.frameRate else {
+                        throw AnimatedConfigurationError.invalid("Incomplete frame sequence")
+                    }
+                    let grid = (1...8).contains(columns) && (1...8).contains(rows)
+                        && (1...64).contains(frames) && frames <= columns * rows
+                    let rated = rate >= 1 && rate <= (planned ? 30 : 60) && source.playback != nil
+                    try require(grid && rated, "Invalid frame sequence")
+                }
+            }
+            if let animations = patch.animations {
+                try require(animations.count <= 12, "Too many animation effects")
+                try require(targets.insert("\(patch.layerId).animations").inserted, "Duplicate animation binding")
+            }
+        }
+        return targets
     }
 }
 
@@ -399,6 +432,14 @@ extension AnimatedDocument {
                     throw AnimatedConfigurationError.invalid("Missing configurable layer \(patch.layerId)")
                 }
                 if let source = patch.source { result.layers[index] = try source.applying(to: result.layers[index]) }
+                if let text = patch.text {
+                    guard case .text(var layer) = result.layers[index] else {
+                        throw AnimatedConfigurationError.invalid("Layer \(patch.layerId) is not a text layer")
+                    }
+                    layer.text = text
+                    result.layers[index] = .text(layer)
+                }
+                if let hidden = patch.hidden { result.layers[index].base.hidden = hidden }
                 if let animations = patch.animations {
                     result.layers[index].base.animations = animations
                     result.layers[index].base.animation = try AnimationCompiler.compile(

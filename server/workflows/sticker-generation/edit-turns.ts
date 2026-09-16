@@ -1,11 +1,13 @@
+import { configurationEditReviewSelections, normalizedControlValues, type StickerControlValues } from "@/lib/contracts/configuration";
 import { creationPresetReferences } from "@/lib/creation-presets/references";
 // The edit turn: the agent loop that revises an existing sticker, drawing only what the edit
 // it chose actually needs.
 
 import { creationPresetGuidance } from "@/lib/creation-presets/selection";
 import { and, eq } from "drizzle-orm";
+import { FatalError } from "workflow";
 import { chromaKeyForArtwork } from "@/lib/ai/chroma-key";
-import { aspectLockedScale, applyStickerOperationsV1, type StickerDocument, type StickerLayerV1, type StickerOperationV1 } from "@/lib/contracts/sticker";
+import { aspectLockedScale, applyStickerOperationsV1, resolveStickerConfiguration, type StickerDocument, type StickerLayerV1, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, chatMessages, generationJobs, stickerRevisions, stickers } from "@/lib/db/schema";
 import { getAiProvider, TurnAbort, validateEditOperation, type EditDraftingSession } from "@/lib/ai/gateway";
@@ -17,7 +19,7 @@ import { appendGenerationEvent } from "@/lib/services/events";
 import { createCandidateRevision } from "@/lib/services/stickers";
 import { getObjectStore } from "@/lib/storage/r2";
 import { emptyDocument, generateAndStoreAsset, generateAndStoreVideoAsset, selectImageReferences } from "./asset-generation";
-import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, finishToolCall, insertAssistantMessage, renderWorkingDocument, showStickerThroughTool, toolCallLabeller, turnResult } from "./turn-context";
+import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, finishToolCall, insertAssistantMessage, isAbortError, renderWorkingDocument, showStickerThroughTool, toolCallLabeller, turnResult } from "./turn-context";
 import type { AiTurnResult, StickerToolName } from "./turn-context";
 
 /**
@@ -69,6 +71,18 @@ export async function executeEditTurn(
   let working = base;
   /** How many tool calls have changed the document. Zero at the end means the turn is a no-op. */
   let changes = 0;
+  let configurationRequested = false;
+  let configurationError: unknown;
+  // Keep a review only while that selection still resolves to the exact document inspected.
+  // Changes to unrelated variants and no-op edits need not make the agent start over.
+  const reviewed = new Map<string, string>();
+  const reviewing = new Set<string>();
+  const reviewSelections = () => working.configuration
+    ? configurationEditReviewSelections(base.configuration, working.configuration) : [{}];
+  const pendingReviewSelections = () => reviewSelections().filter((values) =>
+    reviewed.get(JSON.stringify(values)) !== JSON.stringify(resolveStickerConfiguration(working, values)));
+  const draftState = () => ({ revision: changes, document: working,
+    pendingReviewSelections: working.configuration || configurationRequested ? pendingReviewSelections() : [] });
   let generations = 0;
   /** Clips bought this turn. One is the whole budget; see `createVideoLayer` below. */
   let clips = 0;
@@ -106,12 +120,13 @@ export async function executeEditTurn(
       }
       document = clampLayoutOnCanvas(document);
     }
+    if (JSON.stringify(document) === JSON.stringify(working)) return draftState();
     await assertDocumentAssetsOwned(document, job.ownerId, sticker.id).catch(abort);
     working = document;
     changes += 1;
     snapshot += 1;
     await appendGenerationEvent(db, job.id, job.ownerId, "document", { snapshot, document }).catch(abort);
-    return { revision: changes, document };
+    return draftState();
   };
 
   const loadArtwork = async (layer: StickerLayerV1 & { type: "image" }) => {
@@ -366,25 +381,50 @@ export async function executeEditTurn(
         throw error;
       }
     },
-    renderSticker: async () => {
+    renderSticker: async (selected) => {
+      await assertJobStillRunning(job.id).catch(abort);
       const call = await openCall("view_sticker");
+      let reviewKey: string | undefined;
       try {
-        const render = await renderWorkingDocument(working, job.ownerId);
+        if (selected && working.configuration) {
+          const normalized = normalizedControlValues(working.configuration, selected);
+          if (Object.entries(selected).some(([id, value]) => normalized[id] !== value)) throw new Error("Unknown control or invalid selection");
+        }
+        const pending = pendingReviewSelections();
+        const values: StickerControlValues = selected && Object.keys(selected).length > 0
+          ? working.configuration ? normalizedControlValues(working.configuration, selected) : {}
+          : pending.find((values) => !reviewing.has(JSON.stringify([changes, values]))) ?? pending[0] ?? reviewSelections()[0];
+        const renderedRevision = changes;
+        const resolved = resolveStickerConfiguration(working, values);
+        reviewKey = JSON.stringify([renderedRevision, values]);
+        reviewing.add(reviewKey);
+        const preview = await renderWorkingDocument(resolved, job.ownerId);
+        if (changes !== renderedRevision) throw new Error("The sticker changed during this preview. Review the current draft with view_sticker again.");
+        const render = { ...preview, controlValues: values,
+          pendingReviewSelections: draftState().pendingReviewSelections.filter((pending) => JSON.stringify(pending) !== JSON.stringify(values)) };
         await finishToolCall(job, call, "complete", render);
+        if (changes === renderedRevision) reviewed.set(JSON.stringify(values), JSON.stringify(resolved));
+        render.pendingReviewSelections = draftState().pendingReviewSelections;
         return render;
       } catch (error) {
         await finishToolCall(job, call, "failed", error);
         throw error;
+      } finally {
+        if (reviewKey) reviewing.delete(reviewKey);
       }
     },
     applyOperations: async (operations) => {
       const call = await openCall("edit_layers");
+      const editsConfiguration = operations.some((operation) => operation.op === "updateConfiguration");
+      configurationRequested ||= editsConfiguration;
       try {
         for (const operation of operations) validateEditOperation(operation);
         const state = await land(operations);
+        if (editsConfiguration) configurationError = undefined;
         await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
+        if (editsConfiguration) configurationError = error;
         await finishToolCall(job, call, "failed", error);
         throw error;
       }
@@ -392,8 +432,12 @@ export async function executeEditTurn(
     finalizeEdit: async () => {
       const call = await openCall("finalize_edit");
       try {
-        await finishToolCall(job, call, "complete", { revision: changes, document: working });
-        return { revision: changes, document: working };
+        if (configurationError) throw configurationError;
+        if ((working.configuration || configurationRequested) && changes > 0 && pendingReviewSelections().length) {
+          throw new Error(`Review the changed controls with view_sticker before finalizing: ${JSON.stringify(pendingReviewSelections())}`);
+        }
+        await finishToolCall(job, call, "complete", draftState());
+        return draftState();
       } catch (error) {
         await finishToolCall(job, call, "failed", error);
         throw error;
@@ -402,23 +446,25 @@ export async function executeEditTurn(
   };
 
   let result: { revision: number; finalized: boolean } | undefined;
-  if (options.video) {
-    // The chat tool already selected the layer and motion; no second model decision is needed.
-    await session.createVideoLayer(options.video);
+  if (options.video) await session.createVideoLayer(options.video);
+  if (options.video && !working.configuration) {
     const finalized = await session.finalizeEdit();
     result = { revision: finalized.revision, finalized: true };
   } else {
     result = await getAiProvider().editSticker({
       presetGuidance: creationPresetGuidance(sticker.creationPresets),
       presetReferences: await creationPresetReferences(sticker.creationPresets),
-      document: base,
-      instruction,
+      document: working,
+      instruction: options.video ? `${instruction}. The requested clip is already created. Do not generate it again; inspect pending control states with view_sticker and finalize the edit.` : instruction,
       history,
       targetLayerId: options.targetLayerId,
       imagePlacement: options.imagePlacement,
       attachmentCount: options.references.length,
       references: options.references,
-    }, session);
+    }, session).catch((error: unknown) => {
+      if (!isAbortError(error)) throw error;
+      throw new FatalError("The edit took too long to finish. Try the request again.");
+    });
   }
 
   // Before anything below reports on the model, so a turn the user stopped is not also blamed on it.
@@ -427,6 +473,12 @@ export async function executeEditTurn(
   // The model looked at the sticker and changed nothing — because what the user asked for was
   // already true, or because it is not something an edit can do. Answering in words beats failing
   // the turn: nothing was lost, and the user is told why rather than shown a red error.
+  if (configurationError) {
+    throw new FatalError(`The control edit could not be completed: ${configurationError instanceof Error ? configurationError.message : String(configurationError)}`);
+  }
+  if (changes > 0 && (working.configuration || configurationRequested) && !result?.finalized) {
+    throw new FatalError("The control edit was not fully reviewed. Retry the edit before accepting a candidate.");
+  }
   if (changes === 0) {
     await finishToolCall(job, toolCallId);
     const message = await getAiProvider().reply(instruction, [history, creationPresetGuidance(sticker.creationPresets)].filter(Boolean).join("\n\n"));

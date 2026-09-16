@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { planSpriteLayers, type PlanV1 } from "@/lib/contracts/plan";
+import { planSpriteLayers, plannedConfiguration, type PlanV1 } from "@/lib/contracts/plan";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, generationJobs, plans } from "@/lib/db/schema";
 import { derivedAssetId } from "@/lib/services/assets";
@@ -15,7 +15,8 @@ export async function renderPlanAnimationPreview(
   plan: PlanV1,
 ): Promise<void> {
   const characters = planSpriteLayers(plan);
-  if (plan.kind !== "animated" || !plan.configuration || characters.length === 0) return;
+  const configuration = plannedConfiguration(plan);
+  if (plan.kind !== "animated" || !configuration || characters.length === 0) return;
   const db = await getDatabase();
   const row = await db.select().from(plans).where(eq(plans.id, planId)).then(firstRow);
   const concept = row?.conceptAssetId && await db.select().from(assets).where(and(
@@ -40,7 +41,7 @@ export async function renderPlanAnimationPreview(
       motions: source.clips.map((clip) => ({ label: clip.label, motion: clip.prompt })),
       expressions: source.expressions.map((expression) => ({ label: expression.label, appearance: expression.prompt })),
     })),
-    `Available controls: ${JSON.stringify(plan.configuration.controls)}`,
+    `Available controls: ${JSON.stringify(configuration.controls)}`,
   ].join("\n");
   // Keyed on everything the board is drawn from — its own prompt and the reference it redraws the
   // characters out of — rather than on the revision, so a redraft that changes neither reuses the

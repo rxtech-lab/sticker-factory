@@ -23,7 +23,7 @@ import { describeError, traceEvent } from "@/lib/observability/trace";
  *     `{type:'content'}` results through the gateway provider, which base64-encodes a `Uint8Array`
  *     for us; `image-data` is deprecated in this version and `media` belongs to the older V2 spec.
  */
-export function viewStickerTool(session: RenderableSession, options: { animated: boolean }) {
+export function viewStickerTool(session: RenderableSession, options: { animated: boolean; configurable?: boolean }) {
   // Keyed by tool call so two renders in one turn cannot be confused for each other. Entries are
   // dropped as soon as they are read: the message history holds the bytes from then on, and keeping
   // a second copy alive for the length of a turn is pure memory.
@@ -37,6 +37,8 @@ export function viewStickerTool(session: RenderableSession, options: { animated:
         ? "For an animated sticker it returns a contact sheet: several frames sampled across the"
         + " cycle, each captioned with its timestamp, left to right and top to bottom."
         : "For a static sticker it returns a single frame.",
+      "For configurable edits, pass controlValues to inspect a selection, or omit them (or send {}) to inspect the next pending state.",
+      "The result lists pendingReviewSelections. Review these until the list is empty before finalizing.",
       "Call it after a change you are unsure about and before finalizing, and act on what you see:",
       "a layer drifting off-canvas, two layers overlapping, an entrance that has not started by the",
       "frame it should have, artwork that is invisible because something covers it, colours that",
@@ -49,23 +51,25 @@ export function viewStickerTool(session: RenderableSession, options: { animated:
       "do not judge kerning or a few pixels of curvature, and never redraw artwork solely because",
       "an edge looks slightly different here.",
     ].join(" "),
-    // No inputs: it renders the working document, and letting the model pass a time or a layer id
-    // would only invite it to ask for a frame that does not exist.
-    inputSchema: z.object({}).strict(),
+    inputSchema: z.object({ controlValues: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional() }).strict(),
     execute: async (_input, { toolCallId }) => {
       const startedAt = Date.now();
       try {
-        const render = await session.renderSticker();
+        const render = await session.renderSticker(_input.controlValues);
         renders.set(toolCallId, render);
         traceEvent("view_sticker:ok", {
           toolCallId,
           ms: Date.now() - startedAt,
           frames: render.times.length,
+          controlValues: render.controlValues,
+          pendingReviewStates: render.pendingReviewSelections?.length,
           sheetBytes: render.bytes.byteLength,
           mimeType: render.mimeType,
         });
         return {
           rendered: true,
+          controlValues: render.controlValues,
+          pendingReviewSelections: render.pendingReviewSelections,
           frames: render.times.length,
           timesSeconds: render.times.map((time) => Number(time.toFixed(2))),
         };
@@ -97,7 +101,10 @@ export function viewStickerTool(session: RenderableSession, options: { animated:
       return {
         type: "content",
         value: [
-          { type: "text", text: summary },
+          { type: "text", text: summary
+            + (output.controlValues ? ` Controls: ${JSON.stringify(output.controlValues)}` : "")
+            + (output.pendingReviewSelections ? ` Remaining pendingReviewSelections: ${JSON.stringify(output.pendingReviewSelections)}.`
+              + (output.pendingReviewSelections.length ? " Call view_sticker with {} to review the next state." : " All required control states have been reviewed.") : "") },
           ...(render
             ? [{
               type: "file" as const,

@@ -197,10 +197,11 @@ export class MockAiProvider implements AiProvider {
   }
 
   async generateConceptImage(input: {
-    purpose?: "animation-summary";
+    purpose?: "animation-summary" | "extension";
     prompt: string;
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
   }): Promise<AiImageOutput> {
+    if (input.purpose === "extension") return this.generateStickerImage({ prompt: input.prompt, references: input.references, mode: "generate", isolatedLayer: true, keepFrame: true });
     const label = input.prompt.replace(/[<&>]/g, "").slice(0, 24) || "Concept";
     const bytes = await sharp(
       Buffer.from(

@@ -1,8 +1,9 @@
+import { loadPlanBase } from "@/lib/services/plan-base";
 import { loadCreationPresetGuidance, loadCreationPresetReferences } from "@/lib/creation-presets/guidance";
 import { BuildReviewCheckpointSchema, loadBuildCheckpoint, saveBuildCheckpoint, completedBuildSteps, buildAssetsReady, type BuildReviewCheckpoint } from "./build-checkpoints";
 import { generatePlannedVariants } from "./configurable-artwork";
 import { generateSpriteArtwork } from "./sprite-artwork";
-import { configurationReviewSelections } from "@/lib/contracts/configuration";
+import { configurationReviewSelections, configurationEditReviewSelections, type StickerConfiguration } from "@/lib/contracts/configuration";
 import { resolveStickerConfiguration } from "@/lib/contracts/sticker";
 // Building a confirmed plan into a finished composition, and the layout pass that settles
 // where its parts sit.
@@ -45,11 +46,13 @@ async function refineBuiltLayout(
   checkpoint?: BuildReviewCheckpoint,
   animationSummary?: { bytes: Uint8Array; mimeType: string },
   references: Array<{ bytes: Uint8Array; mimeType: string }> = [],
+  retainedLayerIds: Set<string> = new Set(),
+  baseConfiguration?: StickerConfiguration,
 ): Promise<StickerDocument> {
   // One layer has no inter-layer composition to repair. Skipping it also avoids adding a vision
   // round trip to plans whose only reason to exist is structured motion.
   if (checkpoint?.finalized || (document.layers.length < 2 && !document.configuration)) return document;
-  const configurations = document.configuration ? configurationReviewSelections(document.configuration) : [{}];
+  const configurations = document.configuration ? baseConfiguration ? configurationEditReviewSelections(baseConfiguration, document.configuration) : configurationReviewSelections(document.configuration) : [{}];
   let configurationCursor = checkpoint?.configurationCursor ?? 0;
   const db = await getDatabase();
   const publishReviewProgress = () => appendGenerationEvent(db, job.id, job.ownerId, "progress", {
@@ -132,6 +135,13 @@ async function refineBuiltLayout(
         }
         await assertJobStillRunning(job.id).catch(abort);
         const landed = applyLayoutAdjustment(working, adjustment);
+        for (const id of retainedLayerIds) {
+          if (JSON.stringify(landed.layers.find((layer) => layer.id === id)) !== JSON.stringify(working.layers.find((layer) => layer.id === id))) {
+            throw new Error(`Keep existing layer ${id} unchanged; adjust the additions instead`);
+          }
+        }
+        const order = (value: StickerDocument) => value.layers.filter((layer) => retainedLayerIds.has(layer.id)).map((layer) => layer.id).join("|");
+        if (order(landed) !== order(working)) throw new Error("Preserve the existing layer order");
         await assertDocumentAssetsOwned(landed, job.ownerId, job.stickerId).catch(abort);
         working = landed;
         revision += 1;
@@ -288,6 +298,8 @@ export async function executePlanBuildTurn(
   }
   if (!planRow) throw new Error("Plan not found for this job");
   const plan = PlanV1Schema.parse(planRow.planJson);
+  const pinnedBase = await loadPlanBase(db, job.ownerId, sticker.id, plan);
+  const retainedLayerIds = new Set(pinnedBase?.document.layers.filter((layer) => !plan.layers.some((addition) => addition.layerId === layer.id)).map((layer) => layer.id) ?? []);
   // A user retry has a fresh job, but the confirmed plan and its generation slots are immutable.
   // Keep the original namespace so both stills and clips survive any number of failed attempts.
   const assetJobId = planRow.jobId ?? job.id;
@@ -303,13 +315,15 @@ export async function executePlanBuildTurn(
     document = await refineBuiltLayout(
       job,
       document,
-      `${plan.title}. ${plan.summary}`,
+      `${plan.title}. ${plan.summary}. Preserve these existing layers without changing their layout or artwork: ${[...retainedLayerIds].join(", ")}`,
       history,
       visualReference,
       assetJobId,
       checkpoint,
       animationSummary,
       references,
+      retainedLayerIds,
+      pinnedBase?.document.configuration,
     );
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "finalizing",
@@ -332,7 +346,7 @@ export async function executePlanBuildTurn(
       sourceMessageId: sourceMessage.id,
       document,
       id: job.id,
-      parentRevisionId: activeRevision?.id,
+      parentRevisionId: pinnedBase?.id ?? activeRevision?.id,
       // No single layer is "the" master; the first image one keeps the library thumbnail from being
       // blank until published exports supply a real preview. Read off the document rather than off
       // `generated` so a plan that only rearranges reused artwork still has one. A plan made entirely
@@ -518,11 +532,11 @@ export async function executePlanBuildTurn(
   // Sprites after the stills and clips, for the same reason clips follow stills: each sheet is drawn
   // from the layer's separated still, and a sprite is the most generations any one layer can cost.
   const spriteBuilds = await generateSpriteArtwork(job, sticker.id, plan, assetJobId, visualReference, animationSummary);
-  await generatePlannedVariants(job, sticker.id, plan, assetJobId, visualReference);
+  await generatePlannedVariants(job, sticker.id, plan, assetJobId, visualReference, pinnedBase?.document);
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
     stage: "assembling", message: "Assembling your sticker…", clearProgress: true,
   });
-  let document = documentFromPlan(plan, assetJobId, videoTimings, spriteBuilds);
+  let document = documentFromPlan(plan, assetJobId, videoTimings, spriteBuilds, pinnedBase?.document);
   // The reference is the picture the user approved, so a part measured in it outranks the position
   // the planner guessed before that picture existed. Parts whose measurement is implausible keep
   // the plan's layout, and the review below still looks at the whole.

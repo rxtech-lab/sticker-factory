@@ -53,7 +53,7 @@ export async function generateAndStoreAsset(
      * deliberately opaque, so they skip the transparency gate and land as a `preview` asset.
      */
     concept?: boolean;
-    conceptPurpose?: "animation-summary";
+    conceptPurpose?: "animation-summary" | "extension";
     keepFrame?: boolean;
     sequence?: { columns: number; rows: number; frameCount: number; frameRate: number };
     /** Ask the model for a sprite sheet rather than one subject. See `AiImageInput.sheet`. */
@@ -137,7 +137,7 @@ export async function generateAndStoreAsset(
   if (inspection.width !== 1024 || inspection.height !== 1024) {
     throw new Error("Generated candidate failed normalized size validation");
   }
-  if (!params.concept && !inspection.hasTransparentPixels) {
+  if ((!params.concept || params.conceptPurpose === "extension") && !inspection.hasTransparentPixels) {
     throw new Error("Generated candidate failed normalized transparency validation");
   }
   const r2Key = objectKey(job.ownerId, params.assetId, "image/png");
@@ -201,7 +201,7 @@ export async function generateAndStoreAsset(
  * between the model working from the sticker on screen and working from nothing.
  */
 function imageNote(params: {
-  conceptPurpose?: "animation-summary";
+  conceptPurpose?: "animation-summary" | "extension";
   references: ReadonlyArray<unknown>;
   mask?: unknown;
   concept?: boolean;
@@ -566,7 +566,9 @@ export function documentFromPlan(
   videoTimings: ReadonlyMap<string, StoredVideoTiming> = new Map(),
   /** The registered sheets of every sprite, by plan layer id. Required for each `sprite` source. */
   spriteBuilds: ReadonlyMap<string, SpriteBuild> = new Map(),
+  retainedDocument?: StickerDocument,
 ): StickerDocument {
+  if (plan.baseRevisionId && !retainedDocument) throw new Error("Extension plan needs its pinned base revision");
   const compiled = compilePlanAnimations(plan);
   const generated = generatedLayers(plan, jobId);
   const assetIds = new Map(generated.map((item) => [item.layer.layerId, item.assetId]));
@@ -680,7 +682,15 @@ export function documentFromPlan(
     }
   });
 
-  const canvas = { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true } as const;
+  if (retainedDocument) {
+    const merged = structuredClone(retainedDocument.layers);
+    for (const layer of layers) {
+      const index = merged.findIndex((current) => current.id === layer.id);
+      if (index < 0) merged.push(layer); else merged[index] = layer;
+    }
+    layers.splice(0, layers.length, ...merged);
+  }
+  const canvas = retainedDocument?.canvas ?? { width: 1024, height: 1024, coordinateSpace: "normalized", transparent: true } as const;
   // The document must sample at least as fast as the fastest capture in it, or the contract refuses
   // the document outright — and a plan the user already confirmed would fail at build time with an
   // error about frame rates. Raising the fps is both the fix and what the user meant: they asked for
@@ -700,16 +710,17 @@ export function documentFromPlan(
   const clipSeconds = Math.max(0, ...[...videoTimings.values()].map((timing) => timing.durationSeconds), ...spriteClipSeconds);
   return plan.kind === "static"
     ? StickerDocumentSchema.parse({
-      version: CURRENT_DOCUMENT_VERSION, canvas, layers, kind: "static", durationSeconds: 0, fps: 0, loop: "once",
+      ...retainedDocument, version: CURRENT_DOCUMENT_VERSION, canvas, layers, kind: "static", durationSeconds: 0, fps: 0, loop: "once",
     })
     : StickerDocumentSchema.parse({
+      ...retainedDocument,
       version: CURRENT_DOCUMENT_VERSION,
       canvas,
       layers,
-      configuration: configurationFromPlan(plan, jobId),
+      configuration: configurationFromPlan(plan, jobId, retainedDocument?.configuration),
       kind: "animated",
-      durationSeconds: Math.min(DOCUMENT_DURATION_SECONDS.max, Math.max(plan.timing.durationSeconds, clipSeconds)),
-      fps: Math.min(60, Math.max(plan.timing.fps, Math.ceil(captureRate), ...spriteFrameRate.map(Math.ceil))),
-      loop: plan.timing.loop,
+      durationSeconds: Math.min(DOCUMENT_DURATION_SECONDS.max, Math.max(retainedDocument?.durationSeconds ?? 0, plan.timing.durationSeconds, clipSeconds)),
+      fps: Math.min(60, Math.max(retainedDocument?.fps ?? 0, plan.timing.fps, Math.ceil(captureRate), ...spriteFrameRate.map(Math.ceil))),
+      loop: retainedDocument?.loop ?? plan.timing.loop,
     });
 }

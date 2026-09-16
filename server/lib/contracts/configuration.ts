@@ -49,6 +49,8 @@ function configurationSchema<T extends z.ZodType>(source: T) {
         clip: ID.optional(),
         /** For a sprite layer: which face is drawn into every frame's slot. A mood control binds this. */
         expression: ID.optional(),
+        text: z.string().min(1).max(160).optional(),
+        hidden: z.boolean().optional(),
       }).strict()).min(1).max(32),
       // A hundred and twenty-eight, to stay reachable at the control ceiling: sixteen controls at
       // eight options each is exactly that many rows, and eight characters with four moods and four
@@ -59,12 +61,49 @@ function configurationSchema<T extends z.ZodType>(source: T) {
 
 export const StickerConfigurationSchema = configurationSchema(RuntimeVariantSourceSchema);
 export const PlanConfigurationSchema = configurationSchema(PlannedVariantSourceSchema);
+function changesSchema<T extends z.ZodType>(configuration: ReturnType<typeof configurationSchema<T>>) {
+  return z.object({
+    upsertControls: z.array(StickerControlSchema).max(16).optional(),
+    removeControlIds: z.array(ID).max(16).optional(),
+    upsertVariants: configuration.shape.variants.optional(),
+    removeVariantIds: z.array(ID).max(128).optional(),
+  }).strict();
+}
+export const ConfigurationChangesSchema = changesSchema(StickerConfigurationSchema);
+export const PlanConfigurationChangesSchema = changesSchema(PlanConfigurationSchema);
+export type ConfigurationChanges = z.infer<typeof ConfigurationChangesSchema>;
+export type PlanConfigurationChanges = z.infer<typeof PlanConfigurationChangesSchema>;
 export type StickerControl = z.infer<typeof StickerControlSchema>;
 export type StickerConfiguration = z.infer<typeof StickerConfigurationSchema>;
 export type PlanConfiguration = z.infer<typeof PlanConfigurationSchema>;
 export type StickerControlValues = Record<string, string | number | boolean>;
 
 type Configuration = StickerConfiguration | PlanConfiguration;
+
+/** Upserts replace one definition, never the surrounding configuration. Validation is deferred
+ * until layers and bindings have landed together. Removed choices also remove their variant rows. */
+export function updateConfiguration<T extends Configuration>(
+  configuration: T | undefined,
+  changes: { upsertControls?: StickerControl[]; removeControlIds?: string[]; upsertVariants?: T["variants"]; removeVariantIds?: string[] },
+): T | undefined {
+  const merge = <V extends { id: string }>(current: V[], upserts: V[], removed: string[]) => {
+    if (new Set(upserts.map((value) => value.id)).size !== upserts.length) throw new Error("Duplicate upsert ids");
+    if (upserts.some((value) => removed.includes(value.id))) throw new Error("Cannot remove and upsert the same id");
+    const result = new Map(current.filter((value) => !removed.includes(value.id)).map((value) => [value.id, value]));
+    for (const value of upserts) result.set(value.id, value);
+    return [...result.values()];
+  };
+  const removed = changes.removeControlIds ?? [];
+  const controls = merge(configuration?.controls ?? [], changes.upsertControls ?? [], removed);
+  const variants = merge<T["variants"][number]>(configuration?.variants ?? [], changes.upsertVariants ?? [], changes.removeVariantIds ?? [])
+    .filter((variant) => !removed.some((id) => id in variant.selections));
+  if (!controls.length && !variants.length) return undefined;
+  return { controls, variants } as T;
+}
+
+export function requiresConfigurationV6(configuration?: Configuration): boolean {
+  return configuration?.variants.some((variant) => variant.layers.some((layer) => layer.text !== undefined || layer.hidden !== undefined)) ?? false;
+}
 
 /** States one configurable layer can be prepared in — the old whole-sticker cap, now per character. */
 export const MAX_LAYER_COMBINATIONS = 64;
@@ -149,7 +188,7 @@ export function configurationIssues(configuration: Configuration, layerIds: Set<
     const targets: string[] = [];
     for (const layer of variant.layers) {
       if (!layerIds.has(layer.layerId)) issues.push(`Unknown configurable layer ${layer.layerId}`);
-      if (!layer.source && layer.animations === undefined && layer.clip === undefined && layer.expression === undefined) {
+      if (!layer.source && layer.animations === undefined && layer.clip === undefined && layer.expression === undefined && layer.text === undefined && layer.hidden === undefined) {
         issues.push(`Variant ${variant.id} has an empty layer binding`);
       }
       if (layer.source) {
@@ -164,6 +203,8 @@ export function configurationIssues(configuration: Configuration, layerIds: Set<
       // a pose control act on the same character without a combined table of every pairing.
       if (layer.clip !== undefined) targets.push(`${layer.layerId}.clip`);
       if (layer.expression !== undefined) targets.push(`${layer.layerId}.expression`);
+      if (layer.text !== undefined) targets.push(`${layer.layerId}.text`);
+      if (layer.hidden !== undefined) targets.push(`${layer.layerId}.hidden`);
     }
     if (new Set(targets).size !== targets.length) issues.push(`Variant ${variant.id} binds a property twice`);
     targets.forEach((target) => claim(target, `choices:${family}`));
@@ -269,6 +310,23 @@ export function configurationCoverage(configuration: Configuration): StickerCont
 /** The prefix of the coverage set the planner's vision pass walks; see `MAX_REVIEWED_STATES`. */
 export function configurationReviewSelections(configuration: Configuration): StickerControlValues[] {
   return configurationCoverage(configuration).slice(0, MAX_REVIEWED_STATES);
+}
+
+/** Prioritize edited bindings, rather than spending the review budget on an unchanged cast. */
+export function configurationEditReviewSelections(before: Configuration | undefined, after: Configuration): StickerControlValues[] {
+  const changed = after.variants.filter((variant) => JSON.stringify(variant) !== JSON.stringify(before?.variants.find((old) => old.id === variant.id)));
+  const candidates: StickerControlValues[] = [
+    ...changed.map((variant) => variant.selections),
+    ...after.controls.flatMap((control): StickerControlValues[] => control.type === "toggle"
+      ? [{ [control.id]: true }, { [control.id]: false }] : []),
+    {}, ...configurationCoverage(after),
+  ];
+  const unique = new Map<string, StickerControlValues>();
+  for (const candidate of candidates) {
+    const values = normalizedControlValues(after, candidate);
+    unique.set(JSON.stringify(values), values);
+  }
+  return [...unique.values()].slice(0, MAX_REVIEWED_STATES);
 }
 
 /** Used by layer removal in both authoring paths; control identities otherwise stay unchanged. */

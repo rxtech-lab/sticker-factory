@@ -2,8 +2,8 @@ import { buildAssetsReady, completedBuildSteps } from "./build-checkpoints";
 import sharp from "sharp";
 import { SpriteSheetValidationError } from "@/lib/render/sprite-atlas";
 import { eq } from "drizzle-orm";
-import type { PlanV1 } from "@/lib/contracts/plan";
-import type { StickerConfiguration } from "@/lib/contracts/configuration";
+import { plannedConfiguration, type PlanV1 } from "@/lib/contracts/plan";
+import { updateConfiguration, type StickerConfiguration } from "@/lib/contracts/configuration";
 import { getDatabase } from "@/lib/db/client";
 import { assets, generationJobs } from "@/lib/db/schema";
 import { derivedAssetId, ensureAtlasPoster, getReadyOwnedAssets } from "@/lib/services/assets";
@@ -16,11 +16,12 @@ function variantAssetId(jobId: string, variantId: string, layerId: string): stri
   return derivedAssetId(jobId, `variant:${variantId}:${layerId}`);
 }
 
-export function configurationFromPlan(plan: PlanV1, jobId: string): StickerConfiguration | undefined {
-  if (!plan.configuration) return undefined;
-  return {
-    controls: plan.configuration.controls,
-    variants: plan.configuration.variants.map((variant) => ({ ...variant, layers: variant.layers.map((patch) => {
+export function configurationFromPlan(plan: PlanV1, jobId: string, base?: StickerConfiguration): StickerConfiguration | undefined {
+  const configuration = plannedConfiguration(plan);
+  if (!configuration) return base;
+  const converted: StickerConfiguration = {
+    controls: configuration.controls,
+    variants: configuration.variants.map((variant) => ({ ...variant, layers: variant.layers.map((patch) => {
       const source = patch.source;
       if (!source || source.kind === "base" || source.kind === "sequence") return { ...patch, source };
       if (source.kind === "existing") return { ...patch, source: { kind: "image" as const, assetId: source.assetId } };
@@ -31,6 +32,9 @@ export function configurationFromPlan(plan: PlanV1, jobId: string): StickerConfi
       return { ...patch, source: { ...grid, kind: "sequence" as const, assetId, posterAssetId: derivedAssetId(assetId, "poster") } };
     }) })),
   };
+  return plan.baseRevisionId ? updateConfiguration(base, {
+    ...plan.configurationChanges, upsertControls: converted.controls, upsertVariants: converted.variants,
+  }) : converted;
 }
 
 /** Alpha padding catches sheets whose frames bleed across cells before they can become variants. */
@@ -52,15 +56,17 @@ export async function validateGeneratedAtlas(bytes: Uint8Array, grid: { columns:
 export async function generatePlannedVariants(
   job: typeof generationJobs.$inferSelect, stickerId: string, plan: PlanV1, assetJobId: string,
   reference: { bytes: Uint8Array; mimeType: string } | undefined,
+  base?: import("@/lib/contracts/sticker").StickerDocument,
 ): Promise<void> {
-  if (!plan.configuration) return;
+  const configuration = plannedConfiguration(plan);
+  if (!configuration) return;
   const db = await getDatabase();
-  const total = plan.configuration.variants.reduce((count, variant) => count + variant.layers.filter(
+  const total = configuration.variants.reduce((count, variant) => count + variant.layers.filter(
     (patch) => patch.source?.kind === "generate" || patch.source?.kind === "frames",
   ).length, 0);
   const completedSteps = await completedBuildSteps(job);
   const reused = new Set<string>();
-  for (const variant of plan.configuration.variants) for (const patch of variant.layers) {
+  for (const variant of configuration.variants) for (const patch of variant.layers) {
     const source = patch.source;
     if (!source || (source.kind !== "generate" && source.kind !== "frames")) continue;
     const assetId = variantAssetId(assetJobId, variant.id, patch.layerId);
@@ -74,7 +80,7 @@ export async function generatePlannedVariants(
       progressLabel: "Expression and pose artwork", completedUnits: completed, totalUnits: total,
     });
   }
-  for (const variant of plan.configuration.variants) for (const patch of variant.layers) {
+  for (const variant of configuration.variants) for (const patch of variant.layers) {
     const source = patch.source;
     if (!source || (source.kind !== "generate" && source.kind !== "frames")) continue;
     if (!reference) throw new Error("Configurable artwork needs the approved static reference");
@@ -83,15 +89,16 @@ export async function generatePlannedVariants(
     if (reused.has(assetId)) continue;
     const call = await beginToolCall(job, "build-plan", undefined, `expression ${variant.id} ${patch.layerId}`);
     try {
-      const layer = plan.layers.find((layer) => layer.layerId === patch.layerId)!;
-      const baselineId = layer.source.kind === "existing" ? layer.source.assetId : generatedLayers(plan, assetJobId).find((asset) => asset.layer.layerId === patch.layerId)?.assetId;
+      const layer = plan.layers.find((layer) => layer.layerId === patch.layerId);
+      const retained = base?.layers.find((layer) => layer.id === patch.layerId);
+      const baselineId = layer?.source.kind === "existing" ? layer.source.assetId : generatedLayers(plan, assetJobId).find((asset) => asset.layer.layerId === patch.layerId)?.assetId ?? (retained?.type === "image" ? retained.assetId : undefined);
       const baselineRow = baselineId ? (await getReadyOwnedAssets(db, job.ownerId, [baselineId]))[0] : undefined;
       const baseline = baselineRow ? await getObjectStore().get(baselineRow.r2Key) : undefined;
       const framing = source.kind === "frames"
         ? `Create a ${source.columns} column by ${source.rows} row sprite sheet. Put exactly ${source.frameCount} animation frames in row-major order. `
           + "Use identical cell sizes, character scale and registration in every cell, matching the isolated layer reference framing. Leave transparent padding on every cell edge. No dividers, labels or text. Trailing unused cells must be transparent. "
-          + `Animate only the ${layer.name} layer. All expressions and poses must retain the approved character's identity. `
-        : `Draw only the ${layer.name} layer, in exactly the same framing, position and scale as the isolated layer reference. Make every other pixel transparent. `;
+          + `Animate only the ${layer?.name ?? retained?.name ?? patch.layerId} layer. All expressions and poses must retain the approved character's identity. `
+        : `Draw only the ${layer?.name ?? retained?.name ?? patch.layerId} layer, in exactly the same framing, position and scale as the isolated layer reference. Make every other pixel transparent. `;
       await generateAndStoreAsset(job, stickerId, {
         assetId, references: [reference, ...(baseline ? [{ bytes: baseline.bytes, mimeType: baselineRow!.mimeType }] : [])], mode: "conversation_edit", keepFrame: true,
         prompt: "Use the approved sticker as the exact character reference. Preserve its silhouette, colours, outlines, shading, texture and proportions. "
