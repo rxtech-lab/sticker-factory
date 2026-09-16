@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { assets, stickerRevisions } from "@/lib/db/schema";
+import { assets, plans, stickerRevisions, stickers } from "@/lib/db/schema";
 
 /**
  * The joined-asset aliases and preview-resolution SQL every summary query shares.
@@ -43,3 +43,25 @@ export const telegramAssets = alias(assets, "telegram_assets");
  * of them is ever set on a given revision, so the coalesce is a fallback in name only.
  */
 export const previewAssetIdSql = sql`case when ${stickerRevisions.kind} = 'animated' then coalesce(${stickerRevisions.apngAssetId}, ${stickerRevisions.gifAssetId}, ${stickerRevisions.systemAssetId}, ${stickerRevisions.previewAssetId}, ${stickerRevisions.masterAssetId}) else coalesce(${stickerRevisions.pngAssetId}, ${stickerRevisions.previewAssetId}, ${stickerRevisions.masterAssetId}) end`;
+
+/** The concept render of the plan a draft is being built from. */
+export const planConceptAssets = alias(assets, "plan_concept_assets");
+
+/**
+ * The newest plan concept render on a *draft* sticker, as SQL so a summary join resolves it in the
+ * same round trip.
+ *
+ * A draft that has not built anything yet has no revision and therefore no artwork, and the grid
+ * used to draw the kind glyph for every one of them — a wall of identical film strips that says
+ * nothing about which project is which. The plan's concept render is the picture the user already
+ * approved, so it is the closest thing the draft has to a cover.
+ *
+ * Gated on `draft` inside the CASE rather than filtered afterwards: a published sticker always has
+ * its own artwork, and skipping the correlated lookup keeps listing cost where it was for every row
+ * that already had a cover.
+ */
+export const planConceptAssetIdSql = sql<string | null>`case when ${stickers.status} = 'draft' then (
+  select ${plans.conceptAssetId} from ${plans}
+  where ${plans.stickerId} = ${stickers.id} and ${plans.conceptAssetId} is not null
+  order by ${plans.updatedAt} desc limit 1
+) end`;

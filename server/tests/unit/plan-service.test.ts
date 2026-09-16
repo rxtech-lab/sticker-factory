@@ -14,6 +14,7 @@ import {
   recentlyRejectedPlans,
   serializePlan,
   selectPlanVersion,
+  stickerHasPlan,
   updatePlan,
 } from "@/lib/services/plans";
 import { createChatTurn, createSticker } from "@/lib/services/stickers";
@@ -90,7 +91,7 @@ describe("plan service", () => {
         id: `reference-${index}`, ownerId: "owner-a", stickerId, kind: "reference",
         state: "ready", r2Key: `reference-${index}`, mimeType: "image/png",
       });
-      await db.update(plans).set({ conceptAssetId: `reference-${index}` }).where(eq(plans.id, version.planId));
+      await db.update(plans).set({ conceptAssetId: `reference-${index}`, animationPreviewAssetId: `reference-${index}` }).where(eq(plans.id, version.planId));
       await db.insert(chatMessages).values({
         id: `plan-card-${index}`, ownerId: "owner-a", threadId, role: "assistant", kind: "plan",
         content: "Plan", sequence: index + 2, planId: version.planId, planRevision: version.revision,
@@ -104,7 +105,7 @@ describe("plan service", () => {
     const { first, second } = await readyHistory();
     const selected = await selectPlanVersion(db, "owner-a", stickerId, first.planId, second.planId, second.revision);
     expect(selected.messageId).toBe("plan-card-1");
-    expect(selected.plan).toMatchObject({ sourceVersionId: first.planId, actionable: true, conceptAssetId: "reference-0" });
+    expect(selected.plan).toMatchObject({ sourceVersionId: first.planId, actionable: true, conceptAssetId: "reference-0", animationPreviewAssetId: "reference-0" });
     expect(selected.plan.id).not.toBe(first.planId);
     const transcript = await listChatMessages(db, "owner-a", stickerId);
     expect(transcript.data.find((message) => message.id === "plan-card-1")?.plan).toMatchObject({
@@ -170,7 +171,7 @@ describe("plan service", () => {
 
     expect(edited.messageId).toBe("plan-card-1");
     expect(edited.plan.id).not.toBe(second.planId);
-    expect(edited.plan).toMatchObject({ actionable: true, sourceVersionId: null, conceptAssetId: "reference-1" });
+    expect(edited.plan).toMatchObject({ actionable: true, sourceVersionId: null, conceptAssetId: "reference-1", animationPreviewAssetId: null });
     expect(edited.plan.plan.layers.map((layer) => layer.layerId)).toEqual(["part_0", "part_2"]);
     expect(edited.plan.plan.layers[0]).toMatchObject({ name: "Head", source: { kind: "generate", prompt: "A rounder head" } });
     // Untouched geometry survives an edit that never mentioned it.
@@ -329,6 +330,50 @@ describe("plan service", () => {
     const replay = await create(plan("First"), planId);
     expect(replay.planId).toBe(first.planId);
     expect(await db.select().from(plans).where(eq(plans.stickerId, stickerId))).toHaveLength(1);
+  });
+
+  it("leaves an identical replay completely alone, so its reference image stays cached", async () => {
+    // The concept asset id is derived from the plan's own wording, so touching the revision here
+    // would be free but touching the plan would not: a redraft that says the same thing must not
+    // send the turn back to the image model for a picture it has already paid for.
+    const planId = "11111111-1111-4111-8111-111111111111";
+    await create(plan("First"), planId);
+    const before = await db.select().from(plans).where(eq(plans.id, planId)).then(firstRow);
+    const replay = await create(plan("First"), planId);
+    expect(replay.revision).toBe(1);
+    expect(await db.select().from(plans).where(eq(plans.id, planId)).then(firstRow)).toEqual(before);
+  });
+
+  it("leaves a replayed draft editable rather than superseding it against itself", async () => {
+    // What a retried workflow step does: the plan id is derived from the job, so the second attempt
+    // asks to create the row the first one left behind. Superseding it there killed the turn, and
+    // the project was then left planned but with no live plan to revise.
+    const planId = "11111111-1111-4111-8111-111111111111";
+    const first = await create(plan("First"), planId);
+    await updatePlan(db, { ownerId: "owner-a", stickerId, planId, plan: plan("Third") });
+    const replay = await create(plan("Second"), planId);
+    expect(replay.supersededPlanId).toBeNull();
+    const row = await db.select().from(plans).where(eq(plans.id, planId)).then(firstRow);
+    expect(row?.state).toBe("draft");
+    // The attempt that is running now owns the draft, and its revision moves on so nothing rendered
+    // for the abandoned one is reused.
+    expect(PlanV1Schema.parse(row?.planJson).title).toBe("Second");
+    expect(replay.revision).toBe(3);
+    await expect(finalizePlan(db, { ownerId: "owner-a", stickerId, planId: first.planId }))
+      .resolves.toMatchObject({ planId });
+  });
+
+  it("does not count a retired plan as a project that has been planned", async () => {
+    // `mustPlanFirst` in the turn router asks this question, and answering yes on the strength of a
+    // superseded row alone is what lets an animated project be drawn as one flat image. A supersede
+    // always writes its replacement, so a live plan still answers yes.
+    const first = await create(plan("First"));
+    expect(await stickerHasPlan(db, "owner-a", stickerId)).toBe(true);
+    const second = await create(plan("Second"));
+    expect(second.supersededPlanId).toBe(first.planId);
+    expect(await stickerHasPlan(db, "owner-a", stickerId)).toBe(true);
+    await db.update(plans).set({ state: "superseded" }).where(eq(plans.id, second.planId));
+    expect(await stickerHasPlan(db, "owner-a", stickerId)).toBe(false);
   });
 
   it("records a rejection reason and redrafts against it", async () => {

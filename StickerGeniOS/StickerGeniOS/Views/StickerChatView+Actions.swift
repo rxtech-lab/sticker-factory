@@ -31,7 +31,7 @@ extension StickerChatView {
                     """
                 )
             }
-            if let referenceID = message.plan?.conceptAssetId {
+            for referenceID in [message.plan?.conceptAssetId, message.plan?.animationPreviewAssetId].compactMap({ $0 }) {
                 await assetStore.load(assetID: referenceID, api: store.api)
             }
             for attachment in message.attachments {

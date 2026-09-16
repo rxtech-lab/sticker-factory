@@ -52,7 +52,7 @@ export async function executeEditTurn(
     imagePlacement: "add" | "replace";
     /** Everything every redraw is shown: the user's attachments, padded with existing artwork. */
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
-    /** Leading references that are approved plan pixels and therefore mandatory. */
+    /** Leading approved plan references, mandatory when redrawing existing artwork. */
     requiredReferenceCount?: number;
     /** The subset the model itself is shown — only what the user attached this turn. */
     attachedImages: Array<{ bytes: Uint8Array; mimeType: string }>;
@@ -137,19 +137,26 @@ export async function executeEditTurn(
     // the images it already paid for instead of buying them a second time.
     const assetId = derivedAssetId(job.id, `edit-${generations}`);
     const artwork = source ? await loadArtwork(source).catch(abort) : undefined;
+    // New artwork is composited over the existing sticker. Its image request must not ask the
+    // model to rebuild that composition from the chat history or the approved plan.
+    const isolatedLayer = !source;
     const selectedReferences = await selectImageReferences(
-      prompt,
+      isolatedLayer
+        ? `Draw only this new isolated overlay element: ${prompt}. Select references only if useful for its style or likeness; do not reproduce the existing sticker or its scenery.`
+        : prompt,
       history,
       [
         ...(artwork
           ? [{ label: `current artwork for layer ${source?.name ?? "unknown"}`, image: artwork, required: true }]
           : []),
         ...options.references.map((image, index) => ({
-          label: index < (options.requiredReferenceCount ?? 0)
+          label: isolatedLayer
+            ? `optional style or likeness reference ${index + 1}; do not copy its full composition`
+            : index < (options.requiredReferenceCount ?? 0)
             ? "approved plan image"
             : `original or carried reference ${index - (options.requiredReferenceCount ?? 0) + 1}`,
           image,
-          required: index < (options.requiredReferenceCount ?? 0),
+          required: !isolatedLayer && index < (options.requiredReferenceCount ?? 0),
         })),
       ],
     ).catch(abort);
@@ -157,8 +164,9 @@ export async function executeEditTurn(
       assetId,
       prompt,
       references: selectedReferences,
-      conversationContext: history,
+      conversationContext: isolatedLayer ? undefined : history,
       mode: artwork ? "conversation_edit" : "generate",
+      isolatedLayer,
     }).catch(abort);
     generations += 1;
     return assetId;

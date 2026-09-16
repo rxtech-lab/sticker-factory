@@ -692,13 +692,41 @@ struct ErrorBanner: View {
     }
 }
 
+/// An ink-drawn spinner: a faint ring with a heavy arc sweeping round it.
+///
+/// Drawn rather than borrowed from UIKit because the system indicator is what kept vanishing:
+/// it is a hairline that takes whatever tint is in scope, so on a disabled button it turned
+/// cream-on-cream, inside a `Form` row it stopped drawing after a state change, and at
+/// `.small` it was too faint to read as motion at all. A stroked arc on a `TimelineView` has
+/// none of those failure modes — it is a shape in an explicit colour, redrawn every frame.
+struct PosterSpinner: View {
+    var color: Color = AppColors.ink
+    var size: CGFloat = 18
+    var lineWidth: CGFloat = 2.5
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9
+            ZStack {
+                Circle().stroke(color.opacity(0.2), lineWidth: lineWidth)
+                Circle()
+                    .trim(from: 0, to: 0.7)
+                    .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(turn * 360))
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel("Loading")
+    }
+}
+
 /// A working indicator that matches the rest of the paper: a spinner and a line of copy on a card.
 struct PosterProgress: View {
     let message: String
 
     var body: some View {
         HStack(spacing: 10) {
-            ProgressView().tint(AppColors.coral)
+            PosterSpinner(color: AppColors.coral)
             Text(message)
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(AppColors.ink)

@@ -9,7 +9,7 @@ export async function researchGenerationPrompt(prompt: string): Promise<string> 
   if (!process.env.FIRECRAWL_API_KEY?.trim()) return prompt;
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       "You prepare research for sticker image and video generation.",

@@ -67,9 +67,21 @@ struct FullScreenStickerPlayer: View {
     @State private var previewSettings: StickerControlSettings?
     @State private var previewAssets: StickerRenderAssets?
     @State private var afterControlsAction: ControlsAction?
+    @State private var playbackOrigin = Date()
+    @State private var exportRequest: StickerViewerExportRequest?
+    @State private var isExporting = false
+    @State private var controlsOutputReady = false
 
-    private enum ControlsAction: Equatable { case edit, close, expand }
+    private enum ControlsAction: Equatable { case edit, close, export }
     private var hasControls: Bool { document.configuration != nil && controls != nil }
+    private var exportSettings: StickerControlSettings { previewSettings ?? settings ?? .defaults(for: document) }
+    private var exportAssets: StickerRenderAssets { previewAssets ?? .init(images: assets, videos: videos) }
+    private var canExport: Bool {
+        guard exportSettings.canPlay, !isExporting,
+              let documents = try? exportSettings.playbackDocuments(document),
+              documents.allSatisfy({ exportAssets.containsArtwork(for: $0) }) else { return false }
+        return !isPresentingControls || controlsOutputReady
+    }
 
     var body: some View {
         NavigationStack {
@@ -82,7 +94,7 @@ struct FullScreenStickerPlayer: View {
                     StickerPlayer(document: document,
                         assets: previewAssets?.images ?? assets,
                         videos: previewAssets?.videos ?? videos,
-                        repeats: true, settings: previewSettings ?? settings)
+                        repeats: true, settings: previewSettings ?? settings, playbackOrigin: playbackOrigin)
                         .padding()
                         .frame(width: geometry.size.width, height: max(1, geometry.size.height - coveredHeight))
                         .clipped()
@@ -105,9 +117,20 @@ struct FullScreenStickerPlayer: View {
                         Button("Controls", systemImage: "switch.2") {
                             Haptics.tap(.light)
                             controlsHeight = 0
+                            controlsOutputReady = false
                             isPresentingControls = true
                         }
                         .accessibilityIdentifier("show-sticker-controls")
+                    }
+                    if hasControls {
+                        Button {
+                            exportRequest = .init(document: document, settings: exportSettings, assets: exportAssets)
+                            performAfterControls(.export)
+                        } label: {
+                            Label("Export", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(!canExport)
+                        .accessibilityIdentifier("sticker-viewer-export")
                     }
                     if editing != nil {
                         Button {
@@ -137,29 +160,33 @@ struct FullScreenStickerPlayer: View {
             if let controls {
                 StickerControlsSheet(
                     document: document, stickerID: controls.stickerID, accountID: controls.accountID,
-                    loadAssets: { target in
-                        await controls.assetStore.preload(document: target, api: controls.store.api)
-                        guard target.layers.flatMap(\.referencedImageAssetIDs).allSatisfy({ controls.assetStore.images[$0] != nil }) else {
-                            throw StickerExportError.renderFailed
+                    loadAssets: { documents in
+                        for target in documents {
+                            try Task.checkCancellation()
+                            await controls.assetStore.preload(document: target, api: controls.store.api)
                         }
                         return controls.assetStore.renderAssets
                     },
                     onApply: { _, _, _ in controls.onApply() },
                     onClose: { isPresentingControls = false },
-                    onExpand: { _ in performAfterControls(.expand) },
-                    onEdit: editing == nil ? nil : { performAfterControls(.edit) },
                     initialSettings: previewSettings, showsPreview: false,
-                    onPreviewChange: { selected, loaded in
+                    editsAnimationsInPlace: true,
+                    onPreviewChange: { selected, loaded, origin in
                         guard isPresentingControls else { return }
                         previewSettings = selected
                         previewAssets = loaded
-                    }
+                        playbackOrigin = origin
+                    },
+                    onOutputReadinessChange: { controlsOutputReady = $0 }
                 )
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .onGeometryChange(for: CGFloat.self) { geometry in
                     geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
                 } action: { controlsHeight = $0 }
             }
+        }
+        .sheet(isPresented: $isExporting) {
+            if let exportRequest { StickerViewerExportSheet(request: exportRequest) }
         }
         .fullScreenCover(isPresented: $isEditing) {
             if let editing {
@@ -193,7 +220,7 @@ struct FullScreenStickerPlayer: View {
             switch action {
             case .edit: isEditing = true
             case .close: dismiss()
-            case .expand: break
+            case .export: isExporting = true
             }
         }
     }
@@ -202,8 +229,8 @@ struct FullScreenStickerPlayer: View {
         let action = afterControlsAction
         afterControlsAction = nil
         controlsHeight = 0
-        // Full Screen keeps the draft visible; Cancel and swipe dismissal restore saved values.
-        if action != .expand { restoreAppliedSettings() }
+        // Export uses the draft; Cancel and swipe dismissal restore saved values.
+        if action != .export { restoreAppliedSettings() }
         if let action { performAfterControls(action) }
     }
 }
@@ -218,7 +245,6 @@ struct StickerEditorSheet: View {
     let context: FullScreenStickerPlayer.EditingContext
     let onFinished: (Bool) -> Void
 
-    @State private var showingControlEditor = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var confirmingUnpublish = false
@@ -252,11 +278,6 @@ struct StickerEditorSheet: View {
                     }
                     .disabled(isSaving)
                 }
-                ToolbarItem(placement: .bottomBar) {
-                    if document.kind == .animated {
-                        Button("Configurable layers", systemImage: "slider.horizontal.3") { showingControlEditor = true }
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving {
                         ProgressView()
@@ -266,34 +287,6 @@ struct StickerEditorSheet: View {
                             if isPublished { confirmingUnpublish = true } else { Task { await save() } }
                         }
                         .accessibilityIdentifier("save-edited-sticker-button")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingControlEditor) {
-                NavigationStack {
-                    StickerBackground {
-                        ScrollView {
-                            StickerConfigurationEditor(
-                                configuration: $document.configuration,
-                                layers: document.layers.map {
-                                    .init(id: $0.id, name: $0.name, sprite: StickerConfigurationEditor.sprite(of: $0))
-                                },
-                                onRequestArtwork: { instruction in
-                                showingControlEditor = false
-                                Task { await requestArtwork(instruction) }
-                            })
-                            .padding(20)
-                        }
-                    }
-                    .navigationTitle("Configurable layers")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") {
-                                Haptics.tap(.light)
-                                showingControlEditor = false
-                            }
-                        }
                     }
                 }
             }
@@ -327,22 +320,6 @@ struct StickerEditorSheet: View {
             }
         }
         .interactiveDismissDisabled(isSaving)
-    }
-
-    private func requestArtwork(_ instruction: String) async {
-        isSaving = true
-        errorMessage = nil
-        defer { isSaving = false }
-        do {
-            let saved = try await context.store.saveEditedDocument(
-                stickerID: context.stickerID, parentRevisionID: context.revisionID, document: document.validated()
-            )
-            try await context.store.sendMessage(
-                stickerID: context.stickerID, content: instruction, references: [], mask: nil,
-                targetLayerID: nil, intent: .animate, baseRevisionID: saved.revisionId
-            )
-            onFinished(true)
-        } catch { errorMessage = error.localizedDescription }
     }
 
     private func save() async {

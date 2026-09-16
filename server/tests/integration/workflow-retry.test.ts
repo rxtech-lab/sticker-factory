@@ -13,6 +13,7 @@ import { MemoryObjectStore, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { animatedStickerWithAcceptedBase, resetWorkflowTestState } from "@/tests/helpers/workflow";
 import { stickerGenerationWorkflow } from "@/workflows/sticker-generation";
+import { loadPlanAnimationSummary, loadPlanVisualReference } from "@/workflows/sticker-generation/build-turns";
 import { latestRetryableGeneration } from "@/lib/services/generation-retry";
 
 afterEach(resetWorkflowTestState);
@@ -30,12 +31,23 @@ it.each(["checkpoint", "legacy"])("resumes the expression step with %s history, 
     class Provider extends MockAiProvider {
       override async generateStickerImage(input: AiImageInput) {
         requests.push(input);
+        if (input.sheet) {
+          expect(input.references[0]).toEqual(restingReference);
+          expect(input.references[2]).toEqual(animationSummary);
+          expect(input.prompt).toContain("Reference 3 is the approved illustrated animation summary");
+          expect(input.prompt).toContain("Do not copy the summary");
+        }
         if (input.sheet?.tiles && !stopped) {
           stopped = true;
           await cancelGenerationWorkflow(db, "owner-pose", buildJobId);
           throw new Error("Stopped during expression generation");
         }
         return super.generateStickerImage(input);
+      }
+      override async refineStickerLayout(input: AiLayoutContext, session: LayoutDraftingSession) {
+        expect(input.animationSummary).toEqual(animationSummary);
+        expect(input.animationSummary).toBeDefined();
+        return super.refineStickerLayout(input, session);
       }
       override async routeChatTurn(input: AiChatContext) {
         expect(input.instruction).toBe("Retry the expressions step");
@@ -57,6 +69,11 @@ it.each(["checkpoint", "legacy"])("resumes the expression step with %s history, 
     });
     expect((await stickerGenerationWorkflow(planning.jobId)).workflowStatus).toBe("succeeded");
     const plan = await db.select().from(plans).where(eq(plans.stickerId, sticker.stickerId)).then(firstRow);
+    const animationSummary = await loadPlanAnimationSummary(plan!, "owner-pose", sticker.stickerId);
+    const restingReference = await loadPlanVisualReference(plan!, "owner-pose", sticker.stickerId);
+    expect(animationSummary).toBeDefined();
+    await expect(loadPlanAnimationSummary(plan!, "another-owner", sticker.stickerId)).rejects.toThrow("unavailable");
+    await expect(loadPlanAnimationSummary({ ...plan!, animationPreviewAssetId: null }, "owner-pose", sticker.stickerId)).resolves.toBeUndefined();
     const build = await confirmPlan(db, "owner-pose", sticker.stickerId, plan!.id);
     buildJobId = build.jobId;
     await stickerGenerationWorkflow(build.jobId);
@@ -152,6 +169,8 @@ it("continues an interrupted configuration review without replaying completed co
       override async routeChatTurn() { return { type: "retry_generation" as const }; }
       override async refineStickerLayout(input: AiLayoutContext, session: LayoutDraftingSession) {
         reviewAttempts += 1;
+        expect(input.animationSummary).toEqual(animationSummary);
+        expect(input.animationSummary).toBeDefined();
         if (reviewAttempts === 1) {
           await session.viewPlanImage!();
           await session.renderSticker();
@@ -178,6 +197,7 @@ it("continues an interrupted configuration review without replaying completed co
     });
     expect((await stickerGenerationWorkflow(planning.jobId)).workflowStatus).toBe("succeeded");
     const plan = await db.select().from(plans).where(eq(plans.stickerId, sticker.stickerId)).then(firstRow);
+    const animationSummary = await loadPlanAnimationSummary(plan!, "owner-review", sticker.stickerId);
     const build = await confirmPlan(db, "owner-review", sticker.stickerId, plan!.id);
     buildJobId = build.jobId;
     await stickerGenerationWorkflow(build.jobId);

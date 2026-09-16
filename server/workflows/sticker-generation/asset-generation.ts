@@ -45,15 +45,17 @@ export async function generateAndStoreAsset(
     mask?: { bytes: Uint8Array; mimeType: string };
     conversationContext?: string;
     mode: "generate" | "conversation_edit";
+    isolatedLayer?: boolean;
     /**
      * A complete static plan reference rather than one separated sticker part. References are
      * deliberately opaque, so they skip the transparency gate and land as a `preview` asset.
      */
     concept?: boolean;
+    conceptPurpose?: "animation-summary";
     keepFrame?: boolean;
     sequence?: { columns: number; rows: number; frameCount: number; frameRate: number };
     /** Ask the model for a sprite sheet rather than one subject. See `AiImageInput.sheet`. */
-    sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean };
+    sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean; faceRegion?: string };
     quality?: "low" | "medium" | "high";
   },
 ): Promise<{ subject?: SubjectBounds }> {
@@ -85,13 +87,14 @@ export async function generateAndStoreAsset(
   }
   await reportTurnNote(job, imageNote(params));
   const generated = await traceSpan("generateImage", trace, () => params.concept
-    ? provider.generateConceptImage({ prompt: params.prompt, references: params.references })
+    ? provider.generateConceptImage({ prompt: params.prompt, references: params.references, purpose: params.conceptPurpose })
     : provider.generateStickerImage({
       prompt: params.prompt,
       references: params.references,
       mask: params.mask,
       conversationContext: params.conversationContext,
       mode: params.mode,
+      isolatedLayer: params.isolatedLayer,
       keepFrame: params.keepFrame,
       sheet: params.sheet,
       quality: params.quality,
@@ -192,6 +195,7 @@ export async function generateAndStoreAsset(
  * between the model working from the sticker on screen and working from nothing.
  */
 function imageNote(params: {
+  conceptPurpose?: "animation-summary";
   references: ReadonlyArray<unknown>;
   mask?: unknown;
   concept?: boolean;
@@ -199,6 +203,7 @@ function imageNote(params: {
   sequence?: unknown;
   mode: "generate" | "conversation_edit";
 }): string {
+  if (params.conceptPurpose === "animation-summary") return "Illustrating the animation plan";
   if (params.concept) return "Sketching the concept";
   if (params.sheet || params.sequence) return "Drawing the frames";
   if (params.mask) return "Redrawing the painted area";

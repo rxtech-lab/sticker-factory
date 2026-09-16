@@ -87,12 +87,14 @@ nonisolated struct PlanEditorModel: Hashable {
     var loop: StickerLoopBehavior
     var layers: [Layer]
     var configuration: AnimatedControlConfiguration?
+    var posePreset: PosePreset?
 
     /// A plan may hold at most eight layers, and at most one of them may be a video clip.
     static let layerLimit = 12
 
     init(plan: Plan) {
         configuration = plan.configuration
+        posePreset = plan.posePreset
         original = plan
         title = plan.title
         summary = plan.summary

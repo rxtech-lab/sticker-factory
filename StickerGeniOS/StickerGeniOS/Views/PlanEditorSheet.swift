@@ -11,14 +11,14 @@ import SwiftUI
 struct PlanEditorSheet: View {
     let record: PlanRecord
     var focus: PlanEditorFocus = .layers
-    let onSave: (PlanEdit) async throws -> Void
+    let onSave: (PlanEdit, PosePreset?) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var model: PlanEditorModel
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    init(record: PlanRecord, focus: PlanEditorFocus = .layers, onSave: @escaping (PlanEdit) async throws -> Void) {
+    init(record: PlanRecord, focus: PlanEditorFocus = .layers, onSave: @escaping (PlanEdit, PosePreset?) async throws -> Void) {
         self.record = record
         self.focus = focus
         self.onSave = onSave
@@ -26,7 +26,12 @@ struct PlanEditorSheet: View {
     }
 
     private var edit: PlanEdit { model.edit() }
-    private var canSave: Bool { !isSaving && model.validationMessage == nil && !edit.isEmpty }
+    private var changedPosePreset: PosePreset? {
+        guard model.layers.contains(where: { $0.sprite != nil && $0.source == .keep }),
+              model.posePreset != record.plan.posePreset else { return nil }
+        return model.posePreset
+    }
+    private var canSave: Bool { !isSaving && model.validationMessage == nil && (!edit.isEmpty || changedPosePreset != nil) }
 
     var body: some View {
         StickerBackground {
@@ -88,13 +93,13 @@ struct PlanEditorSheet: View {
 
     private func save() {
         let edit = self.edit
-        guard !edit.isEmpty else { return dismiss() }
+        guard !edit.isEmpty || changedPosePreset != nil else { return dismiss() }
         isSaving = true
         errorMessage = nil
         Task {
             defer { isSaving = false }
             do {
-                try await onSave(edit)
+                try await onSave(edit, changedPosePreset)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
@@ -158,6 +163,15 @@ struct PlanEditorSheet: View {
                 subtitle: String(localized: "\(model.layers.count) of \(PlanEditorModel.layerLimit)"),
                 highlight: AppColors.peach
             )
+            if model.isAnimated, model.layers.contains(where: { $0.sprite != nil && $0.source == .keep }) {
+                PosePresetPicker(selection: $model.posePreset, identifier: "plan-editor-pose-preset-picker")
+                    .disabled(isSaving)
+                if changedPosePreset != nil {
+                    Text("Saving will revise the plan with the selected pose variety.")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(AppColors.muted)
+                }
+            }
             ForEach($model.layers) { $layer in
                 PlanEditorLayerCard(
                     layer: $layer,
@@ -369,6 +383,40 @@ private struct PlanEditorLayerCard: View {
 
 #Preview("Plan editor") {
     NavigationStack {
-        PlanEditorSheet(record: PreviewFixtures.planVersions[1]) { _ in }
+        PlanEditorSheet(record: PreviewFixtures.planVersions[1]) { _, _ in }
+    }
+}
+
+struct PosePresetPicker: View {
+    @Binding var selection: PosePreset?
+    let identifier: String
+
+    init(selection: Binding<PosePreset?>, identifier: String) {
+        _selection = selection
+        self.identifier = identifier
+    }
+
+    init(selection: Binding<PosePreset>, identifier: String) {
+        _selection = Binding(get: { selection.wrappedValue }, set: { value in
+            if let value { selection.wrappedValue = value }
+        })
+        self.identifier = identifier
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Pose variety").font(.posterDisplay(15, weight: .bold))
+            Picker("Pose variety", selection: $selection) {
+                ForEach(PosePreset.allCases, id: \.self) { preset in
+                    Text(preset.label).tag(Optional(preset))
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier(identifier)
+            .onChange(of: selection) { _, _ in Haptics.selection() }
+            Text("Higher presets add more selectable poses per character and cost more to generate.")
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(AppColors.muted)
+        }
     }
 }

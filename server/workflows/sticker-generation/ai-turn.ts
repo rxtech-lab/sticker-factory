@@ -16,7 +16,7 @@ import { assertValidAnimationBase, createCandidateRevision, isValidAnimationBase
 import { getObjectStore } from "@/lib/storage/r2";
 import { recordJobApiCost } from "@/lib/subscription/credits";
 import { addLayerBesideExisting, emptyDocument, generateAndStoreAsset, selectImageReferences } from "./asset-generation";
-import { executePlanBuildTurn, loadPlanVisualReference } from "./build-turns";
+import { executePlanBuildTurn, loadPlanAnimationSummary, loadPlanVisualReference } from "./build-turns";
 import { executeEditTurn } from "./edit-turns";
 import { executeAnimationTurn, executePlanTurn } from "./plan-turns";
 import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, boundedTranscript, finishToolCall, insertAssistantMessage, quickCaption, renderWorkingDocument, reportTurnTokens, reportTurnWork, showStickerThroughTool, turnResult } from "./turn-context";
@@ -207,7 +207,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
    *
    * A capture wins over a photo because a capture *is* the sticker's subject rather than a reference
    * for one. Only one is shown: the prior-art budget also has to cover the current render and the
-   * last approved concept, and those say things no attachment can.
+   * resting concept and animation summary, and those say things no attachment can.
    */
   const carriedSubjectRow = carriedReferenceRows.find((row) => capturedFrames(row.asset))
     ?? carriedReferenceRows[0];
@@ -227,13 +227,21 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
     return attachedImagesPromise;
   };
   let priorArtPromise: Promise<AiPlanVisual[]> | undefined;
+  let latestVisualPlanPromise: ReturnType<typeof latestPlanConcept> | undefined;
+  const loadLatestVisualPlan = () => {
+    latestVisualPlanPromise ??= (async () =>
+      await currentPendingPlan(db, job.ownerId, sticker.id)
+        ?? await latestPlanConcept(db, job.ownerId, sticker.id)
+    )();
+    return latestVisualPlanPromise;
+  };
   let latestPlanReferencePromise: Promise<{
     planId: string;
     image: { bytes: Uint8Array; mimeType: string };
   } | undefined> | undefined;
   const loadLatestPlanReference = () => {
     latestPlanReferencePromise ??= (async () => {
-      const plan = await latestPlanConcept(db, job.ownerId, sticker.id);
+      const plan = await loadLatestVisualPlan();
       if (!plan) return undefined;
       return {
         planId: plan.id,
@@ -245,7 +253,7 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
   /**
    * The pictures of the project the planner is shown, on top of anything the user attached.
    *
-   * Both are best-effort. A render can fail on a document whose artwork has been swept, and a plan's
+   * These are best-effort. A render can fail on a document whose artwork has been swept, and a plan's
    * static reference can be missing or unreadable; neither is a reason to fail a planning turn that
    * would otherwise succeed, so each failure is traced and the picture is simply left out.
    */
@@ -313,6 +321,22 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
           jobId,
           error: describeError(error),
         });
+      }
+      try {
+        const plan = await loadLatestVisualPlan();
+        const summary = plan && await loadPlanAnimationSummary(plan, job.ownerId, sticker.id);
+        if (summary) {
+          visuals.push({
+            label: `the illustrated animation summary shown with plan "${plan.planJson.title}" `
+              + `(revision ${plan.revision}, ${plan.state}). Its labelled panels explain the planned `
+              + "motions, poses and expressions. Use it to understand references such as 'the second pose' "
+              + "or 'that expression'. It is a storyboard, not the finished sticker: do not copy its "
+              + "panels, labels, arrows or background into the artwork",
+            image: summary,
+          });
+        }
+      } catch (error) {
+        traceEvent("plan:priorArt:animationSummaryUnavailable", { jobId, error: describeError(error) });
       }
       traceEvent("plan:priorArt", { jobId, count: visuals.length });
       return visuals;
@@ -471,6 +495,14 @@ async function runAiTurn(jobId: string): Promise<AiTurnResult> {
    */
   const hasPlan = await stickerHasPlan(db, job.ownerId, sticker.id);
   const mustPlanFirst = sticker.kind === "animated" && !activeDocument && !hasPlan;
+
+  // A preset submitted from the live plan is an explicit re-plan, including after a build.
+  // The user message kind persists this intent for retries; no router guess is needed.
+  if (sourceMessage.kind === "plan" && sourceMessage.role === "user") {
+    return executePlanTurn(job, sticker, thread.id, instruction, planHistory, activeDocument,
+      await loadReferenceImages(), await loadAttachedImages(), await loadPlanPriorArt(), sequenceAssets,
+      await beginToolCall(job, "plan-sticker"));
+  }
 
   if (job.kind === "chat") {
     // The router, the images it reads and the history it reads them against take seconds, and

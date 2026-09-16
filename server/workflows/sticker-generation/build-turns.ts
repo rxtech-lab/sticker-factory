@@ -42,6 +42,7 @@ async function refineBuiltLayout(
   reference: { bytes: Uint8Array; mimeType: string } | undefined,
   assetJobId: string,
   checkpoint?: BuildReviewCheckpoint,
+  animationSummary?: { bytes: Uint8Array; mimeType: string },
 ): Promise<StickerDocument> {
   // One layer has no inter-layer composition to repair. Skipping it also avoids adding a vision
   // round trip to plans whose only reason to exist is structured motion.
@@ -169,7 +170,7 @@ async function refineBuiltLayout(
   };
 
   const result = await getAiProvider().refineStickerLayout(
-    { document, instruction: instruction + (checkpoint ? ` Resuming review: ${configurationCursor} of ${configurations.length} configurations already checked on this exact layout. Continue with the next unchecked configuration; do not restart completed checks. If all checks are done, finalize. The saved layout includes previous adjustments.` : "") + (document.configuration ? ` Review all ${configurations.length} mood/pose configurations. Each successive view_sticker shows the next configuration in this order: ${JSON.stringify(configurations)}. Check expression identity, sprite alignment, pose continuity and clipping before finalizing. After a layout change, review all configurations again.` : ""), history },
+    { document, animationSummary, instruction: instruction + (checkpoint ? ` Resuming review: ${configurationCursor} of ${configurations.length} configurations already checked on this exact layout. Continue with the next unchecked configuration; do not restart completed checks. If all checks are done, finalize. The saved layout includes previous adjustments.` : "") + (document.configuration ? ` Review all ${configurations.length} mood/pose configurations. Each successive view_sticker shows the next configuration in this order: ${JSON.stringify(configurations)}. Check expression identity, sprite alignment, pose continuity and clipping before finalizing. After a layout change, review all configurations again.` : ""), history },
     session,
   );
   await assertJobStillRunning(job.id);
@@ -203,6 +204,22 @@ export async function loadPlanVisualReference(
     eq(assets.state, "ready"),
   )).then(firstRow);
   if (!asset) throw new Error("Approved static plan reference is unavailable");
+  const object = await getObjectStore().get(asset.r2Key);
+  return { bytes: object.bytes, mimeType: asset.mimeType };
+}
+
+/** Loads the confirmed revision's storyboard; older plans may have no overview. */
+export async function loadPlanAnimationSummary(
+  planRow: typeof plans.$inferSelect,
+  ownerId: string,
+  stickerId: string,
+): Promise<{ bytes: Uint8Array; mimeType: string } | undefined> {
+  if (!planRow.animationPreviewAssetId) return undefined;
+  const asset = await (await getDatabase()).select().from(assets).where(and(
+    eq(assets.id, planRow.animationPreviewAssetId),
+    eq(assets.ownerId, ownerId), eq(assets.stickerId, stickerId), eq(assets.state, "ready"),
+  )).then(firstRow);
+  if (!asset) throw new Error("Approved animation summary is unavailable");
   const object = await getObjectStore().get(asset.r2Key);
   return { bytes: object.bytes, mimeType: asset.mimeType };
 }
@@ -277,6 +294,8 @@ export async function executePlanBuildTurn(
     ? await loadPlanVisualReference(planRow, job.ownerId, sticker.id)
     : undefined;
 
+  const animationSummary = await loadPlanAnimationSummary(planRow, job.ownerId, sticker.id);
+
   const primaryToolCallId = await beginToolCall(job, "build-plan");
   const finishBuild = async (document: StickerDocument, checkpoint?: BuildReviewCheckpoint): Promise<AiTurnResult> => {
     document = await refineBuiltLayout(
@@ -287,6 +306,7 @@ export async function executePlanBuildTurn(
       visualReference,
       assetJobId,
       checkpoint,
+      animationSummary,
     );
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "finalizing",
@@ -494,7 +514,7 @@ export async function executePlanBuildTurn(
 
   // Sprites after the stills and clips, for the same reason clips follow stills: each sheet is drawn
   // from the layer's separated still, and a sprite is the most generations any one layer can cost.
-  const spriteBuilds = await generateSpriteArtwork(job, sticker.id, plan, assetJobId, visualReference);
+  const spriteBuilds = await generateSpriteArtwork(job, sticker.id, plan, assetJobId, visualReference, animationSummary);
   await generatePlannedVariants(job, sticker.id, plan, assetJobId, visualReference);
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
     stage: "assembling", message: "Assembling your sticker…", clearProgress: true,

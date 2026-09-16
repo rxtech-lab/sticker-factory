@@ -1,9 +1,9 @@
 import { type LanguageModel } from "ai";
 import { animateSticker } from "./gateway-animate";
 import { reply, routeChatTurn, showSticker, summarizeStickerTitle } from "./gateway-chat";
-import type { AiAnimationContext, AiChatContext, AiEditContext, AiImageInput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiTitleContext, AiVideoInput, AnimationDraftingSession, EditDraftingSession, LayoutDraftingSession, PlanDraftingSession } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatContext, AiEditContext, AiImageInput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AnimationDraftingSession, EditDraftingSession, LayoutDraftingSession, PlanDraftingSession } from "./gateway-contracts";
 import { editSticker } from "./gateway-edit";
-import { generateConceptImage, generateStickerImage, generateStickerVideo, selectImageReferences } from "./gateway-images";
+import { generateConceptImage, generateStickerImage, generateStickerVideo, inspectSpriteSheet, selectImageReferences } from "./gateway-images";
 import { MockAiProvider } from "./gateway-mock";
 import { planSticker, refineStickerLayout } from "./gateway-plan";
 
@@ -12,8 +12,9 @@ export class GatewayAiProvider implements AiProvider {
 
   selectImageReferences(input: AiReferenceSelectionContext) { return selectImageReferences(input); }
   generateStickerImage(input: AiImageInput) { return generateStickerImage(input); }
+  inspectSpriteSheet(input: AiSheetInspectionContext) { return inspectSpriteSheet(input); }
   generateStickerVideo(input: AiVideoInput) { return generateStickerVideo(input); }
-  generateConceptImage(input: { prompt: string; references: Array<{ bytes: Uint8Array; mimeType: string }> }) {
+  generateConceptImage(input: { purpose?: "animation-summary"; prompt: string; references: Array<{ bytes: Uint8Array; mimeType: string }> }) {
     return generateConceptImage(input);
   }
   refineStickerLayout(input: AiLayoutContext, session: LayoutDraftingSession) {
@@ -56,5 +57,5 @@ export function getAiProvider(): AiProvider {
 // The rest of the provider. Re-exported so every existing `@/lib/ai/gateway`
 // import keeps working.
 export { TurnAbort, describeToolError, resolveChatAction, summarizeDocument } from "./gateway-contracts";
-export type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiImageReferenceCandidate, AiLayoutContext, AiPlanContext, AiPlanVisual, AiProvider, AiReferenceImage, AiReferenceSelectionContext, AiSequenceAsset, AiTitleContext, AiVideoInput, AiVideoOutput, AnimateTurnResult, AnimationDraftState, AnimationDraftingSession, EditDraftState, EditDraftingSession, EditTurnResult, LayoutDraftState, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult, RenderableSession, StickerRenderResult } from "./gateway-contracts";
+export type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiImageReferenceCandidate, AiLayoutContext, AiPlanContext, AiPlanVisual, AiProvider, AiReferenceImage, AiReferenceSelectionContext, AiSequenceAsset, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AiVideoOutput, AnimateTurnResult, AnimationDraftState, AnimationDraftingSession, EditDraftState, EditDraftingSession, EditTurnResult, LayoutDraftState, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult, RenderableSession, StickerRenderResult } from "./gateway-contracts";
 export { animationOperationLayerId, validateEditOperation, validatePlannedAnimationOperation } from "./gateway-edit";

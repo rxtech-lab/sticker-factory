@@ -57,6 +57,8 @@ export async function editSticker(
         "moved. It draws nothing and costs nothing, so it is the right tool for every request that",
         "does not need new artwork.",
         "addLayer adds a text, shape, or particle layer — send the whole layer object.",
+        "Use text layers for app-rendered typography. Requests for cartoon or illustrated lettering",
+        "belong to add_image_layer, which generates the lettering artwork.",
         "removeLayer deletes a layer outright. reorderLayer changes what sits in front of what:",
         "layers are drawn in array order, index 0 at the back and the last layer on top, and",
         "reorderLayer removes the layer then re-inserts it at index in the remaining list, so the",
@@ -103,10 +105,14 @@ export async function editSticker(
         "an unequal pair is applied as the smaller of the two.",
         "The prompt must describe a single element filling its frame edge to edge on a transparent",
         "background, with no other elements and no text unless that layer IS the text.",
+        "For illustrated lettering, describe only the exact words and lettering style. Never ask",
+        "for a sticker, a scene, or text placed on existing artwork: placement is handled by x and y.",
+        "Use this tool for 'add cartoon text': generate a transparent image of only the lettering",
+        "and apply that image as an overlay on the existing sticker.",
         "Use it for artwork the sticker does not have yet, including artwork that is replacing an",
         "app-drawn layer — 'make the lettering hand-drawn' is this tool plus a removeLayer.",
-        "It costs a real image generation, so prefer edit_layers whenever a text, shape, or particle",
-        "layer would do.",
+        "It costs a real image generation. Use edit_layers for app-rendered text, shapes, and",
+        "particles; preserve requests for illustrated lettering by generating the lettering image.",
       ].join(" "),
       inputSchema: z
         .object({
@@ -185,7 +191,7 @@ export async function editSticker(
 
   const generation = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
@@ -200,8 +206,16 @@ export async function editSticker(
       "",
       "Some of these tools spend money. edit_image_layer and add_image_layer each run an image",
       "model, which is slow and billed; edit_layers is free and instant. If the request can be",
-      "served by moving, removing, restyling, or re-lettering layers, serve it with edit_layers",
+      "served by moving, removing, or restyling app-rendered layers, serve it with edit_layers",
       "alone.",
+      "For a request such as 'Add cartoon text to the sticker says gogogog!', use add_image_layer",
+      "to generate a transparent image containing only the exact requested lettering and its",
+      "decoration, then overlay it on the existing sticker. Preserve the spelling and punctuation.",
+      "For these illustrated-lettering requests, do not substitute an app-rendered text layer.",
+      "The generated image must not include the existing subjects, scenery, or a smaller copy of",
+      "the sticker. Keep the existing artwork unchanged and use the layer's position and scale",
+      "to apply the lettering over it.",
+      "Adding text on top of existing artwork is intentional overlap; place it where requested.",
       // Named here as well as in its own description because the failure this guards against is
       // not the model misusing the tool, it is the model reaching for it at all: "make it move"
       // is a keyframe animation nine times out of ten, and a clip is the expensive tenth.

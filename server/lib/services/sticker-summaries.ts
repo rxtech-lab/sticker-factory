@@ -4,7 +4,7 @@
 
 import { and, desc, eq, lt, ne, or, sql } from "drizzle-orm";
 import { firstRow, type Database } from "@/lib/db/client";
-import { attachmentMediumAssets, attachmentSmallAssets, previewAssetIdSql, previewAssets, telegramAssets, webpAssets, whatsappAssets, systemAssets } from "@/lib/db/columns";
+import { attachmentMediumAssets, attachmentSmallAssets, planConceptAssetIdSql, planConceptAssets, previewAssetIdSql, previewAssets, telegramAssets, webpAssets, whatsappAssets, systemAssets } from "@/lib/db/columns";
 import { assets, stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 
@@ -86,7 +86,7 @@ export const systemAssetSummaryColumns = {
 /**
  * The `AssetV1` column set, once per aliased join.
  *
- * Spelled out three times rather than built by a helper, and deliberately: drizzle reads a
+ * Spelled out once per alias rather than built by a helper, and deliberately: drizzle reads a
  * selection's nullability from the object literal itself, and routing these through a generic
  * function makes a left-joined group infer as fourteen independently nullable fields instead of one
  * nullable group — which typechecks at the call site and lies about the shape.
@@ -106,6 +106,23 @@ export const previewAssetSummaryColumns = {
   sha256: previewAssets.sha256,
   hasAlpha: previewAssets.hasAlpha,
   createdAt: previewAssets.createdAt,
+};
+
+export const planConceptSummaryColumns = {
+  id: planConceptAssets.id,
+  stickerId: planConceptAssets.stickerId,
+  kind: planConceptAssets.kind,
+  state: planConceptAssets.state,
+  mimeType: planConceptAssets.mimeType,
+  byteSize: planConceptAssets.byteSize,
+  width: planConceptAssets.width,
+  height: planConceptAssets.height,
+  frameCount: planConceptAssets.frameCount,
+  durationSeconds: planConceptAssets.durationSeconds,
+  fps: planConceptAssets.fps,
+  sha256: planConceptAssets.sha256,
+  hasAlpha: planConceptAssets.hasAlpha,
+  createdAt: planConceptAssets.createdAt,
 };
 
 export const attachmentMediumSummaryColumns = {
@@ -206,6 +223,7 @@ export function selectStickerSummaries(db: Database) {
     systemAsset: systemAssetSummaryColumns,
     playbackRevisionId: sql<string | null>`CASE WHEN ${stickerRevisions.playbackJson} IS NOT NULL THEN ${stickerRevisions.id} ELSE NULL END`,
     previewAsset: previewAssetSummaryColumns,
+    planConceptAsset: planConceptSummaryColumns,
     attachmentMedium: attachmentMediumSummaryColumns,
     attachmentSmall: attachmentSmallSummaryColumns,
     webpAsset: webpSummaryColumns,
@@ -218,6 +236,7 @@ export function selectStickerSummaries(db: Database) {
     ))
     .leftJoin(systemAssets, eq(systemAssets.id, stickerRevisions.systemAssetId))
     .leftJoin(previewAssets, eq(previewAssets.id, previewAssetIdSql))
+    .leftJoin(planConceptAssets, eq(planConceptAssets.id, planConceptAssetIdSql))
     .leftJoin(attachmentMediumAssets, eq(attachmentMediumAssets.id, stickerRevisions.attachmentMediumAssetId))
     .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId))
     .leftJoin(webpAssets, eq(webpAssets.id, stickerRevisions.webpAssetId))
@@ -235,6 +254,12 @@ export type StickerSummaryRow = {
     "id" | "title" | "kind" | "status" | "activeRevisionId" | "messengerEmoji" | "createdAt" | "updatedAt">;
   systemAsset: Pick<typeof assets.$inferSelect, "id" | "mimeType" | "byteSize" | "sha256"> | null;
   previewAsset: AssetSummary | null;
+  /**
+   * The concept render of this draft's newest plan, for a draft that has no artwork of its own yet.
+   * Null on every published sticker — they have their own — and on a draft whose plan never got as
+   * far as a concept.
+   */
+  planConceptAsset: AssetSummary | null;
   /** Null on anything published before attachment renditions existed. */
   attachmentMedium: AssetSummary | null;
   attachmentSmall: AssetSummary | null;
@@ -272,6 +297,7 @@ export function serializeStickerSummary({
   systemAsset,
   playbackRevisionId,
   previewAsset,
+  planConceptAsset,
   attachmentMedium,
   attachmentSmall,
   webpAsset,
@@ -291,6 +317,9 @@ export function serializeStickerSummary({
       ...previewAsset,
       createdAt: previewAsset.createdAt.toISOString(),
     } : null,
+    // Held to the same `ready` gate the renditions are: a concept still uploading is an id that
+    // buys the grid a 404 instead of a cover.
+    planConceptAsset: serializeAttachment(planConceptAsset),
     systemSticker: systemAsset ? {
       assetId: systemAsset.id,
       mimeType: systemAsset.mimeType,
@@ -317,6 +346,7 @@ export async function serializeSticker(db: Database, sticker: typeof stickers.$i
     sticker,
     systemAsset: null,
     previewAsset: null,
+    planConceptAsset: null,
     attachmentMedium: null,
     attachmentSmall: null,
     webpAsset: null,

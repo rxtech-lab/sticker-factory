@@ -21,44 +21,6 @@ import os
 /// drawer and out of other apps, so the two keys are load-bearing rather than boilerplate.
 @MainActor
 final class MessagesViewController: MSMessagesAppViewController {
-    /// Which of the two behaviours the host asked for.
-    private enum Surface {
-        case sticker
-        case fullSize
-
-        init(_ context: MSMessagesAppPresentationContext) {
-            self = context == .media ? .sticker : .fullSize
-        }
-
-        /// The recovery advice differs per surface, and wrongly telling someone in the full-size
-        /// surface to peel and drag would send the small file they came here to avoid.
-        var insertSurface: StickerInsertPolicy.StickerInsertSurface {
-            switch self {
-            case .sticker: .sticker
-            case .fullSize: .fullSize
-            }
-        }
-    }
-
-    /// Both surfaces refresh the same listing; only the full-size one also resolves attachments,
-    /// so the second (much larger) cache is never constructed for the Stickers drawer.
-    private enum Library: Sendable {
-        case sticker(MessagesLibraryService)
-        case fullSize(FullSizeStickerLibraryService)
-
-        func refresh(onUpdate: MessagesLibraryUpdate) async throws -> MessagesLibrarySnapshot {
-            switch self {
-            case .sticker(let service): try await service.refresh(onUpdate: onUpdate)
-            case .fullSize(let service): try await service.refresh(onUpdate: onUpdate)
-            }
-        }
-
-        var fullSize: FullSizeStickerLibraryService? {
-            guard case .fullSize(let service) = self else { return nil }
-            return service
-        }
-    }
-
     private let gridViewController = StickerGridViewController()
     private let legacyBrowserViewController = StickerBrowserViewController()
     /// Holds whichever child is installed, so swapping surfaces never re-derives the chrome's
@@ -705,7 +667,7 @@ final class MessagesViewController: MSMessagesAppViewController {
                     // A full-size image has nothing to peel — `MSSticker` is the ≤500 KB artwork and
                     // an attachment is not one — so that mode keeps sending in a single step.
                     actionTitle: image ? String(localized: "Send Image") : String(localized: "Prepare"),
-                    loadAssets: { document in try await service.loadAssets(bundle: bundle, document: document, accountID: account) },
+                    loadAssets: { documents in try await service.loadAssets(bundle: bundle, documents: documents, accountID: account) },
                     onApply: { [weak self] settings, document, assets in
                         guard let self else { throw CancellationError() }
                         try await self.controlSendSession.perform(
@@ -723,12 +685,13 @@ final class MessagesViewController: MSMessagesAppViewController {
                             // In image mode this is still the send. In sticker mode it is the end of
                             // preparing: the file is kept, and what happens to it is the reader's
                             // next choice — dragged onto a bubble, or sent.
-                            insert: { fileURL in
+                            insert: { file in
+                                let fileURL = file.url
                                 guard !image else {
                                     try await self.insertRendered(fileURL, title: item.title, image: true)
                                     return
                                 }
-                                self.prepared = try .init(fileURL: fileURL, title: item.title)
+                                self.prepared = try .init(fileURL: fileURL, title: item.title, firstAnimationOnly: file.firstAnimationOnly)
                                 self.collapseForPreparedSticker()
                             }
                         )
@@ -737,6 +700,13 @@ final class MessagesViewController: MSMessagesAppViewController {
                         preview: { [weak self] in
                             guard let sticker = self?.prepared?.sticker else { return AnyView(EmptyView()) }
                             return AnyView(PreparedStickerView(sticker: sticker))
+                        },
+                        notice: { [weak self] in
+                            guard self?.prepared?.firstAnimationOnly == true else { return nil }
+                            return String(localized: """
+                                Only the first animation fits as an iMessage sticker. \
+                                The full combination is still saved.
+                                """)
                         },
                         send: { [weak self] in
                             guard let self, let prepared = self.prepared else { throw CancellationError() }

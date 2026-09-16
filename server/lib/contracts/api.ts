@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { PosePresetSchema } from "./pose-preset";
+import { PlanEditV1Schema } from "./plan";
 import { Mp4BackgroundV1Schema, StickerDocumentSchema } from "@/lib/contracts/sticker";
 
 export const StickerKindSchema = z.enum(["static", "animated"]);
@@ -145,8 +147,12 @@ export const CreateStickerRequestSchema = z.object({
   referenceAssetIds: z.array(z.string().uuid()).max(8).default([]),
   quick: QuickGenerationSchema,
   controllable: ControllableGenerationSchema,
+  posePreset: PosePresetSchema.optional(),
   useQuickModeAllowance: z.boolean().optional(),
 }).strict().superRefine((request, ctx) => {
+  if (request.posePreset && !request.controllable) {
+    ctx.addIssue({ code: "custom", path: ["posePreset"], message: "Pose presets require a controllable animation" });
+  }
   if (!request.controllable) return;
   if (request.kind !== "animated") {
     ctx.addIssue({ code: "custom", path: ["controllable"], message: "Controllable stickers must be animated" });
@@ -175,6 +181,12 @@ export const UpdateStickerRequestSchema = z.object({
 }).strict();
 
 export const PostChatMessageRequestSchema = z.object({
+  planPoseUpdate: z.object({
+    planId: z.string().uuid(),
+    currentRevision: z.number().int().min(1),
+    posePreset: PosePresetSchema,
+    edit: PlanEditV1Schema.optional(),
+  }).strict().optional(),
   text: z.string().trim().min(1).max(8_000),
   intent: z.enum(["generate", "edit", "animate", "chat"]),
   attachments: z.array(z.object({
@@ -188,6 +200,9 @@ export const PostChatMessageRequestSchema = z.object({
   quick: QuickGenerationSchema,
   useQuickModeAllowance: z.boolean().optional(),
 }).strict().superRefine((value, context) => {
+  if (value.planPoseUpdate && (value.intent !== "chat" || value.quick || value.targetLayerId || value.attachments.length > 0 || value.imagePlacement !== "replace")) {
+    context.addIssue({ code: "custom", path: ["planPoseUpdate"], message: "Pose preset updates must be a planning chat turn" });
+  }
   if (value.intent === "animate" && !value.baseRevisionId) {
     context.addIssue({ code: "custom", path: ["baseRevisionId"], message: "Animation requires an explicit base revision" });
   }
@@ -477,6 +492,15 @@ export const StickerSummaryV1Schema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   previewAsset: AssetV1Schema.nullable(),
+  /**
+   * The concept render of this draft's newest plan — what the grid shows a draft that has not
+   * built any artwork of its own yet.
+   *
+   * Null on every published sticker, which has its own artwork, and on a draft whose plan never
+   * reached a concept render. A reader uses it only *after* `systemSticker` and `previewAsset`:
+   * a draft that has already built something should show what it built, not what it planned.
+   */
+  planConceptAsset: AssetV1Schema.nullable(),
   systemSticker: SystemStickerV1Schema.nullable(),
   /**
    * The smaller sizes WinkySticker can attach, when this sticker has them.

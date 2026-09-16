@@ -7,6 +7,7 @@ import TipKit
 import UIKit
 
 struct StickerChatView: View {
+    private static let progressLog = Logger(subsystem: "app.rxlab.sticker-factory", category: "chat-progress")
     @Bindable var store: StickerStore
     let stickerID: String
 
@@ -116,7 +117,7 @@ struct StickerChatView: View {
     private var mediaPreloadToken: String {
         let revisionIDs = messages.compactMap(\.revisionId)
         let attachmentIDs = messages.flatMap(\.attachments).map(\.assetId)
-        let planReferenceIDs = messages.compactMap(\.plan?.conceptAssetId)
+        let planReferenceIDs = messages.flatMap { [$0.plan?.conceptAssetId, $0.plan?.animationPreviewAssetId].compactMap { $0 } }
         return (revisionIDs + attachmentIDs + planReferenceIDs).joined(separator: ":")
     }
     /// How much the assistant has written in the turn being streamed, as a haptic trigger only.
@@ -216,7 +217,11 @@ struct StickerChatView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                ChatTitleChip(title: stickerTitle, status: activeStatus)
+                ChatTitleChip(
+                    title: stickerTitle,
+                    status: activeStatus,
+                    progressCount: store.jobs[stickerID]?.progressCountText
+                )
             }
             ToolbarItem(placement: .topBarTrailing) {
                 StickerChatActionsMenu(
@@ -343,8 +348,8 @@ struct StickerChatView: View {
         }
         .sheet(item: $planEditorTarget) { target in
             NavigationStack {
-                PlanEditorSheet(record: target.record, focus: target.focus) { edit in
-                    try await store.editPlan(stickerID: stickerID, current: target.record, edit: edit)
+                PlanEditorSheet(record: target.record, focus: target.focus) { edit, posePreset in
+                    try await store.editPlan(stickerID: stickerID, current: target.record, edit: edit, posePreset: posePreset)
                 }
             }
         }
@@ -486,14 +491,16 @@ struct StickerChatView: View {
             AssistantWorkingCard(
                 startedAt: turnStartedAt,
                 note: summary.note,
-                completedSteps: summary.completedSteps,
-                outputTokens: job?.outputTokens ?? 0,
-                imagesDrawn: job?.imagesDrawn ?? 0,
-                clipsFilmed: job?.clipsFilmed ?? 0,
-                progress: job?.unitProgress,
-                progressLabel: job?.progressLabel,
-                progressCount: job?.progressCountText
+                outputTokens: job?.outputTokens ?? 0
             )
+            .onChange(of: job, initial: true) { _, current in
+                Self.progressLog.notice("""
+                    working-card job=\(current?.jobID ?? "-", privacy: .public) event=\(current?.lastEventID ?? 0) \
+                    outputTokens=\(current?.outputTokens ?? 0) completedSteps=\(summary.completedSteps) \
+                    hasNote=\(summary.note != nil)
+                    """)
+                Self.progressLog.debug("working-card note=\(summary.note ?? "-", privacy: .private)")
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
@@ -574,6 +581,7 @@ struct StickerChatView: View {
                 onShowVersions: { planVersionMessage = message },
                 onEdit: { focus in planEditorTarget = .init(record: record, focus: focus) },
                 referenceImage: record.conceptAssetId.flatMap { assetStore.images[$0] },
+                animationPreviewImage: record.animationPreviewAssetId.flatMap { assetStore.images[$0] },
                 isBusy: isConfirmingPlan || isComputing,
                 onConfirm: { Task { await confirmPlan(record) } },
                 onReject: { reason in Task { await rejectPlan(record, reason: reason) } },
@@ -585,8 +593,8 @@ struct StickerChatView: View {
                     Task { await savePlanImageToPhotoLibrary(image) }
                 }
             )
-            .task(id: record.conceptAssetId) {
-                if let assetID = record.conceptAssetId {
+            .task(id: [record.conceptAssetId, record.animationPreviewAssetId]) {
+                for assetID in [record.conceptAssetId, record.animationPreviewAssetId].compactMap({ $0 }) {
                     await assetStore.load(assetID: assetID, api: store.api)
                 }
             }

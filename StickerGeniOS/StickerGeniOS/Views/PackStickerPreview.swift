@@ -26,7 +26,9 @@ struct PackStickerPreview: View {
     @State private var assetStore = StickerAssetStore()
     /// The resolved document the store actually holds artwork for. Until it matches the pose on
     /// screen the preview keeps showing the published thumbnail rather than a half-loaded render.
-    @State private var loadedDocument: AnimatedDocument?
+    @State private var loadedDocuments: [AnimatedDocument]?
+    @State private var playbackOrigin = Date()
+    @State private var exportRequest: StickerViewerExportRequest?
     @State private var errorMessage: String?
     @State private var isLoading = false
 
@@ -34,12 +36,11 @@ struct PackStickerPreview: View {
     /// player and the Messages extension pose under, so the three agree on one saved pose.
     private var accountID: String { (try? SharedKeychainTokenVault().load()?.subject) ?? "local" }
 
-    private var posed: AnimatedDocument? {
+    private var playbackDocuments: [AnimatedDocument]? {
         guard let bundle else { return nil }
-        return try? settings.resolvedDocument(bundle.document)
+        return try? settings.playbackDocuments(bundle.document)
     }
-
-    private var artworkIsReady: Bool { posed != nil && loadedDocument == posed }
+    private var artworkIsReady: Bool { settings.canPlay && playbackDocuments != nil && loadedDocuments == playbackDocuments }
 
     var body: some View {
         StickerBackground {
@@ -66,8 +67,9 @@ struct PackStickerPreview: View {
         // drawn. Keyed on the resolved document rather than on the settings so two settings that
         // resolve to the same thing — a still frame moved while `animate` is off, say — do not
         // reload anything.
-        .task(id: posed) { await loadArtwork() }
-        .onChange(of: settings) { _, updated in savePose(updated) }
+        .task(id: playbackDocuments) { await loadArtwork() }
+        .onChange(of: settings) { _, updated in playbackOrigin = Date(); savePose(updated) }
+        .sheet(item: $exportRequest) { StickerViewerExportSheet(request: $0) }
     }
 
     // MARK: - Artwork
@@ -78,18 +80,9 @@ struct PackStickerPreview: View {
     /// reader tapped, and swapping it for a progress view to load a document that draws the same
     /// picture reads as the sheet losing the sticker.
     @ViewBuilder private var artwork: some View {
-        if let posed, artworkIsReady {
-            Group {
-                if settings.animate {
-                    AnimatedIconView(document: posed, assets: assetStore.renderAssets.dictionary, repeats: true)
-                } else {
-                    AnimatedIconFrame(
-                        document: posed,
-                        time: settings.stillTime(in: posed),
-                        assets: assetStore.renderAssets.dictionary
-                    )
-                }
-            }
+        if let bundle, artworkIsReady {
+            StickerConfiguredPreview(document: bundle.document, settings: settings,
+                assets: assetStore.renderAssets, origin: playbackOrigin)
             .accessibilityIdentifier("pack-sticker-posed-artwork")
         } else {
             // `.preview`: one sticker filling a sheet can afford frames at twice the size a
@@ -134,14 +127,20 @@ struct PackStickerPreview: View {
                 if !canControl {
                     NoticeBanner(message: String(localized: "Add this pack to your library to pose this sticker."))
                 } else if let bundle {
-                    StickerControlRows(document: bundle.document, settings: $settings)
+                    StickerPlaybackControls(document: bundle.document, settings: $settings, origin: playbackOrigin)
+                    Button {
+                        exportRequest = .init(document: bundle.document, settings: settings, assets: assetStore.renderAssets)
+                    } label: { Label("Export", systemImage: "square.and.arrow.up") }
+                    .buttonStyle(.posterSecondaryCompact)
+                    .disabled(!artworkIsReady)
+                    .accessibilityIdentifier("sticker-viewer-export")
 
                     HStack(spacing: 10) {
                         Button("Reset") { settings = .defaults(for: bundle.document) }
                             .buttonStyle(.posterSecondaryCompact)
                             .accessibilityIdentifier("pack-sticker-controls-reset")
                         Spacer(minLength: 8)
-                        if !artworkIsReady { ProgressView().controlSize(.small).tint(AppColors.ink) }
+                        if settings.canPlay && !artworkIsReady { ProgressView().controlSize(.small).tint(AppColors.ink) }
                     }
                 } else if isLoading {
                     PosterProgress(message: String(localized: "Loading controls…"))
@@ -189,10 +188,19 @@ struct PackStickerPreview: View {
     }
 
     private func loadArtwork() async {
-        guard let posed, loadedDocument != posed else { return }
-        await assetStore.preload(document: posed, api: api)
-        guard !Task.isCancelled, posed == self.posed else { return }
-        loadedDocument = posed
+        guard let target = playbackDocuments, loadedDocuments != target else { return }
+        for document in target {
+            guard !Task.isCancelled else { return }
+            await assetStore.preload(document: document, api: api)
+        }
+        guard !Task.isCancelled, target == playbackDocuments else { return }
+        guard target.allSatisfy({ assetStore.renderAssets.containsArtwork(for: $0) }) else {
+            errorMessage = String(localized: "A sticker frame could not be rendered.")
+            return
+        }
+        errorMessage = nil
+        loadedDocuments = target
+        playbackOrigin = Date()
     }
 
     /// Poses are per person, not per sticker: they are written to this account's own shared

@@ -16,6 +16,7 @@ struct FeatureAnnouncement: Identifiable, Equatable {
         switch id {
         case "whatsapp-sticker-import": "FeatureWhatsApp"
         case "telegram-sticker-import": "FeatureTelegram"
+        case "controllable-animation": "FeatureControllableAnimation"
         default: nil
         }
     }
@@ -44,6 +45,15 @@ struct FeatureAnnouncement: Identifiable, Equatable {
                 The same pack screen sends to Telegram: \
                 stills go as PNG, animations as transparent video, sped up when they run past Telegram's three seconds. \
                 Telegram asks for the pack's name when it opens.
+                """)
+        ),
+        .init(
+            id: "controllable-animation",
+            icon: "🎛️",
+            accent: AppColors.indigo,
+            title: String(localized: "Controllable animation"),
+            message: String(localized: """
+                Change the animation after you make it. Try a new move, fine-tune the timing, or keep the version that feels just right.
                 """)
         )
     ]

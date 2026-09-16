@@ -10,6 +10,7 @@ struct ChatTitleChip: View {
     let title: String
     /// `nil` when nothing is running — the chip then shows the title alone and shrinks to fit.
     let status: String?
+    var progressCount: String?
 
     var body: some View {
         VStack(spacing: 2) {
@@ -18,20 +19,28 @@ struct ChatTitleChip: View {
                 .foregroundStyle(AppColors.ink)
                 .lineLimit(1)
             if let status {
-                Text(status)
-                    .font(.caption2)
-                    .foregroundStyle(AppColors.muted)
-                    .lineLimit(1)
-                    // Keyed on the text so a phase change cross-fades rather than snapping, which
-                    // matters when a turn walks through three of them in a few seconds.
-                    .id(status)
-                    .transition(.opacity)
+                HStack(spacing: 4) {
+                    Text(status)
+                        .lineLimit(1)
+                    if let progressCount {
+                        Text(progressCount)
+                            .monospacedDigit()
+                            .fixedSize()
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(AppColors.muted)
+                // Only phase changes cross-fade; counts update in place.
+                .id(status)
+                .transition(.opacity)
             }
         }
         .posterChip()
         .animation(.easeInOut(duration: 0.2), value: status)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(status.map { "\(title), \($0)" } ?? title)
+        .accessibilityLabel(status.map {
+            "\(title), \($0)" + (progressCount.map { ", \($0)" } ?? "")
+        } ?? title)
         .accessibilityIdentifier("chat-title-chip")
     }
 }

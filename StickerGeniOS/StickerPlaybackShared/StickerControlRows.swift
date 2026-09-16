@@ -11,6 +11,7 @@ import SwiftUI
 struct StickerControlRows: View {
     let document: AnimatedDocument
     @Binding var settings: StickerControlSettings
+    var sequenceEntry = false
 
     /// The controls bucketed by the character they pose, but only once there are two characters to
     /// tell apart. One character needs no heading, and a sticker that has always shown a plain list
@@ -35,15 +36,15 @@ struct StickerControlRows: View {
                 if groups.last?.layerID != nil { PosterListHeader("General").padding(.top, 6) }
             }
 
-            PosterToggleRow(
+            if !sequenceEntry { PosterToggleRow(
                 title: String(localized: "Animate"),
                 isOn: $settings.animate,
                 identifier: "sticker-controls-animate"
-            )
+            ) }
 
             // A document that binds its own number control to speed already offers this, under the
             // creator's name for it; a second slider would be two ways to set one value.
-            if document.configuration?.controls.contains(where: { $0.type == .number }) != true {
+            if document.configuration?.controls.contains(where: { $0.type == .number && $0.binding == "speed" }) != true {
                 PosterSliderRow(
                     title: String(localized: "Speed"),
                     value: $settings.speed,
@@ -53,7 +54,7 @@ struct StickerControlRows: View {
                 )
             }
 
-            if !settings.animate {
+            if !sequenceEntry && !settings.animate {
                 PosterSliderRow(
                     title: String(localized: "Still frame"),
                     value: $settings.stillPosition,
@@ -89,16 +90,20 @@ struct StickerControlRows: View {
         let title = rowTitle(control, under: layerID)
         switch control.type {
         case .choice:
-            PosterMenuRow(
-                caption: title,
-                value: selectedOptionLabel(control),
-                identifier: "sticker-control-\(control.id)"
-            ) {
-                Picker(control.label, selection: Binding(
-                    get: { settings.values[control.id]?.string ?? control.defaultValue.string ?? "" },
-                    set: { settings.values[control.id] = .string($0) }
-                )) {
-                    ForEach(control.options ?? []) { option in Text(option.label).tag(option.id) }
+            if sequenceEntry {
+                StickerSequenceChoiceRow(control: control, title: title, settings: $settings)
+            } else {
+                PosterMenuRow(
+                    caption: title,
+                    value: selectedOptionLabel(control),
+                    identifier: "sticker-control-\(control.id)"
+                ) {
+                    Picker(control.label, selection: Binding(
+                        get: { settings.values[control.id]?.string ?? control.defaultValue.string ?? "" },
+                        set: { settings.values[control.id] = .string($0) }
+                    )) {
+                        ForEach(control.options ?? []) { option in Text(option.label).tag(option.id) }
+                    }
                 }
             }
         case .number:
@@ -129,5 +134,73 @@ struct StickerControlRows: View {
     private func selectedOptionLabel(_ control: AnimatedControl) -> String {
         let selected = settings.values[control.id]?.string ?? control.defaultValue.string ?? ""
         return control.options?.first { $0.id == selected }?.label ?? selected
+    }
+}
+
+/// Use a navigation page for choices inside the stacked animation editor sheet. This keeps
+/// long option lists accessible without presenting another popover over the two drawers.
+private struct StickerSequenceChoiceRow: View {
+    let control: AnimatedControl
+    let title: String
+    @Binding var settings: StickerControlSettings
+
+    private var selected: String {
+        settings.values[control.id]?.string ?? control.defaultValue.string ?? ""
+    }
+
+    var body: some View {
+        NavigationLink {
+            StickerSequenceChoicePage(control: control, selection: Binding(
+                get: { selected },
+                set: { settings.values[control.id] = .string($0) }
+            ))
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).posterLabelStyle(9, color: AppColors.muted)
+                    Text(control.options?.first { $0.id == selected }?.label ?? selected)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.subheadline.bold())
+            }
+            .foregroundStyle(AppColors.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .posterSurface(cornerRadius: Poster.chipRadius, fill: AppColors.paper, lineWidth: Poster.hairline, offset: .zero)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sticker-control-\(control.id)")
+    }
+}
+
+private struct StickerSequenceChoicePage: View {
+    let control: AnimatedControl
+    @Binding var selection: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        StickerBackground {
+            List(control.options ?? []) { option in
+                Button {
+                    selection = option.id
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text(option.label)
+                        Spacer()
+                        if selection == option.id { Image(systemName: "checkmark") }
+                    }
+                    .foregroundStyle(AppColors.ink)
+                    .contentShape(Rectangle())
+                }
+                .listRowBackground(AppColors.paper)
+                .accessibilityAddTraits(selection == option.id ? .isSelected : [])
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle(control.label)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

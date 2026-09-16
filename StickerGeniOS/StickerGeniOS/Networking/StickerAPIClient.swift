@@ -601,7 +601,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
 
         let (bytes, response) = try await session.bytes(for: request)
         guard let response = response as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
-        Self.log.debug("event stream open job=\(jobID, privacy: .public) status=\(response.statusCode) after=\(lastEventID ?? 0)")
+        Self.log.notice("stream-progress open job=\(jobID, privacy: .public) status=\(response.statusCode) after=\(lastEventID ?? 0)")
         if response.statusCode == 401 {
             _ = try await tokenBroker.validAccessToken(forceRefresh: true)
             return .unauthorized
@@ -611,20 +611,59 @@ actor StickerAPIClient: StickerAPIClientProtocol {
 
         var dataLines: [String] = []
         var frameID: Int64?
+        var frameType: String?
         var received = 0
-        for try await line in bytes.lines {
+        var receivedBytes = 0
+        var receivedLines = 0
+        var lineBytes: [UInt8] = []
+        var previousWasCR = false
+        // SSE blank lines delimit events. Split the raw bytes ourselves so a text-line
+        // sequence cannot discard those delimiters and leave every event buffered forever.
+        // Decode only complete lines, preserving UTF-8 characters split across network chunks.
+        for try await byte in bytes {
             try Task.checkCancellation()
+            receivedBytes += 1
+            if receivedBytes == 1 {
+                Self.log.notice("stream-progress first-byte job=\(jobID, privacy: .public)")
+            }
+            if previousWasCR && byte == 0x0A {
+                previousWasCR = false
+                continue
+            }
+            previousWasCR = byte == 0x0D
+            guard byte == 0x0A || byte == 0x0D else {
+                lineBytes.append(byte)
+                continue
+            }
+            // An SSE line is raw UTF-8 bytes rather than `Data`, so `String(decoding:as:)` is the right
+            // initialiser: invalid bytes degrade to replacement characters instead of dropping the frame.
+            // swiftlint:disable:next optional_data_string_conversion
+            let line = String(decoding: lineBytes, as: UTF8.self)
+            lineBytes.removeAll(keepingCapacity: true)
+            receivedLines += 1
             if line.isEmpty {
                 defer {
                     dataLines.removeAll(keepingCapacity: true)
                     frameID = nil
+                    frameType = nil
                 }
                 guard !dataLines.isEmpty else { continue }
                 let data = Data(dataLines.joined(separator: "\n").utf8)
+                // The server's end frame has a job state, not a GenerationEvent envelope.
+                if frameType == "end",
+                   let end = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+                   SSEStreamTermination.isTerminal(jobState: end["jobState"]) {
+                    Self.log.notice("stream-progress end job=\(jobID, privacy: .public) received=\(received)")
+                    return .terminal
+                }
                 do {
                     let event = try decoder.decode(GenerationEvent.self, from: data)
                     received += 1
-                    Self.log.debug("event job=\(jobID, privacy: .public) id=\(event.id) type=\(event.type.rawValue, privacy: .public)")
+                    Self.log.notice("""
+                        stream-progress frame job=\(jobID, privacy: .public) event=\(event.id) \
+                        type=\(event.type.rawValue, privacy: .public) outputTokens=\(event.data.outputTokens ?? 0) \
+                        hasNote=\(event.data.note != nil)
+                        """)
                     receive(event)
                     if event.type == .completed || event.type == .failed { return .terminal }
                 } catch {
@@ -635,12 +674,18 @@ actor StickerAPIClient: StickerAPIClientProtocol {
                     if let frameID { advanceCursor(frameID) }
                 }
             } else if line.hasPrefix("data:") {
-                dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
+                let value = line.dropFirst(5)
+                dataLines.append(String(value.first == " " ? value.dropFirst() : value))
             } else if line.hasPrefix("id:") {
                 frameID = Int64(String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces))
+            } else if line.hasPrefix("event:") {
+                frameType = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
             }
         }
-        Self.log.debug("event stream closed job=\(jobID, privacy: .public) received=\(received) terminalHeader=\(terminalHeader)")
+        Self.log.notice("""
+            stream-progress closed job=\(jobID, privacy: .public) bytes=\(receivedBytes) lines=\(receivedLines) \
+            received=\(received) pendingDataLines=\(dataLines.count) terminalHeader=\(terminalHeader)
+            """)
         return terminalHeader ? .terminal : .windowExpired
     }
 

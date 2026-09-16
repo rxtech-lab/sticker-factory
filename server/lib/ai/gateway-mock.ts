@@ -2,6 +2,7 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { POSE_COUNTS } from "@/lib/contracts/pose-preset";
 import sharp from "sharp";
 import { configurationReviewSelections } from "@/lib/contracts/configuration";
 import { PlanV1Schema, reusableAssetIds, type PlanV1 } from "@/lib/contracts/plan";
@@ -9,7 +10,7 @@ import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -196,6 +197,7 @@ export class MockAiProvider implements AiProvider {
   }
 
   async generateConceptImage(input: {
+    purpose?: "animation-summary";
     prompt: string;
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
   }): Promise<AiImageOutput> {
@@ -217,6 +219,12 @@ export class MockAiProvider implements AiProvider {
    * testing — `inspectMp4` has to accept the container, the asset row has to carry its timing, and
    * the document's fps has to be raised to match.
    */
+  /** The mock's sheets are drawn to spec by construction, so there is never anything to reject. */
+  async inspectSpriteSheet(input: AiSheetInspectionContext): Promise<AiSheetInspection> {
+    void input;
+    return { ok: true };
+  }
+
   async generateStickerVideo(): Promise<AiVideoOutput> {
     const bytes = await readFile(path.join(process.cwd(), "fixtures", "video-480.mp4"));
     return { bytes: new Uint8Array(bytes), mimeType: "video/mp4", modelId: "mock/video" };
@@ -246,16 +254,26 @@ export class MockAiProvider implements AiProvider {
     const wantsSprite = input.controllable
       || /\b(mood|moods|expression|expressions|pose|poses|emotion|emotions)\b/i.test(input.instruction);
     if (animated && wantsSprite) {
+      const clips = [
+        { id: "idle", label: "Idle", prompt: "breathes gently and blinks once" },
+        { id: "wave", label: "Wave", prompt: "raises one arm and waves it side to side" },
+        { id: "bounce", label: "Bounce", prompt: "bounces up and settles gently" },
+        { id: "dance", label: "Dance", prompt: "sways from side to side" },
+        { id: "cheer", label: "Cheer", prompt: "raises both arms in celebration" },
+        { id: "bow", label: "Bow", prompt: "bows forward and returns upright" },
+        { id: "stretch", label: "Stretch", prompt: "stretches both arms overhead" },
+        { id: "nod", label: "Nod", prompt: "nods twice and returns to rest" },
+      ].slice(0, input.posePreset ? POSE_COUNTS[input.posePreset] : 2)
+        .map((clip) => ({ ...clip, frames: Array.from({ length: 6 }, () => ({ duration: 0.5 })) }));
       const sprite = PlanV1Schema.parse({
         version: 1, title: "Controllable character", kind: "animated", timing: { durationSeconds: 3, fps: 24, loop: "loop" },
-        summary: "Here is a controllable character with two clips and three expressions. Confirm to build it.",
+        posePreset: input.posePreset,
+        summary: input.posePreset ? `Here is a controllable character with ${input.posePreset} pose variety. Confirm to build it.` : "Here is a controllable character with two clips and three expressions. Confirm to build it.",
         conceptPrompt: "A polished sticker of one round friendly character at rest, in a coherent bold style.",
         layers: [{ layerId: "hero", name: "Character", x: 0.5, y: 0.5, scaleX: 0.9, scaleY: 0.9, source: {
           kind: "sprite", prompt: "One round friendly character filling the frame on a transparent background.",
-          clips: [
-            { id: "idle", label: "Idle", prompt: "breathes gently and blinks once", frames: [{ duration: 2.4 }, { duration: 0.18 }, { duration: 0.28 }, { duration: 0.22 }, { duration: 0.3 }, { duration: 1.2 }] },
-            { id: "wave", label: "Wave", prompt: "raises one arm and waves it side to side", frames: [{ duration: 0.4 }, { duration: 0.3 }, { duration: 0.35 }, { duration: 0.3 }, { duration: 0.35 }, { duration: 0.7 }] },
-          ],
+          face: "the round head: both eyes and the mouth sit in its centre; nothing facial elsewhere on the body",
+          clips,
           expressions: [
             { id: "neutral", label: "Neutral", prompt: "calm open eyes and a small smile" },
             { id: "happy", label: "Happy", prompt: "closed curved eyes and a wide smile" },
@@ -264,14 +282,13 @@ export class MockAiProvider implements AiProvider {
         } }],
         configuration: { controls: [
           { id: "mood", type: "choice", label: "Mood", defaultValue: "neutral", options: [{ id: "neutral", label: "Neutral" }, { id: "happy", label: "Happy" }, { id: "sad", label: "Sad" }] },
-          { id: "pose", type: "choice", label: "Pose", defaultValue: "idle", options: [{ id: "idle", label: "Idle" }, { id: "wave", label: "Wave" }] },
+          { id: "pose", type: "choice", label: "Pose", defaultValue: "idle", options: clips.map(({ id, label }) => ({ id, label })) },
           { id: "speed", type: "number", label: "Speed", defaultValue: 1, minimum: 0.25, maximum: 2, step: 0.05, binding: "speed" },
         ], variants: [
           { id: "neutral", selections: { mood: "neutral" }, layers: [{ layerId: "hero", expression: "neutral" }] },
           { id: "happy", selections: { mood: "happy" }, layers: [{ layerId: "hero", expression: "happy" }] },
           { id: "sad", selections: { mood: "sad" }, layers: [{ layerId: "hero", expression: "sad" }] },
-          { id: "idle", selections: { pose: "idle" }, layers: [{ layerId: "hero", clip: "idle" }] },
-          { id: "wave", selections: { pose: "wave" }, layers: [{ layerId: "hero", clip: "wave" }] },
+          ...clips.map(({ id }) => ({ id, selections: { pose: id }, layers: [{ layerId: "hero", clip: id }] })),
         ] },
       });
       const created = await session.createPlan(sprite);

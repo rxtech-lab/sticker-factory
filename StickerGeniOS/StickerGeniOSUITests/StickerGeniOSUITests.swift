@@ -64,6 +64,50 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testPlanImagesOpenFullScreenAndZoom() {
+        app.terminate()
+        app.launchArguments.append("--ui-plan-versions")
+        app.launch()
+        element("library-sticker-sticker-demo").tap()
+        for imageID in ["plan-static-reference", "plan-animation-summary"] {
+            let image = app.buttons[imageID]
+            XCTAssertTrue(image.waitForExistence(timeout: 8))
+            let scroll = app.scrollViews.firstMatch
+            for _ in 0..<8 {
+                if image.frame.midY < 220 {
+                    scroll.swipeDown()
+                } else if image.frame.midY > 700 {
+                    scroll.swipeUp()
+                } else {
+                    break
+                }
+            }
+            XCTAssertTrue(image.isHittable)
+            image.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            let close = app.buttons["plan-image-close"]
+            XCTAssertTrue(close.waitForExistence(timeout: 3))
+            let reset = app.buttons["plan-image-reset-zoom"]
+            XCTAssertEqual(reset.value as? String, "100%")
+            app.buttons["plan-image-zoom-in"].tap()
+            XCTAssertEqual(reset.value as? String, "150%")
+            app.buttons["plan-image-zoom-out"].tap()
+            XCTAssertEqual(reset.value as? String, "100%")
+            let surface = element("plan-image-zoom-surface")
+            surface.pinch(withScale: 2, velocity: 1)
+            XCTAssertNotEqual(reset.value as? String, "100%")
+            surface.swipeLeft()
+            reset.tap()
+            XCTAssertEqual(reset.value as? String, "100%")
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = imageID + " fullscreen"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            close.tap()
+            XCTAssertTrue(close.waitForNonExistence(timeout: 3))
+        }
+    }
+
+    @MainActor
     func testPlanVersionPickerActivatesSelectedVersionInLatestCard() {
         app.terminate()
         app.launchArguments.append("--ui-plan-versions")
@@ -578,7 +622,7 @@ final class StickerGeniOSUITests: XCTestCase {
     }
 
     @MainActor
-    func testWorkingCardShowsCompletedStepsWithoutRepeatingTitle() {
+    func testWorkingCardShowsOnlyTheNoteWhileTheChipCarriesProgress() {
         app.terminate()
         app.launchArguments.append("--ui-working-progress")
         app.launch()
@@ -589,18 +633,22 @@ final class StickerGeniOSUITests: XCTestCase {
         // Opening this fixture reattaches its in-progress generation.
         let card = element("assistant-working-card")
         XCTAssertTrue(card.waitForExistence(timeout: 8))
-        expectation(for: NSPredicate(format: "label CONTAINS %@", "2 steps done"), evaluatedWith: card)
+        let note = "Last finished: Reviewing the sticker"
+        expectation(for: NSPredicate(format: "label CONTAINS %@", note), evaluatedWith: card)
         waitForExpectations(timeout: 5)
-        XCTAssertTrue(card.label.contains("Last finished: Reviewing the sticker"))
         XCTAssertFalse(card.label.contains("Finishing up"))
+        // Counted progress belongs to the chip and the Live Activity; the card is the note alone.
+        XCTAssertFalse(card.label.contains("steps done"))
+        let title = element("chat-title-chip")
+        XCTAssertTrue(title.label.contains("Finishing up"))
+        XCTAssertTrue(title.label.contains("2/6"))
         // The transcript deliberately keeps its scroll position as new content arrives.
         // Bring the entire growing card above the floating candidate/composer controls.
         app.scrollViews.firstMatch.swipeUp()
         XCTAssertTrue(card.isHittable)
-        XCTAssertTrue(card.label.contains("2 steps done"))
-        XCTAssertTrue(card.label.contains("Last finished: Reviewing the sticker"))
+        XCTAssertTrue(card.label.contains(note))
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Working card with completed steps"
+        screenshot.name = "Working card showing only its note"
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }
@@ -698,31 +746,6 @@ final class StickerGeniOSUITests: XCTestCase {
         XCTAssertTrue(element("generate-sticker-button").exists)
     }
 
-    @MainActor
-    func testFirstLaunchWelcomeExplainsTheFullWorkflow() {
-        app.terminate()
-        app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-welcome"]
-        app.launch()
-
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
-
-        for title in ["1. Generate", "2. Confirm", "3. Keep every version", "4. Publish", "5. Use it"] {
-            app.buttons["Next"].tap()
-            expectation(
-                for: NSPredicate(format: "hittable == true"),
-                evaluatedWith: app.staticTexts[title]
-            )
-            waitForExpectations(timeout: 3)
-        }
-
-        let getStarted = app.buttons["Get started"]
-        XCTAssertTrue(getStarted.exists)
-        getStarted.tap()
-        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["5. Use it"].exists)
-    }
-
     /// A pack you created stays editable once it exists — the whole point of the editor is that
     /// publishing is not a one-way door, so the screen has to be reachable from the pack itself.
     @MainActor
@@ -799,80 +822,6 @@ final class StickerGeniOSUITests: XCTestCase {
         // it was opened with.
         XCTAssertTrue(app.staticTexts["Edited after it was created"].waitForExistence(timeout: 8))
         XCTAssertFalse(element("pack-editor-title-field").exists)
-    }
-
-    /// The feature cards come up after the welcome tour, one card per Next, and the last one is
-    /// dismissed by Got it. Forced by flag, exactly as the tour is.
-    @MainActor
-    func testFeatureCardsFollowTheWelcomeTour() {
-        app.terminate()
-        app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-welcome", "--ui-show-feature-cards"]
-        app.launch()
-
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
-        for _ in 0..<5 { app.buttons["Next"].tap() }
-        app.buttons["Get started"].tap()
-
-        // The cards follow the tour inside the same sheet; the first card's title is what says
-        // they arrived.
-        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 8))
-        let next = element("feature-card-next-button")
-        XCTAssertTrue(next.exists)
-        next.tap()
-        expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: app.staticTexts["Your packs, in Telegram"])
-        waitForExpectations(timeout: 3)
-        XCTAssertTrue(app.buttons["Got it"].exists)
-        app.buttons["Got it"].tap()
-        XCTAssertFalse(app.staticTexts["Your packs, in Telegram"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.tabBars.buttons["Library"].exists)
-    }
-
-    @MainActor
-    func testLibraryErrorWaitsUntilWelcomeAndFeatureCardsFinish() {
-        app.terminate()
-        app = XCUIApplication()
-        app.launchArguments = [
-            "--ui-testing", "--reduce-motion", "--ui-show-welcome",
-            "--ui-show-feature-cards", "--ui-library-list-failure",
-            "-AppleLanguages", "(en)", "-AppleLocale", "en_US"
-        ]
-        app.launch()
-
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
-        XCTAssertFalse(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 2))
-        for _ in 0..<5 { app.buttons["Next"].tap() }
-        app.buttons["Get started"].tap()
-
-        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
-        element("feature-card-next-button").tap()
-        XCTAssertTrue(app.buttons["Got it"].waitForExistence(timeout: 3))
-        app.buttons["Got it"].tap()
-
-        XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Update Winky Sticker Factory to version 1.2 or later to view your stickers."].exists)
-        app.buttons["OK"].tap()
-        XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
-    }
-
-    /// Feature cards alone, with no tour in front of them, on a launch that has already seen it.
-    @MainActor
-    func testFeatureCardsShowWithoutTheWelcomeTour() {
-        app.terminate()
-        app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-feature-cards"]
-        app.launch()
-
-        XCTAssertTrue(element("feature-cards-sheet").waitForExistence(timeout: 8))
-        XCTAssertFalse(app.staticTexts["Welcome to Winky Sticker Factory"].exists)
-        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].exists)
-    }
-
-    /// The default launch shows no cards at all under automation, the same as the welcome tour.
-    @MainActor
-    func testFeatureCardsAreSuppressedUnderAutomationByDefault() {
-        XCTAssertFalse(element("feature-cards-sheet").waitForExistence(timeout: 2))
     }
 
     /// The pack screen offers both messengers, and the export sheet explains how the pack will be

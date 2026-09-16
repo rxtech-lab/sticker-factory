@@ -7,12 +7,19 @@ import SwiftUI
 /// The `MSSticker` is built once and kept: the sheet asks for the view on every re-evaluation, and
 /// rebuilding it each time would re-read the file and restart the animation under the reader's
 /// finger.
+nonisolated struct PreparedStickerFile: Sendable {
+    var url: URL
+    var firstAnimationOnly: Bool
+}
+
 struct PreparedSticker {
     let fileURL: URL
     let title: String
     let sticker: MSSticker
+    let firstAnimationOnly: Bool
 
-    init(fileURL: URL, title: String) throws {
+    init(fileURL: URL, title: String, firstAnimationOnly: Bool = false) throws {
+        self.firstAnimationOnly = firstAnimationOnly
         self.fileURL = fileURL
         self.title = title
         sticker = try MSSticker(contentsOfFileURL: fileURL, localizedDescription: title)
@@ -34,7 +41,7 @@ extension PreparedSticker {
         settings: StickerControlSettings,
         assets: StickerRenderAssets,
         image: Bool
-    ) async throws -> URL {
+    ) async throws -> PreparedStickerFile {
         // The rung only reaches the sticker path; a full-size image is not sized by Messages and
         // carries the value only so the two kinds cannot collide in the cache.
         let size = SystemStickerSize.stuck
@@ -48,9 +55,10 @@ extension PreparedSticker {
         )
         defer { try? FileManager.default.removeItem(at: rendered.url) }
         try Task.checkCancellation()
-        return try await service.storeRender(
+        let url = try await service.storeRender(
             rendered, accountID: account, bundle: bundle, settings: settings, image: image, size: size
         )
+        return .init(url: url, firstAnimationOnly: rendered.firstAnimationOnly)
     }
 }
 
