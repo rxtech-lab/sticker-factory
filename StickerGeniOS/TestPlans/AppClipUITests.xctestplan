@@ -1,0 +1,33 @@
+{
+  "configurations" : [
+    {
+      "id" : "3B9D4C22-8E77-4A15-B0C3-6D48F2A91B54",
+      "name" : "Default",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "defaultTestExecutionTimeAllowance" : 180,
+    "maximumTestExecutionTimeAllowance" : 300,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:StickerGeniOS.xcodeproj",
+      "identifier" : "52C7DF7A6F60130331BEF5A0",
+      "name" : "StickerAppClip"
+    },
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:StickerGeniOS.xcodeproj",
+        "identifier" : "9DF2292DA1CD8184DF357154",
+        "name" : "StickerAppClipUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

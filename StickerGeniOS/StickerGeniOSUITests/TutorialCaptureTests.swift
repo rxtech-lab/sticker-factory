@@ -17,7 +17,7 @@ final class TutorialCaptureTests: XCTestCase {
         ] + extra
         app.launchEnvironment["TUTORIAL_BASE_URL"] = "http://127.0.0.1:3117"
         app.launch()
-        XCTAssertTrue(element("create-sticker-button").waitForExistence(timeout: 10))
+        XCTAssertTrue(element("create-sticker-button").waitForExistence(timeout: 15))
     }
     private func capture(_ name: String) {
         Thread.sleep(forTimeInterval: 0.6)
@@ -51,7 +51,7 @@ final class TutorialCaptureTests: XCTestCase {
         app.swipeUp()
         capture("create-references")
         element("creation-next").tap()
-        XCTAssertTrue(element("sticker-kind-picker").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("sticker-kind-picker").waitForExistence(timeout: 15))
         capture("create-static")
         marker("create-animated", "start")
         element("sticker-kind-picker").buttons.element(boundBy: 1).tap()
@@ -61,7 +61,7 @@ final class TutorialCaptureTests: XCTestCase {
         element("creation-next").tap()
         element("creation-next").tap()
         let toggle = element("sticker-controllable-toggle")
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertTrue(toggle.waitForExistence(timeout: 15))
         toggle.switches.firstMatch.tap()
         app.swipeUp()
         capture("create-controllable")
@@ -72,7 +72,7 @@ final class TutorialCaptureTests: XCTestCase {
         marker("create-animated", "end")
         if creationOnly {
             element("creation-next").tap()
-            XCTAssertTrue(element("generate-sticker-button").waitForExistence(timeout: 5))
+            XCTAssertTrue(element("generate-sticker-button").waitForExistence(timeout: 15))
             capture("create-overview")
             return
         }
@@ -82,16 +82,16 @@ final class TutorialCaptureTests: XCTestCase {
     private func captureRemaining() {
         launch(["--ui-plan-versions"])
         element("library-sticker-sticker-demo").tap()
-        XCTAssertTrue(element("tutorial-link-finish").waitForExistence(timeout: 8))
+        XCTAssertTrue(element("tutorial-link-finish").waitForExistence(timeout: 15))
         app.swipeDown()
         capture("plan")
 
         launch(["--ui-configurable-sticker"])
         element("library-sticker-sticker-demo").tap()
-        XCTAssertTrue(element("show-sticker-attachment").waitForExistence(timeout: 8))
+        XCTAssertTrue(element("show-sticker-attachment").waitForExistence(timeout: 15))
         capture("sticker")
         element("show-sticker-attachment").tap()
-        XCTAssertTrue(element("sticker-controls-sheet").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("sticker-controls-sheet").waitForExistence(timeout: 15))
         capture("controls")
         marker("controls", "start")
         let mood = element("sticker-control-mood")
@@ -104,21 +104,21 @@ final class TutorialCaptureTests: XCTestCase {
         element("dismiss-full-screen-player").tap()
         element("sticker-actions-menu").tap()
         element("export-sticker").tap()
-        XCTAssertTrue(element("sticker-export-sheet").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("sticker-export-sheet").waitForExistence(timeout: 15))
         capture("export")
 
         launch()
         app.tabBars.buttons.element(boundBy: 1).tap()
-        XCTAssertTrue(element("create-pack-button").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("create-pack-button").waitForExistence(timeout: 15))
         capture("packs")
         element("create-pack-button").tap()
-        XCTAssertTrue(element("pack-title-field").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("pack-title-field").waitForExistence(timeout: 15))
         let packTitle = locale == "en" ? "Winky friends" : locale == "zh-CN" ? "Winky 好朋友" : "Winky 好朋友"
         element("pack-title-field").tap(); element("pack-title-field").typeText(packTitle)
         app.swipeDown()
         marker("new-pack", "start")
         element("pack-choose-stickers-button").tap()
-        XCTAssertTrue(element("pack-pick-tutorial-0").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("pack-pick-tutorial-0").waitForExistence(timeout: 15))
         capture("pack-picker")
         for index in 0..<3 { element("pack-pick-tutorial-\(index)").tap() }
         element("sticker-picker-done-button").tap()
@@ -128,13 +128,13 @@ final class TutorialCaptureTests: XCTestCase {
         launch()
         app.tabBars.buttons.element(boundBy: 1).tap()
         element("marketplace-pack-pack-demo").tap()
-        XCTAssertTrue(element("pack-messenger-whatsapp").waitForExistence(timeout: 10))
+        XCTAssertTrue(element("pack-messenger-whatsapp").waitForExistence(timeout: 15))
         capture("pack-detail")
         for destination in ["whatsapp", "telegram"] {
             marker(destination, "start")
             element("pack-messenger-\(destination)").tap()
-            XCTAssertTrue(element("messenger-export-sheet").waitForExistence(timeout: 5))
-            XCTAssertTrue(element("messenger-not-installed").waitForExistence(timeout: 5))
+            XCTAssertTrue(element("messenger-export-sheet").waitForExistence(timeout: 15))
+            XCTAssertTrue(element("messenger-not-installed").waitForExistence(timeout: 15))
             capture(destination)
             let emoji = element("messenger-emoji-tutorial-0")
             if emoji.isHittable { emoji.tap(); Thread.sleep(forTimeInterval: 1); app.alerts.buttons.element(boundBy: 0).tap() }

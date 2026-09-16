@@ -58,8 +58,12 @@ private struct SubscriptionConnectionView: View {
                 }
             }
             .navigationTitle("Subscription")
-            .onChange(of: subscription.isConnecting, initial: true) { _, isConnecting in
-                if !isConnecting, subscription.lastError != nil { showErrorDetails() }
+            // Keyed off the failure count, not off `isConnecting` going false: a retry that fails
+            // before SwiftUI renders the connecting state flips that flag true and back inside one
+            // update, `onChange` sees no transition, and the tap reads as if it did nothing at all.
+            // The count only moves forward, so every failed attempt lands exactly one alert.
+            .onChange(of: subscription.connectionFailures, initial: true) { _, _ in
+                if !subscription.isConnecting, subscription.lastError != nil { showErrorDetails() }
             }
             .alert("Subscription Error", isPresented: $isErrorPresented) {
                 Button("Copy Diagnostics") { UIPasteboard.general.string = errorDetails }

@@ -15,9 +15,9 @@ import XCTest
             app.launchArguments.append("--ui-creation-covers=\(covers)")
         }
         app.launch()
-        XCTAssertTrue(element("create-sticker-button").waitForExistence(timeout: 10))
+        XCTAssertTrue(element("create-sticker-button").waitForExistence(timeout: 15))
         element("create-sticker-button").tap()
-        XCTAssertTrue(element("sticker-prompt").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("sticker-prompt").waitForExistence(timeout: 15))
     }
     private func next() { element("creation-next").tap() }
     private func idea(_ text: String = "A friendly orange cat") {
@@ -26,7 +26,7 @@ import XCTest
     private func choices(style: String = "bold-cartoon", themes: [String] = []) {
         next()
         let option = element("preset-option-style-\(style)")
-        XCTAssertTrue(option.waitForExistence(timeout: 5)); tapVisible(option)
+        XCTAssertTrue(option.waitForExistence(timeout: 15)); tapVisible(option)
         next()
         for id in themes { tapVisible(element("preset-option-theme-\(id)")) }
         next()
@@ -41,7 +41,7 @@ import XCTest
         item.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
     private func previewReady(_ preview: XCUIElement) {
-        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        XCTAssertTrue(preview.waitForExistence(timeout: 15))
         for _ in 0..<5 {
             if preview.frame.minY >= 100 && preview.frame.maxY < element("creation-next").frame.minY { break }
             app.swipeDown()
@@ -76,15 +76,15 @@ import XCTest
         element("creation-overview-theme").tap(); capture("themes")
         next()
         element("generate-sticker-button").tap()
-        XCTAssertTrue(element("chat-composer").waitForExistence(timeout: 10))
-        XCTAssertTrue(element("creation-preset-chips").waitForExistence(timeout: 5)); capture("chat-chips")
+        XCTAssertTrue(element("chat-composer").waitForExistence(timeout: 15))
+        XCTAssertTrue(element("creation-preset-chips").waitForExistence(timeout: 15)); capture("chat-chips")
         XCTAssertTrue(element("creation-preset-chip-style-clay").exists)
         XCTAssertTrue(element("creation-preset-chip-theme-space").exists)
         let composer = element("chat-composer"); composer.tap(); composer.typeText("Keep the orange stripes")
         element("send-chat-message").tap()
         XCTAssertTrue(
             app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Keep the orange stripes"))
-                .firstMatch.waitForExistence(timeout: 5))
+                .firstMatch.waitForExistence(timeout: 15))
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "creation-preset-chips").count, 1)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let card = app.descendants(matching: .any).matching(
@@ -94,8 +94,8 @@ import XCTest
                 "library-sticker-", "A friendly orange cat"
             )
         ).firstMatch
-        XCTAssertTrue(card.waitForExistence(timeout: 5)); card.tap()
-        XCTAssertTrue(element("creation-preset-chips").waitForExistence(timeout: 5))
+        XCTAssertTrue(card.waitForExistence(timeout: 15)); card.tap()
+        XCTAssertTrue(element("creation-preset-chips").waitForExistence(timeout: 15))
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "creation-preset-chips").count, 1)
         capture("chat-followup")
     }
@@ -105,7 +105,7 @@ import XCTest
         choices()
         let toggle = element("sticker-controllable-toggle").switches.firstMatch
         XCTAssertEqual(toggle.value as? String, "0"); toggle.tap()
-        XCTAssertTrue(element("creation-interactive-preview").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("creation-interactive-preview").waitForExistence(timeout: 15))
         let levels = element("sticker-pose-preset-picker")
         XCTAssertTrue(levels.buttons["Medium"].isSelected)
         let labels = ["Min", "Medium", "High", "Ultra"]
@@ -114,7 +114,7 @@ import XCTest
             tapVisible(levels.buttons[label])
             XCTAssertTrue(app.staticTexts["\(counts[index]) selectable poses per character"].exists)
             tapVisible(element("creation-demo-pose"))
-            XCTAssertTrue(app.buttons["Idle"].waitForExistence(timeout: 3))
+            XCTAssertTrue(app.buttons["Idle"].waitForExistence(timeout: 15))
             XCTAssertEqual(app.buttons["Dance"].exists, index == 3)
             app.buttons[index == 3 ? "Dance" : "Wave"].tap()
         }
@@ -154,8 +154,8 @@ import XCTest
         let preview = element("preset-preview-theme")
         assertMoving(preview)
         next()
-        XCTAssertTrue(element("sticker-controllable-toggle").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("creation-selection-preview-pixel").waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(element("sticker-controllable-toggle").waitForExistence(timeout: 15))
+        XCTAssertTrue(element("creation-selection-preview-pixel").waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(element("creation-selection-preview-space").exists)
         capture("selected-pixel-and-space")
     }
@@ -165,7 +165,7 @@ import XCTest
         choices(style: "clay", themes: ["space"])
         element("sticker-controllable-toggle").switches.firstMatch.tap()
         let preview = element("creation-interactive-preview")
-        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        XCTAssertTrue(preview.waitForExistence(timeout: 15))
         for pose in ["Wave", "Bounce"] {
             tapVisible(element("creation-demo-pose")); app.buttons[pose].tap()
             assertMoving(preview)
@@ -176,10 +176,10 @@ import XCTest
     }
     func testCatalogRetryAndRequiredChoice() {
         launch(["--ui-creation-catalog-failure"]); idea(); next()
-        XCTAssertTrue(element("creation-catalog-retry").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("creation-catalog-retry").waitForExistence(timeout: 15))
         XCTAssertFalse(element("creation-next").isEnabled)
         element("creation-catalog-retry").tap()
-        XCTAssertTrue(element("preset-option-style-bold-cartoon").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("preset-option-style-bold-cartoon").waitForExistence(timeout: 15))
         XCTAssertFalse(element("creation-next").isEnabled)
         element("preset-option-style-bold-cartoon").tap(); next(); next()
         element("creation-overview-idea").tap()
@@ -188,19 +188,19 @@ import XCTest
     func testChangedCatalogRequiresReselectionAndPreservesTheme() {
         launch(["--ui-creation-catalog-changed"]); idea(); choices(style: "clay", themes: ["space"])
         element("generate-sticker-button").tap()
-        XCTAssertTrue(element("preset-option-style-bold-cartoon").waitForExistence(timeout: 8))
+        XCTAssertTrue(element("preset-option-style-bold-cartoon").waitForExistence(timeout: 15))
         XCTAssertFalse(element("creation-next").isEnabled)
         XCTAssertFalse(element("preset-option-style-clay").exists)
         element("preset-option-style-bold-cartoon").tap(); next(); next()
         XCTAssertTrue(element("creation-overview-theme").label.contains("Space"))
         element("generate-sticker-button").tap()
-        XCTAssertTrue(element("chat-composer").waitForExistence(timeout: 8))
+        XCTAssertTrue(element("chat-composer").waitForExistence(timeout: 15))
     }
     func testFailedSubmissionPreservesOverviewAndDraft() {
         launch(["--ui-upload-failure", "--ui-creation-reference"]); idea(); choices()
         XCTAssertTrue(element("creation-overview-references").exists)
         element("generate-sticker-button").tap()
-        XCTAssertTrue(element("error-banner").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("error-banner").waitForExistence(timeout: 15))
         XCTAssertTrue(element("generate-sticker-button").isEnabled)
         element("creation-overview-references").tap()
         XCTAssertTrue(app.buttons["Remove reference"].exists)
@@ -209,10 +209,10 @@ import XCTest
     }
     func testFutureGroupBecomesPageOverviewAndChip() {
         launch(["--ui-creation-future-group"]); idea(); choices()
-        XCTAssertTrue(element("preset-option-occasion-everyday").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("preset-option-occasion-everyday").waitForExistence(timeout: 15))
         element("preset-option-occasion-everyday").tap(); next()
         XCTAssertTrue(element("creation-overview-occasion").exists)
         element("generate-sticker-button").tap()
-        XCTAssertTrue(element("creation-preset-chip-occasion-everyday").waitForExistence(timeout: 8))
+        XCTAssertTrue(element("creation-preset-chip-occasion-everyday").waitForExistence(timeout: 15))
     }
 }

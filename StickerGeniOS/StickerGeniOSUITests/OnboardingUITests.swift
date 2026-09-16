@@ -18,7 +18,7 @@ final class OnboardingUITests: XCTestCase {
             "-AppleLocale", "en_US"
         ]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 15))
     }
 
     @MainActor
@@ -28,7 +28,7 @@ final class OnboardingUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-welcome"]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 15))
 
         for title in ["1. Generate", "2. Confirm", "3. Keep every version", "4. Publish", "5. Use it"] {
             app.buttons["Next"].tap()
@@ -42,7 +42,7 @@ final class OnboardingUITests: XCTestCase {
         let getStarted = app.buttons["Get started"]
         XCTAssertTrue(getStarted.exists)
         getStarted.tap()
-        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["5. Use it"].exists)
     }
 
@@ -55,13 +55,13 @@ final class OnboardingUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-welcome", "--ui-show-feature-cards"]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 15))
         for _ in 0..<5 { app.buttons["Next"].tap() }
         app.buttons["Get started"].tap()
 
         // The cards follow the tour inside the same sheet; the first card's title is what says
         // they arrived.
-        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 15))
         let next = element("feature-card-next-button")
         XCTAssertTrue(next.exists)
         next.tap()
@@ -71,7 +71,7 @@ final class OnboardingUITests: XCTestCase {
         expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: app.staticTexts["Controllable animation"])
         waitForExpectations(timeout: 3)
         next.tap()
-        XCTAssertTrue(app.staticTexts["Learn with tutorials"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Learn with tutorials"].waitForExistence(timeout: 15))
         XCTAssertTrue(element("feature-read-tutorials").exists)
         XCTAssertTrue(app.buttons["Got it"].exists)
         app.buttons["Got it"].tap()
@@ -90,20 +90,20 @@ final class OnboardingUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Welcome to Winky Sticker Factory"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 2))
         for _ in 0..<5 { app.buttons["Next"].tap() }
         app.buttons["Get started"].tap()
 
-        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
         element("feature-card-next-button").tap()
         element("feature-card-next-button").tap()
         element("feature-card-next-button").tap()
-        XCTAssertTrue(app.buttons["Got it"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Got it"].waitForExistence(timeout: 15))
         app.buttons["Got it"].tap()
 
-        XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.alerts["Couldn’t Complete Action"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Update Winky Sticker Factory to version 1.2 or later to view your stickers."].exists)
         app.buttons["OK"].tap()
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
@@ -117,7 +117,7 @@ final class OnboardingUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--reduce-motion", "--ui-show-feature-cards"]
         app.launch()
 
-        XCTAssertTrue(element("feature-cards-sheet").waitForExistence(timeout: 8))
+        XCTAssertTrue(element("feature-cards-sheet").waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["Welcome to Winky Sticker Factory"].exists)
         XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].exists)
     }

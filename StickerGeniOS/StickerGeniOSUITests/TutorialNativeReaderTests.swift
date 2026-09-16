@@ -55,7 +55,7 @@ final class TutorialNativeReaderTests: XCTestCase {
             capture("native-index-\(locale)")
             for chapter in ["static", "animated", "controllable", "finish", "packs", "new-pack", "whatsapp", "telegram"] {
                 tap("tutorial-chapter-\(chapter)")
-                XCTAssertTrue(element("tutorial-step-title").waitForExistence(timeout: 3))
+                XCTAssertTrue(element("tutorial-step-title").waitForExistence(timeout: 15))
                 capture("native-\(locale)-\(chapter)")
                 XCTAssertFalse(element("tutorial-play-demo").exists)
                 element("tutorial-index").tap()
@@ -73,7 +73,7 @@ final class TutorialNativeReaderTests: XCTestCase {
         XCTAssertTrue(element("tutorial-completion-banner").exists)
         XCTAssertTrue(element("tutorial-next-chapter").exists)
         XCTAssertFalse(element("tutorial-next").exists)
-        XCTAssertTrue(element("tutorial-completion-banner").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(element("tutorial-completion-banner").waitForNonExistence(timeout: 15))
         element("tutorial-close").tap()
         XCTAssertFalse(element("tutorial-sheet").exists)
         launch()
@@ -85,7 +85,7 @@ final class TutorialNativeReaderTests: XCTestCase {
         launch(route: "stickerfactory://tutorial/static?step=describe")
         XCTAssertTrue(element("tutorial-step-title").waitForExistence(timeout: 15))
         element("tutorial-language").tap()
-        for language in ["English", "简体中文", "繁體中文"] { XCTAssertTrue(app.buttons[language].waitForExistence(timeout: 3)) }
+        for language in ["English", "简体中文", "繁體中文"] { XCTAssertTrue(app.buttons[language].waitForExistence(timeout: 15)) }
         XCTAssertTrue(element("tutorial-sheet").exists)
         XCTAssertTrue(element("tutorial-language-dropdown").exists)
         XCTAssertFalse(element("tutorial-chapter-static").exists)

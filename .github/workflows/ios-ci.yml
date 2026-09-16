@@ -3,6 +3,11 @@ name: iOS UI Tests
 on:
   push:
   workflow_dispatch:
+    inputs:
+      run_tutorial_plan:
+        description: "Also run the TutorialUITests plan (boots the Next.js server on 3117)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -12,20 +17,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ui-tests:
-    name: Run iOS UI Tests
+  # Lint once. Both test jobs share this runner, so repeating SwiftLint in each of them would add
+  # its cost to the critical path twice for a check that cannot differ between them.
+  lint:
+    name: Lint
     runs-on: [self-hosted, macOS, ARM64, ui-tests]
-    timeout-minutes: 60
-
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-
+      # No Xcode selection here: SwiftLint is a standalone binary, and this job only gates the two
+      # test jobs behind it on the one runner they all share.
       # Pinned rather than "whatever the runner has": the runner image ships its own SwiftLint,
       # and its rules disagree with the pinned one about what counts as a violation.
       - name: Install SwiftLint
@@ -41,26 +44,53 @@ jobs:
       - name: Lint
         run: make lint-ios
 
+  ui-tests:
+    name: UI Tests (${{ matrix.plan }})
+    needs: lint
+    runs-on: [self-hosted, macOS, ARM64, ui-tests]
+    timeout-minutes: 45
+    strategy:
+      # One plan must not cancel the other: a red App Clip run should still report the main suite.
+      fail-fast: false
+      matrix:
+        include:
+          - plan: UITests
+            scheme: StickerGeniOS
+          - plan: AppClipUITests
+            scheme: StickerAppClip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - name: Prepare simulators
         run: |
           xcrun simctl shutdown all 2>/dev/null || true
           xcrun simctl erase all 2>/dev/null || true
           xcrun simctl --set testing delete all 2>/dev/null || true
 
-      - name: Run UI tests
+      - name: Run ${{ matrix.plan }}
         env:
-          STICKER_FACTORY_TEST_ROOT: ${{ runner.temp }}/sticker-factory-ios-ui-tests
+          STICKER_FACTORY_TEST_ROOT: ${{ runner.temp }}/sticker-factory-ios-ui-tests-${{ matrix.plan }}
           STICKER_FACTORY_PACKAGE_ROOT: ${{ runner.temp }}/sticker-factory-packages
           STICKER_FACTORY_SIMULATOR_NAME: iPhone 17 Pro
-          STICKER_FACTORY_UI_TESTS_ONLY: "1"
+          STICKER_FACTORY_SCHEME: ${{ matrix.scheme }}
+          STICKER_FACTORY_TEST_PLAN: ${{ matrix.plan }}
+          STICKER_FACTORY_PARALLEL: "1"
+          STICKER_FACTORY_RESULT_BUNDLE: ${{ runner.temp }}/${{ matrix.plan }}.xcresult
         run: ./StickerGeniOS/scripts/ios-test.sh
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: sticker-gen-ios-ui-test-results
-          path: ${{ runner.temp }}/sticker-factory-ios-ui-tests/DerivedData/Logs/Test
+          name: sticker-gen-ios-${{ matrix.plan }}-results
+          path: ${{ runner.temp }}/${{ matrix.plan }}.xcresult
           retention-days: 7
           if-no-files-found: ignore
 
@@ -69,3 +99,83 @@ jobs:
         run: |
           xcrun simctl shutdown all 2>/dev/null || true
           xcrun simctl --set testing delete all 2>/dev/null || true
+
+  # TutorialCaptureTests and TutorialNativeReaderTests read api/v1/tutorial/{locale} over HTTP, so
+  # they need the Next.js server this job starts. They are screenshot and content checks rather than
+  # behaviour regressions, which is why the push path does not pay for them.
+  tutorial-tests:
+    name: UI Tests (TutorialUITests)
+    needs: lint
+    if: github.event_name == 'workflow_dispatch' && inputs.run_tutorial_plan
+    runs-on: [self-hosted, macOS, ARM64, ui-tests]
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.9"
+
+      # nohup, not a bare &: the step's shell exits as soon as the server answers, and the tests run
+      # in a later step that needs it still listening.
+      - name: Start tutorial content server
+        working-directory: server
+        run: |
+          bun install --frozen-lockfile
+          bun run tutorial:compile
+          STICKER_FACTORY_TUTORIAL_PREVIEW=true nohup bun x next dev -p 3117 \
+            > "$RUNNER_TEMP/tutorial-server.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3117/api/v1/tutorial/en >/dev/null; then
+              echo "tutorial server is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "tutorial server did not come up on 3117" >&2
+          cat "$RUNNER_TEMP/tutorial-server.log" >&2 || true
+          exit 1
+
+      - name: Prepare simulators
+        run: |
+          xcrun simctl shutdown all 2>/dev/null || true
+          xcrun simctl erase all 2>/dev/null || true
+          xcrun simctl --set testing delete all 2>/dev/null || true
+
+      - name: Run TutorialUITests
+        env:
+          STICKER_FACTORY_TEST_ROOT: ${{ runner.temp }}/sticker-factory-ios-tutorial-tests
+          STICKER_FACTORY_PACKAGE_ROOT: ${{ runner.temp }}/sticker-factory-packages
+          STICKER_FACTORY_SIMULATOR_NAME: iPhone 17 Pro
+          STICKER_FACTORY_TEST_PLAN: TutorialUITests
+          # The capture tests all drive the one localhost server and share its content cache, so
+          # they run on a single simulator rather than racing clones through the same endpoint.
+          STICKER_FACTORY_PARALLEL: "0"
+          STICKER_FACTORY_RESULT_BUNDLE: ${{ runner.temp }}/TutorialUITests.xcresult
+        run: ./StickerGeniOS/scripts/ios-test.sh
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sticker-gen-ios-TutorialUITests-results
+          path: ${{ runner.temp }}/TutorialUITests.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Shut down simulators
+        if: always()
+        run: |
+          xcrun simctl shutdown all 2>/dev/null || true
+          xcrun simctl --set testing delete all 2>/dev/null || true
+
+      - name: Stop tutorial content server
+        if: always()
+        run: pkill -f "next dev -p 3117" 2>/dev/null || true

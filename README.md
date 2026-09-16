@@ -137,7 +137,19 @@ bun run test
 bun run build
 ```
 
-Build and test the iOS app with the `StickerGeniOS` scheme; build WinkySticker with the `WinkyStickerMessages` scheme. Note `scripts/ios-test.sh` does not execute `StickerMessagesTests` — an `.appex` is not a valid `TEST_HOST`, so those contract tests are compile-checked only.
+Build and test the iOS app with the `StickerGeniOS` scheme; build WinkySticker with the `WinkyStickerMessages` scheme.
+
+Which iOS tests run is decided by the test plans in `StickerGeniOS/TestPlans`, so the suite CI runs on
+a push is the same one the Xcode test navigator opens — see
+[`StickerGeniOS/docs/ui-test-plans.md`](StickerGeniOS/docs/ui-test-plans.md):
+
+```sh
+make test          # AllTests — unit + UI
+make test-ui       # UITests — exactly what CI runs on a push, across parallel simulator clones
+make test-appclip  # AppClipUITests
+```
+
+Note `scripts/ios-test.sh` does not execute `StickerMessagesTests` — an `.appex` is not a valid `TEST_HOST`, so those contract tests are compile-checked only.
 
 The following must be verified on a physical iOS 26 device with production entitlements:
 

@@ -30,6 +30,30 @@ final class StickerBalanceViewModelTests: XCTestCase {
         }
     }
 
+    /// Cancellation preserves what is on screen when it costs the response — not when the response
+    /// already arrived. SwiftUI tears down a `.refreshable` task on its own schedule, and a pull
+    /// that fetched new figures and then dropped them leaves the screen quietly stale: the numbers
+    /// the app just replaced, with no error to explain why the pull did nothing.
+    func testArrivedResponseIsAppliedEvenWhenTheRefreshTaskIsCancelled() async throws {
+        var refresh: Task<Void, Never>?
+        let model = StickerBalanceViewModel(
+            fetchBalances: {
+                refresh?.cancel()
+                return try self.balances(250)
+            },
+            fetchLedger: { page in
+                refresh?.cancel()
+                return try self.ledger(page: page)
+            }
+        )
+        refresh = Task { await model.refresh() }
+        await refresh?.value
+        XCTAssertEqual(model.balances.first?.available, 250)
+        XCTAssertEqual(model.entries.map(\.id), ["entry-1"])
+        XCTAssertNil(model.balanceError)
+        XCTAssertNil(model.historyError)
+    }
+
     func testCancelledHistoryRefreshPreservesPagination() async throws {
         var cancelReload = false
         var requestedPages: [Int] = []

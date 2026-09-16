@@ -132,6 +132,33 @@ final class SubscriptionConnectionTests: XCTestCase {
         XCTAssertNil(store.lastError)
     }
 
+    /// The connection sheet shows its error alert off this count. Were it a flag, or were the
+    /// sheet left to watch `isConnecting` fall, a retry failing the same way as the attempt before
+    /// it — the common case, since the reason is usually still there — would put nothing on screen
+    /// and the user's tap would look ignored.
+    func testEveryFailedAttemptIsCountedSeparatelyEvenWhenTheErrorNeverChanges() async throws {
+        var shouldFail = true
+        let store = makeStore { refreshing in
+            guard shouldFail else { return .sandbox }
+            throw SubscriptionStoreKitFailure(StoreKitError.systemError(URLError(.timedOut)),
+                                              stage: refreshing ? .refreshRequest : .sharedRequest)
+        }
+        defer { store.reset() }
+        store.refresh()
+        try await settled(store)
+        XCTAssertEqual(store.connectionFailures, 1)
+        let firstError = store.lastError
+        store.retryConnection()
+        try await settled(store)
+        XCTAssertEqual(store.lastError, firstError, "This is the case the count exists for")
+        XCTAssertEqual(store.connectionFailures, 2)
+        shouldFail = false
+        store.retryConnection()
+        try await settled(store)
+        XCTAssertTrue(store.isReady)
+        XCTAssertEqual(store.connectionFailures, 2, "A connection that succeeded is not a failure")
+    }
+
     func testLiveConfigurationFailureKeepsControlsWhilePreviewDisablesBilling() {
         let store = makeStore(keys: .init(xcode: nil, sandbox: nil, production: nil)) { _ in .sandbox }
         store.refresh()

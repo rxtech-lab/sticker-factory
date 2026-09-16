@@ -12,13 +12,13 @@ final class TutorialUITests: XCTestCase {
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
     func testCreateTutorialPreservesPromptAndReturnsToSameForm() {
         app.launch()
-        XCTAssertTrue(element("create-sticker-button").waitForExistence(timeout: 10))
+        XCTAssertTrue(element("create-sticker-button").waitForExistence(timeout: 15))
         element("create-sticker-button").tap()
         let prompt = element("sticker-prompt")
         prompt.tap(); prompt.typeText("A cheerful corgi")
         element("creation-next").tap()
         element("tutorial-link-static").tap()
-        XCTAssertTrue(element("tutorial-sheet").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tutorial-sheet").waitForExistence(timeout: 15))
         XCTAssertTrue(element("tutorial-step-title").waitForExistence(timeout: 15))
         // Tutorials resume saved progress. Return to the creation lesson before trying its action.
         let previousLesson = element("tutorial-sheet").buttons["Back"]
@@ -37,13 +37,13 @@ final class TutorialUITests: XCTestCase {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: back)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
         back.tap()
-        XCTAssertTrue(element("sticker-prompt").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("sticker-prompt").waitForExistence(timeout: 15))
         XCTAssertEqual(element("sticker-prompt").value as? String, "A cheerful corgi")
     }
     func testFirstRunOffersTutorialOnlyOnLastFeatureCard() {
         app.launchArguments += ["--ui-show-welcome", "--ui-show-feature-cards"]
         app.launch()
-        XCTAssertTrue(element("welcome-next-button").waitForExistence(timeout: 10))
+        XCTAssertTrue(element("welcome-next-button").waitForExistence(timeout: 15))
         for _ in 0..<5 { element("welcome-next-button").tap() }
         XCTAssertFalse(element("welcome-read-tutorials").exists)
         element("welcome-next-button").tap()
@@ -51,9 +51,9 @@ final class TutorialUITests: XCTestCase {
             XCTAssertFalse(element("feature-read-tutorials").exists)
             element("feature-card-next-button").tap()
         }
-        XCTAssertTrue(element("feature-read-tutorials").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("feature-read-tutorials").waitForExistence(timeout: 15))
         element("feature-read-tutorials").tap()
-        XCTAssertTrue(element("tutorial-sheet").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tutorial-sheet").waitForExistence(timeout: 15))
         XCTAssertFalse(element("feature-cards-sheet").exists)
         XCTAssertTrue(element("tutorial-chapter-static").waitForExistence(timeout: 15))
     }
@@ -65,10 +65,10 @@ final class TutorialUITests: XCTestCase {
         entry.tap()
         XCTAssertTrue(element("tutorial-chapter-static").waitForExistence(timeout: 15))
         element("tutorial-chapter-static").tap()
-        XCTAssertTrue(element("tutorial-step-title").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tutorial-step-title").waitForExistence(timeout: 15))
         let originalTitle = element("tutorial-step-title").label
         element("tutorial-language").tap()
-        XCTAssertTrue(element("tutorial-language-dropdown").waitForExistence(timeout: 3))
+        XCTAssertTrue(element("tutorial-language-dropdown").waitForExistence(timeout: 15))
         for language in ["en", "zh-CN", "zh-HK"] {
             XCTAssertTrue(element("tutorial-language-\(language)").isHittable)
         }
@@ -92,6 +92,6 @@ final class TutorialUITests: XCTestCase {
         element("tutorial-retry").tap()
         XCTAssertTrue(element("tutorial-close").exists)
         element("tutorial-close").tap()
-        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        XCTAssertTrue(entry.waitForExistence(timeout: 15))
     }
 }

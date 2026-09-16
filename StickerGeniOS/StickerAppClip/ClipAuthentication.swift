@@ -92,11 +92,27 @@ final class ClipAuthentication {
     func endSignIn() { signInManager = nil }
 
     func signOut() {
+        // `init` never reads the keychain under UI testing, so there is nothing there to delete and
+        // the delete's status says nothing about whether the session was cleared. It is not merely
+        // redundant: the test build is signed with CODE_SIGNING_ALLOWED=NO, so the Clip carries no
+        // application-identifier entitlement and every keychain call returns errSecMissingEntitlement
+        // — which the guard below reads as a failed sign-out and leaves the user signed in.
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+            clearSession()
+            return
+        }
+        #endif
         let status = SecItemDelete(keychainQuery as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             error = "Could not sign out. Please try again."
             return
         }
+        clearSession()
+    }
+
+    /// Everything a sign-out drops apart from the persisted credential itself.
+    private func clearSession() {
         refreshTask?.cancel()
         refreshTask = nil
         try? nativeTokens.clearAll()

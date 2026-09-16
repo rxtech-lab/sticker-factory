@@ -50,18 +50,12 @@
             ReferencedContainer = "container:StickerGeniOS.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
-      <Testables>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "9DF2292DA1CD8184DF357154"
-               BuildableName = "StickerAppClipUITests.xctest"
-               BlueprintName = "StickerAppClipUITests"
-               ReferencedContainer = "container:StickerGeniOS.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
+      <TestPlans>
+         <TestPlanReference
+            reference = "container:TestPlans/AppClipUITests.xctestplan"
+            default = "YES">
+         </TestPlanReference>
+      </TestPlans>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
