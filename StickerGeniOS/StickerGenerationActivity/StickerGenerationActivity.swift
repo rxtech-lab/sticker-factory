@@ -113,7 +113,7 @@ private extension StickerGenerationAttributes.ContentState {
     /// Compact mode only has room for the current action; the expanded view keeps the full message.
     var compactLabel: String {
         switch phase {
-        case "completed": return String(localized: "Ready")
+        case "completed": return String(localized: "Done!")
         case "failed": return String(localized: "Failed")
         case "cancelled": return String(localized: "Stopped")
         case "queued", "waiting": return String(localized: "Waiting")
@@ -189,7 +189,7 @@ private let previewAttributes = StickerGenerationAttributes(
 } contentStates: {
     StickerGenerationAttributes.ContentState(message: "Drawing your dancing avocado…", phase: "running")
     StickerGenerationAttributes.ContentState(message: "Adding the finishing touches to your animation…", phase: "running")
-    StickerGenerationAttributes.ContentState(message: "Sticker ready", phase: "completed")
+    StickerGenerationAttributes.ContentState(message: "Done!", phase: "completed")
     StickerGenerationAttributes.ContentState(message: "Generation failed. Open to retry.", phase: "failed")
     StickerGenerationAttributes.ContentState(message: "Generation stopped", phase: "cancelled")
 }
@@ -216,7 +216,7 @@ private let previewAttributes = StickerGenerationAttributes(
         completedUnits: 1, totalUnits: 3, progressLabel: "Sprite sheets"
     )
     StickerGenerationAttributes.ContentState(message: "Animating the dance moves…", phase: "running")
-    StickerGenerationAttributes.ContentState(message: "Sticker ready", phase: "completed")
+    StickerGenerationAttributes.ContentState(message: "Done!", phase: "completed")
     StickerGenerationAttributes.ContentState(message: "Generation failed. Open to retry.", phase: "failed")
 }
 

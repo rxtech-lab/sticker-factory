@@ -13,6 +13,7 @@ struct CreateStickerView: View {
     /// Animated only — a still has no clips to switch between — so `generate` reads it through
     /// `wantsControls` rather than on its own.
     @State private var controllable = false
+    @State private var posePreset: PosePreset = .medium
     @State private var prompt = ""
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var references: [PendingMediaAttachment] = []
@@ -64,6 +65,9 @@ struct CreateStickerView: View {
                                     isOn: $controllable,
                                     identifier: "sticker-controllable-toggle"
                                 )
+                                if controllable {
+                                    PosePresetPicker(selection: $posePreset, identifier: "sticker-pose-preset-picker")
+                                }
                                 PosterSymbolLabel(
                                     """
                                         We’ll draw each character once, then a sheet of poses and a strip of \
@@ -257,6 +261,7 @@ struct CreateStickerView: View {
                 kind: kind,
                 prompt: prompt,
                 controllable: wantsControls,
+                posePreset: wantsControls ? posePreset : nil,
                 references: references
             )
             Haptics.success()

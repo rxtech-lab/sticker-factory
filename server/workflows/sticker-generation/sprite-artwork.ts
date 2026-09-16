@@ -6,6 +6,7 @@ import { planSpriteLayers, spriteSheetGrid, type PlanV1 } from "@/lib/contracts/
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, generationJobs } from "@/lib/db/schema";
 import { registerExpressionTiles, registerFaceSlots } from "@/lib/render/sprite-registration";
+import { padGeneratedAtlas } from "@/lib/render/sprite-atlas";
 import { derivedAssetId, ensureSpritePoster, getReadyOwnedAssets } from "@/lib/services/assets";
 import { appendGenerationEvent } from "@/lib/services/events";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
@@ -49,23 +50,28 @@ export function expressionSheetGrid(count: number): { columns: number; rows: num
 const characterReference = (name: string) =>
   `Use the approved sticker as the exact character reference: preserve the ${name}'s silhouette, colours, outlines, shading, texture, and proportions.`;
 
-export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, clip: SpriteSource["clips"][number]): string {
+const animationSummaryInstruction = "Reference 1 is the approved resting composition; reference 2 is this character's separated still. Reference 3 is the approved illustrated animation summary: follow the labelled poses and facial expressions for the requested motion or mood while preserving the character design from references 1 and 2. Use the written plan for exact frame order, count and timing. Do not copy the summary's panels, captions, arrows, extra characters or background into the generated artwork.";
+
+export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, clip: SpriteSource["clips"][number], hasAnimationSummary = false): string {
   const count = clip.frames.length;
   return [
     characterReference(layer.name),
+    ...(hasAnimationSummary ? [animationSummaryInstruction] : []),
     `Draw only the ${layer.name} character, with nothing else from the sticker, as ${count} animation frame${count === 1 ? "" : "s"} of one motion — ${clip.label}: ${clip.prompt}`,
     count > 1
       ? "Frame 1 is the resting pose. The frames read in order and loop back to frame 1, so the last frame leads naturally into the first. Change only what the motion moves; the body keeps the same size and position in every cell."
       : "This is a single held pose.",
     `Character: ${source.prompt}`,
+    "Perform the motion in place around a fixed body anchor, with a locked camera and no zoom. Reserve room for the entire motion, including leaning, bouncing, extended parts, and any requested effects. Keep the complete silhouette inside the cell's transparent safety margins in every frame. Do not add ground, scenery, speed lines, smoke, or skid marks unless explicitly requested; requested effects must also fit inside the same safe area.",
     "Keep the complete head silhouette, ears, hair, and outer fur on this body layer. Replace all existing facial features with the magenta face opening; do not leave eyes, a nose, or a mouth beneath or beside it. Preserve the reference's pixel grid and hard pixel edges when it is pixel art.",
   ].join(" ");
 }
 
-export function spriteExpressionPrompt(layer: { name: string }, source: SpriteSource): string {
+export function spriteExpressionPrompt(layer: { name: string }, source: SpriteSource, hasAnimationSummary = false): string {
   const list = source.expressions.map((expression, index) => `${index + 1}. ${expression.label}: ${expression.prompt}`).join("; ");
   return [
     `Use the approved sticker as the exact reference for the ${layer.name}'s face: its design, style, palette, and line weight.`,
+    ...(hasAnimationSummary ? [animationSummaryInstruction] : []),
     `Draw ${source.expressions.length} version${source.expressions.length === 1 ? "" : "s"} of only the ${layer.name}'s face plate, one per cell, each with a different expression, in this order: ${list}.`,
     "The last reference is the actual body frame with a magenta opening. Draw only the inner facial patch that replaces that opening, matching its shape, proportions, viewing angle, and surrounding skin or fur colour. The earlier references supply the original facial identity and style. Do not copy the magenta colour.",
     "Do not draw a second head, miniature portrait, ears, hair, outer head fur, neck, or body. Those already exist on the body layer. Include the eyes, brows, nose, mouth, cheeks, and the skin or fur directly beneath them, from brow to chin and cheek to cheek. No enclosing outline, sticker border, rim, or shadow around the patch; its edge must blend into the surrounding head when composited.",
@@ -76,10 +82,11 @@ export function spriteExpressionPrompt(layer: { name: string }, source: SpriteSo
 async function storeSheetAsset(
   job: Job, stickerId: string, assetId: string, bytes: Uint8Array,
   grid: { columns: number; rows: number; frameCount: number; frameRate: number; durationSeconds: number },
+  replaceReady = false,
 ): Promise<void> {
   const db = await getDatabase();
   const existing = await db.select({ state: assets.state }).from(assets).where(eq(assets.id, assetId)).then(firstRow);
-  if (existing?.state === "ready") return;
+  if (existing?.state === "ready" && !replaceReady) return;
   const inspection = await inspectImage(bytes);
   const r2Key = objectKey(job.ownerId, assetId, "image/png");
   await getObjectStore().put(r2Key, { bytes, contentType: "image/png", metadata: { sha256: inspection.sha256 } });
@@ -94,7 +101,7 @@ async function storeSheetAsset(
   } });
 }
 
-/** Flips a drawn sheet to failed so the next attempt buys another instead of re-measuring a bad one. */
+/** Failed sheets are not reused unless they can be repaired and fully registered. */
 async function discardSheet(assetId: string): Promise<void> {
   const db = await getDatabase();
   await db.update(assets).set({ state: "failed" }).where(eq(assets.id, assetId));
@@ -108,22 +115,51 @@ async function buildClip(
   const frameCount = clip.frames.length;
   const durationSeconds = clip.frames.reduce((total, frame) => total + frame.duration, 0);
   const ids = spriteClipAssetIds(assetJobId, layer.layerId, clip.id);
-  await generateAndStoreAsset(job, stickerId, {
+  const sheetGrid = { ...grid, frameCount };
+  const prepare = async (original: Uint8Array) => {
+    let bytes = original;
+    try { await validateGeneratedAtlas(bytes, sheetGrid); }
+    catch (error) {
+      // Padding an already-cut cell cannot restore missing pixels. Find clear seams on the
+      // original sheet first, and keep the original validation error if that is impossible.
+      try { bytes = await padGeneratedAtlas(bytes, sheetGrid); }
+      catch { throw error; }
+      await validateGeneratedAtlas(bytes, sheetGrid);
+    }
+    return { bytes, repaired: bytes !== original, registered: await registerFaceSlots(bytes, sheetGrid) };
+  };
+  let prepared: Awaited<ReturnType<typeof prepare>> | undefined;
+  // Older attempts may have rejected an intact sheet solely for drifting across the grid.
+  // Try the saved pixels before buying another image; missing face markers still require redraw.
+  const db = await getDatabase();
+  const existing = await db.select().from(assets).where(eq(assets.id, ids.raw)).then(firstRow);
+  if (existing?.state === "failed" && existing.ownerId === job.ownerId && existing.stickerId === stickerId) {
+    const saved = await getObjectStore().get(existing.r2Key);
+    try { prepared = await prepare(saved.bytes); }
+    catch { /* Not recoverable: generate a replacement below. */ }
+  }
+  const recoveredSavedSheet = Boolean(prepared);
+  if (!prepared) await generateAndStoreAsset(job, stickerId, {
     assetId: ids.raw, references, mode: "conversation_edit", keepFrame: true, quality: "medium",
     sheet: { ...grid, count: frameCount, facePlaceholder: true },
     sequence: { ...grid, frameCount, frameRate: frameCount / durationSeconds },
-    prompt: spriteClipPrompt(layer, source, clip),
+    prompt: spriteClipPrompt(layer, source, clip, references.length > 2),
   });
-  const raw = await getObjectStore().get(objectKey(job.ownerId, ids.raw, "image/png"));
-  let registered: Awaited<ReturnType<typeof registerFaceSlots>>;
   try {
-    await validateGeneratedAtlas(raw.bytes, { ...grid, frameCount });
-    registered = await registerFaceSlots(raw.bytes, { ...grid, frameCount });
+    if (!prepared) {
+      const raw = await getObjectStore().get(objectKey(job.ownerId, ids.raw, "image/png"));
+      prepared = await prepare(raw.bytes);
+    }
   } catch (error) {
     await discardSheet(ids.raw);
     throw error;
   }
-  await storeSheetAsset(job, stickerId, ids.clean, registered.bytes, { ...grid, frameCount, frameRate: frameCount / durationSeconds, durationSeconds });
+  const metadata = { ...sheetGrid, frameRate: frameCount / durationSeconds, durationSeconds };
+  if (prepared.repaired || recoveredSavedSheet) {
+    await storeSheetAsset(job, stickerId, ids.raw, prepared.bytes, metadata, true);
+  }
+  const { registered } = prepared;
+  await storeSheetAsset(job, stickerId, ids.clean, registered.bytes, metadata, true);
   return {
     id: clip.id, assetId: ids.clean, columns: grid.columns, rows: grid.rows,
     frames: clip.frames.map((frame, index) => ({ duration: frame.duration, ...registered.frames[index] })),
@@ -153,7 +189,7 @@ async function buildExpressions(
     mode: "conversation_edit", keepFrame: true, quality: "medium",
     sheet: { ...grid, count, tiles: true },
     sequence: { ...grid, frameCount: count, frameRate: 1 },
-    prompt: spriteExpressionPrompt(layer, source),
+    prompt: spriteExpressionPrompt(layer, source, references.length > 2),
   });
   const sheet = await getObjectStore().get(objectKey(job.ownerId, assetId, "image/png"));
   try {
@@ -175,6 +211,7 @@ async function buildExpressions(
  */
 export async function generateSpriteArtwork(
   job: Job, stickerId: string, plan: PlanV1, assetJobId: string, reference: Reference | undefined,
+  animationSummary?: Reference,
 ): Promise<Map<string, SpriteBuild>> {
   const builds = new Map<string, SpriteBuild>();
   const sprites = planSpriteLayers(plan);
@@ -225,7 +262,7 @@ export async function generateSpriteArtwork(
     if (!stillId) throw new Error(`Sprite layer ${layer.layerId} has no separated still`);
     const [stillRow] = await getReadyOwnedAssets(db, job.ownerId, [stillId]);
     const still = { bytes: (await store.get(stillRow.r2Key)).bytes, mimeType: stillRow.mimeType };
-    const references = [reference, still];
+    const references = [reference, still, ...(animationSummary ? [animationSummary] : [])];
 
     const clips: SpriteBuild["clips"] = [];
     for (const clip of source.clips) {

@@ -1,11 +1,13 @@
 // Planning a composition and settling where its parts sit.
 
 import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
+import { POSE_COUNTS } from "@/lib/contracts/pose-preset";
 import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
+import { downscaleForModelInput } from "@/lib/storage/r2";
 import { viewPlanImageTool } from "@/lib/ai/view-plan-image-tool";
 import { viewStickerTool } from "@/lib/ai/view-sticker-tool";
 import { configurationReviewSelections } from "@/lib/contracts/configuration";
@@ -78,7 +80,7 @@ export async function refineStickerLayout(
 
   const generation = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
@@ -119,10 +121,15 @@ export async function refineStickerLayout(
         ? "The approved static reference is available through view_plan_image. Inspect it there;"
           + " it is the composition this build is meant to reproduce."
         : "",
+      input.animationSummary
+        ? "The attached image is the approved illustrated animation summary. Use its labelled poses and expressions as a visual motion reference when reviewing configurations. The static image from view_plan_image remains the composition and character-design reference. Do not reproduce the storyboard panels, labels, arrows or background in the sticker. The structured plan defines timing and available controls."
+        : "",
       `Current layer summary:\n${JSON.stringify(summarizeDocument(input.document))}`,
       `Conservative geometry diagnostics:\n${JSON.stringify(layoutDiagnostics(input.document))}`,
       `Recoverable project context:\n${input.history}`,
-    ].filter(Boolean).join("\n\n"), []),
+    ].filter(Boolean).join("\n\n"), input.animationSummary
+      ? [await downscaleForModelInput(input.animationSummary.bytes)]
+      : []),
     tools,
     toolChoice: "required",
     stopWhen: [hasToolCall("finalize_layout"), stepCountIs(Math.max(hasPlanImage ? 9 : 8, configurationCount * 2 + 8)), () => fatal !== undefined],
@@ -219,7 +226,7 @@ export async function planSticker(
 
   const generation = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
@@ -476,6 +483,9 @@ export async function planSticker(
     ].join("\n"),
     messages: userTurn([
       `Sticker kind: ${input.stickerKind}`,
+      input.posePreset
+        ? `Pose variety: ${input.posePreset}. Create exactly ${POSE_COUNTS[input.posePreset]} distinct selectable body clips per character, including idle. This overrides the default pose-count suggestion. Add meaningful actions suited to the subject when increasing; keep retained clip IDs when decreasing. Give every clip a pose option and variant binding. This changes the number of clips, not frames or moods. Preserve the current plan's subject, look, composition, moods and timing unless the user asks otherwise. Describe this setting using its preset label, without raw pose counts.`
+        : "",
       // The switch in the create screen, not a sentence the user typed — so it is stated as a
       // requirement of the project rather than left for the model to infer from their wording.
       // `create_plan` enforces the same rule and hands back a repair instruction if it is ignored.

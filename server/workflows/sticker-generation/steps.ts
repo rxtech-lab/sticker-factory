@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { withAiApiCostRecorder } from "@/lib/ai/cost";
+import { withAiApiCostRecorder, withAiStepUsageReporter } from "@/lib/ai/cost";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, chatMessages, chatThreads, generationJobs, stickers } from "@/lib/db/schema";
 import { getAiProvider } from "@/lib/ai/gateway";
@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/http/errors";
 import { recordJobApiCost } from "@/lib/subscription/credits";
 import type { PublishExportsRequest } from "@/lib/contracts/api";
 import { executeAiJob } from "./ai-turn";
-import { MAX_SUMMARIZED_TITLE_LENGTH, boundedTranscript } from "./turn-context";
+import { MAX_SUMMARIZED_TITLE_LENGTH, boundedTranscript, reportTurnTokens } from "./turn-context";
 import type { AiTurnResult } from "./turn-context";
 
 // Every step boundary the workflow crosses. The bodies live in the sibling modules; what has
@@ -151,11 +151,14 @@ export async function summarizeStickerTitleStep(jobId: string): Promise<string |
     const proposed = await traceSpan("summarizeStickerTitle", { jobId }, () =>
       withAiApiCostRecorder(
         (event) => recordJobApiCost(db, jobId, event),
-        () => getAiProvider().summarizeStickerTitle({
-          currentTitle: sticker.title,
-          history: boundedTranscript(transcript, 8_000),
-          stickerKind: sticker.kind,
-        }),
+        () => withAiStepUsageReporter(
+          (tokens) => reportTurnTokens(db, jobId, job.ownerId, tokens),
+          () => getAiProvider().summarizeStickerTitle({
+            currentTitle: sticker.title,
+            history: boundedTranscript(transcript, 8_000),
+            stickerKind: sticker.kind,
+          }),
+        ),
       ));
     const title = normalizeStickerTitle(proposed);
     if (!title || title === sticker.title) return undefined;

@@ -19,21 +19,15 @@ struct StickerPlayer: View {
     var videos: [String: KeyedVideoFrames] = [:]
     var repeats = false
     var settings: StickerControlSettings?
+    var playbackOrigin: Date?
+    @State private var defaultOrigin = Date()
 
     var body: some View {
-        let resolved = (try? settings?.resolvedDocument(document)) ?? document
-        if let settings, !settings.animate {
-            AnimatedIconFrame(
-                document: resolved,
-                time: settings.stillTime(in: resolved),
-                assets: AnimatedAssetDictionary(images: assets, videos: videos)
-            )
+        if let settings {
+            StickerConfiguredPreview(document: document, settings: settings,
+                assets: .init(images: assets, videos: videos), repeats: repeats, origin: playbackOrigin ?? defaultOrigin)
         } else {
-        AnimatedIconView(
-            document: resolved,
-            assets: AnimatedAssetDictionary(images: assets, videos: videos),
-            repeats: repeats
-        )
+            AnimatedIconView(document: document, assets: AnimatedAssetDictionary(images: assets, videos: videos), repeats: repeats)
         }
     }
 }

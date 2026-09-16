@@ -333,6 +333,9 @@ function groupPackMembers(
       playbackRevisionId: row.playbackRevisionId,
       systemAsset: row.systemAsset,
       previewAsset: row.previewAsset,
+      // A member is published by definition, so it has its own artwork and never falls back to the
+      // plan its draft was built from.
+      planConceptAsset: null,
       attachmentMedium: row.attachmentMedium,
       attachmentSmall: row.attachmentSmall,
       webpAsset: row.webpAsset,

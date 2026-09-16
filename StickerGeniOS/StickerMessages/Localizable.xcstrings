@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
     "%lld px · arrives about %lld pt wide" : {
       "localizations" : {
         "en" : {
@@ -96,6 +99,9 @@
           }
         }
       }
+    },
+    "Add animation" : {
+
     },
     "Adding a layer" : {
       "localizations" : {
@@ -214,6 +220,9 @@
           }
         }
       }
+    },
+    "Animation %lld" : {
+
     },
     "Apply" : {
 
@@ -512,9 +521,6 @@
         }
       }
     },
-    "Edit" : {
-
-    },
     "Editing layers" : {
       "localizations" : {
         "zh-CN" : {
@@ -655,9 +661,6 @@
           }
         }
       }
-    },
-    "Full Screen" : {
-
     },
     "Full-size images need a connection." : {
       "localizations" : {
@@ -802,6 +805,9 @@
     "Medium" : {
 
     },
+    "Multiple" : {
+
+    },
     "My Stickers" : {
       "localizations" : {
         "zh-CN" : {
@@ -849,6 +855,9 @@
           }
         }
       }
+    },
+    "Only the first animation fits as an iMessage sticker. The full combination is still saved." : {
+
     },
     "Open a conversation to send a full-size image." : {
       "localizations" : {
@@ -1001,6 +1010,12 @@
 
     },
     "Planning the motion" : {
+
+    },
+    "Playback" : {
+
+    },
+    "Playing" : {
 
     },
     "Prepare" : {
@@ -1339,6 +1354,9 @@
           }
         }
       }
+    },
+    "Single" : {
+
     },
     "Small" : {
 
@@ -1704,6 +1722,9 @@
     "The export file could not be created." : {
 
     },
+    "The first animation cannot fit as an animated sticker. Increase its speed or use Send Image." : {
+
+    },
     "The full-size image has unexpected dimensions." : {
       "localizations" : {
         "zh-CN" : {
@@ -1858,6 +1879,9 @@
 
     },
     "This animation could not fit Apple's 500 KB sticker limit at any frame rate, so the sticker is a still frame. The animated PNG and MP4 exports are unaffected. Shortening the animation, or switching a ping-pong loop to a plain loop, brings the motion back." : {
+
+    },
+    "This animation is too large to export. Remove an animation or increase its speed and try again." : {
 
     },
     "This is taking longer than expected. It is still running — open the main app to pick it up." : {

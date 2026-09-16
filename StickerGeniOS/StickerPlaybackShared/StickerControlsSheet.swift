@@ -20,6 +20,7 @@ struct StickerControlsSheet: View {
     struct PreparedSending {
         /// The host's view of what was prepared. Peelable where the host can make it so.
         var preview: @MainActor () -> AnyView
+        var notice: @MainActor () -> String? = { nil }
         var send: @MainActor () async throws -> Void
     }
 
@@ -39,18 +40,18 @@ struct StickerControlsSheet: View {
     let stickerID: String
     let accountID: String
     var actionTitle = String(localized: "Apply")
-    var loadAssets: @MainActor (AnimatedDocument) async throws -> StickerRenderAssets
+    var loadAssets: @MainActor ([AnimatedDocument]) async throws -> StickerRenderAssets
     var onApply: @MainActor (StickerControlSettings, AnimatedDocument, StickerRenderAssets) async throws -> Void
     var onClose: () -> Void
-    var onExpand: ((StickerControlSettings) -> Void)?
-    var onEdit: (() -> Void)?
     var showsPreview: Bool
-    var onPreviewChange: ((StickerControlSettings, StickerRenderAssets) -> Void)?
+    var onPreviewChange: ((StickerControlSettings, StickerRenderAssets, Date) -> Void)?
     var preparedSending: PreparedSending?
+    var onOutputReadinessChange: ((Bool) -> Void)?
 
     @State private var settings: StickerControlSettings
     @State private var assets = StickerRenderAssets()
-    @State private var loadedDocument: AnimatedDocument?
+    @State private var loadedDocuments: [AnimatedDocument]?
+    @State private var playbackOrigin = Date()
     @State private var errorMessage: String?
     @State private var phase: Phase?
     @State private var workTask: Task<Void, Never>?
@@ -64,19 +65,22 @@ struct StickerControlsSheet: View {
     @State private var preparedSettings: StickerControlSettings?
 
     init(document: AnimatedDocument, stickerID: String, accountID: String, actionTitle: String = String(localized: "Apply"),
-         loadAssets: @escaping @MainActor (AnimatedDocument) async throws -> StickerRenderAssets,
+         loadAssets: @escaping @MainActor ([AnimatedDocument]) async throws -> StickerRenderAssets,
          onApply: @escaping @MainActor (StickerControlSettings, AnimatedDocument, StickerRenderAssets) async throws -> Void,
-         onClose: @escaping () -> Void, onExpand: ((StickerControlSettings) -> Void)? = nil, onEdit: (() -> Void)? = nil,
+         onClose: @escaping () -> Void,
          initialSettings: StickerControlSettings? = nil, showsPreview: Bool = true,
-         onPreviewChange: ((StickerControlSettings, StickerRenderAssets) -> Void)? = nil,
-         preparedSending: PreparedSending? = nil) {
+         onPreviewChange: ((StickerControlSettings, StickerRenderAssets, Date) -> Void)? = nil,
+         preparedSending: PreparedSending? = nil,
+         onOutputReadinessChange: ((Bool) -> Void)? = nil) {
         self.document = document; self.stickerID = stickerID; self.accountID = accountID; self.actionTitle = actionTitle
-        self.loadAssets = loadAssets; self.onApply = onApply; self.onClose = onClose; self.onExpand = onExpand; self.onEdit = onEdit
+        self.loadAssets = loadAssets; self.onApply = onApply; self.onClose = onClose
+        self.onOutputReadinessChange = onOutputReadinessChange
         self.showsPreview = showsPreview; self.onPreviewChange = onPreviewChange; self.preparedSending = preparedSending
         _settings = State(initialValue: initialSettings ?? StickerControlPreferences().load(accountID: accountID, stickerID: stickerID, document: document))
     }
     private var resolved: AnimatedDocument? { try? settings.resolvedDocument(document) }
-    private var artworkIsReady: Bool { resolved != nil && loadedDocument == resolved }
+    private var playbackDocuments: [AnimatedDocument]? { try? settings.playbackDocuments(document) }
+    private var artworkIsReady: Bool { settings.canPlay && playbackDocuments != nil && loadedDocuments == playbackDocuments }
     private var busy: Bool { phase != nil }
     /// The host has artwork for exactly the pose now on screen.
     private var isPrepared: Bool { preparedSending != nil && preparedSettings == settings }
@@ -143,9 +147,13 @@ struct StickerControlsSheet: View {
         // through at the corners and while the detent is being dragged.
         .presentationBackground(AppColors.paper)
         .interactiveDismissDisabled(busy)
-        .task(id: resolved) { await refreshAssets() }
+        .task(id: playbackDocuments) { await refreshAssets() }
+        .onChange(of: artworkIsReady && !busy, initial: true) { _, ready in
+            onOutputReadinessChange?(ready)
+        }
         .onChange(of: settings) { _, updated in
-            if artworkIsReady { onPreviewChange?(updated, assets) }
+            playbackOrigin = Date()
+            if artworkIsReady || !updated.canPlay { onPreviewChange?(updated, assets, playbackOrigin) }
         }
         .onDisappear { workTask?.cancel() }
     }
@@ -156,19 +164,17 @@ struct StickerControlsSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             if showsPreview {
                 preview
-            } else if !artworkIsReady {
+            } else if settings.canPlay && !artworkIsReady {
                 PosterProgress(message: String(localized: "Loading artwork…"))
             }
 
-            StickerControlRows(document: document, settings: $settings)
+            StickerPlaybackControls(document: document, settings: $settings, origin: playbackOrigin)
 
-            Divider()
-
-            actions
+            resetButton
 
             if let errorMessage {
                 ErrorBanner(message: errorMessage)
-                Button("Retry loading") { loadedDocument = nil; Task { await refreshAssets() } }
+                Button("Retry loading") { loadedDocuments = nil; Task { await refreshAssets() } }
                     .buttonStyle(.posterSecondaryCompact)
             }
         }
@@ -177,14 +183,8 @@ struct StickerControlsSheet: View {
     /// The sticker itself, on a card. A sticker is transparent by definition, so it needs a surface
     /// of its own to read as artwork rather than as a hole in the page.
     @ViewBuilder private var preview: some View {
-        if let resolved, loadedDocument == resolved {
-            Group {
-                if settings.animate {
-                    AnimatedIconView(document: resolved, assets: assets.dictionary, repeats: true)
-                } else {
-                    AnimatedIconFrame(document: resolved, time: settings.stillTime(in: resolved), assets: assets.dictionary)
-                }
-            }
+        if artworkIsReady {
+            StickerConfiguredPreview(document: document, settings: settings, assets: assets, origin: playbackOrigin)
             .frame(height: 155)
             .frame(maxWidth: .infinity)
             .padding(12)
@@ -192,6 +192,8 @@ struct StickerControlsSheet: View {
             .padding(.trailing, Poster.smallShadow.width)
             .padding(.bottom, Poster.smallShadow.height)
             .accessibilityIdentifier("sticker-controls-preview")
+        } else if !settings.canPlay {
+            Text("Add animation").frame(height: 155).frame(maxWidth: .infinity)
         } else {
             PosterProgress(message: String(localized: "Loading artwork…"))
                 .frame(height: 155)
@@ -199,50 +201,10 @@ struct StickerControlsSheet: View {
         }
     }
 
-    /// Reset undoes the posing; the other two leave for somewhere that can do more with it. They
-    /// wrap onto a second line rather than truncate, which is where larger text sends them.
-    private var actions: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                resetButton
-                Spacer(minLength: 8)
-                expandButton
-                editButton
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    expandButton
-                    editButton
-                    Spacer(minLength: 0)
-                }
-                resetButton
-            }
-        }
-    }
-
     private var resetButton: some View {
         Button("Reset") { settings = .defaults(for: document) }
             .buttonStyle(.posterSecondaryCompact)
             .accessibilityIdentifier("sticker-controls-reset")
-    }
-
-    @ViewBuilder private var expandButton: some View {
-        if let onExpand {
-            Button { onExpand(settings) } label: {
-                PosterSymbolLabel("Full Screen", posterSymbol: "arrow.up.left.and.arrow.down.right")
-            }
-            .buttonStyle(.posterSecondaryCompact)
-            .disabled(!artworkIsReady)
-        }
-    }
-
-    @ViewBuilder private var editButton: some View {
-        if let onEdit {
-            Button(action: onEdit) {
-                PosterSymbolLabel("Edit", posterSymbol: "slider.horizontal.3")
-            }
-            .buttonStyle(.posterSecondaryCompact)
-        }
     }
 
     // MARK: - Prepared
@@ -283,6 +245,7 @@ struct StickerControlsSheet: View {
                 }
             }
 
+            if let notice = sending.notice() { Text(notice).font(.caption).foregroundStyle(.secondary) }
             if let errorMessage { ErrorBanner(message: errorMessage) }
         }
     }
@@ -295,26 +258,29 @@ struct StickerControlsSheet: View {
     // MARK: - Work
 
     private func refreshAssets() async {
-        guard let target = resolved else { errorMessage = String(localized: "This sticker's controls are invalid."); return }
+        guard settings.canPlay else { loadedDocuments = nil; errorMessage = nil; return }
+        guard let target = playbackDocuments else { errorMessage = String(localized: "This sticker's controls are invalid."); return }
         do {
             let loaded = try await loadAssets(target)
             try Task.checkCancellation()
-            guard target == resolved else { return }
-            assets = loaded; loadedDocument = target; errorMessage = nil
-            onPreviewChange?(settings, loaded)
+            guard target == playbackDocuments else { return }
+            guard target.allSatisfy({ loaded.containsArtwork(for: $0) }) else { throw StickerExportError.renderFailed }
+            assets = loaded; loadedDocuments = target; errorMessage = nil
+            playbackOrigin = Date()
+            onPreviewChange?(settings, loaded, playbackOrigin)
         } catch is CancellationError {} catch { errorMessage = error.localizedDescription }
     }
 
     /// Renders the pose. Where the host sends in one step this is the whole errand and the sheet
     /// closes; where it sends in two, the sheet stays open holding what was made.
     private func prepare() async {
-        guard !busy, let resolved, loadedDocument == resolved else { return }
+        guard !busy, artworkIsReady, let resolved else { return }
         guard StickerControlPreferences().defaults != nil else { errorMessage = String(localized: "Shared sticker settings are unavailable."); return }
         let posed = settings
         phase = .preparing; errorMessage = nil
         defer { phase = nil }
         do {
-            try await onApply(posed, resolved, assets)
+            try await onApply(posed, posed.mode == .multiple ? document : resolved, assets)
             try Task.checkCancellation()
             try StickerControlPreferences().save(posed, accountID: accountID, stickerID: stickerID, document: document)
             // Against the settings the render was made from, not against whatever is on screen now:

@@ -761,7 +761,8 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             let task = Task {
                 if ProcessInfo.processInfo.arguments.contains("--ui-working-progress") {
                     let updates: [GenerationEventData] = [
-                        .init(message: "Finishing up", stage: "finalizing"),
+                        .init(message: "Finishing up", stage: "finalizing",
+                              completedUnits: 2, totalUnits: 6, progressLabel: "Review checks"),
                         .init(toolCallId: "working-plan", toolName: "view_plan_image", toolStatus: .complete),
                         .init(toolCallId: "working-sticker", toolName: "view_sticker", toolStatus: .complete)
                     ]

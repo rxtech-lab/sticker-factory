@@ -17,12 +17,13 @@ struct FeatureAnnouncementTests {
         .init(id: id, icon: "✦", accent: .red, title: id, message: id)
     }
 
-    @Test("Shipped cards have stable, unique ids, and the messenger cards are among them")
+    @Test("Shipped cards have stable, unique ids, and the latest feature is among them")
     func shippedIDs() {
         let ids = FeatureAnnouncement.all.map(\.id)
         #expect(Set(ids).count == ids.count)
         #expect(ids.contains("whatsapp-sticker-import"))
         #expect(ids.contains("telegram-sticker-import"))
+        #expect(ids.contains("controllable-animation"))
         #expect(ids.allSatisfy { !$0.isEmpty && $0 == $0.lowercased() && !$0.contains(" ") })
     }
 

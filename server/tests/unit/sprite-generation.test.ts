@@ -17,7 +17,7 @@ import { generateSpriteArtwork, spriteClipAssetIds } from "@/workflows/sticker-g
 
 afterEach(() => { setDatabaseForTests(undefined); setAiProviderForTests(undefined); setObjectStoreForTests(undefined); });
 
-it("draws one sheet per clip and one of faces, registers the slots, and replays for free", async () => {
+it.each(["missing face", "clipped frame", "drifted grid", "saved drift"])("recovers from %s, registers the sheets, and replays for free", async (failure) => {
   const { db, close } = await createTestDatabase();
   try {
     setDatabaseForTests(db);
@@ -32,12 +32,24 @@ it("draws one sheet per clip and one of faces, registers the slots, and replays 
 
     const requests: AiImageInput[] = [];
     let failedOnce = false;
+    const drift = async (output: AiImageOutput) => {
+      const extension = await sharp({ create: { width: 96, height: 100, channels: 4, background: "#ff8fa3" } }).png().toBuffer();
+      return { ...output, bytes: await sharp(output.bytes).composite([{ input: extension, left: 260, top: 260 }]).png().toBuffer() };
+    };
     class Provider extends MockAiProvider {
       override async generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {
         requests.push(input);
-        // The first clip sheet comes back without a face placeholder, which registration must refuse.
+        // Reject malformed sheets before registration or checkpointing; Retry must draw them again.
         if (input.sheet?.facePlaceholder && !failedOnce) {
           failedOnce = true;
+          if (failure === "drifted grid") return drift(await super.generateStickerImage(input));
+          if (failure === "clipped frame") {
+            const output = await super.generateStickerImage(input);
+            const edge = await sharp({ create: { width: 30, height: 180, channels: 4, background: "red" } }).png().toBuffer();
+            return { ...output, bytes: await sharp(output.bytes).composite([
+              { input: edge, left: 0, top: 640 }, // Left edge of frame 4 in the 3x2 sheet.
+            ]).png().toBuffer() };
+          }
           return super.generateStickerImage({ ...input, sheet: { ...input.sheet, facePlaceholder: false } });
         }
         return super.generateStickerImage(input);
@@ -76,26 +88,42 @@ it("draws one sheet per clip and one of faces, registers the slots, and replays 
     await db.insert(assets).values({ id: separated, ownerId: "owner", stickerId: sticker.stickerId, kind: "master", state: "ready", r2Key,
       mimeType: "image/png", byteSize: approved.length, width: 1024, height: 1024, sha256: inspection.sha256, hasAlpha: true });
     const reference = { bytes: approved, mimeType: "image/png" };
-
-    await expect(generateSpriteArtwork(job, sticker.stickerId, plan, job.id, reference)).rejects.toThrow("frame 1 has no face placeholder");
     const rawIdle = spriteClipAssetIds(job.id, "hero", "idle").raw;
-    expect((await db.select().from(assets).where(eq(assets.id, rawIdle)))[0].state).toBe("failed");
+    if (failure === "saved drift") {
+      failedOnce = true;
+      const saved = await drift(await new MockAiProvider().generateStickerImage({ prompt: "idle", references: [], mode: "generate", sheet: { columns: 3, rows: 2, count: 6, facePlaceholder: true } }));
+      const savedKey = objectKey("owner", rawIdle, "image/png");
+      const savedInfo = await inspectImage(saved.bytes);
+      await store.put(savedKey, { bytes: saved.bytes, contentType: "image/png" });
+      await db.insert(assets).values({ id: rawIdle, ownerId: "owner", stickerId: sticker.stickerId, kind: "sequence", state: "failed", r2Key: savedKey,
+        mimeType: "image/png", byteSize: saved.bytes.length, width: 1024, height: 1024, sha256: savedInfo.sha256, hasAlpha: true,
+        sequenceColumns: 3, sequenceRows: 2, frameCount: 6 });
+    }
+    const rejectedFirst = failure === "clipped frame" || failure === "missing face";
+    if (rejectedFirst) {
+      await expect(generateSpriteArtwork(job, sticker.stickerId, plan, job.id, reference)).rejects.toThrow(
+        failure === "clipped frame" ? "Generated pose frame 4 is clipped at its cell boundary" : "frame 1 has no face placeholder",
+      );
+      expect((await db.select().from(assets).where(eq(assets.id, rawIdle)))[0].state).toBe("failed");
+    }
 
     const builds = await generateSpriteArtwork(job, sticker.stickerId, plan, job.id, reference);
-    // One failed idle sheet, then idle again, wave, and the expression sheet.
-    expect(requests).toHaveLength(4);
+    const requestCount = rejectedFirst ? 4 : failure === "saved drift" ? 2 : 3;
+    expect(requests).toHaveLength(requestCount);
+    expect((await db.select().from(assets).where(eq(assets.id, rawIdle)))[0].state).toBe("ready");
     for (const request of requests) {
       expect(request.keepFrame).toBe(true);
       expect(request.quality).toBe("medium");
       expect(request.references).toHaveLength(request.sheet?.tiles ? 3 : 2);
       expect(request.sheet).toBeDefined();
     }
-    expect(requests[1].sheet).toMatchObject({ columns: 3, rows: 2, count: 6, facePlaceholder: true });
-    expect(requests[2].sheet).toMatchObject({ columns: 3, rows: 2, count: 4, facePlaceholder: true });
-    expect(requests[3].sheet).toMatchObject({ columns: 2, rows: 2, count: 3, tiles: true });
-    expect(requests[3].prompt).toContain("1. Neutral: calm");
-    expect(requests[3].prompt).toContain("last reference");
-    expect(requests[3].prompt).toContain("Do not draw a second head");
+    if (failure !== "saved drift") expect(requests[requestCount - 3].sheet).toMatchObject({ columns: 3, rows: 2, count: 6, facePlaceholder: true });
+    expect(requests[requestCount - 2].sheet).toMatchObject({ columns: 3, rows: 2, count: 4, facePlaceholder: true });
+    const expressionRequest = requests.at(-1)!;
+    expect(expressionRequest.sheet).toMatchObject({ columns: 2, rows: 2, count: 3, tiles: true });
+    expect(expressionRequest.prompt).toContain("1. Neutral: calm");
+    expect(expressionRequest.prompt).toContain("last reference");
+    expect(expressionRequest.prompt).toContain("Do not draw a second head");
     // Expressions must see the actual opening they will fill, not only full-character references.
     // Keep the raw frame's magenta marker: the cleaned body no longer identifies that opening.
     const rawSheet = (await store.get(objectKey("owner", rawIdle, "image/png"))).bytes;
@@ -103,7 +131,7 @@ it("draws one sheet per clip and one of faces, registers the slots, and replays 
     const firstFrame = await sharp(rawSheet).extract({ left: 0, top: 0,
       width: Math.floor(rawMeta.width! / 3), height: Math.floor(rawMeta.height! / 2),
     }).ensureAlpha().raw().toBuffer();
-    const guide = requests[3].references[2];
+    const guide = expressionRequest.references[2];
     expect(guide.mimeType).toBe("image/png");
     expect(await sharp(guide.bytes).ensureAlpha().raw().toBuffer()).toEqual(firstFrame);
 
@@ -130,7 +158,7 @@ it("draws one sheet per clip and one of faces, registers the slots, and replays 
 
     // A replay measures the stored sheets again and buys nothing.
     const again = await generateSpriteArtwork(job, sticker.stickerId, plan, job.id, reference);
-    expect(requests).toHaveLength(4);
+    expect(requests).toHaveLength(requestCount);
     expect(again.get("hero")).toEqual(build);
 
     // The review render composites the selected face into the selected clip's frames.

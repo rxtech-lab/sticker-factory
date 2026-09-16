@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
     " · %lld IMAGES" : {
 
     },
@@ -308,9 +311,6 @@
         }
       }
     },
-    "%lld clips" : {
-
-    },
     "%lld combinations" : {
 
     },
@@ -344,9 +344,6 @@
 
     },
     "%lld generations remaining" : {
-
-    },
-    "%lld images" : {
 
     },
     "%lld LAYERS" : {
@@ -396,9 +393,6 @@
           }
         }
       }
-    },
-    "%lld steps done" : {
-
     },
     "%lld stickers" : {
 
@@ -492,12 +486,6 @@
         }
       }
     },
-    "1 clip" : {
-
-    },
-    "1 image" : {
-
-    },
     "1 install" : {
       "localizations" : {
         "zh-CN" : {
@@ -529,9 +517,6 @@
           }
         }
       }
-    },
-    "1 step done" : {
-
     },
     "1 sticker" : {
       "localizations" : {
@@ -854,6 +839,9 @@
         }
       }
     },
+    "A visual guide to the planned motions and expressions. The finished animation is built after you confirm." : {
+
+    },
     "About" : {
       "localizations" : {
         "zh-CN" : {
@@ -1013,6 +1001,9 @@
           }
         }
       }
+    },
+    "Add animation" : {
+
     },
     "Add control" : {
 
@@ -1358,6 +1349,9 @@
         }
       }
     },
+    "Animation %lld" : {
+
+    },
     "Animation format" : {
       "localizations" : {
         "zh-CN" : {
@@ -1373,6 +1367,9 @@
           }
         }
       }
+    },
+    "ANIMATION SUMMARY" : {
+
     },
     "Anyone can find this pack. Edits reach everyone who added it." : {
       "localizations" : {
@@ -1735,6 +1732,9 @@
         }
       }
     },
+    "Cancel export" : {
+
+    },
     "Cancel Export" : {
       "localizations" : {
         "zh-CN" : {
@@ -1849,6 +1849,22 @@
     },
     "Change how long this animation runs" : {
 
+    },
+    "Change the animation after you make it. Try a new move, fine-tune the timing, or keep the version that feels just right." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成后仍可更改动画。尝试新的动作、微调时序，或保留最合适的版本。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成後仍可更改動畫。嘗試新的動作、微調時序，或保留最合適的版本。"
+          }
+        }
+      }
     },
     "Change the plan yourself" : {
 
@@ -2215,6 +2231,22 @@
     },
     "Controllable" : {
 
+    },
+    "Controllable animation" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可控动画"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可控動畫"
+          }
+        }
+      }
     },
     "Controls" : {
 
@@ -3482,6 +3514,9 @@
         }
       }
     },
+    "Export animation" : {
+
+    },
     "Export as" : {
       "localizations" : {
         "zh-CN" : {
@@ -3858,9 +3893,6 @@
         }
       }
     },
-    "Full Screen" : {
-
-    },
     "Gathering references" : {
 
     },
@@ -4100,6 +4132,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "幫助"
+          }
+        }
+      }
+    },
+    "High" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高"
+          }
+        }
+      }
+    },
+    "Higher presets add more selectable poses per character and cost more to generate." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更高的预设会为每个角色添加更多可选姿势，生成费用也更高。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更高的預設會為每個角色加入更多可選姿勢，生成費用也更高。"
           }
         }
       }
@@ -4819,6 +4883,22 @@
         }
       }
     },
+    "Low" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "低"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "低"
+          }
+        }
+      }
+    },
     "Make a sticker" : {
 
     },
@@ -5126,6 +5206,9 @@
           }
         }
       }
+    },
+    "Multiple" : {
+
     },
     "My packs" : {
       "localizations" : {
@@ -5898,6 +5981,9 @@
         }
       }
     },
+    "Open animation summary" : {
+
+    },
     "Open any pack under Sticker Packs and tap Add to WhatsApp. Still and animated stickers become separate packs, and a big pack is split evenly, so every one fits WhatsApp's rules. Pick each sticker's emoji before you send." : {
       "localizations" : {
         "zh-CN" : {
@@ -5913,6 +5999,12 @@
           }
         }
       }
+    },
+    "Open plan image" : {
+
+    },
+    "Open plan reference" : {
+
     },
     "Open Sticker actions to compare versions, restore an earlier one, or publish the current version." : {
       "localizations" : {
@@ -5948,6 +6040,9 @@
           }
         }
       }
+    },
+    "Opens full screen with zoom controls" : {
+
     },
     "Opens full screen, where it can be edited" : {
       "localizations" : {
@@ -6118,6 +6213,9 @@
         }
       }
     },
+    "Pinch to zoom. Drag to move around. Double tap to zoom or reset." : {
+
+    },
     "Ping-pong" : {
       "localizations" : {
         "zh-CN" : {
@@ -6167,6 +6265,9 @@
       }
     },
     "Plan allowance: %lld generations" : {
+
+    },
+    "Plan image" : {
 
     },
     "Plan new artwork…" : {
@@ -6224,6 +6325,12 @@
 
     },
     "Planning the motion" : {
+
+    },
+    "Playback" : {
+
+    },
+    "Playing" : {
 
     },
     "Please open %@ and sign in again." : {
@@ -6333,6 +6440,38 @@
     },
     "Pose" : {
 
+    },
+    "Pose variety" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "姿势丰富度"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "姿勢豐富度"
+          }
+        }
+      }
+    },
+    "Pose variety: %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "姿势丰富度：%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "姿勢豐富度：%@"
+          }
+        }
+      }
     },
     "Prepare for WhatsApp and Telegram" : {
 
@@ -7157,6 +7296,9 @@
     "Reset" : {
 
     },
+    "Reset zoom" : {
+
+    },
     "Resets %@" : {
 
     },
@@ -7223,6 +7365,9 @@
           }
         }
       }
+    },
+    "Retry export" : {
+
     },
     "Retry loading" : {
 
@@ -7571,6 +7716,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在儲存貼圖…"
+          }
+        }
+      }
+    },
+    "Saving will revise the plan with the selected pose variety." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存后将根据所选姿势丰富度重新制定方案。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存後將根據所選姿勢豐富度重新制定方案。"
           }
         }
       }
@@ -8135,6 +8296,9 @@
           }
         }
       }
+    },
+    "Single" : {
+
     },
     "Slide in" : {
 
@@ -9138,6 +9302,9 @@
         }
       }
     },
+    "The first animation cannot fit as an animated sticker. Increase its speed or use Send Image." : {
+
+    },
     "The first frame of your capture. It animates in place, with the other layers built around it." : {
       "localizations" : {
         "zh-CN" : {
@@ -9609,6 +9776,9 @@
           }
         }
       }
+    },
+    "This animation is too large to export. Remove an animation or increase its speed and try again." : {
+
     },
     "This assembles %lld layers. No images need to be generated." : {
       "localizations" : {
@@ -10229,6 +10399,22 @@
         }
       }
     },
+    "Ultra" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超高"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超高"
+          }
+        }
+      }
+    },
     "Unable to Load" : {
       "localizations" : {
         "zh-CN" : {
@@ -10314,6 +10500,39 @@
     },
     "Up" : {
 
+    },
+    "Update plan" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新方案"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新方案"
+          }
+        }
+      }
+    },
+    "Update this plan with %@ pose variety. Keep the character design and other settings." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将此方案的姿势丰富度更新为%@。保留角色设计和其他设置。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將此方案的姿勢豐富度更新為%@。保留角色設計和其他設定。"
+          }
+        }
+      }
     },
     "Updated %@" : {
       "localizations" : {
@@ -10594,6 +10813,9 @@
           }
         }
       }
+    },
+    "Video (MP4)" : {
+
     },
     "View Plans" : {
       "localizations" : {
@@ -11127,6 +11349,12 @@
           }
         }
       }
+    },
+    "Zoom in" : {
+
+    },
+    "Zoom out" : {
+
     }
   },
   "version" : "1.0"

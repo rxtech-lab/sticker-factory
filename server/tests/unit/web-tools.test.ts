@@ -4,6 +4,7 @@ import { createWebTools } from "@/lib/ai/web-tools";
 import { planSticker } from "@/lib/ai/gateway-plan";
 import { routeChatTurn } from "@/lib/ai/gateway-chat";
 import { researchGenerationPrompt } from "@/lib/ai/generation-research";
+import { withAiStepUsageReporter } from "@/lib/ai/cost";
 
 let model: MockLanguageModelV3;
 vi.mock("@ai-sdk/gateway", () => ({ gateway: () => model }));
@@ -83,6 +84,24 @@ describe("Firecrawl web tools", () => {
 });
 
 describe("agent web research loops", () => {
+  it("reports model tokens before executing its tools and counts each response once", async () => {
+    const tokens: number[] = [];
+    let tokensWhenToolStarted: number[] = [];
+    fetchMock.mockImplementationOnce(async () => {
+      tokensWhenToolStarted = [...tokens];
+      return ok({ success: true, data: { web: [] } });
+    });
+    model = new MockLanguageModelV3({ doGenerate: [
+      call("web_search", { query: "bird", limit: 1 }),
+      call("reply", { message: "Done" }),
+    ] });
+    await withAiStepUsageReporter(async (count) => { tokens.push(count); }, () =>
+      routeChatTurn({ instruction: "Look up a bird", history: "", stickerKind: "static", attachmentCount: 0, references: [], priorArt: [], hasPlan: false }, model),
+    );
+    expect(tokensWhenToolStarted).toEqual([10]);
+    expect(tokens).toEqual([10, 10]);
+  });
+
   it("lets chat search, consume results, then return exactly one final action", async () => {
     fetchMock.mockResolvedValueOnce(ok({ success: true, data: { web: [{ url: "https://example.com", markdown: "A bird fact" }] } }));
     model = new MockLanguageModelV3({ doGenerate: [call("web_search", { query: "bird", limit: 1 }), call("reply", { message: "A bird fact (https://example.com)." })] });

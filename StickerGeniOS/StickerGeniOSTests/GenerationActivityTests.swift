@@ -22,6 +22,7 @@ struct GenerationActivityTests {
         #expect(state.message == "Checking the result")
         state = try #require(state.applying(event(5, .init(), type: .completed)))
         #expect(state.isFinished)
+        #expect(state.message == "Done!")
         #expect(state.applying(event(6, .init(note: "Late note"))) == nil)
     }
 

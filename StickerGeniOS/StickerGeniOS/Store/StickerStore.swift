@@ -364,13 +364,15 @@ final class StickerStore {
         kind: StickerKind,
         prompt: String,
         controllable: Bool = false,
+        posePreset: PosePreset? = nil,
         references: [PendingMediaAttachment]
     ) async throws -> Sticker {
         return try await AppTelemetry.measure(.createSticker) {
             let assetIDs = try await upload(references, stickerID: nil, kind: .reference)
             let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
             let response = try await api.createSticker(
-                .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs, controllable: controllable),
+                .init(title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs,
+                      controllable: controllable, posePreset: controllable ? posePreset : nil),
                 idempotencyKey: UUID().uuidString
             )
             let detail = try await api.sticker(id: response.stickerId)
@@ -556,7 +558,8 @@ final class StickerStore {
         targetLayerID: String?,
         intent: ChatIntent = .edit,
         imagePlacement: ImagePlacement = .replace,
-        baseRevisionID: String? = nil
+        baseRevisionID: String? = nil,
+        planPoseUpdate: PlanPoseUpdate? = nil
     ) async throws {
         return try await AppTelemetry.measure(.sendMessage) {
             guard !computingStickerIDs.contains(stickerID) else { throw StickerStoreError.turnAlreadyComputing }
@@ -598,6 +601,7 @@ final class StickerStore {
                     response = try await api.sendChatMessage(
                         stickerID: stickerID,
                         request: .init(
+                            planPoseUpdate: planPoseUpdate,
                             text: content,
                             intent: intent,
                             attachments: attachmentRequests,
@@ -717,8 +721,21 @@ final class StickerStore {
     /// The server keeps the version the edit started from, so this needs no undo of its own: an
     /// unwanted change is reversed by picking the previous version out of the same picker that
     /// restores an agent draft.
-    func editPlan(stickerID: String, current: PlanRecord, edit: PlanEdit) async throws {
+    func editPlan(stickerID: String, current: PlanRecord, edit: PlanEdit, posePreset: PosePreset? = nil) async throws {
         guard !computingStickerIDs.contains(stickerID) else { throw StickerStoreError.turnAlreadyComputing }
+        if let posePreset {
+            try await sendMessage(
+                stickerID: stickerID,
+                content: String(localized: """
+                    Update this plan with \(posePreset.label) pose variety. \
+                    Keep the character design and other settings.
+                    """),
+                references: [], mask: nil, targetLayerID: nil, intent: .chat,
+                planPoseUpdate: .init(planId: current.id, currentRevision: current.revision, posePreset: posePreset,
+                                      edit: edit.isEmpty ? nil : edit)
+            )
+            return
+        }
         let response = try await api.editPlan(
             stickerID: stickerID, planID: current.id,
             request: .init(currentRevision: current.revision, edit: edit),

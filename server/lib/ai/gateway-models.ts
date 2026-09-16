@@ -92,11 +92,10 @@ export async function viewableReferences(
 /**
  * How many pictures of the project itself the planner is shown.
  *
- * Three, and they answer three different questions: what the user gave us to work from, what the
- * sticker looks like now, and what they last approved. A fourth would cost a step's worth of tokens
- * on every step of a twelve-step loop to say something the first three already said.
+ * The original subject, current sticker, resting concept, and animation summary each have a
+ * separate role. Reserve a slot for all four so the storyboard survives a full project context.
  */
-const PLAN_VISUAL_LIMIT = 3;
+const PLAN_VISUAL_LIMIT = 4;
 
 /**
  * Prepares the project's own artwork for a planner that is going to look at it.
@@ -184,6 +183,7 @@ export function priorArtNote(visuals: AiPlanVisual[]): string {
     `The first ${visuals.length} image${visuals.length === 1 ? "" : "s"} in this message`,
     `${visuals.length === 1 ? "is" : "are"} this project as it already exists, in order:`,
     visuals.map((visual, index) => `(${index + 1}) ${visual.label}`).join(" "),
+    "Respect each image's role: a storyboard explains motion and expressions; its panels and annotations are not sticker artwork.",
     "Look at them before you plan. A request that arrives on top of existing artwork is a change to",
     "what the user can already see, so carry over its subject, style, palette, proportions, and",
     "composition, and change only what was actually asked for. If what you are looking at does not",
@@ -295,21 +295,28 @@ function chromaBackdropInstruction(color: ChromaKeyColor): string {
  */
 function stickerInstruction(input: AiImageInput, keyColor?: ChromaKeyColor): string {
   return [
-    input.mode === "conversation_edit"
+    input.isolatedLayer
+      ? "Draw only the isolated overlay element described by the latest instruction. The app composites it onto an existing sticker."
+      : input.mode === "conversation_edit"
       ? "Edit the supplied sticker references according to the latest instruction."
       : "Generate the sticker described by the latest instruction.",
-    input.conversationContext
+    input.conversationContext && !input.isolatedLayer
       ? `Recoverable project context:\n${input.conversationContext}`
       : "",
     `Latest instruction: ${input.prompt}`,
+    input.isolatedLayer
+      ? "References provide style or likeness only. Do not reproduce their complete composition, existing subjects, scenery, sticker frame, or background unless that is the requested new element. Do not show the element placed on the sticker or draw a preview of the finished sticker. For lettering, draw only the exact requested words and their lettering decoration; no characters, vehicles, landscape, or other illustration. Centre the isolated element at a readable size with transparent padding; the app handles placement."
+      : "",
     keyColor
-      ? `Draw one centered sticker subject. ${chromaBackdropInstruction(keyColor)}`
+      ? `${input.isolatedLayer ? "Draw one isolated overlay element." : "Draw one centered sticker subject."} ${chromaBackdropInstruction(keyColor)}`
       : input.sheet
         ? "The whole background of the sheet, and every gap between cells, is genuinely transparent."
-        : "Create a centered sticker with a genuinely transparent background.",
+        : input.isolatedLayer
+          ? "Keep every pixel outside the requested element genuinely transparent."
+          : "Create a centered sticker with a genuinely transparent background.",
     input.sheet
       ? sheetInstruction(input.sheet)
-      : "Produce exactly one sticker subject. Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side.",
+      : `${input.isolatedLayer ? "Produce exactly one isolated element." : "Produce exactly one sticker subject."} Never draw a grid, contact sheet, storyboard, film strip, or multiple frames or poses side by side.`,
     "Return PNG.",
   ].filter(Boolean).join("\n\n");
 }
@@ -325,7 +332,9 @@ function sheetInstruction(sheet: NonNullable<AiImageInput["sheet"]>): string {
   return [
     `Draw a sprite sheet: a grid of ${sheet.columns} columns by ${sheet.rows} rows of equal cells filling the 1024x1024 frame,`,
     `containing exactly ${sheet.count} drawings in row-major order (left to right, then top to bottom).`,
-    "Every cell is the same size. Leave transparent padding inside every cell edge so no drawing touches or crosses a cell boundary.",
+    "Every cell is the same size. Reserve at least 15% of each cell's width on both left and right and 15% of its height above and below as completely transparent safety margins. All visible pixels must fit inside the central 70% of the cell's width and height, including outlines, extremities, accessories, shadows, and motion effects.",
+    "Plan the full motion envelope before drawing: choose one uniform character scale small enough for the widest and tallest pose across all frames. Keep that scale and the same body anchor throughout. If any pose would reach the safety margins, reduce the character in every frame together; never crop, stretch, or shrink just that frame. A wide character must fit the cell's width even when there is spare height.",
+    "The references define the design and proportions, not how much of a cell to fill. Fit the complete drawing inside each cell independently, including cells on the outer edges of the sheet. Never let artwork touch a cell boundary or continue into a neighbouring cell.",
     `Cells after the ${sheet.count}th stay completely transparent.`,
     "No dividers, borders, numbers, labels, arrows, captions, or text anywhere.",
     sheet.tiles
@@ -362,6 +371,7 @@ export async function generateThroughImageModel(
       : transparentProviderOptions,
     abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
   });
+  await reportAiStepUsage(result);
   await recordImageApiCost(result);
   return result.image.uint8Array;
 }
@@ -394,7 +404,7 @@ async function generateThroughQuickImageModel(
 ): Promise<Uint8Array> {
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_QUICK_IMAGE_MODEL ?? "google/gemini-3.1-flash-lite-image"),
     messages: [{
       role: "user",

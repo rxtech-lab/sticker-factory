@@ -140,6 +140,20 @@ extension StickerStore {
         if event.type == .failed { state.failureMessage = event.data.message }
         state.streamErrorMessage = nil
         jobs[stickerID] = state
+        if event.data.outputTokens != nil || event.data.note != nil || event.data.toolStatus != nil || event.data.stage != nil {
+            Self.log.notice(
+                """
+                progress-meter job=\(jobID, privacy: .public) event=\(event.id) \
+                tokenDelta=\(event.data.outputTokens ?? 0) totalOutputTokens=\(state.outputTokens) \
+                hasIncomingNote=\(event.data.note != nil) hasDisplayNote=\(state.note != nil) \
+                images=\(state.imagesDrawn) clips=\(state.clipsFilmed)
+                """
+            )
+            Self.log.debug("""
+                progress-meter incomingNote=\(event.data.note ?? "-", privacy: .private) \
+                displayNote=\(state.note ?? "-", privacy: .private)
+                """)
+        }
         // Whatever this turn cost — including a refund for one that failed — is settled by now.
         if state.isTerminal { onCreditsMayHaveChanged?() }
         Self.log.debug(
@@ -183,7 +197,9 @@ extension StickerStore {
         } else if let stage = data.stage, !stage.isEmpty {
             state.statusDetail = StickerToolLabel.text(forStage: stage)
         }
-        if state.statusDetail != previousStatus || data.toolStatus != nil {
+        // A completed tool often follows "Saved the artwork" immediately. Keep that note
+        // until a new stage or tool begins, so completion does not erase the useful detail.
+        if state.statusDetail != previousStatus || data.toolStatus == .streaming {
             state.note = nil
         }
         if let note = data.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {

@@ -12,6 +12,8 @@ import { acceptRevision, createChatTurn, createSticker, listChatMessages } from 
 import { MemoryObjectStore, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { stickerGenerationWorkflow } from "@/workflows/sticker-generation";
+import { renderPlanAnimationPreview } from "@/workflows/sticker-generation/plan-animation-preview";
+import { loadPlanVisualReference } from "@/workflows/sticker-generation/build-turns";
 import { unusedAiProvider, resetWorkflowTestState, drawnAnimatedBase, attachedBytes, attachablePhoto } from "@/tests/helpers/workflow";
 
 describe("durable sticker workflow: agent context", () => {
@@ -329,9 +331,14 @@ describe("durable sticker workflow: agent context", () => {
         source: { kind: "generate", prompt: "A round orange cat on a transparent background" },
         animations: [{ type: "float", amplitude: 0.04, cycles: 2, delay: 0, duration: 2 }] }],
     });
+    const overviewCalls: Parameters<MockAiProvider["generateConceptImage"]>[0][] = [];
     let controllable: boolean | undefined;
     let refusal: string | undefined;
     class Provider extends MockAiProvider {
+      override async generateConceptImage(input: Parameters<MockAiProvider["generateConceptImage"]>[0]) {
+        if (input.purpose === "animation-summary") overviewCalls.push(input);
+        return super.generateConceptImage(input);
+      }
       override async planSticker(input: AiPlanContext, session: PlanDraftingSession) {
         controllable = input.controllable;
         // What a planner that read the requirement as a suggestion would hand in: one drawn still
@@ -362,6 +369,31 @@ describe("durable sticker workflow: agent context", () => {
     expect(refusal).toMatch(/sprite source/);
     const [stored] = await db.select().from(planRows).where(eq(planRows.stickerId, sticker.stickerId));
     expect(stored.planJson.layers[0].source.kind).toBe("sprite");
+    expect(stored.animationPreviewAssetId).toBeTruthy();
+    expect(stored.animationPreviewAssetId).not.toBe(stored.conceptAssetId);
+    expect(overviewCalls).toHaveLength(1); // show + finalize reuse the same overview.
+    const approved = await loadPlanVisualReference(stored, "owner-controllable", sticker.stickerId);
+    expect(overviewCalls[0].references).toEqual([approved]);
+    const source = stored.planJson.layers[0].source;
+    if (source.kind !== "sprite") throw new Error("Expected a sprite plan");
+    for (const item of [...source.clips, ...source.expressions]) {
+      expect(overviewCalls[0].prompt).toContain(item.label);
+      expect(overviewCalls[0].prompt).toContain(item.prompt);
+    }
+    const transcript = await listChatMessages(db, "owner-controllable", sticker.stickerId);
+    expect(transcript.data.find((message) => message.plan)?.plan?.animationPreviewAssetId)
+      .toBe(stored.animationPreviewAssetId);
+    const job = (await db.select().from(generationJobs).where(eq(generationJobs.id, turn.jobId)))[0];
+    // A later draft revision must get its own overview, never a cached board of old motions.
+    await db.update(planRows).set({ revision: stored.revision + 1 }).where(eq(planRows.id, stored.id));
+    await db.update(generationJobs).set({ state: "running" }).where(eq(generationJobs.id, job.id));
+    await renderPlanAnimationPreview(job, sticker.stickerId, stored.id, stored.revision + 1, stored.planJson);
+    await db.update(generationJobs).set({ state: "succeeded" }).where(eq(generationJobs.id, job.id));
+    const revised = (await db.select().from(planRows).where(eq(planRows.id, stored.id)))[0];
+    expect(revised.animationPreviewAssetId).not.toBe(stored.animationPreviewAssetId);
+    expect(revised.conceptAssetId).toBe(stored.conceptAssetId);
+    expect(overviewCalls).toHaveLength(2);
+
     // A sprite with no picker bound to it would leave the user exactly where the toggle was meant
     // to take them off: talking to the agent to change the character's mood.
     expect(stored.planJson.configuration?.variants.some((variant) => variant.layers.some(

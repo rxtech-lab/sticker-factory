@@ -333,10 +333,11 @@ describe("durable sticker workflow: composition", () => {
     expect(planMessage?.plan?.plan.layers.length).toBeGreaterThanOrEqual(2);
 
     // Each plan tool call left its own row, so the client can render the drafting sequence live.
+    // Repeats within the turn are numbered from the second one on, as in every other tool loop.
     const planToolRows = (await db.select().from(chatMessages).where(eq(chatMessages.jobId, planTurn.jobId)).orderBy(chatMessages.sequence))
       .filter((message) => message.role === "system").map((message) => message.content);
     expect(planToolRows).toEqual(expect.arrayContaining([
-      "plan-sticker", "create_plan", "update_plan #1", "show_plan", "finalize_plan",
+      "plan-sticker", "create_plan", "update_plan", "show_plan", "finalize_plan",
     ]));
 
     // The completed event carries the assistant message so the client need not refetch.

@@ -118,12 +118,14 @@ export const stickers = pgTable("stickers", {
    * Animated projects only — a still has no clips to switch between.
    */
   controllable: boolean("controllable").notNull().default(false),
+  posePreset: text("pose_preset", { enum: ["low", "medium", "high", "ultra"] }),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
   deletedAt: timestampColumn("deleted_at"),
 }, (table) => [
   index("stickers_owner_updated_idx").on(table.ownerId, table.updatedAt, table.id),
   index("stickers_owner_status_updated_idx").on(table.ownerId, table.status, table.updatedAt, table.id),
+  check("stickers_pose_preset_check", sql`${table.posePreset} IS NULL OR ${table.posePreset} IN ('low', 'medium', 'high', 'ultra')`),
   check("stickers_kind_check", sql`${table.kind} IN (${oneOf(stickerKinds)})`),
   check("stickers_status_check", sql`${table.status} IN (${oneOf(stickerStatuses)})`),
 ]);
@@ -375,8 +377,10 @@ export const plans = pgTable("plans", {
   /** Saved version activated by this copy; keeps prior builds and version numbers intact. */
   restoredFromId: text("restored_from_id").references((): AnyPgColumn => plans.id, { onDelete: "set null" }),
   jobId: text("job_id").references(() => generationJobs.id, { onDelete: "set null" }),
-  /** A storyboard render of the plan, shown on the plan card before anything real is made. */
+  /** The approved resting composition used to build the sticker. */
   conceptAssetId: text("concept_asset_id").references(() => assets.id, { onDelete: "set null" }),
+  /** An illustrated motion/expression guide, separate from the resting extraction reference. */
+  animationPreviewAssetId: text("animation_preview_asset_id").references(() => assets.id, { onDelete: "set null" }),
   /** Why the user rejected the plan. Fed back into the next planning turn. */
   decisionReason: text("decision_reason"),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),

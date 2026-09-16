@@ -64,13 +64,15 @@ actor MessagesPlaybackService {
             return (account, bundle)
         }
     }
-    func loadAssets(bundle: StickerPlaybackBundle, document: AnimatedDocument, accountID: String) async throws -> StickerRenderAssets {
+    func loadAssets(bundle: StickerPlaybackBundle, documents: [AnimatedDocument], accountID: String) async throws -> StickerRenderAssets {
         let directory = try folder(accountID: accountID, stickerID: bundle.stickerId, revisionID: bundle.revisionId)
-        var required = Set(document.layers.filter { !$0.hidden }.flatMap { layer -> [String] in
+        var required = Set(documents.flatMap(\.layers).filter { !$0.hidden }.flatMap { layer -> [String] in
             if case .sequence(let sequence) = layer { return [sequence.assetId] }
             return layer.referencedImageAssetIDs
         })
-        if case .image(let id, _) = document.background { required.insert(id) }
+        for document in documents {
+            if case .image(let id, _) = document.background { required.insert(id) }
+        }
         let descriptors = bundle.assets.filter { required.contains($0.id) }
         let sized = descriptors.allSatisfy { $0.width > 0 && $0.height > 0 && $0.width <= 8192 && $0.height <= 8192 }
         let totalBytes = descriptors.reduce(0) { $0 + $1.byteSize }
@@ -112,16 +114,21 @@ actor MessagesPlaybackService {
             && SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() == asset.sha256.lowercased()
     }
     func cachedRender(accountID: String, bundle: StickerPlaybackBundle, settings: StickerControlSettings, image: Bool,
-                      size: SystemStickerSize = .default) throws -> URL? {
+                      size: SystemStickerSize = .default) throws -> PreparedStickerFile? {
         let url = try renderURL(accountID: accountID, bundle: bundle, settings: settings, image: image, size: size)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url.appendingPathExtension("json")),
+              let firstOnly = try? JSONDecoder().decode(Bool.self, from: data) else { return nil }
+        return .init(url: url, firstAnimationOnly: firstOnly)
     }
     func storeRender(_ export: RenderedStickerExport, accountID: String, bundle: StickerPlaybackBundle,
                      settings: StickerControlSettings, image: Bool, size: SystemStickerSize = .default) throws -> URL {
         let url = try renderURL(accountID: accountID, bundle: bundle, settings: settings, image: image, size: size)
         try Data(contentsOf: export.url).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        let metadata = url.appendingPathExtension("json")
+        try JSONEncoder().encode(export.firstAnimationOnly).write(to: metadata, options: .atomic)
         trimRenders(in: url.deletingLastPathComponent())
-        trimDisk(keeping: [url, url.deletingLastPathComponent().appending(path: "manifest.json")])
+        trimDisk(keeping: [url, metadata, url.deletingLastPathComponent().appending(path: "manifest.json")])
         return url
     }
     /// Assets are compressed on disk; decoded images have a separate 48 MiB selection budget.
@@ -151,11 +158,14 @@ actor MessagesPlaybackService {
         let files = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.contentModificationDateKey]
         )) ?? []
-        let renders = files.filter { $0.lastPathComponent.hasPrefix("render-") }.sorted {
+        let renders = files.filter { $0.lastPathComponent.hasPrefix("render-") && $0.pathExtension == "png" }.sorted {
             ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
               > ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
         }
-        for url in renders.dropFirst(8) { try? FileManager.default.removeItem(at: url) }
+        for url in renders.dropFirst(8) {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: url.appendingPathExtension("json"))
+        }
     }
     func reconcile(_ sections: [StickerSection]) async {
         guard let account = try? await accountID() else { return }

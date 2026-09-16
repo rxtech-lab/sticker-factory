@@ -60,8 +60,9 @@ export function gatewayCostUsd(providerMetadata: unknown): number | string | und
  *
  * Separate from the cost recorder above, which cannot do this job: `recordTextApiCost` runs after
  * `generateText` resolves, and a chat turn's tool loop takes minutes to resolve — so a meter fed
- * from it stays empty for exactly the wait it exists to fill. `onStepEnd` fires per round trip, so
- * the count climbs while the agent is still working.
+ * from it stays empty for exactly the wait it exists to fill. `onLanguageModelCallEnd` runs before
+ * tools execute, so usage is visible even while a long image or composition tool is still running.
+ * `onStepEnd` waits for those tools.
  *
  * Nothing bills on this. The charge stays with the cost recorder, which reads the Gateway's own
  * price rather than a token count.
@@ -76,7 +77,9 @@ export function withAiStepUsageReporter<T>(reporter: StepUsageReporter, run: () 
 }
 
 /**
- * Pass as `onStepEnd` on every Gateway text call.
+ * Pass as `onLanguageModelCallEnd` on every Gateway text call, never also `onStepEnd`
+ * (that would count the same response twice). For native image calls, pass the result once
+ * after `generateImage` returns; providers without output-token usage contribute no count.
  *
  * Reads the count through `stepOutputTokens` rather than off the field directly: the AI SDK flattens
  * output tokens to a number at the result level and the provider protocol reports them as a

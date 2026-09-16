@@ -2,6 +2,7 @@
 // and the drafting sessions a long turn streams its partial work through.
 
 import { z } from "zod";
+import type { PosePreset } from "@/lib/contracts/pose-preset";
 import { type ChromaKeyColor } from "@/lib/ai/chroma-key";
 import { countKeyframes } from "@/lib/animation/compile";
 import { type PlanV1 } from "@/lib/contracts/plan";
@@ -20,6 +21,8 @@ export interface AiImageInput {
   mask?: { bytes: Uint8Array; mimeType: string };
   conversationContext?: string;
   mode: "generate" | "conversation_edit";
+  /** Draw only a new overlay element; references provide style, not a composition to reproduce. */
+  isolatedLayer?: boolean;
   /**
    * Draw this one on `AI_QUICK_IMAGE_MODEL` instead of `AI_IMAGE_MODEL`.
    *
@@ -153,6 +156,7 @@ export interface AiPlanContext {
    * it in words, so nothing in `instruction` need mention it.
    */
   controllable: boolean;
+  posePreset?: PosePreset;
   document?: StickerDocument;
   /** Reasons the user gave for turning down earlier plans, so the agent does not repeat them. */
   rejectedReasons: string[];
@@ -323,6 +327,8 @@ export interface RenderableSession {
 }
 
 export interface AiLayoutContext {
+  /** The confirmed plan's motion/expression storyboard, distinct from its resting composition. */
+  animationSummary?: AiReferenceImage;
   /** The assembled document whose actual generated pixels are now available for review. */
   document: StickerDocument;
   /** The approved plan's human-readable intent. */
@@ -607,6 +613,7 @@ export interface AiProvider {
    * while the ordinary path produces one transparent, independently animatable part.
    */
   generateConceptImage(input: {
+    purpose?: "animation-summary";
     prompt: string;
     references: Array<{ bytes: Uint8Array; mimeType: string }>;
   }): Promise<AiImageOutput>;

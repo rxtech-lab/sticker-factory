@@ -44,7 +44,7 @@ export async function selectImageReferences(
 
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
@@ -157,9 +157,15 @@ export async function generateStickerImage(input: AiImageInput): Promise<AiImage
       () =>
         generateThroughImageModel({
           prompt:
-            "Remove the entire background. Keep only the sticker subject with clean antialiased transparent edges; do not add a checkerboard.",
+            input.isolatedLayer
+              ? `Remove the background and any unrelated illustration. Keep only the isolated element described here: ${input.prompt}. Preserve its exact lettering and styling with clean antialiased transparent edges; do not add a checkerboard or a preview of the full sticker.`
+              : input.sheet
+              ? "Remove only the background from the supplied sprite sheet, including the gaps inside and between cells. Preserve the exact grid, frame order, character scale, positions, and all artwork in each cell. Keep any magenta face placeholders intact. Do not merge, rearrange, crop, or enlarge the drawings; do not add a checkerboard."
+              : "Remove the entire background. Keep only the sticker subject with clean antialiased transparent edges; do not add a checkerboard.",
           references: [{ bytes: normalized.bytes, mimeType: "image/png" }],
           mode: "conversation_edit",
+          isolatedLayer: input.isolatedLayer,
+          ...(input.sheet ? { sheet: input.sheet, keepFrame: true, quality: input.quality } : {}),
         }),
     );
     normalized = await traceSpan(
@@ -225,10 +231,12 @@ export async function generateStickerVideo(input: AiVideoInput): Promise<AiVideo
 }
 
 export async function generateConceptImage(input: {
+  purpose?: "animation-summary";
   prompt: string;
   references: Array<{ bytes: Uint8Array; mimeType: string }>;
 }): Promise<AiImageOutput> {
-  if (input.references.length > 0) {
+  const isSummary = input.purpose === "animation-summary";
+  if (!isSummary && input.references.length > 0) {
     return generateStickerImage({
       prompt: [
         input.prompt,
@@ -241,14 +249,17 @@ export async function generateConceptImage(input: {
       keepFrame: true,
     });
   }
-  input = { ...input, prompt: await researchGenerationPrompt(input.prompt) };
+  if (!isSummary) input = { ...input, prompt: await researchGenerationPrompt(input.prompt) };
   // Opaque on purpose. The reference is a picture *of* the complete sticker, not one of the
   // transparent parts later extracted from it, so it skips the part-generation alpha gate.
   const result = await generateImage({
     model: gateway.imageModel(
       process.env.AI_IMAGE_MODEL ?? "openai/gpt-image-2",
     ),
-    prompt: [
+    prompt: isSummary ? {
+      text: input.prompt,
+      images: input.references.map((reference) => reference.bytes),
+    } : [
       input.prompt,
       "Render one polished static image of the finished sticker on a plain light background.",
       "Show the complete approved resting composition in one coherent illustration, not a rough",
@@ -262,6 +273,7 @@ export async function generateConceptImage(input: {
     // a plan silently losing its picture every time is not the "best effort" this was meant to be.
     abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
   });
+  await reportAiStepUsage(result);
   await recordImageApiCost(result);
   const bytes = await sharp(Buffer.from(result.image.uint8Array))
     .resize(1024, 1024, {

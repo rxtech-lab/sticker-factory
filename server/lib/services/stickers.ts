@@ -33,6 +33,7 @@ export async function createSticker(db: Database, ownerId: string, request: Crea
       title: request.title,
       kind: request.kind,
       controllable: request.controllable,
+      posePreset: request.posePreset,
       status: "draft",
       createdAt: now,
       updatedAt: now,

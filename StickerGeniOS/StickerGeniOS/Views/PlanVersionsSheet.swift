@@ -14,6 +14,8 @@ struct PlanVersionsSheet: View {
     @State private var attemptedAssetIDs: Set<String> = []
     @State private var selectingID: String?
     @State private var selectionError: String?
+    @State private var presentedImage: UIImage?
+    @State private var isShowingImage = false
 
     var body: some View {
         StickerBackground {
@@ -41,6 +43,9 @@ struct PlanVersionsSheet: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("plan-versions-sheet")
         .interactiveDismissDisabled(selectingID != nil)
+        .fullScreenCover(isPresented: $isShowingImage) {
+            if let presentedImage { PlanImageViewer(image: presentedImage) }
+        }
         .modifier(ChatErrorAlert(message: selectionError) { selectionError = nil })
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -106,12 +111,20 @@ struct PlanVersionsSheet: View {
 
     @ViewBuilder
     private func referencePreview(_ version: PlanRecord) -> some View {
-        if let assetID = version.conceptAssetId {
+        if let assetID = version.animationPreviewAssetId ?? version.conceptAssetId {
             Group {
                 if let image = assets[assetID] ?? history.images[assetID] {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            presentedImage = image
+                            isShowingImage = true
+                        }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("Open plan image")
+                        .accessibilityHint("Opens full screen with zoom controls")
                 } else if attemptedAssetIDs.contains(assetID) {
                     VStack(spacing: 8) {
                         Text("Reference unavailable")

@@ -1,9 +1,10 @@
 // The two turns that work from a plan: drafting one for the user to confirm, and animating a
 // document the user has already accepted.
 
+import { renderPlanAnimationPreview } from "./plan-animation-preview";
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { assertAnimatedPlanUsesReferenceBackedArtwork, assertControllablePlan, assertPlanAllowedForJob, assertPlanReuseIsResolvable, planRequiresConcept, type PlanV1 } from "@/lib/contracts/plan";
+import { assertAnimatedPlanUsesReferenceBackedArtwork, assertControllablePlan, assertPlanPosePreset, assertPlanAllowedForJob, assertPlanReuseIsResolvable, planRequiresConcept, type PlanV1 } from "@/lib/contracts/plan";
 import { applyStickerOperationsV1, type StickerDocument, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import { chatMessages, generationJobs, plans, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -104,9 +105,13 @@ async function attachCapturePreview(
 /**
  * Generates the static visual source of truth for a plan revision.
  *
- * Animated plans cannot proceed without it. The asset id includes the revision because `show_plan`
- * may render a draft which the agent subsequently updates; reusing that old image would ask the
- * user to approve artwork that no longer describes the plan they are confirming.
+ * Animated plans cannot proceed without it. The asset id is derived from the prompt that draws the
+ * picture, which is what makes the draft's artwork cacheable without ever going stale: a redraft
+ * that words the reference the same way — a replayed step, or an `update_plan` that only moves a
+ * layout box — finds the image already stored and pays nothing, while any change to the wording is
+ * a different id and so a different picture. Keying it on the revision instead bought that
+ * staleness guarantee by re-drawing on every revision, including the ones that changed nothing the
+ * image could show.
  */
 async function renderPlanConcept(
   job: typeof generationJobs.$inferSelect,
@@ -122,8 +127,11 @@ async function renderPlanConcept(
   if (!prompt) return attachCapturePreview(db, stickerId, planId, plan);
   const row = await db.select({ conceptAssetId: plans.conceptAssetId }).from(plans)
     .where(eq(plans.id, planId)).then(firstRow);
-  const assetId = derivedAssetId(planId, `concept:${revision}`);
-  if (row?.conceptAssetId === assetId) return;
+  const assetId = derivedAssetId(planId, `concept:${prompt}`);
+  if (row?.conceptAssetId === assetId) {
+    await renderPlanAnimationPreview(job, stickerId, planId, revision, plan);
+    return;
+  }
 
   const generate = async () => {
     const selectedReferences = await selectImageReferences(
@@ -145,6 +153,7 @@ async function renderPlanConcept(
   };
   if (plan.kind === "animated") {
     await generate();
+    await renderPlanAnimationPreview(job, stickerId, planId, revision, plan);
   } else {
     try {
       await generate();
@@ -188,15 +197,23 @@ export async function executePlanTurn(
   // is a real message on this thread, so it anchors the plan until the card replaces it.
   const anchorMessageId = toolCallId ?? job.sourceMessageId!;
 
-  let updates = 0;
   let latest: { planId: string; revision: number; plan: PlanV1 } | undefined;
+  // One transcript row per call, retries included: `beginToolCall` de-duplicates on the label, so a
+  // second `finalize_plan` after a failed one would reuse the row it already marked failed and
+  // `finishToolCall` — which only moves a row that is still streaming — could never clear it. The
+  // user was left reading a permanently broken step for a call that went on to succeed.
+  const nextLabel = toolCallLabeller();
 
   const session: PlanDraftingSession = {
     createPlan: async (plan) => {
-      const call = await beginToolCall(job, "create_plan");
+      const call = await beginToolCall(job, "create_plan", undefined, nextLabel("create_plan"));
       try {
         assertPlanAllowedForJob(plan, job);
         if (sticker.controllable) assertControllablePlan(plan);
+        if (sticker.posePreset) {
+          assertPlanPosePreset(plan, sticker.posePreset);
+          plan = { ...plan, posePreset: sticker.posePreset };
+        }
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const created = await createPlan(db, {
@@ -218,13 +235,14 @@ export async function executePlanTurn(
       }
     },
     updatePlan: async (planId, plan) => {
-      updates += 1;
-      // Distinct labels, or the repeated calls de-duplicate onto one row and the user sees a single
-      // stuck spinner instead of each revision.
-      const call = await beginToolCall(job, "update_plan", undefined, `update_plan #${updates}`);
+      const call = await beginToolCall(job, "update_plan", undefined, nextLabel("update_plan"));
       try {
         assertPlanAllowedForJob(plan, job);
         if (sticker.controllable) assertControllablePlan(plan);
+        if (sticker.posePreset) {
+          assertPlanPosePreset(plan, sticker.posePreset);
+          plan = { ...plan, posePreset: sticker.posePreset };
+        }
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const updated = await updatePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId, plan });
@@ -237,7 +255,7 @@ export async function executePlanTurn(
       }
     },
     showPlan: async (planId) => {
-      const call = await beginToolCall(job, "show_plan");
+      const call = await beginToolCall(job, "show_plan", undefined, nextLabel("show_plan"));
       try {
         if (!latest) throw new Error("There is no plan to show yet");
         await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references, history);
@@ -250,7 +268,7 @@ export async function executePlanTurn(
       }
     },
     finalizePlan: async (planId) => {
-      const call = await beginToolCall(job, "finalize_plan");
+      const call = await beginToolCall(job, "finalize_plan", undefined, nextLabel("finalize_plan"));
       try {
         if (!latest) throw new Error("There is no plan to finalize yet");
         await renderPlanConcept(job, sticker.id, planId, latest.revision, latest.plan, references, history);
@@ -270,6 +288,7 @@ export async function executePlanTurn(
     history,
     stickerKind: sticker.kind,
     controllable: sticker.controllable,
+    posePreset: sticker.posePreset ?? undefined,
     document: activeDocument,
     rejectedReasons: rejected.map((row) => row.decisionReason).filter((reason): reason is string => Boolean(reason)),
     sequenceAssets,

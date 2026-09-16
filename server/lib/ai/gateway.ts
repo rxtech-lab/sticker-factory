@@ -13,7 +13,7 @@ export class GatewayAiProvider implements AiProvider {
   selectImageReferences(input: AiReferenceSelectionContext) { return selectImageReferences(input); }
   generateStickerImage(input: AiImageInput) { return generateStickerImage(input); }
   generateStickerVideo(input: AiVideoInput) { return generateStickerVideo(input); }
-  generateConceptImage(input: { prompt: string; references: Array<{ bytes: Uint8Array; mimeType: string }> }) {
+  generateConceptImage(input: { purpose?: "animation-summary"; prompt: string; references: Array<{ bytes: Uint8Array; mimeType: string }> }) {
     return generateConceptImage(input);
   }
   refineStickerLayout(input: AiLayoutContext, session: LayoutDraftingSession) {

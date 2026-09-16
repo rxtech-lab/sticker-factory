@@ -152,7 +152,7 @@ final class GenerationLiveActivityManager {
         let content = ActivityContent(state: state, staleDate: state.isFinished ? nil : .now.addingTimeInterval(180))
         if state.isFinished {
             poller.stop()
-            await activity.end(content, dismissalPolicy: .after(.now.addingTimeInterval(120)))
+            await activity.end(content, dismissalPolicy: .default)
         } else {
             await activity.update(content)
         }
@@ -182,7 +182,7 @@ nonisolated extension StickerGenerationAttributes.ContentState {
         switch event.type {
         case .completed:
             state.phase = event.data.cancelled == true ? "cancelled" : "completed"
-            state.message = event.data.cancelled == true ? "Generation stopped" : "Sticker ready"
+            state.message = event.data.cancelled == true ? "Generation stopped" : "Done!"
         case .failed:
             state.phase = "failed"
             state.message = "Generation failed. Open to retry."

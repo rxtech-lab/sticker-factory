@@ -180,10 +180,11 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
   };
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: chatModel ?? gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,
+      "When the user refers to a pose, expression or panel in the animation summary, inspect the labelled storyboard in the project images. Resolve what they mean and include that concrete visual description in any delegated action instruction. Do not mistake the storyboard layout or annotations for the sticker itself.",
       "You are Sticker Factory's tool-routing agent.",
       "Research first when needed, then choose exactly one action tool from the user's request. Carry relevant findings and source URLs into the final reply or action instruction.",
       // Every other rule here selects between mutations, which on its own reads as "the user always
@@ -368,7 +369,7 @@ export async function showSticker(
   };
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system:
       WEB_RESEARCH_PROMPT + " A sticker revision is ready. Call show-sticker exactly once with a concise caption that says what changed and invites further natural-language refinement.",
@@ -392,7 +393,7 @@ export async function showSticker(
 export async function reply(instruction: string, history: string): Promise<string> {
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system:
       WEB_RESEARCH_PROMPT + " You are Sticker Factory's concise creative assistant. Help refine the user's private sticker project. Never claim an edit was made unless an image or animation revision was actually created.",
@@ -409,7 +410,7 @@ export async function reply(instruction: string, history: string): Promise<strin
 export async function summarizeStickerTitle(input: AiTitleContext): Promise<string> {
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     // A naming call sits between a finished turn and the client being told the turn finished, so
     // it runs on the cheapest model the deployment has rather than the orchestrator's.
     model: gateway(

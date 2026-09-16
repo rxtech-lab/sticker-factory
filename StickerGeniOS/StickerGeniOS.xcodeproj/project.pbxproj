@@ -169,7 +169,7 @@
 		C11F00000000000000000008 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Haptics.swift; path = StickerGeniOS/Haptics.swift; sourceTree = SOURCE_ROOT; };
 		C2B67698C56773B6146926C1 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D5064562E4FFA7578BD1B762 /* StickerAppClipUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerAppClipUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		DE4957B12E1D6999AC24F71E /* StickerGenerationActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; name = StickerGenerationActivity.appex; path = StickerGenerationActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		DE4957B12E1D6999AC24F71E /* StickerGenerationActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StickerGenerationActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF2A3E15303C7709006910C8 /* StickerGeniOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StickerGeniOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF2A3E24303C770A006910C8 /* StickerGeniOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerGeniOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF2A3E2E303C770A006910C8 /* StickerGeniOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StickerGeniOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -218,8 +218,6 @@
 		};
 		A00000000000000000000022 /* StickerMessagesTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = StickerMessagesTests;
 			sourceTree = "<group>";
 		};
@@ -234,22 +232,16 @@
 		};
 		DF2A3E27303C770A006910C8 /* StickerGeniOSTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = StickerGeniOSTests;
 			sourceTree = "<group>";
 		};
 		DF2A3E31303C770A006910C8 /* StickerGeniOSUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = StickerGeniOSUITests;
 			sourceTree = "<group>";
 		};
 		F50000000000000000000003 /* StickerPlaybackShared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = StickerPlaybackShared;
 			sourceTree = "<group>";
 		};
@@ -381,7 +373,6 @@
 				C2B67698C56773B6146926C1 /* Info.plist */,
 				3FB6529023D0F790FA2F9963 /* Assets.xcassets */,
 			);
-			name = StickerGenerationActivity;
 			path = StickerGenerationActivity;
 			sourceTree = "<group>";
 		};
@@ -390,7 +381,6 @@
 			children = (
 				8E67EC649BD5CD489756390C /* StickerGenerationAttributes.swift */,
 			);
-			name = StickerActivityShared;
 			path = StickerActivityShared;
 			sourceTree = "<group>";
 		};

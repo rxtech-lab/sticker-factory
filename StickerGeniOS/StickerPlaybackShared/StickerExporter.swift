@@ -11,6 +11,7 @@ nonisolated struct RenderedStickerExport: Sendable {
     var metadata: LocalExportMetadata
     /// What the 500 KB ceiling cost this rendition, when it cost anything.
     var compromise: SystemStickerCompromise?
+    var firstAnimationOnly = false
 
     /// An animated sticker whose system rendition had to give up its motion. The publish request
     /// carries this so the server reads a single-frame rendition for an animated sticker as the
@@ -253,8 +254,54 @@ nonisolated struct SystemStickerCompromise: Equatable, Sendable {
 @MainActor
 final class StickerExporter {
     private let fileManager: FileManager
+    private let timeline: StickerPlaybackTimeline?
+    private let stillTime: Double?
+    private var schedules: [Int: [StickerPlaybackTimeline.Frame]] = [:]
 
-    init(fileManager: FileManager = .default) { self.fileManager = fileManager }
+    init(fileManager: FileManager = .default, timeline: StickerPlaybackTimeline? = nil, stillTime: Double? = nil) {
+        self.fileManager = fileManager
+        self.timeline = timeline
+        self.stillTime = stillTime
+    }
+
+    private func cycleDuration(_ document: AnimatedDocument) -> Double {
+        timeline?.duration ?? document.renderedCycleDuration
+    }
+    private func schedule(fps: Int) -> [StickerPlaybackTimeline.Frame]? {
+        guard let timeline else { return nil }
+        if let cached = schedules[fps] { return cached }
+        let frames = timeline.frames(fps: fps)
+        schedules[fps] = frames
+        return frames
+    }
+    private func frameCount(document: AnimatedDocument, fps: Int) -> Int {
+        schedule(fps: fps)?.count ?? max(1, Int(ceil(cycleDuration(document) * Double(fps))))
+    }
+    private func frameTime(_ index: Int, fps: Int) -> Double {
+        schedule(fps: fps)?[index].time ?? Double(index) / Double(fps)
+    }
+    private func frameDelays(document: AnimatedDocument, fps: Int, ticksPerSecond: Int) -> [Double] {
+        guard let frames = schedule(fps: fps) else {
+            return StickerExportMetadataPolicy.frameDelays(frameCount: frameCount(document: document, fps: fps),
+                fps: fps, holdSeconds: holdSeconds(document), ticksPerSecond: ticksPerSecond)
+        }
+        var previousTicks = 0
+        return frames.map { frame in
+            let end = Int(((frame.time + frame.duration) * Double(ticksPerSecond)).rounded())
+            let ticks = max(1, end - previousTicks)
+            previousTicks += ticks
+            return Double(ticks) / Double(ticksPerSecond)
+        }
+    }
+    private func holdSeconds(_ document: AnimatedDocument) -> Double {
+        timeline == nil ? StickerExportMetadataPolicy.holdSeconds(for: document.loop) : 0
+    }
+    private func renderedDuration(_ document: AnimatedDocument) -> Double {
+        cycleDuration(document) + holdSeconds(document)
+    }
+    private func loopCount(_ document: AnimatedDocument) -> Int {
+        timeline != nil || document.loop != .once ? 0 : 1
+    }
 
     /// Full colour: a single frame has no byte ceiling to fight, so this never quantizes the way
     /// the Messages ladder has to.
@@ -309,12 +356,14 @@ final class StickerExporter {
         byteCeiling: Int = StickerExportMetadataPolicy.uploadByteCeiling,
         note: ((String) -> Void)? = nil
     ) async throws -> RenderedStickerExport {
-        try await exportSharingRenditions(
+        let result = try await exportSharingRenditions(
             document: document,
             assets: assets,
             byteCeiling: byteCeiling,
             note: note
-        ).apng
+        )
+        if let webp = result.webp { try? fileManager.removeItem(at: webp.url) }
+        return result.apng
     }
 
     /// The APNG and its WebP copy, from one pass over the document.
@@ -351,7 +400,7 @@ final class StickerExporter {
             metadata: .init(
                 format: .apng, width: rendition.dimension, height: rendition.dimension,
                 byteCount: rendition.data.count,
-                durationSeconds: StickerExportMetadataPolicy.renderedDuration(document),
+                durationSeconds: renderedDuration(document),
                 fps: document.fps, hasAlpha: true
             )
         )
@@ -368,7 +417,7 @@ final class StickerExporter {
             metadata: .init(
                 format: .webp, width: rendition.dimension, height: rendition.dimension,
                 byteCount: webpData.count,
-                durationSeconds: StickerExportMetadataPolicy.renderedDuration(document),
+                durationSeconds: renderedDuration(document),
                 fps: document.fps, hasAlpha: true
             )
         ))
@@ -389,7 +438,7 @@ final class StickerExporter {
             let webp = WebPEncoder.AnimationStream(
                 width: dimension,
                 height: dimension,
-                loops: document.loop == .once ? 1 : 0
+                loops: loopCount(document)
             )
             // The floor has nowhere to fall to, so it is encoded without a budget rather than being
             // allowed to abandon itself with no rung left to try. That it fits anyway is a property
@@ -403,7 +452,7 @@ final class StickerExporter {
                 dimension: dimension,
                 fps: document.fps,
                 palettes: Self.sharingPaletteLadder,
-                byteBudget: isFloor ? .max : ceiling,
+                byteBudget: isFloor && timeline == nil ? .max : ceiling,
                 webp: webp,
                 note: { frame, total in
                     note?(String(localized: "Encoding \(dimension) px · frame \(frame) of \(total)"))
@@ -492,10 +541,40 @@ final class StickerExporter {
             metadata: .init(
                 format: .gif, width: rendition.dimension, height: rendition.dimension,
                 byteCount: rendition.data.count,
-                durationSeconds: StickerExportMetadataPolicy.renderedDuration(document),
+                durationSeconds: renderedDuration(document),
                 fps: document.fps, hasAlpha: true
             )
         )
+    }
+
+    /// A requested WebP is a required output, unlike the optional publishing companion.
+    func exportWebP(document: AnimatedDocument, assets: StickerRenderAssets,
+                    note: ((String) -> Void)? = nil) async throws -> RenderedStickerExport {
+        _ = try document.validated()
+        let count = frameCount(document: document, fps: document.fps)
+        let delays = frameDelays(document: document, fps: document.fps, ticksPerSecond: 1000)
+        for dimension in StickerExportMetadataPolicy.sharingApngDimensions {
+            guard let stream = WebPEncoder.AnimationStream(width: dimension, height: dimension, loops: loopCount(document)) else {
+                throw WebPEncoder.Failure.encoderUnavailable
+            }
+            for index in 0..<count {
+                await Task.yield()
+                try Task.checkCancellation()
+                if index % 8 == 0 { note?(String(localized: "Frame \(index + 1) of \(count)")) }
+                guard let frame = renderFrame(document: document, time: frameTime(index, fps: document.fps),
+                                              dimension: dimension, assets: assets),
+                      stream.append(frame: frame, delayMilliseconds: Int((delays[index] * 1000).rounded())) else {
+                    throw StickerExportError.renderFailed
+                }
+            }
+            guard let data = stream.finish() else { throw WebPEncoder.Failure.encodeFailed }
+            guard data.count <= StickerExportMetadataPolicy.uploadByteCeiling else { continue }
+            let url = try outputURL(extension: "webp")
+            try data.write(to: url, options: .atomic)
+            return .init(url: url, metadata: .init(format: .webp, width: dimension, height: dimension,
+                byteCount: data.count, durationSeconds: renderedDuration(document), fps: document.fps, hasAlpha: true))
+        }
+        throw StickerSequenceExportError.fileTooLarge
     }
 
     private func sharingGIF(
@@ -517,7 +596,8 @@ final class StickerExporter {
             )
             // The floor cannot overshoot — see `sharingGifDimensions` — so it is returned on its own
             // measurement rather than spending another encode discovering there is nowhere to go.
-            if data.count <= ceiling || rung == ladder.count - 1 { return (data, ladder[rung]) }
+            if data.count <= ceiling || (rung == ladder.count - 1 && timeline == nil) { return (data, ladder[rung]) }
+            if rung == ladder.count - 1 { throw StickerSequenceExportError.fileTooLarge }
             rung += 1
         }
     }
@@ -535,7 +615,7 @@ final class StickerExporter {
     ) async throws -> Int {
         let ladder = StickerExportMetadataPolicy.sharingGifDimensions
         let ceiling = Double(budget)
-        let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps)
+        let frameCount = frameCount(document: document, fps: document.fps)
         let fullSize = Double(ladder[0] * ladder[0])
         // Short animations cannot overshoot at any size, whatever they are of, so they skip the
         // sample entirely and pay nothing for a ladder they will never walk down.
@@ -564,7 +644,7 @@ final class StickerExporter {
             data, UTType.gif.identifier as CFString, Self.gifSampleCount, nil
         ) else { throw StickerExportError.destinationFailed }
 
-        let cycle = document.renderedCycleDuration
+        let cycle = cycleDuration(document)
         var written = 0
         for sample in 0..<Self.gifSampleCount {
             await Task.yield()
@@ -595,18 +675,14 @@ final class StickerExporter {
         fps: Int
     ) async throws -> Data {
         guard fps > 0 else { throw StickerExportError.invalidDocument }
-        let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: fps)
-        let delays = StickerExportMetadataPolicy.gifFrameDelays(
-            frameCount: frameCount,
-            fps: fps,
-            holdSeconds: StickerExportMetadataPolicy.holdSeconds(for: document.loop)
-        )
+        let frameCount = frameCount(document: document, fps: fps)
+        let delays = frameDelays(document: document, fps: fps, ticksPerSecond: 100)
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
             data, UTType.gif.identifier as CFString, frameCount, nil
         ) else { throw StickerExportError.destinationFailed }
         CGImageDestinationSetProperties(destination, [
-            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: document.loop == .once ? 1 : 0]
+            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: loopCount(document)]
         ] as CFDictionary)
 
         for index in 0..<frameCount {
@@ -614,7 +690,7 @@ final class StickerExporter {
             try Task.checkCancellation()
             guard let image = renderFrame(
                 document: document,
-                time: Double(index) / Double(fps),
+                time: frameTime(index, fps: fps),
                 dimension: dimension,
                 assets: assets
             ) else { throw StickerExportError.renderFailed }
@@ -641,6 +717,13 @@ final class StickerExporter {
         let dimension = 1024
         let url = try outputURL(extension: "mp4")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        var completed = false
+        defer {
+            if !completed {
+                writer.cancelWriting()
+                try? fileManager.removeItem(at: url)
+            }
+        }
         let settings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: dimension,
@@ -671,8 +754,8 @@ final class StickerExporter {
         }
         writer.startSession(atSourceTime: .zero)
 
-        let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: document.fps)
-        let holdFrames = StickerExportMetadataPolicy.holdFrameCount(document: document, fps: document.fps)
+        let frameCount = frameCount(document: document, fps: document.fps)
+        let holdFrames = Int((holdSeconds(document) * Double(document.fps)).rounded())
         // One uniform cadence for the whole file, motion and hold alike. The hold frames are the
         // last rendered frame again — see `holdFrameCount` for why an MP4 cannot say it any other
         // way — so they are drawn from the image already in hand rather than rendered afresh.
@@ -694,7 +777,7 @@ final class StickerExporter {
             let rendered = index < frameCount
                 ? renderFrame(
                     document: document,
-                    time: Double(index) / Double(document.fps),
+                    time: frameTime(index, fps: document.fps),
                     dimension: dimension,
                     assets: assets
                 )
@@ -716,7 +799,9 @@ final class StickerExporter {
                 into: buffer,
                 dimension: dimension
             )
-            let timestamp = CMTime(value: CMTimeValue(index), timescale: CMTimeScale(document.fps))
+            let timestamp = timeline == nil
+                ? CMTime(value: CMTimeValue(index), timescale: CMTimeScale(document.fps))
+                : CMTime(seconds: frameTime(index, fps: document.fps), preferredTimescale: 60_000)
             guard adaptor.append(buffer, withPresentationTime: timestamp) else {
                 throw StickerExportError.videoWriterFailed(
                     writer.error?.localizedDescription ?? String(localized: "Could not append a frame")
@@ -726,7 +811,7 @@ final class StickerExporter {
         input.markAsFinished()
         // The end of the sample grid, not `renderedDuration`: a cycle that is not a whole number of
         // frames ends a fraction past it, and ending the session early would trim the hold back off.
-        let renderedDuration = Double(frameCount + holdFrames) / Double(document.fps)
+        let renderedDuration = timeline?.duration ?? Double(frameCount + holdFrames) / Double(document.fps)
         writer.endSession(atSourceTime: CMTime(seconds: renderedDuration, preferredTimescale: 600))
         await writer.finishWriting()
         guard writer.status == .completed else {
@@ -734,6 +819,8 @@ final class StickerExporter {
                 writer.error?.localizedDescription ?? String(localized: "Writer did not complete")
             )
         }
+        try Task.checkCancellation()
+        completed = true
         let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         return .init(
             url: url,
@@ -763,6 +850,7 @@ final class StickerExporter {
         document: AnimatedDocument,
         assets: StickerRenderAssets,
         size: SystemStickerSize = .default,
+        allowsStillFallback: Bool = true,
         note: ((String) -> Void)? = nil
     ) async throws -> RenderedStickerExport {
         _ = try document.validated()
@@ -789,7 +877,7 @@ final class StickerExporter {
                 metadata: .init(
                     format: .apng, width: rendition.dimension, height: rendition.dimension,
                     byteCount: rendition.data.count,
-                    durationSeconds: StickerExportMetadataPolicy.renderedDuration(document),
+                    durationSeconds: renderedDuration(document),
                     fps: rendition.fps, hasAlpha: true
                 ),
                 compromise: .init(
@@ -802,6 +890,7 @@ final class StickerExporter {
         }
 
         try Task.checkCancellation()
+        guard allowsStillFallback else { throw StickerSequenceExportError.animationDoesNotFit }
         let still = try await stillSystemRendition(
             document: document,
             assets: assets,
@@ -914,19 +1003,15 @@ final class StickerExporter {
         webp: WebPEncoder.AnimationStream? = nil,
         note: ((Int, Int) -> Void)? = nil
     ) async -> (data: Data, paletteCount: Int)? {
-        let frameCount = StickerExportMetadataPolicy.frameCount(document: document, fps: fps)
-        let delays = StickerExportMetadataPolicy.apngFrameDelays(
-            frameCount: frameCount,
-            fps: fps,
-            holdSeconds: StickerExportMetadataPolicy.holdSeconds(for: document.loop)
-        )
+        let frameCount = frameCount(document: document, fps: fps)
+        let delays = frameDelays(document: document, fps: fps, ticksPerSecond: 1000)
         guard delays.count == frameCount else { return nil }
         let streams = palettes.map { attempt in
             IndexedPNGEncoder.AnimationStream(
                 palette: survey.census.palette(limit: attempt.count, dithered: attempt.dithered),
                 dimension: dimension,
                 frameCount: frameCount,
-                loopCount: document.loop == .once ? 1 : 0,
+                loopCount: loopCount(document),
                 byteBudget: byteBudget
             )
         }
@@ -936,7 +1021,7 @@ final class StickerExporter {
             note?(index + 1, frameCount)
             guard let frame = renderFrame(
                 document: document,
-                time: Double(index) / Double(fps),
+                time: frameTime(index, fps: fps),
                 dimension: dimension,
                 assets: assets
             ) else { return nil }
@@ -1035,14 +1120,15 @@ final class StickerExporter {
             }
             return .init(census: census, posterTime: 0)
         }
-        let cycle = document.renderedCycleDuration
+        let cycle = cycleDuration(document)
         var bestCoverage = -1
-        for sample in 0..<Self.surveySampleCount {
+        let regularTimes = (0..<Self.surveySampleCount).map { cycle * Double($0) / Double(Self.surveySampleCount) }
+        let segmentTimes = timeline?.segments.map { $0.start + $0.duration / 2 } ?? []
+        for time in regularTimes + segmentTimes {
             await Task.yield()
             // The survey has no way to report a stop, so it stops sampling and lets
             // `exportSystemSticker` throw on the check that follows it.
             if Task.isCancelled { break }
-            let time = cycle * Double(sample) / Double(Self.surveySampleCount)
             guard let frame = renderFrame(
                 document: document,
                 time: time,
@@ -1080,11 +1166,15 @@ final class StickerExporter {
         dimension: Int,
         assets: StickerRenderAssets
     ) -> CGImage? {
-        let content = AnimatedIconFrame(
-            document: document,
-            documentTime: time,
-            assets: assets.dictionary
-        )
+        if let sample = timeline?.sample(at: time, repeats: false) {
+            return AnimatedIconRenderer(document: sample.document, assets: assets.dictionary)
+                .cgImage(at: sample.time, dimension: dimension)
+        }
+        if let stillTime {
+            return AnimatedIconRenderer(document: document, assets: assets.dictionary)
+                .cgImage(at: stillTime, dimension: dimension)
+        }
+        let content = AnimatedIconFrame(document: document, documentTime: time, assets: assets.dictionary)
             .frame(width: CGFloat(dimension), height: CGFloat(dimension))
         let renderer = ImageRenderer(content: content)
         renderer.scale = 1

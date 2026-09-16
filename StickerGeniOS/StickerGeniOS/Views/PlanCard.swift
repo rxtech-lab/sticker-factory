@@ -17,6 +17,7 @@ struct PlanCard: View {
     /// Opens the plan editor, scrolled to whichever part of the card was tapped.
     var onEdit: (PlanEditorFocus) -> Void = { _ in }
     let referenceImage: UIImage?
+    var animationPreviewImage: UIImage?
     let isBusy: Bool
     let onConfirm: () -> Void
     let onReject: (String?) -> Void
@@ -69,9 +70,22 @@ struct PlanCard: View {
                         onSaveToPhotoLibrary: onSaveImageToPhotoLibrary
                     )
                 }
+                if record.animationPreviewAssetId != nil {
+                    PlanReferencePreview(
+                        image: animationPreviewImage,
+                        isCapture: false,
+                        isAnimationSummary: true,
+                        isAddingToStickerPack: isAddingImageToStickerPack,
+                        onAddToStickerPack: onAddImageToStickerPack,
+                        onSaveToPhotoLibrary: onSaveImageToPhotoLibrary
+                    )
+                }
                 PlanLayoutPreview(layers: plan.layers)
                 layerList
                 if plan.kind == .animated { timingNote }
+                if plan.kind == .animated, plan.layers.contains(where: { $0.source.sprite != nil }) {
+                    poseVariety
+                }
                 if !record.actionable {
                     Text(statusNote)
                         .posterLabelStyle(9, color: AppColors.muted)
@@ -119,6 +133,16 @@ struct PlanCard: View {
             }
         } message: {
             Text("Say what is wrong and the assistant will draft a new plan right away. Leave it blank to just dismiss this one.")
+        }
+    }
+
+    private var poseVariety: some View {
+        Group {
+            if let preset = plan.posePreset {
+                Text("Pose variety: \(preset.label)")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(AppColors.muted)
+            }
         }
     }
 
@@ -427,22 +451,25 @@ struct PlanCard: View {
     }
 }
 
-/// What the plan will be built from, shown before anything is committed to.
-///
-/// Two different things wear this frame, because a plan has one of two references. A generated plan
-/// gets a concept render the user is approving the *look* of; a capture-led plan gets the first
-/// frame of its own footage, which is not up for approval — it is what the user already shot. The
-/// copy has to say which, or the capture reads as artwork the model drew of them.
+/// The resting reference, capture poster, or illustrated animation overview shown for approval.
+/// The overview explains the planned motion; the resting reference remains the artwork used to build.
 private struct PlanReferencePreview: View {
     let image: UIImage?
     let isCapture: Bool
+    var isAnimationSummary = false
+    @State private var isShowingImage = false
     let isAddingToStickerPack: Bool
     let onAddToStickerPack: (UIImage) -> Void
     let onSaveToPhotoLibrary: (UIImage) -> Void
 
+    /// Tall enough to read as the plate the artwork is coming to, rather than as a caption with a
+    /// spinner in it.
+    private static let minimumPreviewHeight: CGFloat = 160
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(isCapture ? LocalizedStringKey("YOUR CAPTURE") : LocalizedStringKey("STATIC REFERENCE"))
+            Text(isAnimationSummary ? LocalizedStringKey("ANIMATION SUMMARY")
+                : isCapture ? LocalizedStringKey("YOUR CAPTURE") : LocalizedStringKey("STATIC REFERENCE"))
                 .font(.caption2.weight(.semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
@@ -452,6 +479,11 @@ private struct PlanReferencePreview: View {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
+                        .contentShape(Rectangle())
+                        .onTapGesture { isShowingImage = true }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel(isAnimationSummary ? "Open animation summary" : "Open plan reference")
+                        .accessibilityHint("Opens full screen with zoom controls")
                         .contextMenu {
                             // "Sticker" here is the Messages pack, not this project: the action
                             // publishes the picture as a sticker of its own, ready to send.
@@ -488,6 +520,11 @@ private struct PlanReferencePreview: View {
             }
             .frame(maxWidth: .infinity)
             .aspectRatio(1, contentMode: .fit)
+            // A floor under the square, because the square is only as tall as the content it is
+            // measuring: the transcript proposes no height, so a reference that has not arrived
+            // yet is measured from a spinner and a line of caption and the plate collapses to
+            // nothing. The loaded image overshoots this every time, so the floor costs it nothing.
+            .frame(minHeight: Self.minimumPreviewHeight)
             .clipShape(.rect(cornerRadius: 14, style: .continuous))
             .posterSurface(
                 cornerRadius: 14,
@@ -495,13 +532,18 @@ private struct PlanReferencePreview: View {
                 lineWidth: Poster.hairline,
                 offset: .zero
             )
-            .accessibilityIdentifier("plan-static-reference")
+            .accessibilityIdentifier(isAnimationSummary ? "plan-animation-summary" : "plan-static-reference")
 
-            Text(isCapture
+            Text(isAnimationSummary
+                ? "A visual guide to the planned motions and expressions. The finished animation is built after you confirm."
+                : isCapture
                 ? "The first frame of your capture. It animates in place, with the other layers built around it."
                 : "Confirm this look, then the artwork is separated into parts for animation.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        .fullScreenCover(isPresented: $isShowingImage) {
+            if let image { PlanImageViewer(image: image) }
         }
     }
 }

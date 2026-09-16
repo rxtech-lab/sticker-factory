@@ -84,7 +84,7 @@ private struct StickerControlsBadge: View {
     }
 }
 
-/// A sticker's artwork, or its kind glyph when there is nothing to show.
+/// A sticker's artwork, its draft plan's concept sketch, or its kind glyph when there is neither.
 ///
 /// Stickers are transparent PNGs and APNG/GIFs. Filling a plate behind one puts a light rectangle
 /// where the transparency should be, so artwork sits directly on whatever the surrounding view
@@ -129,6 +129,19 @@ struct StickerThumbnail: View {
                 animates: sticker.kind == .animated,
                 detail: detail
             )
+        } else if let concept = sticker.planConceptAsset {
+            // A draft that has not built anything yet. The plan's concept render is the picture the
+            // user already approved, and it tells the projects in a grid apart — which a wall of
+            // identical kind glyphs never did. Clipped, because a concept is an opaque sketch on a
+            // backdrop rather than a cut-out sticker, and a bare square inside the rounded plate
+            // reads as a mistake.
+            VerifiedAssetImage(
+                assetID: concept.id,
+                expectedSHA256: concept.sha256,
+                api: api,
+                detail: detail
+            )
+            .clipShape(.rect(cornerRadius: Poster.tileRadius - 4))
         } else {
             // Nothing to show yet. A blob rather than a grey box: an empty tile in a wall of
             // stickers should still look like it belongs to the same craft project.

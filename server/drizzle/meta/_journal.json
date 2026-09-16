@@ -78,6 +78,20 @@
       "when": 1789531200001,
       "tag": "0010_generation_live_activities",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789531200002,
+      "tag": "0011_plan_animation_preview",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789531200003,
+      "tag": "0012_pose_presets",
+      "breakpoints": true
     }
   ]
 }

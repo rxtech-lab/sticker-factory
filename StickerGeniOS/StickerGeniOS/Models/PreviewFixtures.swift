@@ -20,6 +20,7 @@ nonisolated enum PreviewFixtures {
             id: "plan-\(version)", messageId: "message-plan-\(version)",
             state: version == 1 ? .superseded : .finalized,
             revision: 1, conceptAssetId: version == 1 ? planHistoryAssetID : borrowedAssetID,
+            animationPreviewAssetId: version == 2 ? planHistoryAssetID : nil,
             supersedesId: version == 2 ? "plan-1" : nil,
             actionable: version == 2, generationCount: 1,
             plan: plan

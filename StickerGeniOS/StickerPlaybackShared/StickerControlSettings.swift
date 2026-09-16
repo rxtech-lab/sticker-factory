@@ -3,12 +3,60 @@ import CryptoKit
 import Foundation
 
 nonisolated struct StickerControlSettings: Codable, Hashable, Sendable {
+    enum Mode: String, Codable, Sendable { case single, multiple }
+    struct Entry: Codable, Hashable, Identifiable, Sendable {
+        var id = UUID()
+        var values: [String: AnimatedControlValue]
+        var speed: Double
+        var signatures: [String: String]
+
+        init(settings: StickerControlSettings) {
+            values = settings.values; speed = settings.speed; signatures = settings.signatures
+        }
+        var settings: StickerControlSettings {
+            var result = StickerControlSettings()
+            result.values = values; result.speed = speed; result.signatures = signatures
+            return result
+        }
+    }
+
     var values: [String: AnimatedControlValue] = [:]
     var animate = true
     var speed: Double = 1
     /// A fraction of one rendered cycle. Survives changing the pose's timing.
     var stillPosition: Double = 0
     var signatures: [String: String] = [:]
+    var mode: Mode = .single
+    var entries: [Entry] = []
+    var hasSeededSequence = false
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case values, animate, speed, stillPosition, signatures, mode, entries, hasSeededSequence
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        values = try c.decodeIfPresent([String: AnimatedControlValue].self, forKey: .values) ?? [:]
+        animate = try c.decodeIfPresent(Bool.self, forKey: .animate) ?? true
+        speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1
+        stillPosition = try c.decodeIfPresent(Double.self, forKey: .stillPosition) ?? 0
+        signatures = try c.decodeIfPresent([String: String].self, forKey: .signatures) ?? [:]
+        mode = try c.decodeIfPresent(Mode.self, forKey: .mode) ?? .single
+        entries = try c.decodeIfPresent([Entry].self, forKey: .entries) ?? []
+        hasSeededSequence = try c.decodeIfPresent(Bool.self, forKey: .hasSeededSequence) ?? !entries.isEmpty
+    }
+
+    var canPlay: Bool { mode == .single || !entries.isEmpty }
+
+    mutating func selectMode(_ mode: Mode) {
+        if mode == .multiple, !hasSeededSequence {
+            entries = [.init(settings: self)]
+            hasSeededSequence = true
+        }
+        self.mode = mode
+    }
 
     func reconciled(with document: AnimatedDocument) -> Self {
         var result = self
@@ -19,6 +67,11 @@ nonisolated struct StickerControlSettings: Codable, Hashable, Sendable {
         result.signatures = signatures
         result.speed = speed.isFinite ? min(2, max(0.25, speed)) : 1
         result.stillPosition = stillPosition.isFinite ? min(1, max(0, stillPosition)) : 0
+        result.entries = entries.map { entry in
+            var reconciled = Entry(settings: entry.settings.reconciled(with: document))
+            reconciled.id = entry.id
+            return reconciled
+        }
         return result
     }
 
@@ -73,7 +126,7 @@ nonisolated struct StickerControlPreferences {
                           image: Bool, size: SystemStickerSize = .default) throws -> String {
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         let data = try encoder.encode(settings)
-        return digest("\(accountID):\(stickerID):\(revisionID):\(image):\(size.rawValue):\(data.base64EncodedString())")
+        return digest("sequence-v1:\(accountID):\(stickerID):\(revisionID):\(image):\(size.rawValue):\(data.base64EncodedString())")
     }
 }
 

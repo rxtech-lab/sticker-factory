@@ -170,7 +170,7 @@ export async function animateSticker(
 
   const generation = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
-    onStepEnd: reportAiStepUsage,
+    onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
       WEB_RESEARCH_PROMPT,

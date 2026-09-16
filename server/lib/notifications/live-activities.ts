@@ -161,7 +161,7 @@ export async function liveActivitySnapshot(db: Database, ownerId: string, jobId:
     progressLabel: progressData?.progressLabel ?? "Artwork parts",
   });
   const message = terminal
-    ? (job.state === "succeeded" ? "Sticker ready" : job.state === "failed" ? "Generation failed. Open to retry." : "Generation stopped")
+    ? (job.state === "succeeded" ? "Done!" : job.state === "failed" ? "Generation failed. Open to retry." : "Generation stopped")
     : readableStatus(data.note) ?? readableStatus(data.message) ?? readableStage(data.stage) ?? readableTool(data.toolName)
       ?? (job.state === "queued" ? "Waiting to start…" : job.state === "waiting" ? "Waiting for your input" : "Creating your sticker…");
   return {
@@ -195,7 +195,8 @@ export async function pushLiveActivityUpdate(db: Database, ownerId: string, jobI
           payload: { aps: {
             timestamp, event: snapshot.terminal ? "end" : "update",
             "content-state": snapshot.state,
-            ...(snapshot.terminal ? { "dismissal-date": timestamp + 120 } : { "stale-date": timestamp + 180 }),
+            // Keep the final state on the Lock Screen using the system's default retention.
+            ...(!snapshot.terminal ? { "stale-date": timestamp + 180 } : {}),
           } },
         }], config);
         if (result?.permanentlyGone) {

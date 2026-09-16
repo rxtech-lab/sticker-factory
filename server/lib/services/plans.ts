@@ -28,6 +28,7 @@ export type SerializedPlan = {
   revision: number;
   jobId: string | null;
   conceptAssetId: string | null;
+  animationPreviewAssetId: string | null;
   decisionReason: string | null;
   supersedesId: string | null;
   sourceVersionId: string | null;
@@ -53,6 +54,7 @@ export function serializePlan(
     revision: row.revision,
     jobId: row.jobId,
     conceptAssetId: row.conceptAssetId,
+    animationPreviewAssetId: row.animationPreviewAssetId,
     decisionReason: row.decisionReason,
     supersedesId: row.supersedesId,
     sourceVersionId: row.restoredFromId,
@@ -137,6 +139,7 @@ export async function selectPlanVersion(
       id: crypto.randomUUID(), ownerId, stickerId, threadId: current.threadId,
       messageId: card.id, planJson: source.planJson, revision: source.revision,
       conceptAssetId: source.conceptAssetId, restoredFromId: source.id,
+      animationPreviewAssetId: source.animationPreviewAssetId,
       supersedesId: current.id, state: "finalized", createdAt: now, updatedAt: now,
     }).returning().then(firstRow);
     if (!restored) throw new Error("Failed to activate selected plan");
@@ -145,7 +148,7 @@ export async function selectPlanVersion(
     }).where(and(eq(chatMessages.id, card.id), eq(chatMessages.planId, currentPlanId)))
       .returning({ id: chatMessages.id });
     if (claimed.length === 0) throw new ApiError(409, "PLAN_CHANGED", "The latest plan changed while selecting a version");
-    await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
+    await tx.update(stickers).set({ updatedAt: now, posePreset: PlanV1Schema.parse(source.planJson).posePreset ?? null }).where(eq(stickers.id, stickerId));
     return { messageId: card.id, plan: serializePlan(restored) };
   });
 }
@@ -268,15 +271,21 @@ async function loadPlan(db: Database, ownerId: string, stickerId: string, planId
 /**
  * Whether a sticker has ever been planned.
  *
- * Deliberately counts every plan row, cancelled and superseded ones included. It gates the rule
- * that an animated project must be designed as layers before anything is drawn, and a user who
- * turned a plan down has already answered that question — re-forcing a plan on their next prompt
- * would trap them in a loop they cannot leave.
+ * Deliberately counts cancelled plans. It gates the rule that an animated project must be designed
+ * as layers before anything is drawn, and a user who turned a plan down has already answered that
+ * question — re-forcing a plan on their next prompt would trap them in a loop they cannot leave.
+ *
+ * Superseded rows are the one state that does not count, because they are never the end of a
+ * story: every supersede writes its replacement in the same transaction, so a live plan sits behind
+ * each of them and is what this question is really about. A project whose only rows are superseded
+ * has had its plan retired without one — the answer there is that it still needs planning, not that
+ * an animated request may quietly be drawn as one flat image instead.
  */
 export async function stickerHasPlan(db: Database, ownerId: string, stickerId: string) {
   const row = await db.select({ id: plans.id }).from(plans).where(and(
     eq(plans.ownerId, ownerId),
     eq(plans.stickerId, stickerId),
+    ne(plans.state, "superseded"),
   )).then(firstRow);
   return Boolean(row);
 }
@@ -308,6 +317,22 @@ export async function currentDraftPlan(db: Database, ownerId: string, stickerId:
 export type CreatePlanResult = { planId: string; revision: number; supersededPlanId: string | null };
 
 /**
+ * Whether a stored plan and a freshly drafted one describe the same design.
+ *
+ * Both sides are compared in parsed form because `plan_json` is `jsonb`: Postgres reorders the keys
+ * it stores, so the row as it comes back never stringifies to what was written. Parsing rebuilds
+ * both in the schema's own key order. A row the current schema can no longer read counts as
+ * different, which is the safe answer — it re-drafts rather than adopting something unreadable.
+ */
+function samePlan(stored: unknown, drafted: PlanV1): boolean {
+  try {
+    return JSON.stringify(PlanV1Schema.parse(stored)) === JSON.stringify(drafted);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Starts a new plan, superseding whatever came before it.
  *
  * A plan that has been finalized or confirmed is never mutated in place — the user may have already
@@ -331,6 +356,39 @@ export async function createPlan(
   const now = new Date();
 
   return db.transaction(async (tx) => {
+    // A replay of the very step that drafted this row, told apart by the caller's derived id.
+    //
+    // Handled before anything is superseded, because the row this call would otherwise retire is
+    // the row it is about to write: the supersede lands, the insert below is swallowed by
+    // `onConflictDoNothing`, and the turn is left holding a plan id that `update_plan` and
+    // `finalize_plan` both reject with PLAN_NOT_EDITABLE. The turn then dies, and the next one sees
+    // a project that has been planned but has no live plan — which is how an animated request ends
+    // up being drawn as one flat image instead of re-planned.
+    const replayed = await tx.select().from(plans).where(and(
+      eq(plans.id, planId),
+      eq(plans.ownerId, input.ownerId),
+      eq(plans.stickerId, input.stickerId),
+    )).then(firstRow);
+    if (replayed) {
+      // A draft is still the agent's to rewrite, and the attempt running now is the one whose plan
+      // the rest of the turn works from, so a draft that came back different is brought up to date
+      // the way `updatePlan` does. A decided plan is left exactly as it is.
+      if (!isEditablePlanState(replayed.state)) {
+        return { planId, revision: replayed.revision, supersededPlanId: replayed.supersedesId };
+      }
+      // The ordinary replay: the attempt drafted the same plan again. Left completely alone, down to
+      // the revision, so the reference image the abandoned attempt already paid for is still the one
+      // this plan asks for rather than work to be done a second time.
+      if (samePlan(replayed.planJson, plan)) {
+        return { planId, revision: replayed.revision, supersededPlanId: replayed.supersedesId };
+      }
+      const revision = replayed.revision + 1;
+      await tx.update(plans)
+        .set({ planJson: plan, revision, animationPreviewAssetId: null, updatedAt: now })
+        .where(eq(plans.id, replayed.id));
+      return { planId, revision, supersededPlanId: replayed.supersedesId };
+    }
+
     const previous = await tx.select().from(plans).where(and(
       eq(plans.ownerId, input.ownerId),
       eq(plans.stickerId, input.stickerId),
@@ -356,7 +414,11 @@ export async function createPlan(
       updatedAt: now,
     }).onConflictDoNothing();
 
-    return { planId, revision: 1, supersededPlanId: previous?.id ?? null };
+    // Read back rather than assuming revision 1: the insert is a no-op if a concurrent copy of this
+    // same step won the race, and the caller has to be told the revision the row actually carries.
+    const saved = await tx.select({ revision: plans.revision }).from(plans)
+      .where(eq(plans.id, planId)).then(firstRow);
+    return { planId, revision: saved?.revision ?? 1, supersededPlanId: previous?.id ?? null };
   });
 }
 
@@ -373,7 +435,7 @@ export async function updatePlan(
   const revision = row.revision + 1;
   // Guarded on the revision we read so two concurrent updates cannot both land on the same number.
   const claimed = await db.update(plans)
-    .set({ planJson: plan, revision, updatedAt: new Date() })
+    .set({ planJson: plan, revision, animationPreviewAssetId: null, updatedAt: new Date() })
     .where(and(eq(plans.id, row.id), eq(plans.state, "draft"), eq(plans.revision, row.revision)))
     .returning({ id: plans.id });
   if (claimed.length === 0) {

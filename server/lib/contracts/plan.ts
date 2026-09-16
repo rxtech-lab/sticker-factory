@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PosePresetSchema, POSE_COUNTS, type PosePreset } from "./pose-preset";
 import { PlanConfigurationSchema, configurationIssues, configurationKeepingLayers } from "./configuration";
 import {
   compileLayerAnimations,
@@ -212,6 +213,7 @@ export const PlanTimingV1Schema = z.object({
  * generates images.
  */
 export const PlanV1Schema = z.object({
+  posePreset: PosePresetSchema.optional(),
   configuration: PlanConfigurationSchema.optional(),
   version: z.literal(1).default(1),
   title: z.string().trim().min(1).max(120),
@@ -230,6 +232,10 @@ export const PlanV1Schema = z.object({
    */
   conceptPrompt: z.string().trim().min(1).max(2_000).optional(),
 }).strict().superRefine((plan, context) => {
+  if (plan.posePreset) {
+    try { assertPlanPosePreset(plan, plan.posePreset); }
+    catch (error) { context.addIssue({ code: "custom", path: ["posePreset"], message: (error as Error).message }); }
+  }
   if (plan.configuration) {
     const issues = configurationIssues(plan.configuration, new Set(plan.layers.map((layer) => layer.layerId)));
     if (plan.kind !== "animated") issues.push("Configurable stickers need an animated plan");
@@ -425,6 +431,19 @@ export function planSpriteSheetCount(plan: Pick<PlanV1, "layers">): number {
 /** How many video generations executing this plan will cost, on top of its image generations. */
 export function planVideoCount(plan: Pick<PlanV1, "layers">): number {
   return plan.layers.filter((layer) => layer.source.kind === "video").length;
+}
+
+/** Ensures the selected preset produces real, selectable clips on every character. */
+export function assertPlanPosePreset(plan: Pick<PlanV1, "layers" | "configuration">, preset: PosePreset): void {
+  assertControllablePlan(plan);
+  const count = POSE_COUNTS[preset];
+  for (const { layer, source } of planSpriteLayers(plan)) {
+    const selectable = new Set((plan.configuration?.variants ?? []).flatMap((variant) =>
+      variant.layers.filter((patch) => patch.layerId === layer.layerId && patch.clip !== undefined).map((patch) => patch.clip)));
+    if (source.clips.length !== count || source.clips.some((clip) => !selectable.has(clip.id))) {
+      throw new Error(`The ${preset} pose preset requires exactly ${count} distinct body clips per character, including idle. Give ${layer.name} matching pose options and a variant binding for every clip. Keep facial expressions and frame timing separate.`);
+    }
+  }
 }
 
 /**

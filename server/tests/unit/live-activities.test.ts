@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { generationEvents, generationJobs, generationLiveActivities } from "@/lib/db/schema";
-import { liveActivitySnapshot } from "@/lib/notifications/live-activities";
+import { liveActivitySnapshot, pushLiveActivityUpdate } from "@/lib/notifications/live-activities";
+import * as apns from "@/lib/notifications/apns";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { seedPublishedSticker, seedUser } from "@/tests/helpers/packs";
 
@@ -16,7 +17,7 @@ describe("Live Activity backend snapshots", () => {
     // Counts must also survive non-compose jobs.
     await handle.db.insert(generationJobs).values({ id: jobId, ownerId: "owner", stickerId: sticker.stickerId, kind: "chat", state: "running" });
   });
-  afterEach(async () => { await handle.close(); });
+  afterEach(async () => { vi.restoreAllMocks(); await handle.close(); });
   async function event(data: Record<string, unknown>) {
     const [row] = await handle.db.insert(generationEvents).values({ jobId, ownerId: "owner", type: "progress", dataJson: data }).returning();
     return row;
@@ -51,7 +52,29 @@ describe("Live Activity backend snapshots", () => {
     await event({ completedParts: 2, totalParts: 4 });
     expect((await snapshot()).state).toMatchObject({ completedUnits: 2, totalUnits: 4 });
     await handle.db.update(generationJobs).set({ state: "succeeded" }).where(eq(generationJobs.id, jobId));
-    expect(await snapshot()).toMatchObject({ terminal: true, state: { phase: "completed", message: "Sticker ready" } });
+    expect(await snapshot()).toMatchObject({ terminal: true, state: { phase: "completed", message: "Done!" } });
     expect((await snapshot()).state).not.toHaveProperty("completedUnits");
+  });
+
+  it("ends successful activities with Done and leaves dismissal to the system", async () => {
+    vi.spyOn(apns, "getApnsConfig").mockReturnValue({
+      keyId: "test", teamId: "test", privateKey: "unused", bundleId: "test",
+    });
+    const send = vi.spyOn(apns, "sendPushes").mockImplementation(async (pushes) =>
+      pushes.map(({ token }) => ({ token, ok: true, status: 200, permanentlyGone: false })));
+    await handle.db.insert(generationLiveActivities).values({
+      activityId: "test-activity", ownerId: "owner", jobId, token: "a".repeat(64),
+      environment: "sandbox", expiresAt: new Date(Date.now() + 60_000),
+    });
+    await event({ completedUnits: 6, totalUnits: 6 });
+    await handle.db.update(generationJobs).set({ state: "succeeded" }).where(eq(generationJobs.id, jobId));
+
+    await pushLiveActivityUpdate(handle.db, "owner", jobId);
+
+    expect(send).toHaveBeenCalledOnce();
+    const payload = send.mock.calls[0][0][0].payload.aps;
+    expect(payload).toMatchObject({ event: "end", "content-state": { phase: "completed", message: "Done!" } });
+    expect(payload).not.toHaveProperty("dismissal-date");
+    expect(payload).not.toHaveProperty("stale-date");
   });
 });

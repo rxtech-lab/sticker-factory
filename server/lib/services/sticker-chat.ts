@@ -9,7 +9,7 @@ import { firstRow, type Database } from "@/lib/db/client";
 import { assets, chatAttachments, chatMessages, chatThreads, generationEvents, generationJobs, plans, stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { getReadyOwnedAssets } from "@/lib/services/assets";
-import { loadPlansByIds, serializePlan } from "@/lib/services/plans";
+import { editPlan, loadPlansByIds, serializePlan } from "@/lib/services/plans";
 import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
 import { jobCreditHold } from "@/lib/subscription/pricing";
 import { assertValidAnimationBase, intentToJobKind } from "./sticker-documents";
@@ -23,6 +23,9 @@ export async function createChatTurn(
   appClip = false,
 ) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
+  if (request.planPoseUpdate && (sticker.kind !== "animated" || request.quick)) {
+    throw new ApiError(422, "INVALID_POSE_PRESET", "Pose presets require a controllable animation plan");
+  }
   // Shared OAuth identifies the account; the constrained operation selects its plan allowance.
   appClip = appClip || request.useQuickModeAllowance === true;
   if (appClip && (sticker.kind !== "static" || !request.quick ||
@@ -131,6 +134,30 @@ export async function createChatTurn(
     // immediately; generation failures keep the attempt but release point holds.
     if (appClip) await recordAppClipUsage(ownerId, jobId);
     await db.transaction(async (tx) => {
+      if (request.planPoseUpdate) {
+        // Serialize against manual edits and version restoration. The active-job constraint guards concurrent builds.
+        await tx.select({ id: stickers.id }).from(stickers).where(eq(stickers.id, stickerId)).for("update");
+        const current = await tx.select().from(plans).where(and(
+          eq(plans.id, request.planPoseUpdate.planId), eq(plans.stickerId, stickerId), eq(plans.ownerId, ownerId),
+        )).then(firstRow);
+        const latest = await tx.select({ planId: chatMessages.planId }).from(chatMessages)
+          .where(and(eq(chatMessages.threadId, thread.id), eq(chatMessages.kind, "plan"), eq(chatMessages.role, "assistant")))
+          .orderBy(desc(chatMessages.sequence)).limit(1).then(firstRow);
+        if (!current || current.state !== "finalized" || current.revision !== request.planPoseUpdate.currentRevision || latest?.planId !== current.id) {
+          throw new ApiError(409, "PLAN_CHANGED", "The latest plan changed. Reload it before changing poses");
+        }
+        if (!current.planJson.layers.some((layer) => layer.source.kind === "sprite")) {
+          throw new ApiError(422, "INVALID_POSE_PRESET", "This plan has no controllable characters");
+        }
+        if (request.planPoseUpdate.edit) {
+          // Save the other layer-editor changes in this transaction, so the re-plan sees them.
+          // A failure to queue rolls back both the manual edits and the selected preset.
+          const saved = await editPlan(tx, ownerId, stickerId, current.id, request.planPoseUpdate.edit, current.revision);
+          if (!saved.plan.plan.layers.some((layer) => layer.source.kind === "sprite")) {
+            throw new ApiError(422, "INVALID_POSE_PRESET", "Keep a controllable character when changing pose variety");
+          }
+        }
+      }
       const sequenceRow = await tx.select({ value: max(chatMessages.sequence) }).from(chatMessages)
         .where(eq(chatMessages.threadId, thread.id)).then(firstRow);
       const sequence = (sequenceRow?.value ?? 0) + 1;
@@ -161,7 +188,7 @@ export async function createChatTurn(
         threadId: thread.id,
         ownerId,
         role: "user",
-        kind: request.intent === "animate"
+        kind: request.planPoseUpdate ? "plan" : request.intent === "animate"
           ? "animation"
           : request.intent === "edit"
             ? "image_edit"
@@ -196,7 +223,10 @@ export async function createChatTurn(
         }
       }
       await tx.update(chatThreads).set({ updatedAt: now }).where(eq(chatThreads.id, thread.id));
-      await tx.update(stickers).set({ updatedAt: now }).where(eq(stickers.id, stickerId));
+      await tx.update(stickers).set({
+        updatedAt: now,
+        ...(request.planPoseUpdate ? { posePreset: request.planPoseUpdate.posePreset, controllable: true } : {}),
+      }).where(eq(stickers.id, stickerId));
       await tx.insert(generationEvents).values({
         jobId,
         ownerId,
