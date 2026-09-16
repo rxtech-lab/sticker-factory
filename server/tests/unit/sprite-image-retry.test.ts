@@ -4,7 +4,7 @@ import { generateStickerImage } from "@/lib/ai/gateway-images";
 
 const { generateImage } = vi.hoisted(() => ({ generateImage: vi.fn() }));
 vi.mock("ai", async (importOriginal) => ({ ...await importOriginal<typeof import("ai")>(), generateImage }));
-vi.mock("@/lib/ai/cost", () => ({ recordImageApiCost: vi.fn() }));
+vi.mock("@/lib/ai/cost", () => ({ recordImageApiCost: vi.fn(), reportAiStepUsage: vi.fn() }));
 afterEach(() => { vi.unstubAllEnvs(); generateImage.mockReset(); });
 
 it.each([

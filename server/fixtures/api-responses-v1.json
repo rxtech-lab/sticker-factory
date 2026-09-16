@@ -10,6 +10,7 @@
         "createdAt": "2026-08-24T00:00:00.000Z",
         "updatedAt": "2026-08-24T00:01:00.000Z",
         "previewAsset": null,
+        "planConceptAsset": null,
         "systemSticker": {
           "assetId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
           "mimeType": "image/gif",
@@ -125,6 +126,7 @@
             "createdAt": "2026-08-24T00:00:00.000Z",
             "updatedAt": "2026-08-24T00:02:00.000Z",
             "previewAsset": null,
+            "planConceptAsset": null,
             "systemSticker": {
               "assetId": "44444444-4444-4444-8444-444444444444",
               "mimeType": "image/png",
@@ -178,6 +180,7 @@
         "createdAt": "2026-08-24T00:00:00.000Z",
         "updatedAt": "2026-08-24T00:02:00.000Z",
         "previewAsset": null,
+        "planConceptAsset": null,
         "systemSticker": {
           "assetId": "44444444-4444-4444-8444-444444444444",
           "mimeType": "image/png",
@@ -210,6 +213,7 @@
         "createdAt": "2026-08-24T00:00:00.000Z",
         "updatedAt": "2026-08-24T00:02:00.000Z",
         "previewAsset": null,
+        "planConceptAsset": null,
         "systemSticker": {
           "assetId": "44444444-4444-4444-8444-444444444444",
           "mimeType": "image/png",
@@ -261,6 +265,7 @@
               "hasAlpha": true,
               "createdAt": "2026-08-24T00:01:00.000Z"
             },
+            "planConceptAsset": null,
             "systemSticker": {
               "assetId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
               "mimeType": "image/gif",
@@ -376,6 +381,7 @@
             "createdAt": "2026-08-24T00:00:00.000Z",
             "updatedAt": "2026-08-24T00:02:00.000Z",
             "previewAsset": null,
+            "planConceptAsset": null,
             "systemSticker": {
               "assetId": "44444444-4444-4444-8444-444444444444",
               "mimeType": "image/png",
