@@ -93,6 +93,7 @@ nonisolated struct StickerDetail: Codable, Identifiable, Hashable, Sendable {
     var whatsappAsset: AssetRecord?
     var telegramAsset: AssetRecord?
     var messengerEmoji: String?
+    var presets: CreationPresetDisplay?
     var revisions: [StickerRevision]
 
     var sticker: Sticker {
@@ -748,6 +749,7 @@ nonisolated enum JSONValue: Codable, Equatable, Sendable {
 }
 
 nonisolated struct CreateStickerRequest: Codable, Sendable {
+    var presets: CreationPresetSubmission?
     var title: String
     var kind: StickerKind
     var prompt: String

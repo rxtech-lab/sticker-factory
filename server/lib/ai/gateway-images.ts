@@ -114,9 +114,10 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
     : [
       `Character: ${input.character}. Face region: ${face}.`,
       `Grid: ${columns} columns by ${rows} rows; the first ${count} cells are used, in this order: ${(input.expressions ?? []).map((label, index) => `${index + 1}. ${label}`).join("; ")}.`,
-      "Each used cell must contain only an inner face patch: eyes, brows, nose, mouth, cheeks and the surface directly beneath them, with no head outline, ears, hair, body, second character, sticker border, or magenta.",
+      "Each used cell must contain only an inner face patch: eyes, brows, nose, mouth, cheeks and the surface directly beneath them, with no enclosing drawn head outline, ears, outer hair silhouette, neck, body, second character, sticker border, or magenta. A borderless oval cutout containing the facial surface and its original colours or markings is the requested patch, even when it contains the whole forehead and muzzle. The cutout boundary itself is not a drawn head outline.",
+      input.faceGuide ? "Image 1 is the expression sheet being reviewed. Image 2 is the actual body frame with its magenta face opening, for context only. The facial patch should replace that opening; the body already supplies the outer head and ears. An oval cutout of facial surface is expected and is not by itself a head outline or portrait. Reject actual enclosing head outlines, ears, necks, bodies or duplicate heads; do not reject a borderless patch merely because it has an oval cutout boundary." : "",
       "Each cell's expression should plausibly match its label.",
-      "Report ok=false when a cell is a complete head or portrait, contains a body, is empty, or the cells are out of order, one short problem per failing cell naming the cell number.",
+      "Report ok=false for visible extra head anatomy such as ears, neck or an outer hair silhouette, an enclosing drawn contour around the whole head, a body, an empty cell, or cells out of order. Name the cell and the concrete extra feature; do not reject a valid borderless facial cutout merely by calling it a head or portrait.",
     ];
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
@@ -127,7 +128,9 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
       "Cells are read left to right, then top to bottom; only the first N cells are used and the rest stay empty.",
       "Be strict about the listed rules and lenient about style, colour, and drawing quality.",
     ].join(" "),
-    messages: userTurn(rules.join("\n"), [await downscaleForModelInput(input.image.bytes)]),
+    messages: userTurn(rules.filter(Boolean).join("\n"), await Promise.all(
+      [input.image, ...(input.faceGuide ? [input.faceGuide] : [])].map(image => downscaleForModelInput(image.bytes)),
+    )),
     tools: {
       report_sheet: tool({
         description: "Report whether the sheet follows every rule, with one short problem per failing cell.",

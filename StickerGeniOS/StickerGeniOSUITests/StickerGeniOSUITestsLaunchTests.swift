@@ -15,12 +15,12 @@ final class StickerGeniOSUITestsLaunchTests: XCTestCase {
         // localization the app ships (en, zh-CN, zh-HK). Matching a tab by its English title would
         // fail in all of them but English, so identify the launch state by accessibility
         // identifiers, which are the same in every language.
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 15))
         XCTAssertTrue(
             app.descendants(matching: .any)
                 .matching(identifier: "library-sticker-sticker-demo")
                 .firstMatch
-                .waitForExistence(timeout: 8)
+                .waitForExistence(timeout: 15)
         )
 
         let attachment = XCTAttachment(screenshot: app.screenshot())

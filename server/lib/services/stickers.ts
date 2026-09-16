@@ -1,3 +1,4 @@
+import { resolveCreationPresets, creationPresetDisplay } from "@/lib/creation-presets/selection";
 import { currentBillingEnvironment } from "@/lib/subscription/client";
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte } from "drizzle-orm";
 import type { CreateStickerRequest, ImportStickerRequest, UpdateStickerRequest } from "@/lib/contracts/api";
@@ -10,6 +11,7 @@ import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
 import { AI_INPUT_ASSET_KINDS, AI_REFERENCE_MIME_TYPES, MAX_AI_INPUT_BYTES, assertOwnedSticker, isActiveJobConstraint, serializeSticker } from "./sticker-summaries";
 
 export async function createSticker(db: Database, ownerId: string, request: CreateStickerRequest) {
+  const creationPresets = resolveCreationPresets(request.presets);
   const references = await getReadyOwnedAssets(db, ownerId, request.referenceAssetIds);
   if (references.some((asset) => !AI_INPUT_ASSET_KINDS.has(asset.kind))) {
     throw new ApiError(422, "INVALID_REFERENCE", "Initial references must be reference image assets");
@@ -32,6 +34,7 @@ export async function createSticker(db: Database, ownerId: string, request: Crea
       ownerId,
       title: request.title,
       kind: request.kind,
+      creationPresets,
       controllable: request.controllable,
       posePreset: request.posePreset,
       status: "draft",
@@ -346,6 +349,7 @@ export async function getSticker(db: Database, ownerId: string, stickerId: strin
     .where(eq(stickerRevisions.stickerId, stickerId)).orderBy(desc(stickerRevisions.createdAt));
   return {
     ...(await serializeSticker(db, sticker)),
+    presets: creationPresetDisplay(sticker.creationPresets),
     revisions: revisions.map((revision) => ({
       id: revision.id,
       parentRevisionId: revision.parentRevisionId,

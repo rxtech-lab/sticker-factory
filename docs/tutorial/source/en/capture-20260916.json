@@ -1,0 +1,111 @@
+{
+  "revision": "20260916",
+  "source": "Fresh simulator screenshots of actual app views with mock service and curated demo stickers",
+  "screenshots": [
+    {
+      "id": "controls-20260916",
+      "capturedAt": 1789546291.953,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "d6935f8ac0f58442b3fc1fe35fb0cf07edd8b269772bcfb05f15dfeafd63d83a"
+    },
+    {
+      "id": "create-animated-20260916",
+      "capturedAt": 1789546261.169,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "d128b259ad16f68dbc8866e462bbcdcb27024747c293680f9836e530207f8c1d"
+    },
+    {
+      "id": "create-controllable-20260916",
+      "capturedAt": 1789546267.373,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "8a58282217be9b76d7ba7ec02ab35ff0ca83646cbfbb64dcfc0a5cbdf6709498"
+    },
+    {
+      "id": "create-prompt-20260916",
+      "capturedAt": 1789546252.44,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "943ee054cb82278df502679e226ceca614f2f82d00cded187b24ea85a2f5aed2"
+    },
+    {
+      "id": "create-references-20260916",
+      "capturedAt": 1789546256.425,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "0ee7344f21b994185f499f7e90bc8343ca15551d139cde4e6ebbcd2b8be1d35d"
+    },
+    {
+      "id": "create-static-20260916",
+      "capturedAt": 1789546258.694,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "58f6a1124c6e30f053cc1d3c7e2affe8c2c65465c655f094968ad706f0bcdd46"
+    },
+    {
+      "id": "export-20260916",
+      "capturedAt": 1789546308.062,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "93f9c1d71ea6fca6b558fa44613e2bd3baf7fd9731db867f53361b42b99ba598"
+    },
+    {
+      "id": "new-pack-20260916",
+      "capturedAt": 1789546327.9,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "6784c68b75531a6d30993904ea8330f8489cf1c7eef25225665f7defc89f9afd"
+    },
+    {
+      "id": "pack-detail-20260916",
+      "capturedAt": 1789546337.871,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "8596fbd85144da44857d68ca7361174ade9995bd37daeea67da3a6e09a48850c"
+    },
+    {
+      "id": "pack-picker-20260916",
+      "capturedAt": 1789546324.403,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "e8c4ca77d5760bace48479f76e79f411298cfe092002ec104a85c6ec8607f513"
+    },
+    {
+      "id": "packs-20260916",
+      "capturedAt": 1789546316.325,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "6c4d751ca3e87586ad3faf29be4771120095a8511f4015f1c5e0acadd3ff4ff6"
+    },
+    {
+      "id": "plan-20260916",
+      "capturedAt": 1789546281.429,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "eef2cba2735a52c9837d8862adab05367c2819761ab1b1c4bc17ea8afea96d29"
+    },
+    {
+      "id": "sticker-20260916",
+      "capturedAt": 1789546289.341,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "16b524dcaf4ae2488e895faf0aaf33d87cb91c6423debd53a47d6b88c1727930"
+    },
+    {
+      "id": "telegram-20260916",
+      "capturedAt": 1789546350.319,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "152749e517d5a7ca7e1a40e7b21b98383961284f780cf139a1661223a7fe9961"
+    },
+    {
+      "id": "whatsapp-20260916",
+      "capturedAt": 1789546341.805,
+      "device": "Winky Tutorial QA",
+      "test": "TutorialCaptureTests/testCaptureEnglish()",
+      "sha256": "b973dcc9f4acd15394e8a62ad202502ae672480f082b633ddec17132315f3e27"
+    }
+  ]
+}

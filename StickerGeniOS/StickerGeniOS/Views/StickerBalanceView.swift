@@ -116,8 +116,11 @@ final class StickerBalanceViewModel: ObservableObject {
         balanceError = nil
         defer { isLoadingBalances = false }
         do {
+            // No cancellation check between the response and the assignment: the rows are already
+            // in hand, and dropping them because the pull-to-refresh task was torn down afterwards
+            // leaves the screen showing figures the app knows to be stale, with nothing on screen
+            // to say so. Cancellation still means "keep what is there" when it costs the response.
             let updated = try await fetchBalances()
-            try Task.checkCancellation()
             balances = updated
         } catch {
             if !Self.isCancellation(error) { balanceError = error.localizedDescription }
@@ -144,7 +147,8 @@ final class StickerBalanceViewModel: ObservableObject {
         defer { if generation == historyGeneration { isLoadingHistory = false } }
         do {
             let updated = try await fetchLedger(target)
-            try Task.checkCancellation()
+            // Same as `loadBalances`: a page that arrived is applied. The generation, not the
+            // task's cancellation, is what keeps a superseded response from replacing newer rows.
             guard generation == historyGeneration else { return }
             entries = replacing ? updated.entries : entries + updated.entries
             page = updated.page

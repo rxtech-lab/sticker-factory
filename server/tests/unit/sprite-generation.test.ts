@@ -39,7 +39,7 @@ it.each(["missing face", "clipped frame", "drifted grid", "saved drift"])("recov
     class Provider extends MockAiProvider {
       override async generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {
         requests.push(input);
-        // Reject malformed sheets before registration or checkpointing; Retry must draw them again.
+        // Reject malformed sheets before checkpointing, then recover within the same build.
         if (input.sheet?.facePlaceholder && !failedOnce) {
           failedOnce = true;
           if (failure === "drifted grid") return drift(await super.generateStickerImage(input));
@@ -99,17 +99,14 @@ it.each(["missing face", "clipped frame", "drifted grid", "saved drift"])("recov
         mimeType: "image/png", byteSize: saved.bytes.length, width: 1024, height: 1024, sha256: savedInfo.sha256, hasAlpha: true,
         sequenceColumns: 3, sequenceRows: 2, frameCount: 6 });
     }
-    const rejectedFirst = failure === "clipped frame" || failure === "missing face";
-    if (rejectedFirst) {
-      await expect(generateSpriteArtwork(job, sticker.stickerId, plan, job.id, reference)).rejects.toThrow(
-        failure === "clipped frame" ? "Generated pose frame 4 is clipped at its cell boundary" : "frame 1 has no face placeholder",
-      );
-      expect((await db.select().from(assets).where(eq(assets.id, rawIdle)))[0].state).toBe("failed");
-    }
-
     const builds = await generateSpriteArtwork(job, sticker.stickerId, plan, job.id, reference);
-    const requestCount = rejectedFirst ? 4 : failure === "saved drift" ? 2 : 3;
+    const redrawn = failure === "clipped frame" || failure === "missing face";
+    const requestCount = redrawn ? 4 : failure === "saved drift" ? 2 : 3;
     expect(requests).toHaveLength(requestCount);
+    if (redrawn) {
+      expect(requests[1].prompt).toContain("A previous attempt was rejected");
+      expect(requests[1].prompt).toContain(failure === "clipped frame" ? "20%" : "face placeholder");
+    }
     expect((await db.select().from(assets).where(eq(assets.id, rawIdle)))[0].state).toBe("ready");
     for (const request of requests) {
       expect(request.keepFrame).toBe(true);
@@ -126,7 +123,7 @@ it.each(["missing face", "clipped frame", "drifted grid", "saved drift"])("recov
     const expressionRequest = requests.at(-1)!;
     expect(expressionRequest.sheet).toMatchObject({ columns: 2, rows: 2, count: 3, tiles: true });
     expect(expressionRequest.prompt).toContain("1. Neutral: calm");
-    expect(expressionRequest.prompt).toContain("last reference");
+    expect(expressionRequest.prompt).toContain("Reference 3 is the actual body frame");
     expect(expressionRequest.prompt).toContain("Do not draw a second head");
     // Expressions must see the actual opening they will fill, not only full-character references.
     // Keep the raw frame's magenta marker: the cleaned body no longer identifies that opening.

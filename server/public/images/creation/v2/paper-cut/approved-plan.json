@@ -1,0 +1,447 @@
+{
+  "kind": "animated",
+  "title": "Paper-Cut Friendly Orange Cat",
+  "layers": [
+    {
+      "x": 0.5,
+      "y": 0.5,
+      "name": "Controllable orange cat",
+      "scaleX": 0.92,
+      "scaleY": 0.92,
+      "source": {
+        "face": "The single contiguous oval face region is the cat's entire cream muzzle-and-cheek area between and below the eyes, containing both eyes, brows, nose, mouth, cheeks, and whisker roots; every facial feature stays inside this one region and no facial features appear elsewhere on the body.",
+        "kind": "sprite",
+        "clips": [
+          {
+            "id": "idle",
+            "label": "Idle breathe and blink",
+            "frames": [
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.15
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.55
+              }
+            ],
+            "prompt": "Frame-by-frame body loop: frame 1 relaxed front-facing standing pose; frame 2 chest subtly expands; frame 3 chest reaches a gentle inhale and one natural blink occurs in the stable face region; frame 4 chest gently settles; frame 5 relaxed stance with tail softly poised; frame 6 returns exactly to the relaxed resting pose. Move the body only, preserve the face region and keep the cat facing forward; visibly breathe and blink, never become a still."
+          },
+          {
+            "id": "wave",
+            "label": "Friendly wave",
+            "frames": [
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame-by-frame body loop: frame 1 relaxed front-facing standing pose; frame 2 lift the cat's right front paw; frame 3 raise it beside the chest; frame 4 hold a friendly wave with paw pads visible; frame 5 lower the paw; frame 6 return to the exact resting pose. The face remains stable and forward-facing, with only the body and raised paw moving."
+          },
+          {
+            "id": "bounce",
+            "label": "Cheerful bounce",
+            "frames": [
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame-by-frame body loop: frame 1 relaxed standing pose; frame 2 crouch slightly with shoulders lowered; frame 3 spring upward with both front paws lightened; frame 4 reach the top of a buoyant bounce; frame 5 descend into the crouch; frame 6 return to the exact resting pose. Keep the face forward and stable; animate the body only."
+          },
+          {
+            "id": "sway",
+            "label": "Side-to-side sway",
+            "frames": [
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame-by-frame body loop: frame 1 relaxed front-facing pose; frame 2 lean gently toward the cat's left; frame 3 reach the left sway; frame 4 pass through center into a lean toward the cat's right; frame 5 reach the right sway; frame 6 return to the exact resting pose. Keep the head and face region front-facing and stable while the body and tail sway."
+          },
+          {
+            "id": "wiggle",
+            "label": "Playful wiggle",
+            "frames": [
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame-by-frame body loop: frame 1 relaxed front-facing pose; frame 2 shoulders and tail wiggle slightly left; frame 3 hips follow left; frame 4 shoulders and tail wiggle right; frame 5 hips follow right; frame 6 return to the exact resting pose. The face remains perfectly forward and stable; make the body action distinct and playful, not a whole-image transform."
+          },
+          {
+            "id": "hop",
+            "label": "Happy hop",
+            "frames": [
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame-by-frame body loop: frame 1 relaxed standing pose; frame 2 bend the legs and gather for a hop; frame 3 lift both front paws slightly as the cat leaves the ground; frame 4 reach the small hop apex; frame 5 land softly with knees bent; frame 6 return to the exact resting pose. Keep the face region visible, forward-facing, and stable while the body performs the hop."
+          },
+          {
+            "id": "spin",
+            "label": "Playful partial twist",
+            "frames": [
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame-by-frame body loop: frame 1 relaxed front-facing pose; frame 2 shoulders begin a playful twist toward the cat's left; frame 3 body turns partway while the face stays forward; frame 4 reach the partial twist with tail accenting the motion; frame 5 unwind toward center; frame 6 return to the exact resting pose. This is only a playful partial body twist, never a full turn; keep the entire stable face region facing forward and unobstructed."
+          },
+          {
+            "id": "dance",
+            "label": "Joyful dance",
+            "frames": [
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.35
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame-by-frame body loop: frame 1 relaxed front-facing pose; frame 2 step the cat's right paw outward; frame 3 lift the opposite paw with a jaunty shoulder dip; frame 4 switch into a tiny side step with tail curling rhythmically; frame 5 return the paws toward center; frame 6 return to the exact resting pose. Make this a distinct cheerful full-body dance while keeping the face region stable, forward-facing, and visible."
+          }
+        ],
+        "prompt": "The complete friendly orange cat in the supplied reference artwork, preserving its exact likeness, identity, colors, tabby markings, cream muzzle and chest, pink inner ears, large warm brown eyes, whiskers, curled striped tail, proportions, and all visible accessories. Render it as a clean transparent sticker made from layered colored-paper shapes with tactile paper edges, restrained depth shadows, and bold readable silhouette in the selected Paper Cut style. Keep the body designed for distinct readable front-facing poses while maintaining one stable forward-facing face region. No text, no scenery, and no unrelated elements.",
+        "expressions": [
+          {
+            "id": "neutral",
+            "label": "Neutral",
+            "prompt": "Face only inside the single contiguous face region: calm open warm-brown eyes, relaxed brows, small closed mouth, natural cream cheeks and whisker roots; no body or pose."
+          },
+          {
+            "id": "happy",
+            "label": "Happy",
+            "prompt": "Face only inside the single contiguous face region: bright cheerful wide eyes, lifted brows, open smiling mouth with a tiny pink tongue, softly rosy cream cheeks, and curved happy whisker roots; no body or pose."
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised",
+            "prompt": "Face only inside the single contiguous face region: widened warm-brown eyes, raised brows, rounded small open mouth, slightly lifted cream cheeks, and gently splayed whisker roots; no body or pose."
+          }
+        ]
+      },
+      "layerId": "cat_sprite",
+      "animations": [],
+      "rotationDegrees": 0
+    }
+  ],
+  "timing": {
+    "fps": 30,
+    "loop": "loop",
+    "durationSeconds": 2
+  },
+  "summary": "An ultra-pose controllable sticker featuring the friendly orange cat from the supplied artwork, preserving its exact identity, colors, accessories, and front-facing face region in layered colored-paper style. The cat has independently selectable mood and body-pose controls with eight distinct looping actions; no lettering or scenery.",
+  "version": 1,
+  "posePreset": "ultra",
+  "conceptPrompt": "A polished square animated sticker reference of the friendly orange cat in the supplied reference artwork, preserving the cat's exact identity, recognizable orange tabby colors and markings, cream muzzle and chest, pink inner ears, large warm brown eyes, whiskers, curled striped tail, and all visible accessories from the reference. Rebuild the cat as layered colored-paper shapes with tactile cut-paper edges, restrained depth shadows, bold clean silhouette, and a warm handcrafted Paper Cut catalog-demo finish. Show one complete front-facing cat filling most of the square frame, centered with paws visible and tail curling to the side; keep the face stable, unobstructed, and looking forward. Transparent background with no scenery, no lettering, no extra objects, no animation frames, no contact sheet, no labels, no arrows, no watermark, and no UI.",
+  "configuration": {
+    "controls": [
+      {
+        "id": "pose",
+        "type": "choice",
+        "label": "Pose",
+        "options": [
+          {
+            "id": "idle",
+            "label": "Idle breathe and blink"
+          },
+          {
+            "id": "wave",
+            "label": "Friendly wave"
+          },
+          {
+            "id": "bounce",
+            "label": "Cheerful bounce"
+          },
+          {
+            "id": "sway",
+            "label": "Side-to-side sway"
+          },
+          {
+            "id": "wiggle",
+            "label": "Playful wiggle"
+          },
+          {
+            "id": "hop",
+            "label": "Happy hop"
+          },
+          {
+            "id": "spin",
+            "label": "Playful partial twist"
+          },
+          {
+            "id": "dance",
+            "label": "Joyful dance"
+          }
+        ],
+        "defaultValue": "idle"
+      },
+      {
+        "id": "mood",
+        "type": "choice",
+        "label": "Mood",
+        "options": [
+          {
+            "id": "neutral",
+            "label": "Neutral"
+          },
+          {
+            "id": "happy",
+            "label": "Happy"
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised"
+          }
+        ],
+        "defaultValue": "neutral"
+      }
+    ],
+    "variants": [
+      {
+        "id": "pose_idle",
+        "layers": [
+          {
+            "clip": "idle",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "idle"
+        }
+      },
+      {
+        "id": "pose_wave",
+        "layers": [
+          {
+            "clip": "wave",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "wave"
+        }
+      },
+      {
+        "id": "pose_bounce",
+        "layers": [
+          {
+            "clip": "bounce",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "bounce"
+        }
+      },
+      {
+        "id": "pose_sway",
+        "layers": [
+          {
+            "clip": "sway",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "sway"
+        }
+      },
+      {
+        "id": "pose_wiggle",
+        "layers": [
+          {
+            "clip": "wiggle",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "wiggle"
+        }
+      },
+      {
+        "id": "pose_hop",
+        "layers": [
+          {
+            "clip": "hop",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "hop"
+        }
+      },
+      {
+        "id": "pose_spin",
+        "layers": [
+          {
+            "clip": "spin",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "spin"
+        }
+      },
+      {
+        "id": "pose_dance",
+        "layers": [
+          {
+            "clip": "dance",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "dance"
+        }
+      },
+      {
+        "id": "mood_neutral",
+        "layers": [
+          {
+            "layerId": "cat_sprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral"
+        }
+      },
+      {
+        "id": "mood_happy",
+        "layers": [
+          {
+            "layerId": "cat_sprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy"
+        }
+      },
+      {
+        "id": "mood_surprised",
+        "layers": [
+          {
+            "layerId": "cat_sprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised"
+        }
+      }
+    ]
+  }
+}

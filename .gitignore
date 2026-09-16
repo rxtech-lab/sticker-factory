@@ -13,3 +13,6 @@ server/test-results
 tether-full.png
 output
 **/.build
+
+# Isolated tutorial browser validation
+server/.next-tutorial/

@@ -194,6 +194,7 @@ export async function editSticker(
     onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,
       "You change an existing sticker. It is a stack of layers, and you own all of it: you can",
       "redraw artwork, draw new artwork, and add, remove, reorder, rename, restyle, and move any",
@@ -279,7 +280,7 @@ export async function editSticker(
       `Instruction:\n${input.instruction}`,
     ]
       .filter(Boolean)
-      .join("\n\n"), viewable),
+      .join("\n\n"), viewable, input.presetReferences),
     tools,
     toolChoice: "required",
     // This loop's calls stack and two of them buy images, so its tool history is the one part of

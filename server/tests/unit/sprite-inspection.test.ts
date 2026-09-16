@@ -2,10 +2,11 @@ import { afterEach, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import sharp from "sharp";
 import { MockAiProvider } from "@/lib/ai/gateway-mock";
-import { setAiProviderForTests, type AiImageInput, type AiSheetInspection, type AiSheetInspectionContext } from "@/lib/ai/gateway";
+import { setAiProviderForTests, type AiImageInput, type AiImageOutput, type AiSheetInspection, type AiSheetInspectionContext } from "@/lib/ai/gateway";
 import { PlanV1Schema } from "@/lib/contracts/plan";
 import { setDatabaseForTests } from "@/lib/db/client";
 import { assets, chatThreads, generationJobs } from "@/lib/db/schema";
+import { registerExpressionTiles } from "@/lib/render/sprite-registration";
 import { MemoryObjectStore, inspectImage, objectKey, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { seedPublishedSticker, seedUser } from "@/tests/helpers/packs";
@@ -41,8 +42,15 @@ const plan = PlanV1Schema.parse({ title: "Car", summary: "A car with moods and p
 class Provider extends MockAiProvider {
   requests: AiImageInput[] = [];
   inspections: AiSheetInspectionContext[] = [];
-  constructor(private reject: (input: AiSheetInspectionContext, seen: number) => boolean) { super(); }
-  override async generateStickerImage(input: AiImageInput) { this.requests.push(input); return super.generateStickerImage(input); }
+  constructor(
+    private reject: (input: AiSheetInspectionContext, seen: number) => boolean,
+    private mutate?: (output: AiImageOutput, input: AiImageInput) => Promise<AiImageOutput>,
+  ) { super(); }
+  override async generateStickerImage(input: AiImageInput) {
+    this.requests.push(input);
+    const output = await super.generateStickerImage(input);
+    return this.mutate ? this.mutate(output, input) : output;
+  }
   override async inspectSpriteSheet(input: AiSheetInspectionContext): Promise<AiSheetInspection> {
     const seen = this.inspections.filter((item) => item.kind === input.kind).length;
     this.inspections.push(input);
@@ -109,6 +117,7 @@ it("redraws a face-plate sheet the inspector rejects with the same one-retry rul
     expect(first.prompt).not.toContain("A previous attempt was rejected");
     expect(retry.prompt).toContain(FEEDBACK);
     expect(retry.references).toHaveLength(3);
+    expect(provider.inspections.at(-1)?.faceGuide?.bytes).toEqual(retry.references[2].bytes);
     expect(provider.inspections.at(-1)).toMatchObject({ kind: "expressions", expressions: ["Neutral", "Happy", "Sad"], sheet: { columns: 2, rows: 2, count: 3 } });
     expect(await t.assetState(t.expressionsId)).toBe("ready");
     expect(builds.get("hero")!.expressions.tiles.map((tile) => tile.id)).toEqual(["neutral", "happy", "sad"]);
@@ -133,5 +142,146 @@ it("gives up after the second rejection, and re-inspects the saved sheet before 
     expect(provider.inspections.map((item) => item.kind)).toEqual(["clips", "clips", "clips", "clips", "expressions"]);
     expect(await t.assetState(t.rawIdle)).toBe("ready");
     expect(builds.get("hero")!.clips).toHaveLength(2);
+  } finally { await t.close(); }
+});
+
+async function clipOuterEdge(output: AiImageOutput): Promise<AiImageOutput> {
+  const edge = await sharp({ create: { width: 30, height: 180, channels: 4, background: "red" } }).png().toBuffer();
+  return { ...output, bytes: await sharp(output.bytes).composite([{ input: edge, left: 0, top: 100 }]).png().toBuffer() };
+}
+
+it.each(["clipped", "empty"])("automatically redraws an expression sheet with an %s cell", async (failure) => {
+  let damaged = false;
+  const provider = new Provider(() => false, async (output, input) => {
+    if (!input.sheet?.tiles || damaged) return output;
+    damaged = true;
+    return failure === "clipped" ? clipOuterEdge(output) : {
+      ...output, bytes: await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#00000000" } }).png().toBuffer(),
+    };
+  });
+  const t = await setup(provider);
+  try {
+    const builds = await t.run();
+    expect(provider.requests).toHaveLength(4);
+    expect(provider.requests[3].prompt).toContain(failure === "clipped" ? "20%" : "no used cell may be empty");
+    expect(provider.inspections.map((input) => input.kind)).toEqual(["clips", "clips", "expressions"]);
+    expect(await t.assetState(t.expressionsId)).toBe("ready");
+    expect(builds.get("hero")!.expressions.tiles).toHaveLength(3);
+    await t.run();
+    expect(provider.requests).toHaveLength(4);
+  } finally { await t.close(); }
+});
+
+it.each([false, true])("repairs expression grid drift without redrawing, including thin boundary contact: %s", async (thin) => {
+  let original: Uint8Array | undefined;
+  const provider = new Provider(() => false, async (output, input) => {
+    if (!input.sheet?.tiles) return output;
+    // Complete, separated patches. The first crosses x=512; a thin extension passes the atlas
+    // border-count gate but is still caught by the expression registrar's tight bounds.
+    const first = thin
+      ? '<rect x="180" y="150" width="240" height="160"/><rect x="410" y="200" width="110" height="10"/>'
+      : '<rect x="180" y="150" width="340" height="160"/>';
+    original = await sharp(Buffer.from(`<svg width="1024" height="1024"><g fill="red">${first}<rect x="620" y="150" width="240" height="160"/><rect x="180" y="680" width="240" height="160"/></g></svg>`)).png().toBuffer();
+    return { ...output, bytes: original };
+  });
+  const t = await setup(provider);
+  try {
+    const builds = await t.run();
+    expect(provider.requests).toHaveLength(3);
+    const stored = (await t.store.get(objectKey("owner", t.expressionsId, "image/png"))).bytes;
+    expect(stored).not.toEqual(original);
+    expect(provider.inspections.at(-1)!.image.bytes).toEqual(stored);
+    const tiles = await registerExpressionTiles(stored, { columns: 2, rows: 2, frameCount: 3 });
+    expect(builds.get("hero")!.expressions.tiles.map(({ x, y, width, height }) => ({ x, y, width, height }))).toEqual(tiles);
+    const [row] = await t.db.select().from(assets).where(eq(assets.id, t.expressionsId));
+    expect(row.sha256).toBe((await inspectImage(stored)).sha256);
+    expect(row.state).toBe("ready");
+    await t.run();
+    expect(provider.requests).toHaveLength(3);
+  } finally { await t.close(); }
+});
+
+it.each(["clips", "expressions"])("stops after one corrective redraw when %s remain clipped", async (kind) => {
+  let fail = true;
+  const provider = new Provider(() => false, async (output, input) =>
+    fail && (kind === "expressions" ? input.sheet?.tiles : input.sheet?.facePlaceholder) ? clipOuterEdge(output) : output);
+  const t = await setup(provider);
+  try {
+    await expect(t.run()).rejects.toThrow("Generated pose frame 1 is clipped at its cell boundary");
+    const count = kind === "clips" ? 2 : 4;
+    expect(provider.requests).toHaveLength(count);
+    expect(await t.assetState(kind === "clips" ? t.rawIdle : t.expressionsId)).toBe("failed");
+    fail = false;
+    await t.run();
+    // Completed clips are retained when faces fail; a rejected sheet is never checkpointed.
+    expect(provider.requests).toHaveLength(count + (kind === "clips" ? 3 : 1));
+    if (kind === "clips") expect(provider.requests[count].prompt).toContain("20%");
+  } finally { await t.close(); }
+});
+
+it("shares the redraw budget between clipping and visual inspection", async () => {
+  let clipped = false;
+  const provider = new Provider((input) => input.kind === "clips", async (output, input) => {
+    if (!input.sheet?.facePlaceholder || clipped) return output;
+    clipped = true;
+    return clipOuterEdge(output);
+  });
+  const t = await setup(provider);
+  try {
+    await expect(t.run()).rejects.toThrow(PROBLEM);
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.inspections).toHaveLength(1);
+    expect(await t.assetState(t.rawIdle)).toBe("failed");
+  } finally { await t.close(); }
+});
+
+it.each(["generation", "inspection"])("does not buy another image after a %s service failure", async (stage) => {
+  const provider = new Provider(() => {
+    if (stage === "inspection") throw new Error("Inspection service unavailable");
+    return false;
+  }, async (output) => {
+    if (stage === "generation") throw new Error("Image service unavailable");
+    return output;
+  });
+  const t = await setup(provider);
+  try {
+    await expect(t.run()).rejects.toThrow("service unavailable");
+    expect(provider.requests).toHaveLength(1);
+    if (stage === "inspection") {
+      await expect(t.run()).rejects.toThrow("service unavailable");
+      expect(provider.requests).toHaveLength(1); // A failed saved inspection must not trigger a purchase either.
+    }
+  } finally { await t.close(); }
+});
+
+it("honours cancellation before starting a corrective redraw", async () => {
+  const provider = new Provider(() => false);
+  const t = await setup(provider);
+  provider.inspectSpriteSheet = async () => {
+    await t.db.update(generationJobs).set({ state: "cancelled" }).where(eq(generationJobs.id, t.job.id));
+    return { ok: false, problems: [PROBLEM] };
+  };
+  try {
+    await expect(t.run()).rejects.toThrow("Generation was cancelled");
+    expect(provider.requests).toHaveLength(1);
+  } finally { await t.close(); }
+});
+
+
+it("re-inspects failed expression pixels with the body guide and reuses them only after acceptance", async () => {
+  let accept = false;
+  const provider = new Provider(input => input.kind === "expressions" && !accept);
+  const t = await setup(provider);
+  try {
+    await expect(t.run()).rejects.toThrow(`Generated sheet was rejected: ${PROBLEM}`);
+    expect(provider.requests).toHaveLength(4);
+    expect(await t.assetState(t.expressionsId)).toBe("failed");
+    accept = true;
+    const builds = await t.run();
+    expect(provider.requests).toHaveLength(4);
+    expect(provider.inspections.filter(input => input.kind === "expressions")).toHaveLength(3);
+    expect(provider.inspections.at(-1)?.faceGuide).toBeDefined();
+    expect(await t.assetState(t.expressionsId)).toBe("ready");
+    expect(builds.get("hero")!.expressions.tiles).toHaveLength(3);
   } finally { await t.close(); }
 });

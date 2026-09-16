@@ -88,6 +88,8 @@ export interface AiSheetInspectionContext {
   image: AiReferenceImage;
   /** Expression labels in cell order, for `expressions` sheets. */
   expressions?: string[];
+  /** Actual body frame with the opening this expression patch must fill. */
+  faceGuide?: AiReferenceImage;
 }
 
 export type AiSheetInspection = { ok: true } | { ok: false; problems: string[] };
@@ -170,6 +172,10 @@ export interface AiSequenceAsset {
 }
 
 export interface AiPlanContext {
+  /** Immutable project guidance, separate from the compacted transcript. */
+  presetGuidance?: string;
+  /** Labelled cover artwork, distinct from subject/approved references. */
+  presetReferences?: AiPlanVisual[];
   instruction: string;
   history: string;
   stickerKind: "static" | "animated";
@@ -238,6 +244,10 @@ export type PlanTurnResult = {
 };
 
 export interface AiAnimationContext {
+  /** Immutable project guidance, separate from the compacted transcript. */
+  presetGuidance?: string;
+  /** Labelled cover artwork, distinct from subject/approved references. */
+  presetReferences?: AiPlanVisual[];
   /** The document the motion is planned against. Every revision is applied to this, never to the last attempt. */
   document: StickerDocument;
   instruction: string;
@@ -350,6 +360,12 @@ export interface RenderableSession {
 }
 
 export interface AiLayoutContext {
+  /** Immutable project guidance, separate from the compacted transcript. */
+  presetGuidance?: string;
+  /** Labelled cover artwork, distinct from subject/approved references. */
+  presetReferences?: AiPlanVisual[];
+  /** User and carried project reference photos, separate from preset cover examples. */
+  references?: AiReferenceImage[];
   /** The confirmed plan's motion/expression storyboard, distinct from its resting composition. */
   animationSummary?: AiReferenceImage;
   /** The assembled document whose actual generated pixels are now available for review. */
@@ -481,6 +497,10 @@ export const AnimationOperationsSchema = z
   .max(16);
 
 export interface AiEditContext {
+  /** Immutable project guidance, separate from the compacted transcript. */
+  presetGuidance?: string;
+  /** Labelled cover artwork, distinct from subject/approved references. */
+  presetReferences?: AiPlanVisual[];
   /** The sticker being changed. Every operation is applied on top of this. */
   document: StickerDocument;
   instruction: string;
@@ -572,6 +592,10 @@ export type EditTurnResult = {
 export const EditOperationsSchema = z.array(StickerOperationV1Schema).min(1).max(8);
 
 export interface AiChatContext {
+  /** Immutable project guidance, separate from the compacted transcript. */
+  presetGuidance?: string;
+  /** Labelled cover artwork, distinct from subject/approved references. */
+  presetReferences?: AiPlanVisual[];
   instruction: string;
   history: string;
   stickerKind: "static" | "animated";

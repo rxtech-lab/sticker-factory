@@ -17,6 +17,7 @@ struct FeatureAnnouncement: Identifiable, Equatable {
         case "whatsapp-sticker-import": "FeatureWhatsApp"
         case "telegram-sticker-import": "FeatureTelegram"
         case "controllable-animation": "FeatureControllableAnimation"
+        case "tutorial-library": "FeatureTutorial"
         default: nil
         }
     }
@@ -55,6 +56,15 @@ struct FeatureAnnouncement: Identifiable, Equatable {
             message: String(localized: """
                 Change the animation after you make it. Try a new move, fine-tune the timing, or keep the version that feels just right.
                 """)
+        ),
+        .init(
+            id: "tutorial-library",
+            icon: "📖",
+            accent: AppColors.lime,
+            title: TutorialCopy.text("Learn with tutorials"),
+            message: TutorialCopy.text(
+                "Real app screenshots, little steps, and ideas to try. Learn to create, animate and share your stickers."
+            )
         )
     ]
 }
@@ -122,6 +132,8 @@ struct LaunchFlowPresentation: Identifiable {
 /// not reached for next time.
 struct LaunchFlowView: View {
     let steps: [LaunchStep]
+    var allowsWelcomeTutorial = false
+    var onReadTutorial: () -> Void = {}
     var onWelcomeSeen: () -> Void
     var onCardAcknowledged: (String) -> Void
     var onFinished: () -> Void
@@ -133,12 +145,19 @@ struct LaunchFlowView: View {
             if index < steps.count {
                 switch steps[index] {
                 case .welcome:
-                    StickerWelcomeSheet {
+                    StickerWelcomeSheet(onContinue: {
                         onWelcomeSeen()
                         advance()
-                    }
+                    }, onReadTutorial: allowsWelcomeTutorial ? {
+                        onWelcomeSeen(); onReadTutorial()
+                    } : nil)
                 case .featureCards(let cards):
-                    FeatureAnnouncementSheet(cards: cards, onAcknowledge: onCardAcknowledged, onFinished: advance)
+                    FeatureAnnouncementSheet(
+                        cards: cards,
+                        onAcknowledge: onCardAcknowledged,
+                        onFinished: advance,
+                        onReadTutorial: onReadTutorial
+                    )
                 }
             } else {
                 Color.clear.onAppear(perform: onFinished)
@@ -165,6 +184,7 @@ struct FeatureAnnouncementSheet: View {
     let cards: [FeatureAnnouncement]
     var onAcknowledge: (String) -> Void
     var onFinished: () -> Void
+    var onReadTutorial: () -> Void = {}
 
     @State private var index = 0
 
@@ -212,6 +232,18 @@ struct FeatureAnnouncementSheet: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: cards.count > 1 ? .always : .never))
 
+                if isLast {
+                    Button {
+                        if cards.indices.contains(index) { onAcknowledge(cards[index].id) }
+                        onReadTutorial()
+                    } label: {
+                        Label(TutorialCopy.text("Read tutorials"), systemImage: "book.closed")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.posterSecondary)
+                    .padding(.horizontal, 32)
+                    .accessibilityIdentifier("feature-read-tutorials")
+                }
                 Button {
                     guard cards.indices.contains(index) else { onFinished(); return }
                     onAcknowledge(cards[index].id)

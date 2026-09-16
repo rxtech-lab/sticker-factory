@@ -1,0 +1,399 @@
+{
+  "version": 1,
+  "poses": [
+    {
+      "id": "idle",
+      "label": "Idle"
+    },
+    {
+      "id": "wave",
+      "label": "Wave"
+    },
+    {
+      "id": "bounce",
+      "label": "Bounce"
+    },
+    {
+      "id": "sway",
+      "label": "Sway"
+    },
+    {
+      "id": "wiggle",
+      "label": "Wiggle"
+    },
+    {
+      "id": "hop",
+      "label": "Hop"
+    },
+    {
+      "id": "spin",
+      "label": "Spin"
+    },
+    {
+      "id": "dance",
+      "label": "Dance"
+    }
+  ],
+  "moods": [
+    {
+      "id": "neutral",
+      "label": "Neutral"
+    },
+    {
+      "id": "happy",
+      "label": "Happy"
+    },
+    {
+      "id": "surprised",
+      "label": "Surprised"
+    }
+  ],
+  "examples": [
+    {
+      "pose": "idle",
+      "mood": "neutral",
+      "file": "idle-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 102,
+        "top": 79,
+        "width": 305,
+        "height": 358
+      }
+    },
+    {
+      "pose": "idle",
+      "mood": "happy",
+      "file": "idle-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 102,
+        "top": 79,
+        "width": 305,
+        "height": 358
+      }
+    },
+    {
+      "pose": "idle",
+      "mood": "surprised",
+      "file": "idle-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 102,
+        "top": 79,
+        "width": 305,
+        "height": 358
+      }
+    },
+    {
+      "pose": "wave",
+      "mood": "neutral",
+      "file": "wave-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 107,
+        "top": 71,
+        "width": 303,
+        "height": 381
+      }
+    },
+    {
+      "pose": "wave",
+      "mood": "happy",
+      "file": "wave-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 107,
+        "top": 71,
+        "width": 303,
+        "height": 381
+      }
+    },
+    {
+      "pose": "wave",
+      "mood": "surprised",
+      "file": "wave-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 107,
+        "top": 71,
+        "width": 303,
+        "height": 381
+      }
+    },
+    {
+      "pose": "bounce",
+      "mood": "neutral",
+      "file": "bounce-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 110,
+        "top": 48,
+        "width": 303,
+        "height": 403
+      }
+    },
+    {
+      "pose": "bounce",
+      "mood": "happy",
+      "file": "bounce-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 110,
+        "top": 48,
+        "width": 303,
+        "height": 403
+      }
+    },
+    {
+      "pose": "bounce",
+      "mood": "surprised",
+      "file": "bounce-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 110,
+        "top": 48,
+        "width": 303,
+        "height": 403
+      }
+    },
+    {
+      "pose": "sway",
+      "mood": "neutral",
+      "file": "sway-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 160,
+        "top": 136,
+        "width": 205,
+        "height": 253
+      }
+    },
+    {
+      "pose": "sway",
+      "mood": "happy",
+      "file": "sway-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 160,
+        "top": 136,
+        "width": 205,
+        "height": 253
+      }
+    },
+    {
+      "pose": "sway",
+      "mood": "surprised",
+      "file": "sway-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 160,
+        "top": 136,
+        "width": 205,
+        "height": 253
+      }
+    },
+    {
+      "pose": "wiggle",
+      "mood": "neutral",
+      "file": "wiggle-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 99,
+        "top": 60,
+        "width": 314,
+        "height": 394
+      }
+    },
+    {
+      "pose": "wiggle",
+      "mood": "happy",
+      "file": "wiggle-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 99,
+        "top": 60,
+        "width": 314,
+        "height": 394
+      }
+    },
+    {
+      "pose": "wiggle",
+      "mood": "surprised",
+      "file": "wiggle-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 99,
+        "top": 60,
+        "width": 314,
+        "height": 394
+      }
+    },
+    {
+      "pose": "hop",
+      "mood": "neutral",
+      "file": "hop-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 106,
+        "top": 59,
+        "width": 307,
+        "height": 396
+      }
+    },
+    {
+      "pose": "hop",
+      "mood": "happy",
+      "file": "hop-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 106,
+        "top": 59,
+        "width": 307,
+        "height": 396
+      }
+    },
+    {
+      "pose": "hop",
+      "mood": "surprised",
+      "file": "hop-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 106,
+        "top": 59,
+        "width": 307,
+        "height": 396
+      }
+    },
+    {
+      "pose": "spin",
+      "mood": "neutral",
+      "file": "spin-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 101,
+        "top": 70,
+        "width": 310,
+        "height": 372
+      }
+    },
+    {
+      "pose": "spin",
+      "mood": "happy",
+      "file": "spin-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 101,
+        "top": 70,
+        "width": 310,
+        "height": 372
+      }
+    },
+    {
+      "pose": "spin",
+      "mood": "surprised",
+      "file": "spin-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 101,
+        "top": 70,
+        "width": 310,
+        "height": 372
+      }
+    },
+    {
+      "pose": "dance",
+      "mood": "neutral",
+      "file": "dance-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 157,
+        "top": 139,
+        "width": 207,
+        "height": 245
+      }
+    },
+    {
+      "pose": "dance",
+      "mood": "happy",
+      "file": "dance-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 157,
+        "top": 139,
+        "width": 207,
+        "height": 245
+      }
+    },
+    {
+      "pose": "dance",
+      "mood": "surprised",
+      "file": "dance-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 157,
+        "top": 139,
+        "width": 207,
+        "height": 245
+      }
+    }
+  ],
+  "source": {
+    "prompt": "Create one controllable sticker of the friendly orange cat in the attached artwork. Preserve its exact style, identity, colors and accessories. Use rounded shapes, cute simplified features, soft pastel colors, gentle expressions, and clean outlines. This is a catalog demonstration, no lettering and no unrelated scenery. Use exactly one sprite character with a stable front-facing face region. Use pose control id pose with exactly these 8 clip IDs, in this order: idle, wave, bounce, sway, wiggle, hop, spin, dance. Idle must visibly breathe and blink; every pose is a distinct animated looping body action, never a still or a whole-image transform. Keep the face region visible and stable; spin means a playful partial body twist with the face kept forward. Use 6 frames per clip and a 2-second loop. Use mood control id mood with exactly three expression IDs: neutral, happy, surprised. Independent pose and mood controls must combine correctly. Preserve the selected style in all frames. Return a production sprite plan using the normal sprite source; render the approval reference before building.",
+    "catalogVersion": "2026-09-16.1",
+    "presets": {
+      "selections": [
+        {
+          "title": {
+            "en": "Style",
+            "zh-Hans": "风格",
+            "zh-Hant": "風格"
+          },
+          "groupId": "style",
+          "options": [
+            {
+              "id": "kawaii",
+              "cover": "/images/creation/v1/kawaii.webp",
+              "title": {
+                "en": "Kawaii",
+                "zh-Hans": "可爱萌系",
+                "zh-Hant": "可愛萌系"
+              },
+              "prompt": "Use rounded shapes, cute simplified features, soft pastel colors, gentle expressions, and clean outlines."
+            }
+          ]
+        }
+      ],
+      "sharedPrompt": "Preserve the user's subject and reference identity. Keep the result readable at sticker size with a clean transparent silhouette. Add lettering only when requested. Combine selected themes coherently without crowding the subject. Presets are creative guidance: retain the approved artwork when building or editing it; do not redesign approved parts to reapply a preset.",
+      "catalogVersion": "2026-09-16.1"
+    },
+    "optionId": "kawaii",
+    "workflow": "stickerGenerationWorkflow",
+    "planId": "0cb80c85-6e17-411d-ad8c-197bae019237",
+    "buildJobId": "6caff9b9-2a00-453d-9257-e13fa2fcbf75"
+  }
+}

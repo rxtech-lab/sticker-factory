@@ -20,6 +20,8 @@ final class AppEnvironment {
     /// `StickerFactoryTabView` consumes it and clears it.
     var pendingStickerID: String?
     var pendingShareRoute: StickerShareRoute?
+    var pendingTutorialLink: TutorialDeepLink?
+    let tutorials: TutorialCoordinator
     /// Strong-held: `UNUserNotificationCenter` keeps only a weak reference to its delegate.
     @ObservationIgnored private let notifier: GenerationNotifier?
 
@@ -40,6 +42,7 @@ final class AppEnvironment {
         self.tokenBroker = tokenBroker
         self.store = store
         self.marketplace = marketplace ?? MarketplaceStore(api: store.api)
+        self.tutorials = TutorialCoordinator(baseURL: configuration.apiBaseURL, store: store, marketplace: self.marketplace)
         // Defaulted rather than required so previews and tests keep building without one; the
         // no-client store reports no paywall, which is what a preview wants anyway.
         self.subscription = subscription ?? SubscriptionStore()
@@ -148,6 +151,11 @@ final class AppEnvironment {
         // Hand the registry a client to upload with. The device token may already be waiting — APNs
         // answers on its own schedule — or may arrive long after this; whichever lands second sends.
         if !isUITesting { PushDeviceRegistry.shared.attach(api: api) }
+        #if DEBUG
+        if isUITesting, let value = ProcessInfo.processInfo.environment["TUTORIAL_DEEP_LINK"], let url = URL(string: value) {
+            environment.handleIncomingURL(url)
+        }
+        #endif
         return environment
     }
 
@@ -195,6 +203,7 @@ final class AppEnvironment {
     /// which uses the same custom scheme — are deliberately ignored here and remain owned by the
     /// authentication library.
     func handleIncomingURL(_ url: URL) {
+        if let link = TutorialDeepLink(url: url) { pendingTutorialLink = link; return }
         if let route = StickerShareRoute(url: url) {
             AppTelemetry.event("deep_link_opened", parameters: ["destination": "shared_content"])
             pendingShareRoute = route; return

@@ -1,6 +1,8 @@
+import { creationPresetReferences } from "@/lib/creation-presets/references";
 // The two turns that work from a plan: drafting one for the user to confirm, and animating a
 // document the user has already accepted.
 
+import { creationPresetGuidance } from "@/lib/creation-presets/selection";
 import { renderPlanAnimationPreview } from "./plan-animation-preview";
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
@@ -286,6 +288,8 @@ export async function executePlanTurn(
   };
 
   const result = await getAiProvider().planSticker({
+    presetGuidance: creationPresetGuidance(sticker.creationPresets),
+      presetReferences: await creationPresetReferences(sticker.creationPresets),
     instruction,
     history,
     stickerKind: sticker.kind,
@@ -294,7 +298,7 @@ export async function executePlanTurn(
     document: activeDocument,
     rejectedReasons: rejected.map((row) => row.decisionReason).filter((reason): reason is string => Boolean(reason)),
     sequenceAssets,
-    references: attachedImages,
+    references: references.length ? references : attachedImages,
     priorArt,
   }, session);
 
@@ -474,7 +478,8 @@ export async function executeAnimationTurn(
   };
 
   const result = await getAiProvider().animateSticker(
-    { document: base, instruction, history, targetLayerId, references: attachedImages },
+    { document: base, instruction, history, presetGuidance: creationPresetGuidance(sticker.creationPresets),
+      presetReferences: await creationPresetReferences(sticker.creationPresets), targetLayerId, references: attachedImages },
     session,
   );
 

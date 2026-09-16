@@ -1,0 +1,399 @@
+{
+  "version": 1,
+  "poses": [
+    {
+      "id": "idle",
+      "label": "Idle"
+    },
+    {
+      "id": "wave",
+      "label": "Wave"
+    },
+    {
+      "id": "bounce",
+      "label": "Bounce"
+    },
+    {
+      "id": "sway",
+      "label": "Sway"
+    },
+    {
+      "id": "wiggle",
+      "label": "Wiggle"
+    },
+    {
+      "id": "hop",
+      "label": "Hop"
+    },
+    {
+      "id": "spin",
+      "label": "Spin"
+    },
+    {
+      "id": "dance",
+      "label": "Dance"
+    }
+  ],
+  "moods": [
+    {
+      "id": "neutral",
+      "label": "Neutral"
+    },
+    {
+      "id": "happy",
+      "label": "Happy"
+    },
+    {
+      "id": "surprised",
+      "label": "Surprised"
+    }
+  ],
+  "examples": [
+    {
+      "pose": "idle",
+      "mood": "neutral",
+      "file": "idle-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 171,
+        "top": 141,
+        "width": 192,
+        "height": 249
+      }
+    },
+    {
+      "pose": "idle",
+      "mood": "happy",
+      "file": "idle-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 171,
+        "top": 141,
+        "width": 192,
+        "height": 249
+      }
+    },
+    {
+      "pose": "idle",
+      "mood": "surprised",
+      "file": "idle-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 171,
+        "top": 141,
+        "width": 192,
+        "height": 249
+      }
+    },
+    {
+      "pose": "wave",
+      "mood": "neutral",
+      "file": "wave-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 101,
+        "top": 65,
+        "width": 310,
+        "height": 395
+      }
+    },
+    {
+      "pose": "wave",
+      "mood": "happy",
+      "file": "wave-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 101,
+        "top": 65,
+        "width": 310,
+        "height": 395
+      }
+    },
+    {
+      "pose": "wave",
+      "mood": "surprised",
+      "file": "wave-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 101,
+        "top": 65,
+        "width": 310,
+        "height": 395
+      }
+    },
+    {
+      "pose": "bounce",
+      "mood": "neutral",
+      "file": "bounce-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 175,
+        "top": 144,
+        "width": 188,
+        "height": 249
+      }
+    },
+    {
+      "pose": "bounce",
+      "mood": "happy",
+      "file": "bounce-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 175,
+        "top": 144,
+        "width": 188,
+        "height": 249
+      }
+    },
+    {
+      "pose": "bounce",
+      "mood": "surprised",
+      "file": "bounce-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 175,
+        "top": 144,
+        "width": 188,
+        "height": 249
+      }
+    },
+    {
+      "pose": "sway",
+      "mood": "neutral",
+      "file": "sway-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 116,
+        "top": 76,
+        "width": 290,
+        "height": 370
+      }
+    },
+    {
+      "pose": "sway",
+      "mood": "happy",
+      "file": "sway-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 116,
+        "top": 76,
+        "width": 290,
+        "height": 370
+      }
+    },
+    {
+      "pose": "sway",
+      "mood": "surprised",
+      "file": "sway-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 116,
+        "top": 76,
+        "width": 290,
+        "height": 370
+      }
+    },
+    {
+      "pose": "wiggle",
+      "mood": "neutral",
+      "file": "wiggle-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 103,
+        "top": 74,
+        "width": 306,
+        "height": 371
+      }
+    },
+    {
+      "pose": "wiggle",
+      "mood": "happy",
+      "file": "wiggle-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 103,
+        "top": 74,
+        "width": 306,
+        "height": 371
+      }
+    },
+    {
+      "pose": "wiggle",
+      "mood": "surprised",
+      "file": "wiggle-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 103,
+        "top": 74,
+        "width": 306,
+        "height": 371
+      }
+    },
+    {
+      "pose": "hop",
+      "mood": "neutral",
+      "file": "hop-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 171,
+        "top": 141,
+        "width": 192,
+        "height": 252
+      }
+    },
+    {
+      "pose": "hop",
+      "mood": "happy",
+      "file": "hop-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 171,
+        "top": 141,
+        "width": 192,
+        "height": 252
+      }
+    },
+    {
+      "pose": "hop",
+      "mood": "surprised",
+      "file": "hop-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 171,
+        "top": 141,
+        "width": 192,
+        "height": 252
+      }
+    },
+    {
+      "pose": "spin",
+      "mood": "neutral",
+      "file": "spin-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 103,
+        "top": 63,
+        "width": 306,
+        "height": 372
+      }
+    },
+    {
+      "pose": "spin",
+      "mood": "happy",
+      "file": "spin-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 103,
+        "top": 63,
+        "width": 306,
+        "height": 372
+      }
+    },
+    {
+      "pose": "spin",
+      "mood": "surprised",
+      "file": "spin-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 103,
+        "top": 63,
+        "width": 306,
+        "height": 372
+      }
+    },
+    {
+      "pose": "dance",
+      "mood": "neutral",
+      "file": "dance-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 102,
+        "top": 55,
+        "width": 308,
+        "height": 391
+      }
+    },
+    {
+      "pose": "dance",
+      "mood": "happy",
+      "file": "dance-happy.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 102,
+        "top": 55,
+        "width": 308,
+        "height": 391
+      }
+    },
+    {
+      "pose": "dance",
+      "mood": "surprised",
+      "file": "dance-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 6,
+      "crop": {
+        "left": 102,
+        "top": 55,
+        "width": 308,
+        "height": 391
+      }
+    }
+  ],
+  "source": {
+    "prompt": "Create one controllable sticker of the friendly orange cat in the attached artwork. Preserve its exact style, identity, colors and accessories. Render soft sculpted clay forms with rounded edges, subtle handmade texture, and gentle studio lighting. This is a catalog demonstration, no lettering and no unrelated scenery. Use exactly one sprite character with a stable front-facing face region. Use pose control id pose with exactly these 8 clip IDs, in this order: idle, wave, bounce, sway, wiggle, hop, spin, dance. Idle must visibly breathe and blink; every pose is a distinct animated looping body action, never a still or a whole-image transform. Keep the face region visible and stable; spin means a playful partial body twist with the face kept forward. Use 6 frames per clip and a 2-second loop. Use mood control id mood with exactly three expression IDs: neutral, happy, surprised. Independent pose and mood controls must combine correctly. Preserve the selected style in all frames. Return a production sprite plan using the normal sprite source; render the approval reference before building.",
+    "catalogVersion": "2026-09-16.1",
+    "presets": {
+      "selections": [
+        {
+          "title": {
+            "en": "Style",
+            "zh-Hans": "风格",
+            "zh-Hant": "風格"
+          },
+          "groupId": "style",
+          "options": [
+            {
+              "id": "clay",
+              "cover": "/images/creation/v1/clay.webp",
+              "title": {
+                "en": "3D Clay",
+                "zh-Hans": "立体黏土",
+                "zh-Hant": "立體黏土"
+              },
+              "prompt": "Render soft sculpted clay forms with rounded edges, subtle handmade texture, and gentle studio lighting."
+            }
+          ]
+        }
+      ],
+      "sharedPrompt": "Preserve the user's subject and reference identity. Keep the result readable at sticker size with a clean transparent silhouette. Add lettering only when requested. Combine selected themes coherently without crowding the subject. Presets are creative guidance: retain the approved artwork when building or editing it; do not redesign approved parts to reapply a preset.",
+      "catalogVersion": "2026-09-16.1"
+    },
+    "optionId": "clay",
+    "workflow": "stickerGenerationWorkflow",
+    "planId": "6438973b-1d50-4313-a278-359e30c17368",
+    "buildJobId": "d1f114a9-acde-4f95-9865-4c177a6e2079"
+  }
+}

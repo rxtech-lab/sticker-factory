@@ -4,6 +4,7 @@ import Foundation
 import os
 
 nonisolated protocol StickerAPIClientProtocol: Sendable {
+    func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog
     func listStickers(cursor: String?) async throws -> Page<Sticker>
     func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker>
     /// The owner's published stickers, paged, and optionally narrowed by a title query.
@@ -70,6 +71,10 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse
 }
 
+extension StickerAPIClientProtocol {
+    func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog { throw StickerAPIError.invalidResponse }
+}
+
 nonisolated enum PackSort: String, Sendable, CaseIterable { case recent, popular }
 
 /// `published` is what the Messages extension needs; the app's Library also wants drafts, which
@@ -86,6 +91,29 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     /// body verbatim — which is the entire point, since the alternative is a banner that says an
     /// operation could not be completed and nothing anywhere that says why.
     nonisolated static let networkLog = Logger(subsystem: "app.rxlab.sticker-factory", category: "api")
+
+    func creationPresets(refresh: Bool = false) async throws -> CreationPresetCatalog {
+        let cacheKey = "creation-presets.v1.\(baseURL.absoluteString)"
+        do {
+            var catalog: CreationPresetCatalog = try await send(path: "api/v1/creation-presets")
+            catalog = try catalog.validated()
+            for g in catalog.groups.indices {
+                for o in catalog.groups[g].options.indices {
+                    let cover = catalog.groups[g].options[o].cover
+                    guard let url = URL(string: cover.relativeString, relativeTo: baseURL)?.absoluteURL,
+                          ["https", "http"].contains(url.scheme ?? "") else { throw StickerAPIError.invalidResponse }
+                    catalog.groups[g].options[o].cover = url
+                    try catalog.groups[g].options[o].preview?.resolveURLs(relativeTo: baseURL)
+                }
+            }
+            if let data = try? JSONEncoder().encode(catalog) { UserDefaults.standard.set(data, forKey: cacheKey) }
+            return catalog
+        } catch {
+            if !refresh, let data = UserDefaults.standard.data(forKey: cacheKey),
+               let cached = try? JSONDecoder().decode(CreationPresetCatalog.self, from: data).validated() { return cached }
+            throw error
+        }
+    }
 
     private let baseURL: URL
     private let tokenBroker: SharedTokenBroker

@@ -24,6 +24,7 @@ struct ChatErrorAlert: ViewModifier {
 }
 
 struct ChatBubble: View {
+    var presets: CreationPresetDisplay?
     var configurationSettings: StickerControlSettings?
     let message: ChatMessage
     let sticker: AnimatedDocument?
@@ -41,7 +42,11 @@ struct ChatBubble: View {
         } else if message.role == .user {
             HStack {
                 Spacer(minLength: 44)
+                VStack(alignment: .trailing, spacing: 8) {
+                    // Presets describe the original creation request. Follow-up messages stay uncluttered.
+                    if message.sequence == 1, let presets { CreationPresetChips(presets: presets) }
                 messageContent
+                    .accessibilityLabel("user: \(message.content)")
                     .foregroundStyle(AppColors.ink)
                     .padding(12)
                     .posterSurface(
@@ -63,8 +68,9 @@ struct ChatBubble: View {
                             }
                         }
                     }
+                }
             }
-            .accessibilityLabel("user: \(message.content)")
+            .accessibilityElement(children: .contain)
         } else {
             HStack {
                 messageContent

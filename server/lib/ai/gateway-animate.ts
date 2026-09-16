@@ -173,6 +173,7 @@ export async function animateSticker(
     onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,
       "You add motion to an existing sticker by applying operations to its document.",
       "Work in this order: call create_animation once with your first operations, refine with",
@@ -318,7 +319,7 @@ export async function animateSticker(
       `Instruction:\n${input.instruction}`,
     ]
       .filter(Boolean)
-      .join("\n\n"), viewable),
+      .join("\n\n"), viewable, input.presetReferences),
     tools,
     toolChoice: "required",
     // Every step appends a restatement of the whole animation and a layer-by-layer summary of what

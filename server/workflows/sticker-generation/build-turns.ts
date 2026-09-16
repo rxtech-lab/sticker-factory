@@ -1,3 +1,4 @@
+import { loadCreationPresetGuidance, loadCreationPresetReferences } from "@/lib/creation-presets/guidance";
 import { BuildReviewCheckpointSchema, loadBuildCheckpoint, saveBuildCheckpoint, completedBuildSteps, buildAssetsReady, type BuildReviewCheckpoint } from "./build-checkpoints";
 import { generatePlannedVariants } from "./configurable-artwork";
 import { generateSpriteArtwork } from "./sprite-artwork";
@@ -43,6 +44,7 @@ async function refineBuiltLayout(
   assetJobId: string,
   checkpoint?: BuildReviewCheckpoint,
   animationSummary?: { bytes: Uint8Array; mimeType: string },
+  references: Array<{ bytes: Uint8Array; mimeType: string }> = [],
 ): Promise<StickerDocument> {
   // One layer has no inter-layer composition to repair. Skipping it also avoids adding a vision
   // round trip to plans whose only reason to exist is structured motion.
@@ -170,7 +172,7 @@ async function refineBuiltLayout(
   };
 
   const result = await getAiProvider().refineStickerLayout(
-    { document, animationSummary, instruction: instruction + (checkpoint ? ` Resuming review: ${configurationCursor} of ${configurations.length} configurations already checked on this exact layout. Continue with the next unchecked configuration; do not restart completed checks. If all checks are done, finalize. The saved layout includes previous adjustments.` : "") + (document.configuration ? ` Review all ${configurations.length} mood/pose configurations. Each successive view_sticker shows the next configuration in this order: ${JSON.stringify(configurations)}. Check expression identity, sprite alignment, pose continuity and clipping before finalizing. After a layout change, review all configurations again.` : ""), history },
+    { presetGuidance: await loadCreationPresetGuidance(job.stickerId), presetReferences: await loadCreationPresetReferences(job.stickerId), references, document, animationSummary, instruction: instruction + (checkpoint ? ` Resuming review: ${configurationCursor} of ${configurations.length} configurations already checked on this exact layout. Continue with the next unchecked configuration; do not restart completed checks. If all checks are done, finalize. The saved layout includes previous adjustments.` : "") + (document.configuration ? ` Review all ${configurations.length} mood/pose configurations. Each successive view_sticker shows the next configuration in this order: ${JSON.stringify(configurations)}. Check expression identity, sprite alignment, pose continuity and clipping before finalizing. After a layout change, review all configurations again.` : ""), history },
     session,
   );
   await assertJobStillRunning(job.id);
@@ -307,6 +309,7 @@ export async function executePlanBuildTurn(
       assetJobId,
       checkpoint,
       animationSummary,
+      references,
     );
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "finalizing",

@@ -34,6 +34,26 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         self.failCreationAsUpload = failCreationAsUpload
         self.failChatSendAsInsufficientCredits = failChatSendAsInsufficientCredits
         self.failLibraryListing = failLibraryListing
+        if ProcessInfo.processInfo.arguments.contains("--ui-tutorial-capture") {
+            var samples: [Sticker] = []
+            for index in 0..<3 {
+                var sticker = PreviewFixtures.borrowedSticker
+                sticker.id = "tutorial-\(index)"
+                sticker.title = ["Winky wave", "Little sparkle", "Happy hello"][index]
+                sticker.playbackRevisionId = nil
+                sticker.whatsappAsset?.id = "tutorial-webp"
+                sticker.telegramAsset?.id = PreviewFixtures.borrowedAssetID
+                samples.append(sticker)
+            }
+            stickers += samples
+            var pack = PreviewFixtures.packDetail
+            pack.title = "Winky friends"; pack.summary = "Three little ways to say hello."
+            pack.stickers = samples; pack.coverStickers = samples; pack.itemCount = samples.count
+            packs = [pack.pack]; packDetails = [pack.id: pack]
+            for index in detail.revisions.indices {
+                detail.revisions[index].document = PreviewFixtures.configurableDocument
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--ui-working-progress") {
             let source = PreviewFixtures.messages[0]
             messages = [source]
@@ -94,8 +114,28 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         )
     }
 
+    private var createdPresets: [String: CreationPresetDisplay] = [:]
+    private var createdRequests: [String: CreateStickerRequest] = [:]
+    private var catalogAttempts = 0
+    private var creationCatalogChanged = false
+    private var createdChatMessages: [String: [ChatMessage]] = [:]
+
+    func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog {
+        catalogAttempts += 1
+        if ProcessInfo.processInfo.arguments.contains("--ui-creation-catalog-failure"), catalogAttempts == 1 {
+            throw StickerAPIError.http(503)
+        }
+        return try MockCreationPresetCatalog.load(changed: creationCatalogChanged)
+    }
+
     func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse {
         if failCreationAsUpload { throw StickerAPIError.uploadFailed(status: 403) }
+        if ProcessInfo.processInfo.arguments.contains("--ui-creation-catalog-changed"), !creationCatalogChanged {
+            creationCatalogChanged = true
+            throw APIErrorEnvelope(error: .init(
+                code: "CREATION_PRESETS_CHANGED", message: "Review updated options", requestId: "mock", details: nil
+            ))
+        }
         let value = Sticker(
             id: UUID().uuidString,
             title: request.title,
@@ -107,6 +147,15 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             previewAsset: nil,
             systemSticker: nil
         )
+        createdRequests[value.id] = request
+        if let selected = request.presets {
+            let catalog = try await creationPresets(refresh: false)
+            createdPresets[value.id] = .init(catalogVersion: selected.catalogVersion, selections: catalog.groups.compactMap { group in
+                let ids = selected.selections.first(where: { $0.groupId == group.id })?.optionIds ?? []
+                let options = group.options.filter { ids.contains($0.id) }
+                return options.isEmpty ? nil : .init(groupId: group.id, title: group.title, options: options)
+            })
+        }
         stickers.insert(value, at: 0)
         return .init(
             stickerId: value.id,
@@ -142,7 +191,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             return .init(
                 id: sticker.id, title: sticker.title, kind: sticker.kind, status: sticker.status,
                 activeRevisionId: sticker.activeRevisionId, createdAt: sticker.createdAt, updatedAt: sticker.updatedAt,
-                previewAsset: sticker.previewAsset, systemSticker: sticker.systemSticker, revisions: []
+                previewAsset: sticker.previewAsset, systemSticker: sticker.systemSticker, presets: createdPresets[id], revisions: []
             )
         }
         return detail
@@ -291,6 +340,12 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     }
 
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
+        if let request = createdRequests[stickerID] {
+            return .init(data: [.init(id: "initial-\(stickerID)", role: .user, kind: .text, content: request.prompt,
+                imagePlacement: .replace, sequence: 1, status: .complete, createdAt: .now, attachments: [])]
+                + (createdChatMessages[stickerID] ?? []), nextBeforeSequence: nil)
+        }
+
         if ProcessInfo.processInfo.arguments.contains("--ui-tool-preview") {
             let arguments = ProcessInfo.processInfo.arguments
             let toolName: String
@@ -336,6 +391,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             attachments: request.attachments.map { .init(assetId: $0.assetId, kind: $0.kind, targetLayerId: $0.targetLayerId) }
         )
         messages.append(message)
+        if createdRequests[stickerID] != nil { createdChatMessages[stickerID, default: []].append(message) }
         return .init(
             message: .init(id: message.id, status: .complete),
             job: .init(id: message.jobId!, state: .queued, workflowRunId: "mock-workflow", eventsUrl: "/api/v1/jobs/mock/events")
@@ -714,6 +770,27 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     /// directory and served as a file URL, which `URLSession` reads like any other. Everything
     /// else is 404, as it always was.
     func assetDownload(assetID: String) async throws -> AssetDownload {
+        if ProcessInfo.processInfo.arguments.contains("--ui-tutorial-capture") {
+            if assetID == "tutorial-webp", let url = Bundle.main.url(forResource: "tutorial-demo", withExtension: "webp") {
+                return .init(
+                    url: url,
+                    expiresAt: .now.addingTimeInterval(3600),
+                    asset: .init(
+                        id: assetID, kind: .messengerWhatsApp, state: .ready,
+                        mimeType: "image/webp", width: 512, height: 512, hasAlpha: true
+                    )
+                )
+            }
+            if [PreviewFixtures.borrowedAssetID, PreviewFixtures.planHistoryAssetID, PreviewFixtures.imageAssetID].contains(assetID) {
+                let url = FileManager.default.temporaryDirectory.appending(path: "tutorial-artwork.png")
+                if let data = UIImage(named: "FeatureControllableAnimation")?.pngData() { try data.write(to: url, options: .atomic) }
+                return .init(
+                    url: url,
+                    expiresAt: .now.addingTimeInterval(3600),
+                    asset: .init(id: assetID, kind: .master, state: .ready, mimeType: "image/png", hasAlpha: true)
+                )
+            }
+        }
         guard assetID == PreviewFixtures.borrowedAssetID || assetID == PreviewFixtures.planHistoryAssetID else {
             throw StickerAPIError.http(404)
         }

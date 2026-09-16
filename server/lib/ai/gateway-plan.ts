@@ -24,6 +24,7 @@ export async function refineStickerLayout(
   let state: LayoutTurnResult | undefined;
   let fatal: unknown;
   const hasPlanImage = Boolean(session.viewPlanImage);
+  const references = await viewableReferences(input.references ?? []);
   const configurationCount = input.document.configuration ? configurationReviewSelections(input.document.configuration).length : 1;
 
   const guard = async (run: () => Promise<LayoutDraftState>) => {
@@ -83,6 +84,7 @@ export async function refineStickerLayout(
     onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,
       "When a document has configuration, view_sticker advances through every choice combination. Review all combinations listed in the instruction, including after layout changes. Do not finalize after viewing only the default.",
       "You are the final composition reviewer for a multi-layer sticker. The individual assets",
@@ -126,10 +128,12 @@ export async function refineStickerLayout(
         : "",
       `Current layer summary:\n${JSON.stringify(summarizeDocument(input.document))}`,
       `Conservative geometry diagnostics:\n${JSON.stringify(layoutDiagnostics(input.document))}`,
+      attachedImagesNote(references.length),
       `Recoverable project context:\n${input.history}`,
-    ].filter(Boolean).join("\n\n"), input.animationSummary
-      ? [await downscaleForModelInput(input.animationSummary.bytes)]
-      : []),
+    ].filter(Boolean).join("\n\n"), [
+      ...(input.animationSummary ? [await downscaleForModelInput(input.animationSummary.bytes)] : []),
+      ...references,
+    ], input.presetReferences),
     tools,
     toolChoice: "required",
     stopWhen: [hasToolCall("finalize_layout"), stepCountIs(Math.max(hasPlanImage ? 9 : 8, configurationCount * 2 + 8)), () => fatal !== undefined],
@@ -229,6 +233,7 @@ export async function planSticker(
     onLanguageModelCallEnd: reportAiStepUsage,
     model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
     system: [
+      input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,
       "You design stickers as a set of independent layers, then hand the design to the user.",
       "Work in this order: call create_plan once, revise with update_plan as many times as you need,",
@@ -565,7 +570,7 @@ export async function planSticker(
       `Latest user request:\n${input.instruction}`,
     ]
       .filter(Boolean)
-      .join("\n\n"), [...priorArt.map((visual) => visual.image), ...viewable]),
+      .join("\n\n"), [...priorArt.map((visual) => visual.image), ...viewable], input.presetReferences),
     tools,
     toolChoice: "required",
     // The heaviest of the three loops: `update_plan` is a complete `PlanV1` every time, so twelve

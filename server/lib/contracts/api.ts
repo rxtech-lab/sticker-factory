@@ -1,3 +1,4 @@
+import { CreationPresetSubmissionSchema, CreationPresetDisplaySchema } from "./creation-presets";
 import { z } from "zod";
 import { PosePresetSchema } from "./pose-preset";
 import { PlanEditV1Schema } from "./plan";
@@ -141,6 +142,7 @@ const QuickGenerationSchema = z.boolean().optional();
 const ControllableGenerationSchema = z.boolean().optional();
 
 export const CreateStickerRequestSchema = z.object({
+  presets: CreationPresetSubmissionSchema.optional(),
   title: z.string().trim().min(1).max(100),
   kind: StickerKindSchema,
   prompt: z.string().trim().min(1).max(4_000),
@@ -501,6 +503,7 @@ export const StickerSummaryV1Schema = z.object({
    * a draft that has already built something should show what it built, not what it planned.
    */
   planConceptAsset: AssetV1Schema.nullable(),
+  presets: CreationPresetDisplaySchema.nullable().optional(),
   systemSticker: SystemStickerV1Schema.nullable(),
   /**
    * The smaller sizes WinkySticker can attach, when this sticker has them.

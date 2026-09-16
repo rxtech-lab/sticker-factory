@@ -1,0 +1,38 @@
+{
+  "configurations" : [
+    {
+      "id" : "7C51E8A9-2D64-4F31-A8B7-9E0361C4D2F8",
+      "name" : "Default",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "defaultTestExecutionTimeAllowance" : 300,
+    "maximumTestExecutionTimeAllowance" : 600,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:StickerGeniOS.xcodeproj",
+      "identifier" : "DF2A3E14303C7709006910C8",
+      "name" : "StickerGeniOS"
+    },
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "selectedTests" : [
+        "TutorialCaptureTests",
+        "TutorialNativeReaderTests",
+        "TutorialUITests"
+      ],
+      "target" : {
+        "containerPath" : "container:StickerGeniOS.xcodeproj",
+        "identifier" : "DF2A3E2D303C770A006910C8",
+        "name" : "StickerGeniOSUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

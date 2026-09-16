@@ -139,6 +139,16 @@ final class SubscriptionStore {
     private(set) var lastError: String?
     private(set) var connectionDiagnostics: String?
 
+    /// How many connection attempts have ended in an error, counted so a view can present one
+    /// alert per failure.
+    ///
+    /// A count rather than a flag, and deliberately not what `isConnecting` says: an attempt that
+    /// fails before SwiftUI renders the connecting state raises and lowers that flag inside a
+    /// single update, so a view watching it for a transition sees nothing and the user is left on
+    /// the same error card with no explanation. Two identical failures in a row are still two
+    /// events. Never reset, including by `reset()`, so the number only ever moves forward.
+    private(set) var connectionFailures = 0
+
     /// Raised by whichever surface hit a wall, and lowered when the sheet closes.
     var isPaywallPresented = false
     /// Why the paywall went up, so it can open on the section that answers it. Nil when the user
@@ -243,6 +253,7 @@ final class SubscriptionStore {
                 key_present=\(self.publishableKeys.hasAnyKey)
                 """)
             lastError = SubscriptionConnectionError.notConfigured.localizedDescription
+            connectionFailures += 1
             return
         }
         let attempt = UUID()
@@ -301,6 +312,7 @@ final class SubscriptionStore {
             } catch {
                 guard !Task.isCancelled, self.connectionID == attempt else { return }
                 self.lastError = error.localizedDescription
+                self.connectionFailures += 1
                 if let failure = error as? SubscriptionStoreKitFailure {
                     self.connectionDiagnostics = failure.report(
                         version: version, build: build,

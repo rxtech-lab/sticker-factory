@@ -24,6 +24,7 @@ struct FeatureAnnouncementTests {
         #expect(ids.contains("whatsapp-sticker-import"))
         #expect(ids.contains("telegram-sticker-import"))
         #expect(ids.contains("controllable-animation"))
+        #expect(ids.last == "tutorial-library")
         #expect(ids.allSatisfy { !$0.isEmpty && $0 == $0.lowercased() && !$0.contains(" ") })
     }
 

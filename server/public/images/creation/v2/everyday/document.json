@@ -1,0 +1,853 @@
+{
+  "configuration": {
+    "controls": [
+      {
+        "id": "pose",
+        "label": "Pose",
+        "type": "choice",
+        "defaultValue": "idle",
+        "options": [
+          {
+            "id": "idle",
+            "label": "Idle"
+          },
+          {
+            "id": "wave",
+            "label": "Wave"
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce"
+          },
+          {
+            "id": "sway",
+            "label": "Sway"
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle"
+          },
+          {
+            "id": "hop",
+            "label": "Hop"
+          },
+          {
+            "id": "spin",
+            "label": "Spin"
+          },
+          {
+            "id": "dance",
+            "label": "Dance"
+          }
+        ]
+      },
+      {
+        "id": "mood",
+        "label": "Mood",
+        "type": "choice",
+        "defaultValue": "neutral",
+        "options": [
+          {
+            "id": "neutral",
+            "label": "Neutral"
+          },
+          {
+            "id": "happy",
+            "label": "Happy"
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised"
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": "idleNeutral",
+        "selections": {
+          "mood": "neutral",
+          "pose": "idle"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "idle",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "waveNeutral",
+        "selections": {
+          "mood": "neutral",
+          "pose": "wave"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "wave",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "bounceNeutral",
+        "selections": {
+          "mood": "neutral",
+          "pose": "bounce"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "bounce",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "swayNeutral",
+        "selections": {
+          "mood": "neutral",
+          "pose": "sway"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "sway",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "wiggleNeutral",
+        "selections": {
+          "mood": "neutral",
+          "pose": "wiggle"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "wiggle",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "hopNeutral",
+        "selections": {
+          "mood": "neutral",
+          "pose": "hop"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "hop",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "spinNeutral",
+        "selections": {
+          "mood": "neutral",
+          "pose": "spin"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "spin",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "danceNeutral",
+        "selections": {
+          "mood": "neutral",
+          "pose": "dance"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "dance",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "idleHappy",
+        "selections": {
+          "mood": "happy",
+          "pose": "idle"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "idle",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "waveHappy",
+        "selections": {
+          "mood": "happy",
+          "pose": "wave"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "wave",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "bounceHappy",
+        "selections": {
+          "mood": "happy",
+          "pose": "bounce"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "bounce",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "swayHappy",
+        "selections": {
+          "mood": "happy",
+          "pose": "sway"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "sway",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "wiggleHappy",
+        "selections": {
+          "mood": "happy",
+          "pose": "wiggle"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "wiggle",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "hopHappy",
+        "selections": {
+          "mood": "happy",
+          "pose": "hop"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "hop",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "spinHappy",
+        "selections": {
+          "mood": "happy",
+          "pose": "spin"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "spin",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "danceHappy",
+        "selections": {
+          "mood": "happy",
+          "pose": "dance"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "dance",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "idleSurprised",
+        "selections": {
+          "mood": "surprised",
+          "pose": "idle"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "idle",
+            "expression": "surprised"
+          }
+        ]
+      },
+      {
+        "id": "waveSurprised",
+        "selections": {
+          "mood": "surprised",
+          "pose": "wave"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "wave",
+            "expression": "surprised"
+          }
+        ]
+      },
+      {
+        "id": "bounceSurprised",
+        "selections": {
+          "mood": "surprised",
+          "pose": "bounce"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "bounce",
+            "expression": "surprised"
+          }
+        ]
+      },
+      {
+        "id": "swaySurprised",
+        "selections": {
+          "mood": "surprised",
+          "pose": "sway"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "sway",
+            "expression": "surprised"
+          }
+        ]
+      },
+      {
+        "id": "wiggleSurprised",
+        "selections": {
+          "mood": "surprised",
+          "pose": "wiggle"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "wiggle",
+            "expression": "surprised"
+          }
+        ]
+      },
+      {
+        "id": "hopSurprised",
+        "selections": {
+          "mood": "surprised",
+          "pose": "hop"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "hop",
+            "expression": "surprised"
+          }
+        ]
+      },
+      {
+        "id": "spinSurprised",
+        "selections": {
+          "mood": "surprised",
+          "pose": "spin"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "spin",
+            "expression": "surprised"
+          }
+        ]
+      },
+      {
+        "id": "danceSurprised",
+        "selections": {
+          "mood": "surprised",
+          "pose": "dance"
+        },
+        "layers": [
+          {
+            "layerId": "catSprite",
+            "clip": "dance",
+            "expression": "surprised"
+          }
+        ]
+      }
+    ]
+  },
+  "version": 5,
+  "canvas": {
+    "width": 1024,
+    "height": 1024,
+    "coordinateSpace": "normalized",
+    "transparent": true
+  },
+  "layers": [
+    {
+      "id": "catSprite",
+      "name": "Friendly orange cat",
+      "hidden": false,
+      "anchor": {
+        "position": {
+          "x": 0.5,
+          "y": 0.52
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "rotationDegrees": 0,
+        "opacity": 1,
+        "trim": {
+          "start": 0,
+          "end": 1
+        }
+      },
+      "animations": [],
+      "animation": {
+        "position": [
+          {
+            "timeSeconds": 0,
+            "easing": "linear",
+            "x": 0.5,
+            "y": 0.52
+          }
+        ],
+        "scale": [],
+        "rotation": [],
+        "opacity": [],
+        "effects": [],
+        "trim": [],
+        "wipe": [],
+        "sheen": [],
+        "glow": []
+      },
+      "blendMode": "normal",
+      "type": "sprite",
+      "clips": [
+        {
+          "id": "idle",
+          "assetId": "df9ce729-9dc1-4898-bdc1-38917c8aae31",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.35,
+              "faceX": 0.5091406302615683,
+              "faceY": 0.4188226538134392,
+              "faceSize": 0.30791788856304986
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.4974327392827296,
+              "faceY": 0.41676905883840143,
+              "faceSize": 0.31378299120234604
+            },
+            {
+              "duration": 0.2,
+              "faceX": 0.4840889331428818,
+              "faceY": 0.42583226243400946,
+              "faceSize": 0.31085043988269795
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5101633990133289,
+              "faceY": 0.3905406258709587,
+              "faceSize": 0.31085043988269795
+            },
+            {
+              "duration": 0.5,
+              "faceX": 0.4958063232646173,
+              "faceY": 0.3995384249699986,
+              "faceSize": 0.31085043988269795
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.4873226965660293,
+              "faceY": 0.3973289769939725,
+              "faceSize": 0.31085043988269795
+            }
+          ]
+        },
+        {
+          "id": "wave",
+          "assetId": "ddef07ea-5009-4ba8-9b00-a692a1252b98",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.35,
+              "faceX": 0.48618964710957435,
+              "faceY": 0.4212227559920507,
+              "faceSize": 0.3020527859237537
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5002089313700357,
+              "faceY": 0.41871672870637205,
+              "faceSize": 0.3020527859237537
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5249534686093472,
+              "faceY": 0.4217427454438868,
+              "faceSize": 0.2991202346041056
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5303997184441331,
+              "faceY": 0.3926814802794263,
+              "faceSize": 0.3020527859237537
+            },
+            {
+              "duration": 0.4,
+              "faceX": 0.5319605593097879,
+              "faceY": 0.3930112092391304,
+              "faceSize": 0.30791788856304986
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.5158704991359488,
+              "faceY": 0.395670755705519,
+              "faceSize": 0.30498533724340177
+            }
+          ]
+        },
+        {
+          "id": "bounce",
+          "assetId": "c2f23afb-e96b-4e6c-8cd0-267fc444915c",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.48522027554285624,
+              "faceY": 0.4000113632103764,
+              "faceSize": 0.436950146627566
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5045209070306712,
+              "faceY": 0.4789825941236921,
+              "faceSize": 0.4340175953079179
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.4394554908674662,
+              "faceY": 0.3336758122168743,
+              "faceSize": 0.4340175953079179
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5191012837863032,
+              "faceY": 0.23408312686985788,
+              "faceSize": 0.4340175953079179
+            },
+            {
+              "duration": 0.5,
+              "faceX": 0.5135532608281931,
+              "faceY": 0.2606754613139639,
+              "faceSize": 0.4340175953079179
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.4562400100171199,
+              "faceY": 0.4120784854510955,
+              "faceSize": 0.436950146627566
+            }
+          ]
+        },
+        {
+          "id": "sway",
+          "assetId": "1ed3606d-1e74-4951-a85e-3ec73ca1bafd",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.35,
+              "faceX": 0.45677146451797923,
+              "faceY": 0.39558867926853314,
+              "faceSize": 0.47214076246334313
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.45938778941782454,
+              "faceY": 0.4001707571672804,
+              "faceSize": 0.4662756598240469
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.4695577064625209,
+              "faceY": 0.4108895465889844,
+              "faceSize": 0.4662756598240469
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.4998982219763334,
+              "faceY": 0.3311599472652413,
+              "faceSize": 0.47214076246334313
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.5607640574995192,
+              "faceY": 0.3284493182230505,
+              "faceSize": 0.47214076246334313
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.4835957409909535,
+              "faceY": 0.3282550560683261,
+              "faceSize": 0.46920821114369504
+            }
+          ]
+        },
+        {
+          "id": "wiggle",
+          "assetId": "6e6d9e95-e7c3-4915-b55f-e2b231a8688e",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.49158651910852796,
+              "faceY": 0.4005246748366329,
+              "faceSize": 0.4252199413489736
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.46996641499231423,
+              "faceY": 0.4129534571985774,
+              "faceSize": 0.41935483870967744
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.4913509504547431,
+              "faceY": 0.4007467154327445,
+              "faceSize": 0.4252199413489736
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.5734318989918741,
+              "faceY": 0.3218528174349976,
+              "faceSize": 0.41348973607038125
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.5099454123810357,
+              "faceY": 0.32723971213198066,
+              "faceSize": 0.4222873900293255
+            },
+            {
+              "duration": 0.55,
+              "faceX": 0.48544397679993706,
+              "faceY": 0.32749143935278596,
+              "faceSize": 0.4252199413489736
+            }
+          ]
+        },
+        {
+          "id": "hop",
+          "assetId": "8a251380-cbf5-4e67-82ab-05d24e60fe16",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.500171656339743,
+              "faceY": 0.43800896285902563,
+              "faceSize": 0.2785923753665689
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.48465598594723086,
+              "faceY": 0.5269964734855254,
+              "faceSize": 0.2785923753665689
+            },
+            {
+              "duration": 0.25,
+              "faceX": 0.46850214387697353,
+              "faceY": 0.38934212326322803,
+              "faceSize": 0.2756598240469208
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5157805295376453,
+              "faceY": 0.36120081478537364,
+              "faceSize": 0.2697947214076246
+            },
+            {
+              "duration": 0.55,
+              "faceX": 0.480178145239198,
+              "faceY": 0.42900866560553313,
+              "faceSize": 0.2756598240469208
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.48409254062520396,
+              "faceY": 0.4440790027144652,
+              "faceSize": 0.28152492668621704
+            }
+          ]
+        },
+        {
+          "id": "spin",
+          "assetId": "41e30d91-f865-4fe4-8b5b-22c158ec3cd5",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.4911280631431367,
+              "faceY": 0.3900667371760435,
+              "faceSize": 0.4662756598240469
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5396762246951927,
+              "faceY": 0.38978279928900844,
+              "faceSize": 0.46920821114369504
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.6002069893148759,
+              "faceY": 0.3876886976862732,
+              "faceSize": 0.44574780058651026
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.44826409300617676,
+              "faceY": 0.3345762863027714,
+              "faceSize": 0.4340175953079179
+            },
+            {
+              "duration": 0.45,
+              "faceX": 0.46722879388972305,
+              "faceY": 0.33839382752416114,
+              "faceSize": 0.44868035190615835
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.49149786576367516,
+              "faceY": 0.34633042103436723,
+              "faceSize": 0.46920821114369504
+            }
+          ]
+        },
+        {
+          "id": "dance",
+          "assetId": "decb2dbd-c6d1-43f6-bfa8-285d10a66153",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3,
+              "faceX": 0.49874562867368355,
+              "faceY": 0.4130697513812155,
+              "faceSize": 0.30498533724340177
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.49936661315419845,
+              "faceY": 0.4104916866115463,
+              "faceSize": 0.30791788856304986
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.4846379843994775,
+              "faceY": 0.41984258917780465,
+              "faceSize": 0.31085043988269795
+            },
+            {
+              "duration": 0.3,
+              "faceX": 0.5153593649650167,
+              "faceY": 0.36660671123623984,
+              "faceSize": 0.30791788856304986
+            },
+            {
+              "duration": 0.45,
+              "faceX": 0.5307942889000558,
+              "faceY": 0.37817445252557547,
+              "faceSize": 0.31085043988269795
+            },
+            {
+              "duration": 0.35,
+              "faceX": 0.4798268848737111,
+              "faceY": 0.38716624738983296,
+              "faceSize": 0.30791788856304986
+            }
+          ]
+        }
+      ],
+      "expressions": {
+        "assetId": "e977ccfc-1433-48f9-8790-27404fcbcd97",
+        "columns": 2,
+        "rows": 2,
+        "tiles": [
+          {
+            "id": "neutral",
+            "x": 0.0546875,
+            "y": 0.1015625,
+            "width": 0.4052734375,
+            "height": 0.3134765625
+          },
+          {
+            "id": "happy",
+            "x": 0.541015625,
+            "y": 0.1005859375,
+            "width": 0.4052734375,
+            "height": 0.31640625
+          },
+          {
+            "id": "surprised",
+            "x": 0.0546875,
+            "y": 0.58203125,
+            "width": 0.4052734375,
+            "height": 0.3125
+          }
+        ]
+      },
+      "clipId": "idle",
+      "expressionId": "neutral",
+      "contentMode": "fit",
+      "posterAssetId": "94beeb08-98c2-4721-97a0-86a649237ce5"
+    }
+  ],
+  "background": {
+    "type": "none"
+  },
+  "mp4Background": {
+    "type": "solid",
+    "color": "#FFFFFF"
+  },
+  "kind": "animated",
+  "durationSeconds": 2,
+  "fps": 30,
+  "loop": "loop",
+  "speed": 1
+}

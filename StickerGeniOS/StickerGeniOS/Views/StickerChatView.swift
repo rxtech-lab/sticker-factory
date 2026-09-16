@@ -12,6 +12,9 @@ struct StickerChatView: View {
     let stickerID: String
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.tutorialCoordinator) private var tutorials
+    @Environment(\.tutorialStickerScreen) private var tutorialStickerScreen
+    @State private var consumedTutorialScreen = false
     @State var text = ""
     @State var referenceItems: [PhotosPickerItem] = []
     @State var references: [PendingMediaAttachment] = []
@@ -186,7 +189,26 @@ struct StickerChatView: View {
         candidate?.document ?? activeRevision?.document
     }
 
+    private func consumeTutorialRequest() {
+        if !consumedTutorialScreen, let screen = tutorialStickerScreen, let revision = activeRevision {
+            consumedTutorialScreen = true
+            if screen == "export" { showingExport = true }
+            if screen == "controls" { presentedDocument = .init(document: revision.document, revisionID: revision.id) }
+        }
+        guard let request = tutorials?.stickerRequest, request.context.stickerID == stickerID,
+              case .sticker(let screen) = request.action, let revision = activeRevision else { return }
+        tutorials?.stickerRequest = nil
+        if screen == "export" { showingExport = true }
+        if screen == "controls" { presentedDocument = .init(document: revision.document, revisionID: revision.id) }
+    }
+
     var body: some View {
+        chatContent
+            .environment(\.tutorialContext, TutorialContext(stickerID: stickerID))
+            .onChange(of: tutorials?.stickerRequest?.id) { _, _ in consumeTutorialRequest() }
+    }
+
+    private var chatContent: some View {
         StickerBackground {
             // The composer floats over the transcript rather than sitting in a bar below it:
             // it carries its own glass and nothing else paints behind it, so the messages
@@ -249,6 +271,7 @@ struct StickerChatView: View {
             }
             store.startReconciliationPolling(stickerID: stickerID)
             await preloadMessageMedia()
+            consumeTutorialRequest()
         }
         .onDisappear { store.stopReconciliationPolling(stickerID: stickerID) }
         .task(id: mediaPreloadToken) { await preloadMessageMedia() }
@@ -600,6 +623,7 @@ struct StickerChatView: View {
             }
         } else {
             ChatBubble(
+                presets: detail?.presets,
                 configurationSettings: revisionDocument(for: message).flatMap { doc in
                     guard doc.configuration != nil else { return nil }
                     _ = controlsApplied

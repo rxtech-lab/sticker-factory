@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 /// The plan card, opened up.
 ///
@@ -405,6 +406,7 @@ struct PosePresetPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            ControllableTutorialHelp(kind: .variety)
             Text("Pose variety").font(.posterDisplay(15, weight: .bold))
             Picker("Pose variety", selection: $selection) {
                 ForEach(PosePreset.allCases, id: \.self) { preset in
@@ -413,7 +415,7 @@ struct PosePresetPicker: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier(identifier)
-            .onChange(of: selection) { _, _ in Haptics.selection() }
+            .onChange(of: selection) { _, _ in Haptics.selection(); PoseVarietyTutorialTip().invalidate(reason: .actionPerformed) }
             Text("Higher presets add more selectable poses per character and cost more to generate.")
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(AppColors.muted)

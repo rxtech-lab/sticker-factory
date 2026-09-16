@@ -1,0 +1,447 @@
+{
+  "kind": "animated",
+  "title": "Enchanted Orange Cat — Controllable Sticker",
+  "layers": [
+    {
+      "x": 0.5,
+      "y": 0.52,
+      "name": "Controllable enchanted orange cat",
+      "scaleX": 0.82,
+      "scaleY": 0.82,
+      "source": {
+        "face": "One stable oval face region on the cat’s head contains all facial features together: both eyes, brows, nose, mouth, cheeks, and whisker roots; no facial features appear outside this oval on the hat, torso, paws, or wand.",
+        "kind": "sprite",
+        "clips": [
+          {
+            "id": "idle",
+            "label": "Idle",
+            "frames": [
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame 1 is the resting seated front-facing pose. Across six frames, show a gentle visible chest-and-shoulder breathing cycle, with one natural blink during the middle frames, while the hat, wand, face placement, and magical sparkles remain stable; return to the resting pose in frame 6. Move the body only, never redraw or relocate the face region."
+          },
+          {
+            "id": "wave",
+            "label": "Wave",
+            "frames": [
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame 1 starts in the resting seated pose. Across six frames, raise the wand-holding paw into a friendly wave, sweep it outward and back through a clear wave arc, then return to the resting pose in frame 6. Keep the face region front-facing and stable; move the body and paw only, with the wizard hat, wand, and sparkles retained."
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce",
+            "frames": [
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame 1 is the resting seated pose. Across six frames, compress the seated body, lift the whole body slightly, reach a cheerful airborne peak, and settle back into the resting pose in frame 6. Keep paws, hat, wand, sparkles, and the stable front-facing face region coherent; this is a body bounce, not a whole-image transform."
+          },
+          {
+            "id": "sway",
+            "label": "Sway",
+            "frames": [
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame 1 starts at rest. Across six frames, gently sway the seated torso and tail to the cat’s left, pass through center, sway to the cat’s right, and return to center in frame 6. Keep the face region facing directly forward and stable while the torso, tail, hat, wand, and small sparkles follow the body’s gentle rhythm."
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle",
+            "frames": [
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame 1 is the resting seated pose. Across six frames, perform a playful quick side-to-side wiggle through the shoulders, paws, and tail, with alternating left and right accents, ending at rest in frame 6. Keep the face oval and all facial features front-facing and stable; preserve the wizard accessories and fantasy sparkles."
+          },
+          {
+            "id": "hop",
+            "label": "Hop",
+            "frames": [
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame 1 starts at rest. Across six frames, crouch, spring into one distinct small forward-up hop with paws lifted, reach the hop peak, land softly, and return to the resting seated pose in frame 6. Keep the face region visible and front-facing, and keep the hat, wand, tail, and sparkles attached coherently to the moving body."
+          },
+          {
+            "id": "spin",
+            "label": "Spin",
+            "frames": [
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame 1 is the resting front-facing seated pose. Across six frames, make a playful partial body twist toward one side and back, suggesting a partial spin without turning the head away: the face region stays fully front-facing and stable while the torso, paws, tail, hat, wand, and sparkles arc through the twist. Return to the resting pose in frame 6; do not make this a whole-image rotation."
+          },
+          {
+            "id": "dance",
+            "label": "Dance",
+            "frames": [
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.3
+              },
+              {
+                "duration": 0.4
+              },
+              {
+                "duration": 0.4
+              }
+            ],
+            "prompt": "Frame 1 starts at rest. Across six frames, perform a clear cheerful seated dance: lift one paw, shift the shoulders, lift the other paw, bounce the torso, and return to the resting pose in frame 6. Keep the face oval front-facing and stable, preserve the wizard hat and wand, and let the tiny magical sparkles bob with the cat without becoming separate scenery."
+          }
+        ],
+        "prompt": "Create the complete single cat character from the supplied reference artwork, preserving its exact identity, recognizable orange tabby markings, cream muzzle and chest, purple wizard hat with moon and stars, star-tipped wand, bold dark outlines, saturated cartoon colours, simple shading, and crisp die-cut sticker silhouette. Point to the supplied reference photo/artwork for the cat’s likeness rather than rebuilding its face from written features. Keep the cat front-facing and readable at sticker size, with the hat and wand integrated into every body clip and a few small gold magical sparkles near them. Transparent background, no text, no scenery, no extra characters. The face must remain stable and front-facing across all body clips.",
+        "expressions": [
+          {
+            "id": "neutral",
+            "label": "Neutral",
+            "prompt": "Inside the single face oval only: a calm friendly neutral expression with relaxed open eyes, soft brows, a small closed cat mouth, subtle cheeks, and all features contained within the oval."
+          },
+          {
+            "id": "happy",
+            "label": "Happy",
+            "prompt": "Inside the single face oval only: a delighted happy expression with bright smiling eyes, lifted cheerful brows, rosy cheeks, and a broad open smile; every feature stays inside the oval."
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised",
+            "prompt": "Inside the single face oval only: a playful surprised expression with widened eyes, raised brows, lifted cheeks, and a small rounded open mouth; every feature stays inside the oval."
+          }
+        ]
+      },
+      "layerId": "cat_sprite",
+      "animations": [],
+      "rotationDegrees": 0
+    }
+  ],
+  "timing": {
+    "fps": 30,
+    "loop": "loop",
+    "durationSeconds": 2
+  },
+  "summary": "An animated Bold Cartoon + Fantasy sticker of the friendly orange cat from the supplied artwork, preserved as one controllable sprite with a stable front-facing face. Ultra pose variety provides eight selectable looping body actions—idle, wave, bounce, sway, wiggle, hop, spin, and dance—with six frames each at a two-second loop; three independent moods provide neutral, happy, and surprised expressions. Magical hat, wand, and small sparkles remain part of the cat’s preserved design, with no lettering or unrelated scenery.",
+  "version": 1,
+  "posePreset": "ultra",
+  "conceptPrompt": "One polished still image of the finished square animated sticker in its resting pose: the friendly orange cat in the supplied reference artwork, preserving the exact recognizable identity, orange tabby markings, cream muzzle and chest, large expressive eyes, front-facing seated body, purple star-and-moon wizard hat, and star-tipped wand. Render in the supplied artwork’s Bold Cartoon style with expressive proportions, bold clean dark outlines, saturated orange and purple colours, simple warm shading, and a crisp white die-cut sticker edge on a transparent background. Keep the cat large and centered, filling most of the square frame while keeping the stable front-facing face region fully visible; the face region is one oval encompassing both eyes, brows, nose, mouth, cheeks, and whisker roots. Add only a few small enchanted gold sparkles around the wand and hat as part of the cat’s cohesive fantasy sticker design; no lettering, no scenery, no extra characters, no labels, no arrows, no watermark, no UI, and no animation frames or contact sheet.",
+  "configuration": {
+    "controls": [
+      {
+        "id": "pose",
+        "type": "choice",
+        "label": "Pose",
+        "options": [
+          {
+            "id": "idle",
+            "label": "Idle"
+          },
+          {
+            "id": "wave",
+            "label": "Wave"
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce"
+          },
+          {
+            "id": "sway",
+            "label": "Sway"
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle"
+          },
+          {
+            "id": "hop",
+            "label": "Hop"
+          },
+          {
+            "id": "spin",
+            "label": "Spin"
+          },
+          {
+            "id": "dance",
+            "label": "Dance"
+          }
+        ],
+        "defaultValue": "idle"
+      },
+      {
+        "id": "mood",
+        "type": "choice",
+        "label": "Mood",
+        "options": [
+          {
+            "id": "neutral",
+            "label": "Neutral"
+          },
+          {
+            "id": "happy",
+            "label": "Happy"
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised"
+          }
+        ],
+        "defaultValue": "neutral"
+      }
+    ],
+    "variants": [
+      {
+        "id": "pose_idle",
+        "layers": [
+          {
+            "clip": "idle",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "idle"
+        }
+      },
+      {
+        "id": "pose_wave",
+        "layers": [
+          {
+            "clip": "wave",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "wave"
+        }
+      },
+      {
+        "id": "pose_bounce",
+        "layers": [
+          {
+            "clip": "bounce",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "bounce"
+        }
+      },
+      {
+        "id": "pose_sway",
+        "layers": [
+          {
+            "clip": "sway",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "sway"
+        }
+      },
+      {
+        "id": "pose_wiggle",
+        "layers": [
+          {
+            "clip": "wiggle",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "wiggle"
+        }
+      },
+      {
+        "id": "pose_hop",
+        "layers": [
+          {
+            "clip": "hop",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "hop"
+        }
+      },
+      {
+        "id": "pose_spin",
+        "layers": [
+          {
+            "clip": "spin",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "spin"
+        }
+      },
+      {
+        "id": "pose_dance",
+        "layers": [
+          {
+            "clip": "dance",
+            "layerId": "cat_sprite"
+          }
+        ],
+        "selections": {
+          "pose": "dance"
+        }
+      },
+      {
+        "id": "mood_neutral",
+        "layers": [
+          {
+            "layerId": "cat_sprite",
+            "expression": "neutral"
+          }
+        ],
+        "selections": {
+          "mood": "neutral"
+        }
+      },
+      {
+        "id": "mood_happy",
+        "layers": [
+          {
+            "layerId": "cat_sprite",
+            "expression": "happy"
+          }
+        ],
+        "selections": {
+          "mood": "happy"
+        }
+      },
+      {
+        "id": "mood_surprised",
+        "layers": [
+          {
+            "layerId": "cat_sprite",
+            "expression": "surprised"
+          }
+        ],
+        "selections": {
+          "mood": "surprised"
+        }
+      }
+    ]
+  }
+}

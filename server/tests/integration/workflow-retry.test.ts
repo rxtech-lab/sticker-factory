@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from "vitest";
+import { creationPresetCatalog } from "@/lib/creation-presets/catalog";
 import { and, eq, sql } from "drizzle-orm";
 import { MockAiProvider } from "@/lib/ai/gateway-mock";
 import { setAiProviderForTests, type AiChatContext, type AiImageInput, type AiAnimationContext, type AnimationDraftingSession, type AiLayoutContext, type LayoutDraftingSession } from "@/lib/ai/gateway";
@@ -20,6 +21,7 @@ afterEach(resetWorkflowTestState);
 
 it.each(["checkpoint", "legacy"])("resumes the expression step with %s history, saved poses and animation", async (historyKind) => {
   const { db, close } = await createTestDatabase();
+  const originalCatalog = structuredClone(creationPresetCatalog);
   try {
     setDatabaseForTests(db);
     setObjectStoreForTests(new MemoryObjectStore());
@@ -31,6 +33,8 @@ it.each(["checkpoint", "legacy"])("resumes the expression step with %s history, 
     class Provider extends MockAiProvider {
       override async generateStickerImage(input: AiImageInput) {
         requests.push(input);
+        expect(input.prompt).toContain("soft sculpted clay forms");
+        expect(input.prompt).not.toContain("Changed after creation");
         if (input.sheet) {
           expect(input.references[0]).toEqual(restingReference);
           expect(input.references[2]).toEqual(animationSummary);
@@ -45,11 +49,14 @@ it.each(["checkpoint", "legacy"])("resumes the expression step with %s history, 
         return super.generateStickerImage(input);
       }
       override async refineStickerLayout(input: AiLayoutContext, session: LayoutDraftingSession) {
+        expect(input.presetGuidance).toContain("soft sculpted clay forms");
         expect(input.animationSummary).toEqual(animationSummary);
         expect(input.animationSummary).toBeDefined();
         return super.refineStickerLayout(input, session);
       }
       override async routeChatTurn(input: AiChatContext) {
+        expect(input.presetGuidance).toContain("soft sculpted clay forms");
+        expect(input.presetGuidance).not.toContain("Changed after creation");
         expect(input.instruction).toBe("Retry the expressions step");
         expect(input.retryableGeneration).toMatchObject({ kind: "compose", state: "cancelled" });
         const steps = input.retryableGeneration!.steps;
@@ -63,6 +70,7 @@ it.each(["checkpoint", "legacy"])("resumes the expression step with %s history, 
     setAiProviderForTests(new Provider());
     const sticker = await createSticker(db, "owner-pose", {
       title: "Cat", kind: "animated", prompt: "A round cat", referenceAssetIds: [], controllable: true,
+      presets: { catalogVersion: creationPresetCatalog.version, selections: [{ groupId: "style", optionIds: ["clay"] }] },
     });
     const planning = await createChatTurn(db, "owner-pose", sticker.stickerId, {
       text: "A round cat", intent: "generate", attachments: [], imagePlacement: "replace",
@@ -82,6 +90,8 @@ it.each(["checkpoint", "legacy"])("resumes the expression step with %s history, 
       await db.delete(generationEvents).where(and(eq(generationEvents.jobId, build.jobId),
         sql`${generationEvents.dataJson}->>'checkpoint' = 'plan_build'`));
     }
+    creationPresetCatalog.version += ".changed";
+    creationPresetCatalog.groups[0].options.find(option => option.id === "clay")!.prompt = "Changed after creation";
     const beforeRetry = requests.length;
     const retry = await createChatTurn(db, "owner-pose", sticker.stickerId, {
       text: "Retry the expressions step", intent: "chat", attachments: [], imagePlacement: "replace",
@@ -110,7 +120,7 @@ it.each(["checkpoint", "legacy"])("resumes the expression step with %s history, 
     });
     const nextJob = await db.select().from(generationJobs).where(eq(generationJobs.id, followup.jobId)).then(firstRow);
     expect(await latestRetryableGeneration(db, nextJob!)).toBeUndefined();
-  } finally { await close(); }
+  } finally { Object.assign(creationPresetCatalog, originalCatalog); await close(); }
 }, 30_000);
 
 it("replays the saved animation route and original target instead of routing Retry as a new image", async () => {
