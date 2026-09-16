@@ -95,7 +95,7 @@ struct StickerWelcomeSlide: Identifiable, Equatable {
 /// short tour is what unlocks the contextual tips that follow it.
 struct StickerWelcomeSheet: View {
     var onContinue: () -> Void
-    var onReadTutorial: (() -> Void)? = nil
+    var onReadTutorial: (() -> Void)?
 
     /// One per slide, cycled if the tour ever grows past them.
     private static let slideColors: [Color] = [

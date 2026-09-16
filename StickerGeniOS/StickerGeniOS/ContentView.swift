@@ -149,11 +149,11 @@ struct StickerFactoryTabView: View {
                 pendingTutorialAction = nil
                 environment.tutorials.open(action)
             }
-        }) { request in
+        }, content: { request in
             TutorialSheet(coordinator: environment.tutorials, request: request) { action in
                 pendingTutorialAction = action; tutorialRequest = nil
             }
-        }
+        })
         .sheet(item: $launchFlow, onDismiss: {
             if tutorialAfterLaunch {
                 tutorialAfterLaunch = false

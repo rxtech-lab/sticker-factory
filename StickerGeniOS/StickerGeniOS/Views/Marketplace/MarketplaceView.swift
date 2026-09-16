@@ -21,7 +21,7 @@ private enum MarketplaceTab: String, CaseIterable, Identifiable {
 struct MarketplaceView: View {
     @Bindable var store: MarketplaceStore
     var tutorialStartsInMyPacks = false
-    var onTutorialClose: (() -> Void)? = nil
+    var onTutorialClose: (() -> Void)?
     @Environment(\.tutorialCoordinator) private var tutorials
     @State private var tab: MarketplaceTab = .browse
     @State private var showingComposer = false
@@ -64,8 +64,14 @@ struct MarketplaceView: View {
             case .newPack: showingComposer = true; tutorials?.packRequest = nil
             case .packs(let mine): tab = mine ? .mine : .browse; path = NavigationPath(); tutorials?.packRequest = nil
             case .pack:
-                if let id = request.context.packID { path = NavigationPath(); path.append(PackRoute(packID: id)) }
-                else { tab = .mine; path = NavigationPath(); tutorials?.packRequest = nil }
+                if let id = request.context.packID {
+                    path = NavigationPath()
+                    path.append(PackRoute(packID: id))
+                } else {
+                    tab = .mine
+                    path = NavigationPath()
+                    tutorials?.packRequest = nil
+                }
             default: break
             }
         }
@@ -154,7 +160,12 @@ struct MarketplaceView: View {
         .onChange(of: store.searchQuery) { store.searchQueryChanged() }
         .onSubmit(of: .search) { Task { await store.refresh() } }
         .toolbar {
-            if let onTutorialClose { ToolbarItem(placement: .cancellationAction) { Button(TutorialCopy.text("Close"), action: onTutorialClose).accessibilityIdentifier("tutorial-feature-close") } }
+            if let onTutorialClose {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(TutorialCopy.text("Close"), action: onTutorialClose)
+                        .accessibilityIdentifier("tutorial-feature-close")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Haptics.tap(.light)

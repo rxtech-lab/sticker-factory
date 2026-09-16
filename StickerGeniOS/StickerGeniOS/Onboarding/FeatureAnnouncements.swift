@@ -62,7 +62,9 @@ struct FeatureAnnouncement: Identifiable, Equatable {
             icon: "📖",
             accent: AppColors.lime,
             title: TutorialCopy.text("Learn with tutorials"),
-            message: TutorialCopy.text("Real app screenshots, little steps, and ideas to try. Learn to create, animate and share your stickers.")
+            message: TutorialCopy.text(
+                "Real app screenshots, little steps, and ideas to try. Learn to create, animate and share your stickers."
+            )
         )
     ]
 }
@@ -150,7 +152,12 @@ struct LaunchFlowView: View {
                         onWelcomeSeen(); onReadTutorial()
                     } : nil)
                 case .featureCards(let cards):
-                    FeatureAnnouncementSheet(cards: cards, onAcknowledge: onCardAcknowledged, onFinished: advance, onReadTutorial: onReadTutorial)
+                    FeatureAnnouncementSheet(
+                        cards: cards,
+                        onAcknowledge: onCardAcknowledged,
+                        onFinished: advance,
+                        onReadTutorial: onReadTutorial
+                    )
                 }
             } else {
                 Color.clear.onAppear(perform: onFinished)

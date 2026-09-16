@@ -31,13 +31,13 @@ struct TutorialButton: View {
             guard let action = pendingAction else { return }
             pendingAction = nil
             if onAction?(action) != true { destination = .init(action: action, context: context) }
-        }) { request in
+        }, content: { request in
             if let coordinator {
                 TutorialSheet(coordinator: coordinator, request: request) { action in
                     pendingAction = action; self.request = nil
                 }
             }
-        }
+        })
     }
 }
 /// How much of the current lesson is still below the fold, measured from the reader's scroll view.
@@ -81,7 +81,10 @@ struct TutorialSheet: View {
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @AccessibilityFocusState private var headingFocused: Bool
     private var isDropdownPresented: Bool { isLanguageMenuPresented || isChapterMenuPresented }
-    private var reduceMotion: Bool { systemReduceMotion || (ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--reduce-motion")) }
+    private var reduceMotion: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return systemReduceMotion || (arguments.contains("--ui-testing") && arguments.contains("--reduce-motion"))
+    }
     private var contentKey: String { "\(locale)/\(reloadID)" }
     private var chapter: TutorialDocument.Chapter? { document?.chapters.first { $0.id == chapterID } }
     private var step: TutorialDocument.Step? { chapter?.steps.first { $0.id == stepID } }
@@ -90,12 +93,10 @@ struct TutorialSheet: View {
             ZStack(alignment: .bottom) {
                 ZStack {
                     PosterPaper()
-                    if failed { unavailable }
-                    else if let document {
+                    if failed { unavailable } else if let document {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 24) {
-                                if let chapter, let step { chapterView(chapter, step: step, document: document) }
-                                else { index(document) }
+                                if let chapter, let step { chapterView(chapter, step: step, document: document) } else { index(document) }
                             }
                             .padding(20)
                             .frame(maxWidth: 640)
@@ -103,7 +104,11 @@ struct TutorialSheet: View {
                         }
                         .scrollPosition($scrollPosition)
                         .contentMargins(.bottom, chapter != nil && step != nil ? navigationFooterHeight : 0)
-                        .onScrollGeometryChange(for: TutorialScrollMetrics.self) { TutorialScrollMetrics($0) } action: { _, value in scroll = value }
+                        .onScrollGeometryChange(for: TutorialScrollMetrics.self) {
+                            TutorialScrollMetrics($0)
+                        } action: { _, value in
+                            scroll = value
+                        }
                         .onChange(of: stepID) { scrollToTop() }
                         .onChange(of: chapterID) { scrollToTop() }
                         .accessibilityIdentifier("tutorial-native-content")
@@ -302,16 +307,16 @@ struct TutorialSheet: View {
         let unread = !scroll.isAtBottom
         let label = !isLast ? "next" : !finished ? "done" : nextChapter != nil ? "nextChapter" : "index"
         let title = unread ? document.copy("scrollDown", fallback: TutorialCopy.text("Scroll down")) : document.copy(label)
-        let symbol = unread ? "chevron.down" : !isLast ? "chevron.right" : !finished ? "checkmark" : nextChapter != nil ? "arrow.right" : "list.bullet"
+        let symbol = unread ? "chevron.down"
+            : !isLast ? "chevron.right"
+            : !finished ? "checkmark"
+            : nextChapter != nil ? "arrow.right" : "list.bullet"
         Button { select(chapter, step: chapter.steps[position - 1]) } label: { Label(document.copy("back"), systemImage: "chevron.left") }
             .buttonStyle(.poster).disabled(position == 0).accessibilityIdentifier("tutorial-back")
         Button {
-            if unread { scrollDown() }
-            else if !isLast { select(chapter, step: chapter.steps[position + 1]) }
-            else if finished {
+            if unread { scrollDown() } else if !isLast { select(chapter, step: chapter.steps[position + 1]) } else if finished {
                 completionNotice = nil
-                if let nextChapter { select(nextChapter, step: nextChapter.steps[0]) }
-                else { toggleChapterMenu() }
+                if let nextChapter { select(nextChapter, step: nextChapter.steps[0]) } else { toggleChapterMenu() }
             } else {
                 coordinator.progress.record(chapter: chapter.id, step: chapter.steps[position].id, completed: true)
                 Haptics.success()
@@ -322,7 +327,11 @@ struct TutorialSheet: View {
             Label(title, systemImage: symbol)
         }
         .buttonStyle(.poster)
-        .accessibilityIdentifier(unread ? "tutorial-scroll-down" : finished ? (nextChapter != nil ? "tutorial-next-chapter" : "tutorial-all-chapters") : "tutorial-next")
+        .accessibilityIdentifier(
+            unread ? "tutorial-scroll-down"
+                : finished ? (nextChapter != nil ? "tutorial-next-chapter" : "tutorial-all-chapters")
+                : "tutorial-next"
+        )
     }
     /// Two thirds of the step's travel per tap, so a short overhang clears in one or two and a long
     /// one in a handful. The cap keeps the longest steps short of a full screen, which reads as a
@@ -330,8 +339,11 @@ struct TutorialSheet: View {
     private func scrollDown() {
         let distance = min(max(scroll.scrollable * 2 / 3, 200), scroll.visible * 0.65)
         let target = scroll.offset + distance
-        if reduceMotion { scrollPosition.scrollTo(y: target) }
-        else { withAnimation(.easeOut(duration: 0.3)) { scrollPosition.scrollTo(y: target) } }
+        if reduceMotion {
+            scrollPosition.scrollTo(y: target)
+        } else {
+            withAnimation(.easeOut(duration: 0.3)) { scrollPosition.scrollTo(y: target) }
+        }
     }
     private func scrollToTop() {
         scrollPosition.scrollTo(edge: .top)
@@ -370,11 +382,15 @@ struct TutorialSheet: View {
         case .media:
             TutorialMediaView(block: block, number: number, document: document, baseURL: coordinator.baseURL)
         case .action:
-            Button { if let url = block.url { perform(url) } } label: { Label(block.title ?? "", systemImage: "arrow.up.forward.app") }.buttonStyle(.poster)
+            Button { if let url = block.url { perform(url) } } label: {
+                Label(block.title ?? "", systemImage: "arrow.up.forward.app")
+            }
+            .buttonStyle(.poster)
         }
     }
     private func richText(_ value: String) -> Text {
-        Text((try? AttributedString(markdown: value, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(value))
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        return Text((try? AttributedString(markdown: value, options: options)) ?? AttributedString(value))
     }
     private func open(_ chapter: TutorialDocument.Chapter) {
         let saved = coordinator.progress.progress.steps[chapter.id]
@@ -407,8 +423,7 @@ struct TutorialSheet: View {
                 select(chapter, step: step)
             } else if stepID != nil { throw TutorialContentError.invalid }
             document = loaded; hasOpened = true; loadedContentKey = key
-        } catch is CancellationError { }
-        catch { if !Task.isCancelled { failed = true } }
+        } catch is CancellationError { } catch { if !Task.isCancelled { failed = true } }
     }
 }
 
@@ -423,9 +438,13 @@ struct TutorialDestinationSheet: View {
             switch route.action {
             case .create(let animated, let controllable):
                 NavigationStack {
-                    CreateStickerView(store: coordinator.store, onCreated: { createdStickerID = $0.id }, tutorialMode: .create(animated: animated, controllable: controllable))
-                        .navigationDestination(item: $createdStickerID) { StickerChatView(store: coordinator.store, stickerID: $0) }
-                        .toolbar { closeButton }
+                    CreateStickerView(
+                        store: coordinator.store,
+                        onCreated: { createdStickerID = $0.id },
+                        tutorialMode: .create(animated: animated, controllable: controllable)
+                    )
+                    .navigationDestination(item: $createdStickerID) { StickerChatView(store: coordinator.store, stickerID: $0) }
+                    .toolbar { closeButton }
                 }
             case .newPack:
                 NavigationStack {
@@ -443,7 +462,11 @@ struct TutorialDestinationSheet: View {
                     MarketplaceView(store: coordinator.marketplace, tutorialStartsInMyPacks: true, onTutorialClose: { dismiss() })
                         .environment(\.tutorialMessenger, messenger)
                         .safeAreaInset(edge: .top) {
-                            Text(TutorialCopy.text("Choose a pack to try this feature.")).font(.callout).padding(10).frame(maxWidth: .infinity).background(AppColors.lime)
+                            Text(TutorialCopy.text("Choose a pack to try this feature."))
+                                .font(.callout)
+                                .padding(10)
+                                .frame(maxWidth: .infinity)
+                                .background(AppColors.lime)
                         }
                 }
             case .sticker(let screen):
@@ -460,12 +483,21 @@ struct TutorialDestinationSheet: View {
     private func library(screen: String?) -> some View {
         NavigationStack {
             LibraryView(store: coordinator.store, marketplace: coordinator.marketplace)
-                .safeAreaInset(edge: .top) { Text(TutorialCopy.text("Choose a sticker to try this feature.")).font(.callout).padding(10).frame(maxWidth: .infinity).background(AppColors.lime) }
+                .safeAreaInset(edge: .top) {
+                    Text(TutorialCopy.text("Choose a sticker to try this feature."))
+                        .font(.callout)
+                        .padding(10)
+                        .frame(maxWidth: .infinity)
+                        .background(AppColors.lime)
+                }
                 .toolbar { closeButton }
         }
         .environment(\.tutorialStickerScreen, screen)
     }
     @ToolbarContentBuilder private var closeButton: some ToolbarContent {
-        ToolbarItem(placement: .cancellationAction) { Button(TutorialCopy.text("Close")) { dismiss() }.accessibilityIdentifier("tutorial-feature-close") }
+        ToolbarItem(placement: .cancellationAction) {
+            Button(TutorialCopy.text("Close")) { dismiss() }
+                .accessibilityIdentifier("tutorial-feature-close")
+        }
     }
 }

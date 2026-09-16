@@ -10,7 +10,11 @@ final class TutorialCaptureTests: XCTestCase {
     private func launch(_ extra: [String] = []) {
         app?.terminate()
         app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-tutorial-capture", "--reduce-motion", "-AppleLanguages", "(\(locale))", "-AppleLocale", locale.replacingOccurrences(of: "-", with: "_")] + extra
+        app.launchArguments = [
+            "--ui-testing", "--ui-tutorial-capture", "--reduce-motion",
+            "-AppleLanguages", "(\(locale))",
+            "-AppleLocale", locale.replacingOccurrences(of: "-", with: "_")
+        ] + extra
         app.launchEnvironment["TUTORIAL_BASE_URL"] = "http://127.0.0.1:3117"
         app.launch()
         XCTAssertTrue(element("create-sticker-button").waitForExistence(timeout: 10))
@@ -109,7 +113,8 @@ final class TutorialCaptureTests: XCTestCase {
         capture("packs")
         element("create-pack-button").tap()
         XCTAssertTrue(element("pack-title-field").waitForExistence(timeout: 5))
-        element("pack-title-field").tap(); element("pack-title-field").typeText(locale == "en" ? "Winky friends" : locale == "zh-CN" ? "Winky 好朋友" : "Winky 好朋友")
+        let packTitle = locale == "en" ? "Winky friends" : locale == "zh-CN" ? "Winky 好朋友" : "Winky 好朋友"
+        element("pack-title-field").tap(); element("pack-title-field").typeText(packTitle)
         app.swipeDown()
         marker("new-pack", "start")
         element("pack-choose-stickers-button").tap()

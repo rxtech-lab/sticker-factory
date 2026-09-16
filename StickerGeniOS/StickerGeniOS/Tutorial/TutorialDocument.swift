@@ -42,21 +42,29 @@ nonisolated struct TutorialDocument: Decodable, Sendable {
             let suffix = animated ? #"\.animated\.webp$"# : #"\.webp$"#
             return value.range(of: "^/tutorial/media/\(locale)/[a-z0-9-]+" + suffix, options: .regularExpression) != nil
         }
+        let required = [
+            "intro", "next", "back", "done", "index", "resume", "tryIt", "completed",
+            "step", "of", "play", "pause", "nextChapter", "retry", "mediaError", "read"
+        ]
         guard version == 1, ["en", "zh-CN", "zh-HK"].contains(locale),
               sections.count <= 20, chapters.count <= 100, unique(sections.map(\.id)), unique(chapters.map(\.id)),
               sections.allSatisfy({ text($0.title) }),
-              ["intro", "next", "back", "done", "index", "resume", "tryIt", "completed", "step", "of", "play", "pause", "nextChapter", "retry", "mediaError", "read"].allSatisfy({ text(strings[$0]) }) else { throw TutorialContentError.invalid }
+              required.allSatisfy({ text(strings[$0]) }) else { throw TutorialContentError.invalid }
         for chapter in chapters {
             guard sections.contains(where: { $0.id == chapter.section }), text(chapter.title),
                   chapter.steps.count <= 100, unique(chapter.steps.map(\.id)) else { throw TutorialContentError.invalid }
             for step in chapter.steps {
-                guard text(step.title), action(step.action), !step.blocks.isEmpty, step.blocks.count <= 100 else { throw TutorialContentError.invalid }
+                guard text(step.title), action(step.action), !step.blocks.isEmpty, step.blocks.count <= 100 else {
+                    throw TutorialContentError.invalid
+                }
                 for block in step.blocks {
                     let valid: Bool
                     switch block.type {
                     case .paragraph, .heading, .callout: valid = text(block.text)
                     case .list: valid = block.items.map { !$0.isEmpty && $0.count <= 100 && $0.allSatisfy { text($0) } } ?? false
-                    case .media: valid = text(block.caption) && media(block.poster) && (block.animation == nil || media(block.animation, animated: true))
+                    case .media:
+                        let animated = block.animation == nil || media(block.animation, animated: true)
+                        valid = text(block.caption) && media(block.poster) && animated
                     case .action: valid = text(block.title) && block.url.map(action) == true
                     }
                     guard valid else { throw TutorialContentError.invalid }

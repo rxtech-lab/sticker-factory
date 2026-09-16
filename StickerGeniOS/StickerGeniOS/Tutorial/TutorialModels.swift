@@ -59,10 +59,12 @@ nonisolated enum TutorialDeepLink: Equatable, Sendable {
                 self = .action(.packs(mine: query["tab"] == "mine"))
             case ["packs", "new"] where query.isEmpty: self = .action(.newPack)
             case ["sticker"]:
-                guard Set(query.keys) == ["action"], let screen = query["action"], ["plan", "controls", "export"].contains(screen) else { return nil }
+                guard Set(query.keys) == ["action"], let screen = query["action"],
+                      ["plan", "controls", "export"].contains(screen) else { return nil }
                 self = .action(.sticker(screen: screen))
             case ["pack"]:
-                guard Set(query.keys) == ["action"], let destination = query["action"], ["whatsapp", "telegram"].contains(destination) else { return nil }
+                guard Set(query.keys) == ["action"], let destination = query["action"],
+                      ["whatsapp", "telegram"].contains(destination) else { return nil }
                 self = .action(.pack(destination: destination))
             default: return nil
             }
@@ -123,19 +125,20 @@ nonisolated struct TutorialNavigation: Identifiable, Equatable, Sendable {
     }
 }
 extension EnvironmentValues {
-    @Entry var tutorialCoordinator: TutorialCoordinator? = nil
+    @Entry var tutorialCoordinator: TutorialCoordinator?
     @Entry var tutorialContext = TutorialContext()
-    @Entry var tutorialStickerScreen: String? = nil
-    @Entry var tutorialMessenger: String? = nil
+    @Entry var tutorialStickerScreen: String?
+    @Entry var tutorialMessenger: String?
 }
 nonisolated enum TutorialCopy {
     static func text(_ value: String.LocalizationValue) -> String { String(localized: value, table: "Tutorials") }
 }
 nonisolated enum TutorialLocation {
     static func locale(_ languages: [String]) -> String {
+        let traditional = ["zh-hant", "zh-hk", "zh-tw", "zh-mo"]
         for language in languages {
             let value = language.lowercased()
-            if value.hasPrefix("zh-hant") || value.hasPrefix("zh-hk") || value.hasPrefix("zh-tw") || value.hasPrefix("zh-mo") { return "zh-HK" }
+            if traditional.contains(where: { value.hasPrefix($0) }) { return "zh-HK" }
             if value == "zh" || value.hasPrefix("zh-") { return "zh-CN" }
             if value == "en" || value.hasPrefix("en-") { return "en" }
         }

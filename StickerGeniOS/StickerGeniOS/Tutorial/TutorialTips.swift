@@ -54,10 +54,19 @@ struct ControllableTutorialHelp: View {
                 if case .sticker(let screen) = action, screen == "controls", kind == .controls { return }
                 destination = .init(action: action, context: context)
             }
-        }) {
-            if let coordinator { TutorialSheet(coordinator: coordinator, request: .init(chapter: TutorialChapter.controllable.rawValue, step: kind == .controls ? "controls" : kind == .variety ? "variety" : "enable", context: context)) { action in
-                pendingAction = action; showingTutorial = false
-            } }
-        }
+        }, content: {
+            if let coordinator {
+                TutorialSheet(
+                    coordinator: coordinator,
+                    request: .init(
+                        chapter: TutorialChapter.controllable.rawValue,
+                        step: kind == .controls ? "controls" : kind == .variety ? "variety" : "enable",
+                        context: context
+                    )
+                ) { action in
+                    pendingAction = action; showingTutorial = false
+                }
+            }
+        })
     }
 }

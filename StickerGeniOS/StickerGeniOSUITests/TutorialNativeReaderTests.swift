@@ -6,7 +6,11 @@ final class TutorialNativeReaderTests: XCTestCase {
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
     private func launch(locale: String = "en", route: String = "stickerfactory://tutorial", large: Bool = false, reduceMotion: Bool = true) {
         app?.terminate(); app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-tutorial-capture", "-AppleLanguages", "(\(locale))", "-AppleLocale", locale.replacingOccurrences(of: "-", with: "_")]
+        app.launchArguments = [
+            "--ui-testing", "--ui-tutorial-capture",
+            "-AppleLanguages", "(\(locale))",
+            "-AppleLocale", locale.replacingOccurrences(of: "-", with: "_")
+        ]
         if reduceMotion { app.launchArguments += ["--reduce-motion"] }
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launchEnvironment["TUTORIAL_BASE_URL"] = "http://127.0.0.1:3117"
@@ -26,7 +30,9 @@ final class TutorialNativeReaderTests: XCTestCase {
         tap("tutorial-next")
     }
     private func capture(_ name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name; attachment.lifetime = .keepAlways
+        add(attachment)
     }
     func testRefreshedReferenceScreenshotsLoadInEveryLanguage() {
         let captions = ["en": "Add references if they help", "zh-CN": "按需添加参考图片", "zh-HK": "按需要加入參考圖片"]

@@ -61,9 +61,16 @@ struct StickerExportSheet: View {
         StickerBackground {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    TutorialButton(chapter: .finish, step: "export", title: TutorialCopy.text("Learn about exporting"), onAction: { action in
-                        if case .sticker(let screen) = action, screen == "export" { return true }; return false
-                    }).font(.footnote)
+                    TutorialButton(
+                        chapter: .finish,
+                        step: "export",
+                        title: TutorialCopy.text("Learn about exporting"),
+                        onAction: { action in
+                            if case .sticker(let screen) = action, screen == "export" { return true }
+                            return false
+                        }
+                    )
+                    .font(.footnote)
                     preview
 
                     statusHeader

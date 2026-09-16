@@ -39,8 +39,12 @@ struct PackDetailView: View {
                             TutorialButton(chapter: .whatsapp, title: "WhatsApp", onAction: handleTutorialAction)
                             TutorialButton(chapter: .telegram, title: "Telegram", onAction: handleTutorialAction)
                         }.font(.footnote)
-                        TutorialButton(chapter: .packs, title: TutorialCopy.text("Learn about sticker packs"), onAction: handleTutorialAction)
-                            .font(.footnote)
+                        TutorialButton(
+                            chapter: .packs,
+                            title: TutorialCopy.text("Learn about sticker packs"),
+                            onAction: handleTutorialAction
+                        )
+                        .font(.footnote)
                         stats(detail)
                         members(detail)
                     }

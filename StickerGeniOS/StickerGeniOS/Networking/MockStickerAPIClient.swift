@@ -772,12 +772,23 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     func assetDownload(assetID: String) async throws -> AssetDownload {
         if ProcessInfo.processInfo.arguments.contains("--ui-tutorial-capture") {
             if assetID == "tutorial-webp", let url = Bundle.main.url(forResource: "tutorial-demo", withExtension: "webp") {
-                return .init(url: url, expiresAt: .now.addingTimeInterval(3600), asset: .init(id: assetID, kind: .messengerWhatsApp, state: .ready, mimeType: "image/webp", width: 512, height: 512, hasAlpha: true))
+                return .init(
+                    url: url,
+                    expiresAt: .now.addingTimeInterval(3600),
+                    asset: .init(
+                        id: assetID, kind: .messengerWhatsApp, state: .ready,
+                        mimeType: "image/webp", width: 512, height: 512, hasAlpha: true
+                    )
+                )
             }
             if [PreviewFixtures.borrowedAssetID, PreviewFixtures.planHistoryAssetID, PreviewFixtures.imageAssetID].contains(assetID) {
                 let url = FileManager.default.temporaryDirectory.appending(path: "tutorial-artwork.png")
                 if let data = UIImage(named: "FeatureControllableAnimation")?.pngData() { try data.write(to: url, options: .atomic) }
-                return .init(url: url, expiresAt: .now.addingTimeInterval(3600), asset: .init(id: assetID, kind: .master, state: .ready, mimeType: "image/png", hasAlpha: true))
+                return .init(
+                    url: url,
+                    expiresAt: .now.addingTimeInterval(3600),
+                    asset: .init(id: assetID, kind: .master, state: .ready, mimeType: "image/png", hasAlpha: true)
+                )
             }
         }
         guard assetID == PreviewFixtures.borrowedAssetID || assetID == PreviewFixtures.planHistoryAssetID else {

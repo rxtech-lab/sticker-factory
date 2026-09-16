@@ -7,7 +7,10 @@ struct TutorialMediaView: View {
     let document: TutorialDocument
     let baseURL: URL
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    private var reduceMotion: Bool { systemReduceMotion || (ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--reduce-motion")) }
+    private var reduceMotion: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return systemReduceMotion || (arguments.contains("--ui-testing") && arguments.contains("--reduce-motion"))
+    }
     @Environment(\.scenePhase) private var scenePhase
     @State private var poster: UIImage?
     @State private var animation: StickerAnimation?
@@ -29,8 +32,11 @@ struct TutorialMediaView: View {
                 }.frame(maxWidth: .infinity).padding()
             } else if let poster {
                 Group {
-                    if playing, !reduceMotion, scenePhase == .active, let animation { AnimatedStickerImage(animation: animation) }
-                    else { Image(uiImage: poster).resizable().scaledToFit() }
+                    if playing, !reduceMotion, scenePhase == .active, let animation {
+                        AnimatedStickerImage(animation: animation)
+                    } else {
+                        Image(uiImage: poster).resizable().scaledToFit()
+                    }
                 }
                 .aspectRatio(poster.size.width / poster.size.height, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16))

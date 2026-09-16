@@ -16,7 +16,7 @@ struct TutorialLanguageMenu: View {
     private static let languages = [
         Language(id: "en", title: "English"),
         Language(id: "zh-CN", title: "简体中文"),
-        Language(id: "zh-HK", title: "繁體中文"),
+        Language(id: "zh-HK", title: "繁體中文")
     ]
 
     static func title(for code: String) -> String {
