@@ -102,7 +102,8 @@ function median(values: number[]): number {
 export async function registerFaceSlots(
   bytes: Uint8Array,
   grid: SheetGrid,
-): Promise<{ bytes: Uint8Array; frames: FaceSlot[] }> {
+  options: { faceCompositing?: "overlay" | "masked"; registeredFrames?: FaceSlot[] } = {},
+): Promise<{ bytes: Uint8Array; frames: FaceSlot[]; maskBytes?: Uint8Array }> {
   const raw = await rawPixels(bytes);
   const { data, width, height, channels } = raw;
   const { cellWidth, cellHeight } = cellSize(raw, grid);
@@ -125,23 +126,45 @@ export async function registerFaceSlots(
       }
     }
     const area = cellWidth * cellHeight;
-    if (count < area * 0.002) throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has no face placeholder: draw a flat magenta oval where the face goes`);
+    const registered = options.registeredFrames?.[frame];
+    if (count < area * 0.002 && !(options.faceCompositing === "masked" && registered)) {
+      throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has no face placeholder: draw a flat magenta oval where the face goes`);
+    }
     if (count > area * 0.3) throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has a face placeholder covering most of the cell`);
-    const boxWidth = maxX - minX + 1, boxHeight = maxY - minY + 1;
-    if (boxWidth * boxHeight > count * 4) throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has magenta scattered outside the face placeholder`);
-    if (minX <= 0 || minY <= 0 || maxX >= cellWidth - 1 || maxY >= cellHeight - 1) {
+    const boxWidth = count ? maxX - minX + 1 : 0, boxHeight = count ? maxY - minY + 1 : 0;
+    if (count && boxWidth * boxHeight > count * (options.faceCompositing === "masked" ? 8 : 4)) throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has magenta scattered outside the face placeholder`);
+    if (count && (minX <= 0 || minY <= 0 || maxX >= cellWidth - 1 || maxY >= cellHeight - 1)) {
       throw new SpriteSheetValidationError("clipped", `Sprite frame ${frame + 1} has its face placeholder clipped at the cell edge`);
     }
-    frames.push({
+    const measured = count ? {
       faceX: (sumX / count + 0.5) / cellWidth,
       faceY: (sumY / count + 0.5) / cellHeight,
       faceSize: boxWidth / cellWidth,
-    });
+    } : undefined;
+    if (registered && (!Number.isFinite(registered.faceX) || !Number.isFinite(registered.faceY)
+      || !Number.isFinite(registered.faceSize) || registered.faceX < 0 || registered.faceX > 1
+      || registered.faceY < 0 || registered.faceY > 1 || registered.faceSize < 0.02 || registered.faceSize > 1)) {
+      throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has invalid full-face registration`);
+    }
+    if (registered && measured) {
+      const distance = Math.hypot(registered.faceX - measured.faceX, registered.faceY - measured.faceY);
+      if (distance > Math.max(0.08, registered.faceSize * 0.65)
+          || measured.faceSize > registered.faceSize * 1.3) {
+        throw new SpriteSheetValidationError(
+          "face-placeholder",
+          `Sprite frame ${frame + 1} has full-face registration that does not match its visible marker`,
+        );
+      }
+    }
+    frames.push(options.faceCompositing === "masked" && registered ? registered : measured!);
   }
 
   // Inpaint: the placeholder grown by two pixels, so its antialiased rim goes too, filled with the
   // median colour of a ring just outside it — fur, skin, or shell, whatever the face sits on.
-  const fill = dilate(mask, width, height, 2);
+  // Overlay clips slightly expand the cleanup to remove the marker's antialiased edge. A masked
+  // clip must never expand through a foreground hand or prop, so it cleans only pixels positively
+  // identified as marker colour.
+  const fill = options.faceCompositing === "masked" ? mask : dilate(mask, width, height, 2);
   const ring = dilate(fill, width, height, 7);
   const output = Buffer.from(data);
   for (let frame = 0; frame < grid.frameCount; frame += 1) {
@@ -168,7 +191,15 @@ export async function registerFaceSlots(
     }
   }
   const png = await sharp(output, { raw: { width, height, channels: channels as 4 } }).png().toBuffer();
-  return { bytes: new Uint8Array(png), frames };
+  if (options.faceCompositing !== "masked") return { bytes: new Uint8Array(png), frames };
+  const maskPixels = Buffer.alloc(width * height * 4);
+  for (let index = 0; index < mask.length; index += 1) {
+    if (!mask[index]) continue;
+    const offset = index * 4;
+    maskPixels[offset] = 255; maskPixels[offset + 1] = 255; maskPixels[offset + 2] = 255; maskPixels[offset + 3] = 255;
+  }
+  const maskPng = await sharp(maskPixels, { raw: { width, height, channels: 4 } }).png().toBuffer();
+  return { bytes: new Uint8Array(png), frames, maskBytes: new Uint8Array(maskPng) };
 }
 
 /**
@@ -222,10 +253,11 @@ export async function registerExpressionTiles(bytes: Uint8Array, grid: SheetGrid
  */
 export async function compositeSpriteFrame(input: {
   atlas: Uint8Array;
-  clip: { columns: number; rows: number; frames: readonly FaceSlot[] };
+  clip: { columns: number; rows: number; frames: readonly FaceSlot[]; faceCompositing?: "overlay" | "masked" };
   index: number;
   sheet: Uint8Array;
   tile: ExpressionTile;
+  maskAtlas?: Uint8Array;
   edge?: number;
 }): Promise<Uint8Array> {
   const { clip, index, tile } = input;
@@ -267,7 +299,24 @@ export async function compositeSpriteFrame(input: {
       left: visibleLeft - left, top: visibleTop - top,
       width: visibleRight - visibleLeft, height: visibleBottom - visibleTop,
     }).png().toBuffer();
-    composed = composed.composite([{ input: cropped, left: visibleLeft, top: visibleTop }]);
+    if (clip.faceCompositing === "masked") {
+      if (!input.maskAtlas) throw new Error("Masked sprite clip has no face mask artwork");
+      const maskCell = await sharp(input.maskAtlas).ensureAlpha().extract({
+        left: (index % clip.columns) * cellWidth,
+        top: Math.floor(index / clip.columns) * cellHeight,
+        width: cellWidth,
+        height: cellHeight,
+      }).png().toBuffer();
+      const faceCanvas = await sharp({ create: { width: cellWidth, height: cellHeight, channels: 4, background: "#00000000" } })
+        .composite([
+          { input: cropped, left: visibleLeft, top: visibleTop },
+          { input: maskCell, blend: "dest-in", left: 0, top: 0 },
+        ])
+        .png().toBuffer();
+      composed = composed.composite([{ input: faceCanvas, left: 0, top: 0 }]);
+    } else {
+      composed = composed.composite([{ input: cropped, left: visibleLeft, top: visibleTop }]);
+    }
   }
   if (input.edge) {
     composed = sharp(await composed.png().toBuffer()).resize(input.edge, input.edge, { fit: "inside", withoutEnlargement: true });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import v3Fixture from "@/fixtures/sticker-document-v3.json";
 import v4Fixture from "@/fixtures/sticker-document-v4.json";
+import spriteFixture from "@/fixtures/sticker-document-v5-sprite.json";
 import {
   clientDocumentVersion,
   CURRENT_DOCUMENT_VERSION,
@@ -151,6 +152,20 @@ describe("clientDocumentVersion", () => {
 
   it("clamps a client claiming a version we do not write yet", () => {
     expect(clientDocumentVersion(headers("99"))).toBe(CURRENT_DOCUMENT_VERSION);
+  });
+});
+
+describe("downcastForClient with masked sprites", () => {
+  it("serves a correctly composited poster to a v6 client", () => {
+    const document = StickerDocumentSchema.parse(spriteFixture);
+    const sprite = document.layers.find((layer) => layer.type === "sprite");
+    if (!sprite || sprite.type !== "sprite") throw new Error("missing sprite fixture");
+    sprite.clips[0].faceCompositing = "masked";
+    sprite.clips[0].faceMaskAssetId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const result = downcastForClient(document, 6) as { version: number; layers: Array<{ type: string; assetId?: string }> };
+    expect(result.version).toBe(6);
+    expect(result.layers[0]).toMatchObject({ type: "image", assetId: sprite.posterAssetId });
+    expect(result.layers.some((layer) => layer.type === "sprite")).toBe(false);
   });
 });
 

@@ -222,8 +222,9 @@ export class MockAiProvider implements AiProvider {
    */
   /** The mock's sheets are drawn to spec by construction, so there is never anything to reject. */
   async inspectSpriteSheet(input: AiSheetInspectionContext): Promise<AiSheetInspection> {
-    void input;
-    return { ok: true };
+    return input.kind === "clips" && input.faceCompositing === "masked"
+      ? { ok: true, faceFrames: Array.from({ length: input.sheet.count }, () => ({ faceX: 0.5, faceY: 0.42, faceSize: 0.3 })) }
+      : { ok: true };
   }
 
   async generateStickerVideo(): Promise<AiVideoOutput> {

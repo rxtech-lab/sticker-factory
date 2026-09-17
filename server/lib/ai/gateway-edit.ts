@@ -25,6 +25,14 @@ export async function editSticker(
   // the SDK converts every `execute` throw into a tool-error part and keeps going, so the loop has
   // to be stopped from the outside and the real error rethrown after it unwinds.
   let fatal: unknown;
+  // The SDK may execute independent tool calls from one model step in parallel. Edits stack, so
+  // serialize every mutation against the result of the previous one.
+  let editQueue: Promise<void> = Promise.resolve();
+  const serialize = <T>(run: () => Promise<T>): Promise<T> => {
+    const result = editQueue.then(run, run);
+    editQueue = result.then(() => undefined, () => undefined);
+    return result;
+  };
   const viewable = await viewableReferences(input.references);
 
   const toolError = (error: unknown): never => {
@@ -35,7 +43,7 @@ export async function editSticker(
     throw new Error(describeToolError(error));
   };
 
-  const guard = async (run: () => Promise<EditDraftState>) => {
+  const guard = async (run: () => Promise<EditDraftState>) => serialize(async () => {
     try {
       const landed = await run();
       state = { revision: landed.revision, finalized: false };
@@ -48,7 +56,7 @@ export async function editSticker(
     } catch (error) {
       return toolError(error);
     }
-  };
+  });
 
   const tools = {
     ...createWebTools(),
@@ -72,8 +80,11 @@ export async function editSticker(
         "upsertVariants, and removeVariantIds. Omitted definitions survive. An upsert replaces the",
         "whole definition with that id: preserve other bindings when extending an existing variant.",
         "Add a layer and its controls in one call. Variant layer patches can bind text (native text",
-        "layers only), hidden, animations, source, clip, or expression. Every choice family must",
-        "cover every option and bind the same properties. For captions linked to pose AND mood,",
+        "layers only), hidden, animations, anchor, source, clip, or expression; layerOrder is the",
+        "complete back-to-front list for option-specific stacking. Every choice family must cover",
+        "every option and bind the same properties. Use source kind base for unchanged artwork,",
+        "animations [] for still, and the current anchor/order for unchanged placement or stacking.",
+        "Never send an empty layer binding. For captions linked to pose AND mood,",
         "use a complete combined table for the caption while keeping the sprite's own bindings.",
         "For a caption selector create a choice control with text variants. For a visibility",
         "switch use a toggle with layerIds. Keep all existing control and option ids.",
@@ -154,6 +165,21 @@ export async function editSticker(
         .strict(),
       execute: async (value) => guard(() => session.addImageLayer(value)),
     }),
+    ...(input.document?.layers.some((layer) => layer.type === "sprite")
+      ? {
+        repair_sprite_faces: tool({
+          description: [
+            "Repair a sprite whose selected facial expression paints over a hand, cup, instrument,",
+            "or other object crossing its face. This recovers masks from the sprite's retained raw",
+            "sheets, preserves the character artwork and controls, and returns a reviewable draft.",
+            "Call it once for the affected sprite layer. If the source sheet predates repair support,",
+            "report the tool's revised-plan instruction instead of retrying the unchanged call.",
+          ].join(" "),
+          inputSchema: z.object({ layerId: z.string().min(1).max(64) }).strict(),
+          execute: async (value) => guard(() => session.repairSpriteFaces(value)),
+        }),
+      }
+      : {}),
     // Absent from a static sticker's tool set rather than present and refusing: a clip is frames,
     // and the document contract will not hold more than one of them in a static document. The
     // project's kind is fixed when it is created and no edit can change it, so a tool the model

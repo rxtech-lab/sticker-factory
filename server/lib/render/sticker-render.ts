@@ -296,11 +296,12 @@ async function compositeSpriteCells(
     const tile = spriteExpressionTile(layer);
     const atlas = assets.get(clip.assetId);
     const sheet = assets.get(layer.expressions.assetId);
+    const mask = clip.faceMaskAssetId ? assets.get(clip.faceMaskAssetId) : undefined;
     if (!atlas || !sheet) return;
     const indices = new Set(times.map((time) => spriteFrameIndex(clip.frames, time)));
     try {
       await Promise.all([...indices].map(async (index) => {
-        const bytes = await compositeSpriteFrame({ atlas: atlas.bytes, clip, index, sheet: sheet.bytes, tile, edge: cellEdge });
+        const bytes = await compositeSpriteFrame({ atlas: atlas.bytes, clip, index, sheet: sheet.bytes, tile, maskAtlas: mask?.bytes, edge: cellEdge });
         into.set(spriteCellKey(layer.id, clip.id, index, layer.expressionId), { bytes, mimeType: "image/png" });
       }));
       traceEvent("render:sprite:composited", { layerId: layer.id, clipId: clip.id, expressionId: layer.expressionId, cells: indices.size });

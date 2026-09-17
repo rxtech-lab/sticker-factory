@@ -12,6 +12,9 @@ import TipKit
 struct PlanEditorSheet: View {
     let record: PlanRecord
     var focus: PlanEditorFocus = .layers
+    /// What the server says this edit may spend. Nil until the app has heard, and nil disables
+    /// nothing: the save is refused server-side if it is over.
+    var limits: ConfigurationLimits?
     let onSave: (PlanEdit, PosePreset?) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -19,11 +22,19 @@ struct PlanEditorSheet: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    init(record: PlanRecord, focus: PlanEditorFocus = .layers, onSave: @escaping (PlanEdit, PosePreset?) async throws -> Void) {
+    init(
+        record: PlanRecord,
+        focus: PlanEditorFocus = .layers,
+        limits: ConfigurationLimits? = nil,
+        onSave: @escaping (PlanEdit, PosePreset?) async throws -> Void
+    ) {
         self.record = record
         self.focus = focus
+        self.limits = limits
         self.onSave = onSave
-        _model = State(initialValue: PlanEditorModel(plan: record.plan))
+        var model = PlanEditorModel(plan: record.plan)
+        model.limits = limits
+        _model = State(initialValue: model)
     }
 
     private var edit: PlanEdit { model.edit() }
@@ -51,7 +62,8 @@ struct PlanEditorSheet: View {
                             StickerConfigurationEditor(
                                 configuration: $model.configuration,
                                 layers: model.layers.map { .init(id: $0.layerId, name: $0.name, sprite: $0.sprite) },
-                                planned: true
+                                planned: true,
+                                limits: limits
                             )
                         }
                         if let message = model.validationMessage { NoticeBanner(message: message) }
@@ -161,7 +173,8 @@ struct PlanEditorSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             PosterSectionHeader(
                 title: String(localized: "Layers"),
-                subtitle: String(localized: "\(model.layers.count) of \(PlanEditorModel.layerLimit)"),
+                subtitle: model.limits.map { String(localized: "\(model.layers.count) of \($0.planLayers)") }
+                    ?? String(localized: "\(model.layers.count) layers"),
                 highlight: AppColors.peach
             )
             if model.isAnimated, model.layers.contains(where: { $0.sprite != nil && $0.source == .keep }) {
@@ -191,7 +204,7 @@ struct PlanEditorSheet: View {
                 PosterMenuLabel("Add layer", icon: .add).frame(maxWidth: .infinity)
             }
             .buttonStyle(.posterSecondary)
-            .disabled(model.layers.count >= PlanEditorModel.layerLimit)
+            .disabled(model.limits.map { model.layers.count >= $0.planLayers } ?? false)
             .accessibilityIdentifier("plan-editor-add-layer")
         }
     }

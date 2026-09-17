@@ -120,6 +120,13 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     private var creationCatalogChanged = false
     private var createdChatMessages: [String: [ChatMessage]] = [:]
 
+    /// The budget the UI tests edit against. Mirrors the server's own numbers rather than
+    /// inventing looser ones, so a test that walks into a cap sees the cap the app ships with.
+    func configurationLimits() async throws -> ConfigurationLimits {
+        .init(controls: 16, controlOptions: 8, controlOptionsMinimum: 2,
+              variants: 128, layerCombinations: 64, preparedStates: 256, planLayers: 12)
+    }
+
     func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog {
         catalogAttempts += 1
         if ProcessInfo.processInfo.arguments.contains("--ui-creation-catalog-failure"), catalogAttempts == 1 {

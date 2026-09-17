@@ -251,6 +251,54 @@ describe("durable sticker workflow: composition", () => {
     await close();
   }, 30_000);
 
+  it("serializes concurrent image edits and reuses artwork after a rejected repeat", async () => {
+    const { db, close } = await createTestDatabase();
+    setDatabaseForTests(db);
+    setObjectStoreForTests(new MemoryObjectStore());
+    process.env.STICKER_FACTORY_MOCK_SERVICES = "true";
+    await db.insert(users).values({ id: "owner-serial", createdAt: new Date(), updatedAt: new Date() });
+    const mockProvider = getAiProvider();
+    const sticker = await createSticker(db, "owner-serial", { title: "Bot", kind: "static", prompt: "Robot", referenceAssetIds: [] });
+    const baseTurn = await createChatTurn(db, "owner-serial", sticker.stickerId, {
+      text: "Robot", intent: "generate", attachments: [], imagePlacement: "replace",
+    });
+    await stickerGenerationWorkflow(baseTurn.jobId);
+    await acceptRevision(db, "owner-serial", sticker.stickerId, baseTurn.jobId);
+
+    let generated = 0;
+    let repeatedError = "";
+    setAiProviderForTests({
+      ...unusedAiProvider,
+      selectImageReferences: mockProvider.selectImageReferences.bind(mockProvider),
+      generateStickerImage: async (input) => {
+        generated += 1;
+        return mockProvider.generateStickerImage(input);
+      },
+      showSticker: async () => "Added the mug.",
+      async editSticker(_input, session) {
+        const results = await Promise.allSettled([
+          session.addImageLayer({ prompt: "One red mug", name: "Mug" }),
+          session.addImageLayer({ prompt: "One red mug", name: "Mug again" }),
+        ]);
+        const rejected = results.find((result) => result.status === "rejected");
+        if (rejected?.status === "rejected") repeatedError = String(rejected.reason?.message ?? rejected.reason);
+        const finalized = await session.finalizeEdit();
+        return { revision: finalized.revision, finalized: true };
+      },
+    });
+    const editTurn = await createChatTurn(db, "owner-serial", sticker.stickerId, {
+      text: "Add one red mug", intent: "edit", baseRevisionId: baseTurn.jobId, attachments: [], imagePlacement: "add",
+    });
+    expect((await stickerGenerationWorkflow(editTurn.jobId)).workflowStatus).toBe("succeeded");
+    expect(generated).toBe(1);
+    expect(repeatedError).toContain("already in the sticker");
+    const revision = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, editTurn.jobId)).then(firstRow);
+    const edited = StickerDocumentSchema.parse(revision!.documentJson);
+    expect(edited.layers.filter((layer) => layer.name === "Mug")).toHaveLength(1);
+    expect(new Set(edited.layers.map((layer) => layer.id)).size).toBe(edited.layers.length);
+    await close();
+  }, 30_000);
+
   it.each(["button", "chat-failed", "chat-cancelled"])("resumes the confirmed layered animation with %s and reuses completed parts", async (retryMode) => {
     const { db, close } = await createTestDatabase();
     const store = new MemoryObjectStore();

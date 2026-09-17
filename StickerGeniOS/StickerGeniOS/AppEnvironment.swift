@@ -160,6 +160,9 @@ final class AppEnvironment {
     }
 
     func start() async {
+        // Unauthenticated and needed by the plan editor whether or not the library loads, so it is
+        // asked for before anything else can decide not to.
+        store.loadConfigurationLimits()
         if isUITesting {
             subscription.refresh()
             await store.refresh()

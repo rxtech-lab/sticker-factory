@@ -112,6 +112,16 @@
         }
       }
     },
+    "%@ has %lld mood/pose combinations; at most %lld can be prepared. Drop an option from one of its controls." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has %2$lld mood/pose combinations; at most %3$lld can be prepared. Drop an option from one of its controls."
+          }
+        }
+      }
+    },
     "%@ installs" : {
       "localizations" : {
         "zh-CN" : {
@@ -374,6 +384,9 @@
 
     },
     "%lld generations remaining" : {
+
+    },
+    "%lld layers" : {
 
     },
     "%lld LAYERS" : {
@@ -758,6 +771,12 @@
           }
         }
       }
+    },
+    "A sticker can have at most %lld artwork rows." : {
+
+    },
+    "A sticker can have at most %lld controls." : {
+
     },
     "A sticker file is empty." : {
       "localizations" : {
@@ -1515,6 +1534,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "助理：%@"
+          }
+        }
+      }
+    },
+    "At most %lld states in total can be prepared, and these controls reach %lld. Reduce the number of options, or the number of configurable layers." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "At most %1$lld states in total can be prepared, and these controls reach %2$lld. Reduce the number of options, or the number of configurable layers."
           }
         }
       }
@@ -7803,6 +7832,9 @@
     "Rendering the sticker" : {
 
     },
+    "Repairing face overlap" : {
+
+    },
     "Reset" : {
       "localizations" : {
         "zh-CN" : {
@@ -9747,6 +9779,9 @@
           }
         }
       }
+    },
+    "Technical details" : {
+
     },
     "Telegram asks for the pack's name when it opens." : {
       "localizations" : {

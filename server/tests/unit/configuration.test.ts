@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { composeCreditHold, jobCreditHold } from "@/lib/subscription/pricing";
 import fixture from "@/fixtures/sticker-document-v5.json";
-import { StickerDocumentSchema, applyStickerOperationsV1, downcastForClient, documentRenderableLayers, resolveStickerConfiguration } from "@/lib/contracts/sticker";
+import { StickerDocumentSchema, applyStickerOperationsV1, downcastForClient, documentRenderableLayers, resolveStickerConfiguration, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { PlanV1Schema, applyPlanEdit, planGenerationCount } from "@/lib/contracts/plan";
 import { StickerConfigurationSchema } from "@/lib/contracts/configuration";
-import { configurationCoverage, configurationSelections } from "@/lib/contracts/configuration";
+import { configurationCoverage, configurationIssueDetails, configurationSelections } from "@/lib/contracts/configuration";
 import { validateGeneratedAtlas, configurationFromPlan } from "@/workflows/sticker-generation/configurable-artwork";
 
 const document = () => StickerDocumentSchema.parse(fixture);
@@ -35,7 +35,7 @@ describe("configurable document v5", () => {
     const legacy = downcastForClient(source, 4);
     expect(legacy).toMatchObject({ version: 4, layers: [{ assetId: "22222222-2222-4222-8222-222222222222" }, {}] });
     expect(legacy).not.toHaveProperty("configuration");
-    expect(StickerDocumentSchema.parse(legacy).version).toBe(6);
+    expect(StickerDocumentSchema.parse(legacy).version).toBe(7);
   });
   it.each(["coverage", "conflict", "asset", "layer", "default"])("rejects invalid %s before rendering", (failure) => {
     const source = structuredClone(fixture);
@@ -59,6 +59,45 @@ describe("configurable document v5", () => {
     const result = applyStickerOperationsV1(document(), [{ op: "removeLayer", layerId: "hero" }]);
     expect(result.configuration!.variants).toEqual([]);
     expect(result.configuration!.controls.map((control) => control.id)).toEqual(["sparkles", "speed"]);
+  });
+  it("resolves option placement before applying its complete stack order", () => {
+    const source = document();
+    for (const variant of source.configuration!.variants.filter((item) => "mood" in item.selections)) {
+      variant.layers[0].anchor = {
+        ...source.layers[0].anchor,
+        position: { x: variant.id === "sad" ? 0.72 : 0.3, y: 0.4 },
+      };
+      variant.layerOrder = ["spark", "hero"];
+    }
+    const parsed = StickerDocumentSchema.parse(source);
+    const resolved = resolveStickerConfiguration(parsed, { mood: "sad" });
+    expect(resolved.layers.map((layer) => layer.id)).toEqual(["spark", "hero"]);
+    expect(resolved.layers[1].anchor.position.x).toBe(0.72);
+  });
+  it("describes an empty option binding with ids, field, and a correction", () => {
+    const configuration = document().configuration!;
+    configuration.variants[0].layers[0] = { layerId: "hero" };
+    const issue = configurationIssueDetails(configuration, new Set(["hero", "spark"]))
+      .find((value) => value.field === "binding");
+    expect(issue).toMatchObject({ controlId: "mood", optionId: "happy", layerId: "hero", field: "binding" });
+    expect(issue?.correction).toContain("Choose artwork");
+  });
+  it("rejects an empty binding atomically and preserves the last valid document", () => {
+    const source = document();
+    const snapshot = structuredClone(source);
+    const operations: StickerOperationV1[] = [{
+      op: "updateConfiguration",
+      changes: { upsertVariants: [{ id: "happy", selections: { mood: "happy" }, layers: [{ layerId: "hero" }] }] },
+    }];
+    expect(() => applyStickerOperationsV1(source, operations)).toThrow(/Option mood=happy has no change for layer hero/);
+    expect(source).toEqual(snapshot);
+    const invalid = structuredClone(source);
+    invalid.configuration!.variants[0].layers[0] = { layerId: "hero" };
+    const parsed = StickerDocumentSchema.safeParse(invalid);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]).toMatchObject({
+      params: { controlId: "mood", optionId: "happy", layerId: "hero", field: "binding" },
+    });
   });
 
   /**

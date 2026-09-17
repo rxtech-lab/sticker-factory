@@ -5,6 +5,7 @@ import os
 
 nonisolated protocol StickerAPIClientProtocol: Sendable {
     func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog
+    func configurationLimits() async throws -> ConfigurationLimits
     func listStickers(cursor: String?) async throws -> Page<Sticker>
     func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker>
     /// The owner's published stickers, paged, and optionally narrowed by a title query.
@@ -73,6 +74,7 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
 
 extension StickerAPIClientProtocol {
     func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog { throw StickerAPIError.invalidResponse }
+    func configurationLimits() async throws -> ConfigurationLimits { throw StickerAPIError.invalidResponse }
 }
 
 nonisolated enum PackSort: String, Sendable, CaseIterable { case recent, popular }
@@ -91,6 +93,23 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     /// body verbatim — which is the entire point, since the alternative is a banner that says an
     /// operation could not be completed and nothing anywhere that says why.
     nonisolated static let networkLog = Logger(subsystem: "app.rxlab.sticker-factory", category: "api")
+
+    /// The configuration budget. The editor writes none of these numbers down, so this is the only
+    /// way it learns them — and the cache is what keeps a cold start on a dead network from
+    /// silencing an editor that worked yesterday.
+    func configurationLimits() async throws -> ConfigurationLimits {
+        let cacheKey = "configuration-limits.v1.\(baseURL.absoluteString)"
+        do {
+            let limits: ConfigurationLimits = try await send(path: "api/v1/configuration-limits")
+            let validated = try limits.validated()
+            if let data = try? JSONEncoder().encode(validated) { UserDefaults.standard.set(data, forKey: cacheKey) }
+            return validated
+        } catch {
+            if let data = UserDefaults.standard.data(forKey: cacheKey),
+               let cached = try? JSONDecoder().decode(ConfigurationLimits.self, from: data).validated() { return cached }
+            throw error
+        }
+    }
 
     func creationPresets(refresh: Bool = false) async throws -> CreationPresetCatalog {
         let cacheKey = "creation-presets.v1.\(baseURL.absoluteString)"

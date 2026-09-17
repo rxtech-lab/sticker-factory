@@ -117,7 +117,7 @@ struct AnimatedEditorStage: View {
     /// second at an unchanging `scrubDocumentTime`, so pressing play swapped the icon and animated
     /// nothing.
     private var artwork: some View {
-        AnimatedIconFrame(document: editor.document, documentTime: editor.scrubDocumentTime, assets: assets)
+        AnimatedIconFrame(document: editor.displayDocument, documentTime: editor.scrubDocumentTime, assets: assets)
     }
 
     /// Advances the playhead while playing.
@@ -144,7 +144,7 @@ struct AnimatedEditorStage: View {
             let local = CGPoint(x: value.location.x - rect.minX, y: value.location.y - rect.minY)
             editor.selectedLayerID = AnimatedCanvasGeometry.hitTest(
                 local,
-                document: editor.document,
+                document: editor.displayDocument,
                 atDocumentTime: editor.scrubDocumentTime,
                 in: rect
             )
@@ -164,13 +164,13 @@ struct AnimatedEditorStage: View {
             let local = CGPoint(x: value.location.x - rect.minX, y: value.location.y - rect.minY)
             let hit = AnimatedCanvasGeometry.hitTest(
                 local,
-                document: editor.document,
+                document: editor.displayDocument,
                 atDocumentTime: editor.scrubDocumentTime,
                 in: rect
             )
             editor.selectedLayerID = hit
             editor.selectedKeyframe = nil
-            guard let hit, editor.document.layer(id: hit)?.isText == true else {
+            guard let hit, editor.displayDocument.layer(id: hit)?.isText == true else {
                 endTextEditing()
                 return
             }
@@ -295,7 +295,7 @@ struct AnimatedEditorStage: View {
     /// can move under a drag (playback, or a scrub with a second finger), and a gesture that
     /// re-sampled its own starting values would fold the layer's animation into the drag.
     private func resolveDrag(startingAt location: CGPoint, in rect: CGRect) -> StageDrag? {
-        guard let id = editor.selectedLayerID, let layer = editor.document.layer(id: id) else { return nil }
+        guard let id = editor.selectedLayerID, let layer = editor.displayDocument.layer(id: id) else { return nil }
         let state = AnimationInterpolator.state(for: layer, atDocumentTime: editor.scrubDocumentTime)
         let local = CGPoint(x: location.x - rect.minX, y: location.y - rect.minY)
         if let handle = AnimatedCanvasGeometry.handleHitTest(local, layer: layer, state: state, in: rect) {
@@ -357,7 +357,7 @@ struct AnimatedEditorStage: View {
     }
 
     private func currentState(_ id: String) -> AnimatedLayerState? {
-        editor.document.layer(id: id).map {
+        editor.displayDocument.layer(id: id).map {
             AnimationInterpolator.state(for: $0, atDocumentTime: editor.scrubDocumentTime)
         }
     }

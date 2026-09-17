@@ -1,11 +1,45 @@
 import { z } from "zod";
 import { AnimationSpecV1Schema } from "./animation";
+import { LayerAnchorV1Schema } from "./layers";
+
+/**
+ * The configuration budget.
+ *
+ * Every number here is served to the app over `GET /api/v1/configuration-limits`, and nothing is
+ * written down on the device: raising a cap is a deploy rather than an App Store release, and an
+ * app that has not reached the server yet enforces nothing and lets the server refuse the plan.
+ */
+/** Controls one configuration can declare. Sixteen rather than eight: a cast of four characters
+ *  needs a pose and a mood each before it has spent anything on speed or on hiding an accessory. */
+export const MAX_CONTROLS = 16;
+/** Options one choice control can offer, and the fewest that still make it a choice. */
+export const MAX_CONTROL_OPTIONS = 8;
+export const MIN_CONTROL_OPTIONS = 2;
+/** Rows in the variant table. A hundred and twenty-eight, to stay reachable at the control ceiling:
+ *  sixteen controls at eight options each is exactly that many rows, and eight characters with four
+ *  moods and four poses apiece is sixty-four. At 64 the raised control cap would be unusable at its
+ *  top end. */
+export const MAX_VARIANTS = 128;
+/** States one configurable layer can be prepared in — the old whole-sticker cap, now per character. */
+export const MAX_LAYER_COMBINATIONS = 64;
+/** Every layer's states added up: what bounds the validation, publication, and review passes. */
+export const MAX_PREPARED_STATES = 256;
+
+/** The budget as the app is told it, and the only place the app learns any of these numbers. */
+export const CONFIGURATION_LIMITS = {
+  controls: MAX_CONTROLS,
+  controlOptions: MAX_CONTROL_OPTIONS,
+  controlOptionsMinimum: MIN_CONTROL_OPTIONS,
+  variants: MAX_VARIANTS,
+  layerCombinations: MAX_LAYER_COMBINATIONS,
+  preparedStates: MAX_PREPARED_STATES,
+} as const;
 
 const ID = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const Label = z.string().trim().min(1).max(80);
 export const StickerControlSchema = z.discriminatedUnion("type", [
   z.object({ id: ID, label: Label, type: z.literal("choice"), defaultValue: ID,
-    options: z.array(z.object({ id: ID, label: Label }).strict()).min(2).max(8) }).strict(),
+    options: z.array(z.object({ id: ID, label: Label }).strict()).min(MIN_CONTROL_OPTIONS).max(MAX_CONTROL_OPTIONS) }).strict(),
   z.object({ id: ID, label: Label, type: z.literal("number"), binding: z.literal("speed"),
     defaultValue: z.number().min(0.25).max(2), minimum: z.number().min(0.25).max(2),
     maximum: z.number().min(0.25).max(2), step: z.number().min(0.01).max(1) }).strict(),
@@ -37,14 +71,14 @@ export const PlannedVariantSourceSchema = z.discriminatedUnion("kind", [
 
 function configurationSchema<T extends z.ZodType>(source: T) {
   return z.object({
-    // Sixteen rather than eight: a cast of four characters needs a pose and a mood each before it
-    // has spent anything on speed or on hiding an accessory.
-    controls: z.array(StickerControlSchema).min(1).max(16),
+    controls: z.array(StickerControlSchema).min(1).max(MAX_CONTROLS),
     variants: z.array(z.object({
       id: ID,
       selections: z.record(ID, ID),
       layers: z.array(z.object({ layerId: ID, source: source.optional(),
         animations: z.array(AnimationSpecV1Schema).max(12).optional(),
+        /** Resting placement for this option. Motion compiles from this anchor after resolution. */
+        anchor: LayerAnchorV1Schema.optional(),
         /** For a sprite layer: which body clip plays. A pose control binds this. */
         clip: ID.optional(),
         /** For a sprite layer: which face is drawn into every frame's slot. A mood control binds this. */
@@ -52,10 +86,9 @@ function configurationSchema<T extends z.ZodType>(source: T) {
         text: z.string().min(1).max(160).optional(),
         hidden: z.boolean().optional(),
       }).strict()).min(1).max(32),
-      // A hundred and twenty-eight, to stay reachable at the control ceiling: sixteen controls at
-      // eight options each is exactly that many rows, and eight characters with four moods and four
-      // poses apiece is sixty-four. At 64 the raised control cap would be unusable at its top end.
-    }).strict()).max(128),
+      /** Complete back-to-front layer order for this option. */
+      layerOrder: z.array(ID).min(1).max(32).optional(),
+    }).strict()).max(MAX_VARIANTS),
   }).strict();
 }
 
@@ -63,10 +96,10 @@ export const StickerConfigurationSchema = configurationSchema(RuntimeVariantSour
 export const PlanConfigurationSchema = configurationSchema(PlannedVariantSourceSchema);
 function changesSchema<T extends z.ZodType>(configuration: ReturnType<typeof configurationSchema<T>>) {
   return z.object({
-    upsertControls: z.array(StickerControlSchema).max(16).optional(),
-    removeControlIds: z.array(ID).max(16).optional(),
+    upsertControls: z.array(StickerControlSchema).max(MAX_CONTROLS).optional(),
+    removeControlIds: z.array(ID).max(MAX_CONTROLS).optional(),
     upsertVariants: configuration.shape.variants.optional(),
-    removeVariantIds: z.array(ID).max(128).optional(),
+    removeVariantIds: z.array(ID).max(MAX_VARIANTS).optional(),
   }).strict();
 }
 export const ConfigurationChangesSchema = changesSchema(StickerConfigurationSchema);
@@ -105,11 +138,21 @@ export function requiresConfigurationV6(configuration?: Configuration): boolean 
   return configuration?.variants.some((variant) => variant.layers.some((layer) => layer.text !== undefined || layer.hidden !== undefined)) ?? false;
 }
 
-/** States one configurable layer can be prepared in — the old whole-sticker cap, now per character. */
-export const MAX_LAYER_COMBINATIONS = 64;
+/** Placement and stacking were added in document v7. */
+export function requiresConfigurationV7(configuration?: Configuration): boolean {
+  return configuration?.variants.some((variant) => variant.layerOrder !== undefined
+    || variant.layers.some((layer) => layer.anchor !== undefined)) ?? false;
+}
 
-/** Every layer's states added up: what bounds the validation, publication, and review passes. */
-export const MAX_PREPARED_STATES = 128;
+export type ConfigurationIssue = {
+  message: string;
+  path: Array<string | number>;
+  controlId?: string;
+  optionId?: string;
+  layerId?: string;
+  field?: string;
+  correction?: string;
+};
 
 /**
  * How many states the planner's vision pass will actually look at.
@@ -122,35 +165,36 @@ export const MAX_PREPARED_STATES = 128;
 export const MAX_REVIEWED_STATES = 8;
 
 /** A complete table per group of choice controls, with disjoint properties between groups. */
-export function configurationIssues(configuration: Configuration, layerIds: Set<string>): string[] {
-  const issues: string[] = [];
+export function configurationIssueDetails(configuration: Configuration, layerIds: Set<string>): ConfigurationIssue[] {
+  const issues: ConfigurationIssue[] = [];
+  const add = (message: string, issue: Omit<ConfigurationIssue, "message"> = { path: [] }) => issues.push({ message, ...issue });
   const controls = new Map(configuration.controls.map((control) => [control.id, control]));
-  if (controls.size !== configuration.controls.length) issues.push("Control ids must be unique");
+  if (controls.size !== configuration.controls.length) add("Control ids must be unique");
   if (new Set(configuration.variants.map((variant) => variant.id)).size !== configuration.variants.length) {
-    issues.push("Variant ids must be unique");
+    add("Variant ids must be unique");
   }
   const usedChoices = new Set<string>();
   const properties = new Map<string, string>();
   const claim = (property: string, family: string) => {
     const previous = properties.get(property);
-    if (previous && previous !== family) issues.push(`Conflicting bindings for ${property}; combine the choices in one complete variant table`);
+    if (previous && previous !== family) add(`Conflicting bindings for ${property}; combine the choices in one complete variant table`);
     properties.set(property, family);
   };
   for (const control of controls.values()) {
     if (control.type === "choice") {
       const options = new Set(control.options.map((option) => option.id));
       if (options.size !== control.options.length || !options.has(control.defaultValue)) {
-        issues.push(`Control ${control.id} needs unique options and an existing default`);
+        add(`Control ${control.id} needs unique options and an existing default`, { path: ["controls"], controlId: control.id, correction: "Give every option a unique id and select one of them as the default." });
       }
     } else if (control.type === "number") {
       if (control.minimum >= control.maximum || control.defaultValue < control.minimum || control.defaultValue > control.maximum) {
-        issues.push(`Control ${control.id} has an invalid numeric range or default`);
+        add(`Control ${control.id} has an invalid numeric range or default`, { path: ["controls"], controlId: control.id });
       }
       claim("document.speed", control.id);
     } else {
-      if (new Set(control.layerIds).size !== control.layerIds.length) issues.push(`Control ${control.id} repeats a layer`);
+      if (new Set(control.layerIds).size !== control.layerIds.length) add(`Control ${control.id} repeats a layer`, { path: ["controls"], controlId: control.id });
       for (const id of control.layerIds) {
-        if (!layerIds.has(id)) issues.push(`Unknown configurable layer ${id}`);
+        if (!layerIds.has(id)) add(`Unknown configurable layer ${id}`, { path: ["controls"], controlId: control.id, layerId: id });
         claim(`${id}.hidden`, control.id);
       }
     }
@@ -161,44 +205,53 @@ export function configurationIssues(configuration: Configuration, layerIds: Set<
   let prepared = 0;
   for (const [layerId, count] of configurationLayerCombinations(configuration)) {
     if (count > MAX_LAYER_COMBINATIONS) {
-      issues.push(`Character ${layerId} has ${count} mood/pose combinations; at most ${MAX_LAYER_COMBINATIONS} can be prepared. `
-        + "Drop an option from one of its controls.");
+      add(`Character ${layerId} has ${count} mood/pose combinations; at most ${MAX_LAYER_COMBINATIONS} can be prepared. `
+        + "Drop an option from one of its controls.", { path: ["controls"], layerId });
     }
     prepared += count;
   }
   if (prepared > MAX_PREPARED_STATES) {
-    issues.push(`At most ${MAX_PREPARED_STATES} states in total can be prepared, and these controls reach ${prepared}. `
+    add(`At most ${MAX_PREPARED_STATES} states in total can be prepared, and these controls reach ${prepared}. `
       + "Reduce the number of options, or the number of configurable layers.");
   }
   const families = new Map<string, { count: number; expected: number; selections: Set<string>; targets: string }>();
-  for (const variant of configuration.variants) {
+  for (const [variantIndex, variant] of configuration.variants.entries()) {
     const axes = Object.keys(variant.selections).sort();
     const family = axes.join("|");
     let expected = 1;
-    if (!axes.length) issues.push(`Variant ${variant.id} needs a choice selection`);
+    if (!axes.length) add(`Variant ${variant.id} needs a choice selection`, { path: ["variants", variantIndex, "selections"] });
     for (const axis of axes) {
       const control = controls.get(axis);
       if (control?.type !== "choice" || !control.options.some((option) => option.id === variant.selections[axis])) {
-        issues.push(`Variant ${variant.id} has an unknown choice ${axis}`);
+        add(`Variant ${variant.id} has an unknown choice ${axis}`, { path: ["variants", variantIndex, "selections", axis], controlId: axis, optionId: variant.selections[axis] });
       } else {
         usedChoices.add(axis);
         expected *= control.options.length;
       }
     }
     const targets: string[] = [];
-    for (const layer of variant.layers) {
-      if (!layerIds.has(layer.layerId)) issues.push(`Unknown configurable layer ${layer.layerId}`);
-      if (!layer.source && layer.animations === undefined && layer.clip === undefined && layer.expression === undefined && layer.text === undefined && layer.hidden === undefined) {
-        issues.push(`Variant ${variant.id} has an empty layer binding`);
+    for (const [layerIndex, layer] of variant.layers.entries()) {
+      if (!layerIds.has(layer.layerId)) add(`Unknown configurable layer ${layer.layerId}`, { path: ["variants", variantIndex, "layers", layerIndex, "layerId"], layerId: layer.layerId });
+      if (!layer.source && layer.animations === undefined && layer.anchor === undefined && layer.clip === undefined && layer.expression === undefined && layer.text === undefined && layer.hidden === undefined) {
+        const selected = axes.map((id) => `${id}=${variant.selections[id]}`).join(", ");
+        add(`Option ${selected || variant.id} has no change for layer ${layer.layerId}`, {
+          path: ["variants", variantIndex, "layers", layerIndex],
+          controlId: axes.length === 1 ? axes[0] : undefined,
+          optionId: axes.length === 1 ? variant.selections[axes[0]] : undefined,
+          layerId: layer.layerId,
+          field: "binding",
+          correction: "Choose artwork, motion, placement, visibility, text, pose, or expression; otherwise remove this layer from the option.",
+        });
       }
       if (layer.source) {
         targets.push(`${layer.layerId}.source`);
         const source = layer.source;
         if ((source.kind === "sequence" || source.kind === "frames") && source.frameCount > source.columns * source.rows) {
-          issues.push(`Variant ${variant.id} has more frames than atlas cells`);
+          add(`Variant ${variant.id} has more frames than atlas cells`, { path: ["variants", variantIndex, "layers", layerIndex, "source"] });
         }
       }
       if (layer.animations !== undefined) targets.push(`${layer.layerId}.animations`);
+      if (layer.anchor !== undefined) targets.push(`${layer.layerId}.anchor`);
       // Clip and expression are separate properties on purpose: that is what lets a mood control and
       // a pose control act on the same character without a combined table of every pairing.
       if (layer.clip !== undefined) targets.push(`${layer.layerId}.clip`);
@@ -206,24 +259,38 @@ export function configurationIssues(configuration: Configuration, layerIds: Set<
       if (layer.text !== undefined) targets.push(`${layer.layerId}.text`);
       if (layer.hidden !== undefined) targets.push(`${layer.layerId}.hidden`);
     }
-    if (new Set(targets).size !== targets.length) issues.push(`Variant ${variant.id} binds a property twice`);
+    if (variant.layerOrder !== undefined) {
+      const order = variant.layerOrder;
+      if (order.length !== layerIds.size || new Set(order).size !== order.length || order.some((id) => !layerIds.has(id))) {
+        add(`Variant ${variant.id} must list every layer exactly once in layerOrder`, {
+          path: ["variants", variantIndex, "layerOrder"], field: "layerOrder",
+          correction: "List all layer ids once, from back to front.",
+        });
+      }
+      targets.push("document.layerOrder");
+    }
+    if (new Set(targets).size !== targets.length) add(`Variant ${variant.id} binds a property twice`, { path: ["variants", variantIndex, "layers"] });
     targets.forEach((target) => claim(target, `choices:${family}`));
     const targetKey = targets.sort().join("|");
     const entry = families.get(family) ?? { count: 0, expected, selections: new Set<string>(), targets: targetKey };
-    if (entry.targets !== targetKey) issues.push(`Every option in ${family} must bind the same properties`);
+    if (entry.targets !== targetKey) add(`Every option in ${family} must bind the same properties`, { path: ["variants", variantIndex], correction: "Initialize this option from a valid sibling option, then change only the intended values." });
     const selectionKey = axes.map((axis) => variant.selections[axis]).join("|");
-    if (entry.selections.has(selectionKey)) issues.push(`Duplicate variant selection in ${family}`);
+    if (entry.selections.has(selectionKey)) add(`Duplicate variant selection in ${family}`, { path: ["variants", variantIndex, "selections"] });
     entry.selections.add(selectionKey);
     entry.count++;
     families.set(family, entry);
   }
   for (const [family, entry] of families) {
-    if (entry.count !== entry.expected) issues.push(`Incomplete variants for ${family}: expected ${entry.expected}, got ${entry.count}`);
+    if (entry.count !== entry.expected) add(`Incomplete variants for ${family}: expected ${entry.expected}, got ${entry.count}`);
   }
   for (const control of controls.values()) {
-    if (control.type === "choice" && !usedChoices.has(control.id)) issues.push(`Choice ${control.id} has no variants`);
+    if (control.type === "choice" && !usedChoices.has(control.id)) add(`Choice ${control.id} has no variants`, { path: ["controls"], controlId: control.id });
   }
   return issues;
+}
+
+export function configurationIssues(configuration: Configuration, layerIds: Set<string>): string[] {
+  return configurationIssueDetails(configuration, layerIds).map((issue) => issue.message);
 }
 
 export function normalizedControlValues(configuration: Configuration, values: StickerControlValues = {}): StickerControlValues {
@@ -332,8 +399,11 @@ export function configurationEditReviewSelections(before: Configuration | undefi
 /** Used by layer removal in both authoring paths; control identities otherwise stay unchanged. */
 export function configurationKeepingLayers<T extends Configuration>(configuration: T | undefined, layerIds: Set<string>): T | undefined {
   if (!configuration) return undefined;
-  const variants = configuration.variants.map((variant) => ({ ...variant, layers: variant.layers.filter((layer) => layerIds.has(layer.layerId)) }))
-    .filter((variant) => variant.layers.length > 0);
+  const variants = configuration.variants.map((variant) => ({
+    ...variant,
+    layers: variant.layers.filter((layer) => layerIds.has(layer.layerId)),
+    layerOrder: variant.layerOrder?.filter((id) => layerIds.has(id)),
+  })).filter((variant) => variant.layers.length > 0 || variant.layerOrder !== undefined);
   const axes = new Set(variants.flatMap((variant) => Object.keys(variant.selections)));
   const controls = configuration.controls.flatMap((control): StickerControl[] => {
     if (control.type === "choice") return axes.has(control.id) ? [control] : [];

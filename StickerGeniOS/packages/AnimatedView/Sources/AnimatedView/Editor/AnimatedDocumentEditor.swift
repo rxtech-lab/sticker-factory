@@ -18,6 +18,10 @@ public final class AnimatedDocumentEditor {
     public private(set) var document: AnimatedDocument
 
     public var selectedLayerID: String?
+    /// When set, canvas gestures and option controls write bindings into this variant instead of
+    /// changing the base sticker. The authored document remains intact; only the preview resolves.
+    public var activeVariantID: String?
+    public var previewControlValues: [String: AnimatedControlValue] = [:]
     /// The keyframe the timeline has selected, if any.
     public var selectedKeyframe: AnimatedKeyframeSelection?
 
@@ -117,7 +121,11 @@ public final class AnimatedDocumentEditor {
     // MARK: - Derived state
 
     public var selectedLayer: AnimatedLayer? {
-        selectedLayerID.flatMap { document.layer(id: $0) }
+        selectedLayerID.flatMap { displayDocument.layer(id: $0) }
+    }
+
+    public var displayDocument: AnimatedDocument {
+        (try? document.resolvingConfiguration(previewControlValues)) ?? document
     }
 
     public var canUndo: Bool { undoStack.canUndo }
@@ -183,6 +191,10 @@ public final class AnimatedDocumentEditor {
             selectedLayerID = nil
             selectedKeyframe = nil
         }
+        if let activeVariantID, next.configuration?.variants.contains(where: { $0.id == activeVariantID }) != true {
+            self.activeVariantID = nil
+            previewControlValues = [:]
+        }
         if let selection = selectedKeyframe,
            let layer = next.layer(id: selection.layerID),
            selection.index >= layer.animation.count(of: selection.channel) {
@@ -242,6 +254,10 @@ public final class AnimatedDocumentEditor {
     }
 
     public func moveLayer(id: String, toIndex index: Int) {
+        if activeVariantID != nil {
+            setOptionLayerOrder(moving: id, toIndex: index)
+            return
+        }
         apply("Reorder Layers") { try $0.movingLayer(id: id, toIndex: index) }
     }
 
@@ -250,6 +266,10 @@ public final class AnimatedDocumentEditor {
     }
 
     public func setHidden(_ hidden: Bool, forLayer id: String) {
+        if activeVariantID != nil {
+            setOptionHidden(hidden, forLayer: id)
+            return
+        }
         apply(hidden ? "Hide Layer" : "Show Layer") { try $0.settingHidden(hidden, forLayer: id) }
     }
 
@@ -265,18 +285,30 @@ public final class AnimatedDocumentEditor {
     // MARK: - Canvas edits
 
     public func setPosition(_ value: AnimatedPoint, forLayer id: String) {
+        if activeVariantID != nil {
+            setOptionAnchor(forLayer: id, name: "Move Option Layer") { $0.position = value }
+            return
+        }
         apply("Move Layer", coalescingKey: "position-\(id)") {
             try $0.applyingPosition(value, toLayer: id, atDocumentTime: scrubDocumentTime)
         }
     }
 
     public func setScale(_ value: AnimatedPoint, forLayer id: String) {
+        if activeVariantID != nil {
+            setOptionAnchor(forLayer: id, name: "Scale Option Layer") { $0.scale = value }
+            return
+        }
         apply("Scale Layer", coalescingKey: "scale-\(id)") {
             try $0.applyingScale(value, toLayer: id, atDocumentTime: scrubDocumentTime)
         }
     }
 
     public func setRotation(_ degrees: Double, forLayer id: String) {
+        if activeVariantID != nil {
+            setOptionAnchor(forLayer: id, name: "Rotate Option Layer") { $0.rotationDegrees = degrees }
+            return
+        }
         apply("Rotate Layer", coalescingKey: "rotation-\(id)") {
             try $0.applyingRotation(degrees, toLayer: id, atDocumentTime: scrubDocumentTime)
         }
@@ -410,6 +442,129 @@ public final class AnimatedDocumentEditor {
         let time = scrubDocumentTime
         apply(kind == .static ? "Convert to Still" : "Convert to Animation") {
             try $0.settingKind(kind, bakingAtDocumentTime: time)
+        }
+    }
+
+    // MARK: - Configurable options
+
+    public func selectVariant(_ id: String?) {
+        activeVariantID = id
+        guard let variant = document.configuration?.variants.first(where: { $0.id == id }) else {
+            previewControlValues = [:]
+            return
+        }
+        var values = document.configuration?.normalizedValues() ?? [:]
+        for (control, option) in variant.selections { values[control] = .string(option) }
+        previewControlValues = values
+    }
+
+    public func updateConfiguration(_ name: String = "Edit Controls", _ body: @escaping (inout AnimatedControlConfiguration?) -> Void) {
+        apply(name) { document in
+            var next = document
+            body(&next.configuration)
+            if next.configuration != nil { next.version = AnimatedDocument.currentVersion }
+            return next
+        }
+    }
+
+    private func optionEdit(
+        _ name: String,
+        layerID: String,
+        initialize: (AnimatedLayer) -> AnimatedVariantLayer,
+        mutate: @escaping (inout AnimatedVariantLayer) -> Void
+    ) {
+        guard let activeVariantID else { return }
+        apply(name) { document in
+            var next = document
+            guard var configuration = next.configuration,
+                  let selected = configuration.variants.firstIndex(where: { $0.id == activeVariantID }),
+                  let baseLayer = document.layer(id: layerID) else { return document }
+            let family = Set(configuration.variants[selected].selections.keys)
+            for variantIndex in configuration.variants.indices where Set(configuration.variants[variantIndex].selections.keys) == family {
+                if let patchIndex = configuration.variants[variantIndex].layers.firstIndex(where: { $0.layerId == layerID }) {
+                    var patch = configuration.variants[variantIndex].layers[patchIndex]
+                    let initial = initialize(baseLayer)
+                    // Adding a new property to one option adds an explicit value for every sibling
+                    // option in the family. This keeps the server's complete-table invariant while
+                    // preserving every binding the option already owns.
+                    if patch.source == nil { patch.source = initial.source }
+                    if patch.animations == nil { patch.animations = initial.animations }
+                    if patch.anchor == nil { patch.anchor = initial.anchor }
+                    if patch.clip == nil { patch.clip = initial.clip }
+                    if patch.expression == nil { patch.expression = initial.expression }
+                    if patch.text == nil { patch.text = initial.text }
+                    if patch.hidden == nil { patch.hidden = initial.hidden }
+                    if variantIndex == selected { mutate(&patch) }
+                    configuration.variants[variantIndex].layers[patchIndex] = patch
+                } else {
+                    var patch = initialize(baseLayer)
+                    if variantIndex == selected { mutate(&patch) }
+                    configuration.variants[variantIndex].layers.append(patch)
+                }
+            }
+            next.configuration = configuration
+            next.version = AnimatedDocument.currentVersion
+            return next
+        }
+    }
+
+    public func setOptionAnchor(forLayer id: String, name: String = "Place Option Layer", _ body: @escaping (inout AnimatedAnchor) -> Void) {
+        let current = displayDocument.layer(id: id)?.anchor
+        optionEdit(name, layerID: id, initialize: { .init(layerId: $0.id, anchor: $0.anchor) }, mutate: { patch in
+            var anchor = patch.anchor ?? current ?? .default
+            body(&anchor)
+            patch.anchor = anchor
+        })
+    }
+
+    public func setOptionHidden(_ hidden: Bool, forLayer id: String) {
+        optionEdit(hidden ? "Hide Option Layer" : "Show Option Layer", layerID: id,
+                   initialize: { .init(layerId: $0.id, hidden: $0.base.hidden) }, mutate: { $0.hidden = hidden })
+    }
+
+    public func setOptionAnimations(_ animations: [AnimationSpec], forLayer id: String) {
+        optionEdit("Change Option Motion", layerID: id,
+                   initialize: { .init(layerId: $0.id, animations: $0.base.animations) }, mutate: { $0.animations = animations })
+    }
+
+    public func setOptionArtwork(_ source: AnimatedVariantSource, forLayer id: String) {
+        optionEdit("Change Option Artwork", layerID: id,
+                   initialize: { .init(layerId: $0.id, source: .init(kind: .base)) }, mutate: { $0.source = source })
+    }
+
+    public func setOptionSpriteState(clip: String? = nil, expression: String? = nil, forLayer id: String) {
+        optionEdit("Change Character Option", layerID: id, initialize: { layer in
+            guard case .sprite(let sprite) = layer else { return .init(layerId: layer.id, hidden: layer.base.hidden) }
+            return .init(
+                layerId: layer.id,
+                clip: clip == nil ? nil : sprite.clipId,
+                expression: expression == nil ? nil : sprite.expressionId
+            )
+        }, mutate: { patch in
+            if let clip { patch.clip = clip }
+            if let expression { patch.expression = expression }
+        })
+    }
+
+    private func setOptionLayerOrder(moving id: String, toIndex index: Int) {
+        guard let activeVariantID else { return }
+        apply("Reorder Option Layers") { document in
+            var next = document
+            guard var configuration = next.configuration,
+                  let selected = configuration.variants.firstIndex(where: { $0.id == activeVariantID }) else { return document }
+            let family = Set(configuration.variants[selected].selections.keys)
+            let baseOrder = document.layers.map(\.id)
+            var selectedOrder = displayDocument.layers.map(\.id)
+            guard let old = selectedOrder.firstIndex(of: id) else { return document }
+            let moved = selectedOrder.remove(at: old)
+            selectedOrder.insert(moved, at: min(max(index, 0), selectedOrder.count))
+            for variantIndex in configuration.variants.indices where Set(configuration.variants[variantIndex].selections.keys) == family {
+                if configuration.variants[variantIndex].layerOrder == nil { configuration.variants[variantIndex].layerOrder = baseOrder }
+            }
+            configuration.variants[selected].layerOrder = selectedOrder
+            next.configuration = configuration
+            next.version = AnimatedDocument.currentVersion
+            return next
         }
     }
 

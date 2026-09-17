@@ -10,6 +10,7 @@ import Testing
 struct SpriteRenderingTests {
     private let clipID = "31111111-1111-4111-8111-111111111111"
     private let facesID = "33333333-3333-4333-8333-333333333333"
+    private let maskID = "35555555-5555-4555-8555-555555555555"
     private let cell = (width: 60, height: 90)
 
     private func context(width: Int, height: Int) -> CGContext {
@@ -40,6 +41,17 @@ struct SpriteRenderingTests {
         ctx.fill(CGRect(x: 8, y: 8, width: 24, height: 24))
         ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
         ctx.fill(CGRect(x: 48, y: 8, width: 24, height: 24))
+        return PlatformImage(animatedCGImage: ctx.makeImage()!)!
+    }
+
+    /// Only the upper half of the face slot is visible; the body below represents a foreground cup.
+    private func maskSheet() -> PlatformImage {
+        let ctx = context(width: cell.width * 3, height: cell.height * 2)
+        ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+        for index in 0..<6 {
+            let column = index % 3, row = index / 3
+            ctx.fill(CGRect(x: column * cell.width + 17, y: (1 - row) * cell.height + 58, width: 26, height: 14))
+        }
         return PlatformImage(animatedCGImage: ctx.makeImage()!)!
     }
 
@@ -110,6 +122,20 @@ struct SpriteRenderingTests {
         #expect(cache.frame(for: sprite, index: -1, assets: assets) == nil)
         // Only the sheets that are missing keep it from drawing: with both present it composes.
         #expect(cache.frame(for: sprite, index: 0, assets: assets) != nil)
+    }
+
+    @Test func aMaskKeepsForegroundBodyPixelsAboveTheExpression() throws {
+        var sprite = layer()
+        sprite.clips[0].faceCompositing = .masked
+        sprite.clips[0].faceMaskAssetId = maskID
+        let assets = AnimatedAssetDictionary(images: [
+            clipID: bodySheet(), facesID: faceSheet(), maskID: maskSheet()
+        ])
+        let frame = try #require(SpriteFrameCache().frame(for: sprite, index: 2, assets: assets)?.animatedCGImage)
+        #expect(swatch(pixel(frame, x: 30, y: 22)) == "green")
+        #expect(swatch(pixel(frame, x: 30, y: 36)) == "blue")
+        #expect(sprite.base.id == "hero")
+        #expect(sprite.currentClip.faceMaskAssetId == maskID)
     }
 
     @Test func documentWalksTheClipOnItsOwnClock() throws {

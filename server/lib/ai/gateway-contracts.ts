@@ -86,6 +86,7 @@ export interface AiSheetInspectionContext {
   /** The plan's `face` region, when the sprite has one. */
   face?: string;
   sheet: { columns: number; rows: number; count: number };
+  faceCompositing?: "overlay" | "masked";
   image: AiReferenceImage;
   /** Expression labels in cell order, for `expressions` sheets. */
   expressions?: string[];
@@ -93,7 +94,9 @@ export interface AiSheetInspectionContext {
   faceGuide?: AiReferenceImage;
 }
 
-export type AiSheetInspection = { ok: true } | { ok: false; problems: string[] };
+export type AiSheetInspection =
+  | { ok: true; faceFrames?: Array<{ faceX: number; faceY: number; faceSize: number }> }
+  | { ok: false; problems: string[]; faceFrames?: Array<{ faceX: number; faceY: number; faceSize: number }> };
 
 export interface AiImageOutput {
   bytes: Uint8Array;
@@ -553,6 +556,8 @@ export interface EditDraftingSession extends RenderableSession {
     scaleX?: number;
     scaleY?: number;
   }): Promise<EditDraftState>;
+  /** Recovers foreground-safe face masks from retained raw sprite sheets. No image generation. */
+  repairSpriteFaces(input: { layerId: string }): Promise<EditDraftState>;
   /**
    * Animates one image layer into a generated clip, replacing it with a `video` layer in place.
    *

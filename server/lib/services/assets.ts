@@ -178,17 +178,25 @@ export async function ensureSpritePoster(
   ownerId: string,
   stickerId: string,
   sprite: {
-    clip: { assetId: string; columns: number; rows: number; frames: readonly { faceX: number; faceY: number; faceSize: number }[] };
+    clip: { assetId: string; columns: number; rows: number; frames: readonly { faceX: number; faceY: number; faceSize: number }[]; faceCompositing?: "overlay" | "masked"; faceMaskAssetId?: string };
     expressions: { assetId: string };
     tile: { id: string; x: number; y: number; width: number; height: number };
   },
 ): Promise<string> {
-  const posterId = derivedAssetId(sprite.clip.assetId, `sprite-poster:${sprite.expressions.assetId}:${sprite.tile.id}`);
+  const posterId = derivedAssetId(
+    sprite.clip.assetId,
+    `sprite-poster:${sprite.expressions.assetId}:${sprite.tile.id}:${sprite.clip.faceMaskAssetId ?? "overlay"}`,
+  );
   const existing = await db.select({ id: assets.id, state: assets.state }).from(assets)
     .where(and(eq(assets.id, posterId), eq(assets.ownerId, ownerId))).then(firstRow);
   if (existing?.state === "ready") return posterId;
 
-  const [atlas, sheet] = await getReadyOwnedAssets(db, ownerId, [sprite.clip.assetId, sprite.expressions.assetId]);
+  const ids = [sprite.clip.assetId, sprite.expressions.assetId, sprite.clip.faceMaskAssetId].filter((id): id is string => Boolean(id));
+  const rows = await getReadyOwnedAssets(db, ownerId, ids);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const atlas = byId.get(sprite.clip.assetId)!;
+  const sheet = byId.get(sprite.expressions.assetId)!;
+  const mask = sprite.clip.faceMaskAssetId ? byId.get(sprite.clip.faceMaskAssetId) : undefined;
   const store = getObjectStore();
   const frame = await compositeSpriteFrame({
     atlas: (await store.get(atlas.r2Key)).bytes,
@@ -196,6 +204,7 @@ export async function ensureSpritePoster(
     index: 0,
     sheet: (await store.get(sheet.r2Key)).bytes,
     tile: sprite.tile,
+    maskAtlas: mask ? (await store.get(mask.r2Key)).bytes : undefined,
   });
   const bytes = await sharp(Buffer.from(frame))
     .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })

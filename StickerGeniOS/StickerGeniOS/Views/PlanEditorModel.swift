@@ -89,8 +89,11 @@ nonisolated struct PlanEditorModel: Hashable {
     var configuration: AnimatedControlConfiguration?
     var posePreset: PosePreset?
 
-    /// A plan may hold at most eight layers, and at most one of them may be a video clip.
-    static let layerLimit = 12
+    /// The budget this edit is checked against, as the server stated it, or nil when the app has
+    /// not reached the server yet — in which case nothing here caps anything and the save is
+    /// refused server-side if it is over. At most one layer may be a video clip either way; that
+    /// is the pipeline's shape rather than a budget.
+    var limits: ConfigurationLimits?
 
     init(plan: Plan) {
         configuration = plan.configuration
@@ -179,8 +182,8 @@ nonisolated struct PlanEditorModel: Hashable {
         if title.trimmed.isEmpty { return String(localized: "The plan needs a title.") }
         if summary.trimmed.isEmpty { return String(localized: "The plan needs a summary.") }
         if layers.isEmpty { return String(localized: "A plan needs at least one layer.") }
-        if layers.count > Self.layerLimit {
-            return String(localized: "A plan holds at most \(Self.layerLimit) layers.")
+        if let limit = limits?.planLayers, layers.count > limit {
+            return String(localized: "A plan holds at most \(limit) layers.")
         }
         for layer in layers where layer.source != .keep {
             if layer.name.trimmed.isEmpty { return String(localized: "Every layer needs a name.") }
@@ -195,11 +198,15 @@ nonisolated struct PlanEditorModel: Hashable {
             return String(localized: "A plan can have only one video layer.")
         }
         let layerIDs = Set(layers.map(\.layerId))
+        let kept = configuration?.keepingLayers(layerIDs)
         do {
-            try configuration?.keepingLayers(layerIDs)?.validated(layerIds: layerIDs, planned: true)
+            try kept?.validated(layerIds: layerIDs, planned: true)
         } catch {
             return error.localizedDescription
         }
+        // Shape first, budget second: `validated` only knows whether the configuration makes
+        // sense, and how much of it is affordable is the server's to say.
+        if let kept, let limits { return limits.issue(for: kept) }
         return nil
     }
 

@@ -106,9 +106,14 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
       `Character: ${input.character}. Face region: ${face}.`,
       `Grid: ${columns} columns by ${rows} rows; the first ${count} cells are used.`,
       "In every used cell, all of these must hold:",
-      "1. Exactly one flat, solid magenta (#FF00FF) oval sits on the face region, with no eyes, mouth, outline or other features drawn inside it.",
+      input.faceCompositing === "masked"
+        ? "1. A flat solid magenta (#FF00FF) face opening sits behind any hand, cup, instrument, hair, or prop that crosses it. Foreground objects remain fully drawn and may hide some or all of the opening."
+        : "1. Exactly one flat, solid magenta (#FF00FF) oval sits on the face region, with no eyes, mouth, outline or other features drawn inside it.",
       "2. No eye, brow, nose, mouth, or teeth remain anywhere on the body outside that oval: not on a grille, bumper, chest, screen, belly, or panel.",
       "3. One character only, with no second head or miniature portrait.",
+      input.faceCompositing === "masked"
+        ? "Return faceFrames for every used cell. Each entry is the full unobstructed face opening as normalized faceX, faceY, and faceSize (width divided by cell width), inferred from the head even when the visible magenta is partly or fully covered."
+        : "",
       "Report ok=false when any used cell breaks a rule, one short problem per failing cell naming the cell number and the leftover feature and where it sits.",
     ]
     : [
@@ -137,6 +142,11 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
         inputSchema: z.object({
           ok: z.boolean(),
           problems: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+          faceFrames: z.array(z.object({
+            faceX: z.number().min(0).max(1),
+            faceY: z.number().min(0).max(1),
+            faceSize: z.number().min(0.02).max(1),
+          }).strict()).optional(),
         }).strict(),
       }),
     },
@@ -148,10 +158,19 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
   await recordTextApiCost(result);
   const call = result.toolCalls.find((item) => item.toolName === "report_sheet");
   if (!call) throw new Error("Sheet inspector must call report_sheet exactly once");
-  const report = z.object({ ok: z.boolean(), problems: z.array(z.string()).default([]) }).parse(call.input);
+  const report = z.object({
+    ok: z.boolean(),
+    problems: z.array(z.string()).default([]),
+    faceFrames: z.array(z.object({ faceX: z.number(), faceY: z.number(), faceSize: z.number() }).strict()).optional(),
+  }).parse(call.input);
   const problems = report.problems.map((problem) => problem.trim()).filter(Boolean);
+  if (input.kind === "clips" && input.faceCompositing === "masked" && report.faceFrames?.length !== count) {
+    return { ok: false, problems: [...problems, `Report full-face registration for all ${count} used cells`], faceFrames: report.faceFrames };
+  }
   traceEvent("ai.sheet.inspected", { kind: input.kind, character: input.character, ok: report.ok, problems: problems.length });
-  return report.ok || problems.length === 0 ? { ok: true } : { ok: false, problems };
+  return report.ok || problems.length === 0
+    ? { ok: true, faceFrames: report.faceFrames }
+    : { ok: false, problems, faceFrames: report.faceFrames };
 }
 
 export async function generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {

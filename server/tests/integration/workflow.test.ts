@@ -340,13 +340,15 @@ describe("durable sticker workflow: motion", () => {
     expect(toolRows.find((message) => message.content === "create_animation")?.status).toBe("failed");
     expect(toolRows.find((message) => message.content === "create_animation #2")?.status).toBe("complete");
     const transcript = await listChatMessages(db, "owner-repair", sticker.stickerId);
-    expect(transcript.data.find((message) => message.content === "create_animation")?.toolDetails)
-      .toBe(rejections[0]);
+    // Failed tool calls are recorded as a categorized error whose message is the compiler's own words.
+    const failedDetails = { category: "edit", message: rejections[0] };
+    expect(JSON.parse(String(transcript.data.find((message) => message.content === "create_animation")?.toolDetails)))
+      .toEqual(failedDetails);
     expect(transcript.data.find((message) => message.content === "create_animation #2")?.toolDetails)
       .toContain('"animationId"');
     const events = await db.select().from(generationEvents).where(eq(generationEvents.jobId, animateTurn.jobId));
-    expect(events.find((event) => event.dataJson.toolStatus === "failed")?.dataJson.toolDetails)
-      .toBe(rejections[0]);
+    expect(JSON.parse(String(events.find((event) => event.dataJson.toolStatus === "failed")?.dataJson.toolDetails)))
+      .toEqual(failedDetails);
 
     await close();
   }, 30_000);

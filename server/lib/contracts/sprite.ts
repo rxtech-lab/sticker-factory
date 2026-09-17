@@ -46,12 +46,20 @@ export const SpriteClipV1Schema = z.object({
   columns: z.number().int().min(1).max(8),
   rows: z.number().int().min(1).max(8),
   frames: z.array(SpriteFrameV1Schema).min(1).max(8),
+  /** Overlay is the v5-v6 behavior. Masked keeps hands and props in front of the face. */
+  faceCompositing: z.enum(["overlay", "masked"]).default("overlay"),
+  faceMaskAssetId: AssetIdSchema.optional(),
+  /** Original generated sheet retained so an accepted sticker can later repair its face aperture. */
+  faceSourceAssetId: AssetIdSchema.optional(),
 }).strict().superRefine((clip, context) => {
   if (clip.frames.length > clip.rows * clip.columns) {
     context.addIssue({
       code: "custom",
       message: `Sprite clip ${clip.id} declares ${clip.frames.length} frames but its ${clip.rows}x${clip.columns} grid holds only ${clip.rows * clip.columns}`,
     });
+  }
+  if (clip.faceCompositing === "masked" && !clip.faceMaskAssetId) {
+    context.addIssue({ code: "custom", path: ["faceMaskAssetId"], message: `Masked sprite clip ${clip.id} needs a face mask asset` });
   }
 });
 

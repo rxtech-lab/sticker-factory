@@ -10,10 +10,11 @@ import { padGeneratedAtlas, SpriteSheetValidationError } from "@/lib/render/spri
 import { derivedAssetId, ensureSpritePoster, getReadyOwnedAssets } from "@/lib/services/assets";
 import { appendGenerationEvent } from "@/lib/services/events";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
-import { getAiProvider, type AiSheetInspectionContext } from "@/lib/ai/gateway";
+import { getAiProvider, type AiSheetInspection, type AiSheetInspectionContext } from "@/lib/ai/gateway";
 import { generatedLayers, generateAndStoreAsset, type SpriteBuild } from "./asset-generation";
 import { validateGeneratedAtlas } from "./configurable-artwork";
 import { assertJobStillRunning, beginToolCall, finishToolCall, reportTurnNote } from "./turn-context";
+import type { StickerLayerV1 } from "@/lib/contracts/sticker";
 
 /**
  * Buying and registering a sprite character's sheets.
@@ -36,11 +37,12 @@ type Reference = { bytes: Uint8Array; mimeType: string };
 type Job = typeof generationJobs.$inferSelect;
 type SpriteSource = Extract<PlanV1["layers"][number]["source"], { kind: "sprite" }>;
 
-/** The two assets a clip leaves behind: what the model drew, and the same sheet with the face slot painted out. */
-export function spriteClipAssetIds(jobId: string, layerId: string, clipId: string): { raw: string; clean: string } {
+/** Raw generation, cleaned body sheet, and the optional visible face aperture. */
+export function spriteClipAssetIds(jobId: string, layerId: string, clipId: string): { raw: string; clean: string; mask: string } {
   return {
     raw: derivedAssetId(jobId, `sprite-raw:${layerId}:${clipId}`),
     clean: derivedAssetId(jobId, `sprite:${layerId}:${clipId}`),
+    mask: derivedAssetId(jobId, `sprite-face-mask:${layerId}:${clipId}`),
   };
 }
 
@@ -61,9 +63,10 @@ export class SheetRejected extends Error {
   }
 }
 
-async function inspectOrThrow(input: AiSheetInspectionContext): Promise<void> {
+async function inspectOrThrow(input: AiSheetInspectionContext): Promise<Extract<AiSheetInspection, { ok: true }>> {
   const verdict = await getAiProvider().inspectSpriteSheet(input);
   if (!verdict.ok) throw new SheetRejected(verdict.problems);
+  return verdict;
 }
 
 /** Only failures in generated artwork justify another paid image, never infrastructure errors. */
@@ -121,7 +124,9 @@ export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, 
       : "This is a single held pose.",
     `Character: ${source.prompt}`,
     "Perform the motion in place around a fixed body anchor, with a locked camera and no zoom. Reserve room for the entire motion, including leaning, bouncing, extended parts, and any requested effects. Keep the complete silhouette inside the cell's transparent safety margins in every frame. Do not add ground, scenery, speed lines, smoke, or skid marks unless explicitly requested; requested effects must also fit inside the same safe area.",
-    `Keep the complete outer silhouette of the head or front — ears, hair, fur, shell, casing, windshield frame — on this body layer. The face region is ${faceRegion(source)}. Replace every facial feature the character has with the single magenta face opening there; no eye, brow, nose, or mouth may remain anywhere on the body outside it, whether on a grille, bumper, chest, screen, or panel. Preserve the reference's pixel grid and hard pixel edges when it is pixel art.`,
+    clip.faceCompositing === "masked"
+      ? `Keep the complete outer silhouette of the head or front — ears, hair, fur, shell, casing, windshield frame — on this body layer. The face region is ${faceRegion(source)}. Paint a flat solid magenta face opening behind any hand, cup, instrument, or other foreground object that crosses the face. Those foreground objects stay fully drawn in front of the magenta opening; never turn them magenta. Remove every facial feature from the visible opening and everywhere else on the body. Preserve the reference's pixel grid and hard pixel edges when it is pixel art.`
+      : `Keep the complete outer silhouette of the head or front — ears, hair, fur, shell, casing, windshield frame — on this body layer. The face region is ${faceRegion(source)}. Replace every facial feature the character has with the single magenta face opening there; no eye, brow, nose, or mouth may remain anywhere on the body outside it, whether on a grille, bumper, chest, screen, or panel. Preserve the reference's pixel grid and hard pixel edges when it is pixel art.`,
     feedbackInstruction(feedback),
   ].filter(Boolean).join(" ");
 }
@@ -177,15 +182,18 @@ async function buildClip(
   const ids = spriteClipAssetIds(assetJobId, layer.layerId, clip.id);
   const sheetGrid = { ...grid, frameCount };
   const prepare = async (original: Uint8Array) => {
-    const prepared = await prepareSheet(original, sheetGrid, registerFaceSlots);
-    const { bytes } = prepared;
-    // Inspected here, on the one path both a fresh sheet and recovered saved pixels go through, so a
-    // sheet rejected for what it drew cannot come back through the recovery below unexamined.
-    await inspectOrThrow({
-      kind: "clips", character: layer.name, face: source.face, sheet: { ...grid, count: frameCount },
-      image: { bytes, mimeType: "image/png" },
+    return prepareSheet(original, sheetGrid, async (bytes, preparedGrid) => {
+      // Inspected on the one path both fresh and recovered pixels use. Masked clips also get a
+      // full-face registration independent of however much marker remains visible behind a prop.
+      const verdict = await inspectOrThrow({
+        kind: "clips", character: layer.name, face: source.face, faceCompositing: clip.faceCompositing,
+        sheet: { ...grid, count: frameCount }, image: { bytes, mimeType: "image/png" },
+      });
+      return registerFaceSlots(bytes, preparedGrid, {
+        faceCompositing: clip.faceCompositing,
+        registeredFrames: verdict.faceFrames,
+      });
     });
-    return prepared;
   };
   let prepared: Awaited<ReturnType<typeof prepare>> | undefined;
   let feedback: string[] | undefined;
@@ -233,8 +241,12 @@ async function buildClip(
   }
   const { registered } = prepared;
   await storeSheetAsset(job, stickerId, ids.clean, registered.bytes, metadata, true);
+  if (registered.maskBytes) await storeSheetAsset(job, stickerId, ids.mask, registered.maskBytes, metadata, true);
   return {
     id: clip.id, assetId: ids.clean, columns: grid.columns, rows: grid.rows,
+    faceCompositing: clip.faceCompositing,
+    faceMaskAssetId: registered.maskBytes ? ids.mask : undefined,
+    faceSourceAssetId: ids.raw,
     frames: clip.frames.map((frame, index) => ({ duration: frame.duration, ...registered.frames[index] })),
   };
 }
@@ -343,11 +355,11 @@ export async function generateSpriteArtwork(
       const key = `sprite-clip:${layer.layerId}:${clip.id}`;
       const cached = await loadBuildCheckpoint(job, assetJobId, key, SpriteClipV1Schema);
       const ids = spriteClipAssetIds(assetJobId, layer.layerId, clip.id);
-      if (cached && await buildAssetsReady(job, [cached.assetId])) {
+      if (cached && await buildAssetsReady(job, [cached.assetId, cached.faceMaskAssetId].filter((id): id is string => Boolean(id)))) {
         clipCheckpoints.set(key, cached);
         reusedKeys.add(key);
       } else if (completed.has(`compose-sprite ${layer.name} ${clip.id}`)
-        && await buildAssetsReady(job, [ids.raw, ids.clean])) reusedKeys.add(key);
+        && await buildAssetsReady(job, [ids.raw, ids.clean, ...(clip.faceCompositing === "masked" ? [ids.mask] : [])])) reusedKeys.add(key);
     }
     const key = `sprite-expressions:${layer.layerId}`;
     const cached = await loadBuildCheckpoint(job, assetJobId, key, SpriteExpressionsV1Schema);
@@ -428,4 +440,70 @@ export async function generateSpriteArtwork(
     builds.set(layer.layerId, { clips, expressions, posterAssetId });
   }
   return builds;
+}
+
+/**
+ * Re-registers an existing sprite from its retained raw sheets. This never redraws the character:
+ * it extracts a foreground-safe aperture, stores new immutable body/mask assets, and derives a new
+ * poster for review. Older sprites that predate raw-sheet retention fail with an actionable plan
+ * fallback rather than silently changing their artwork.
+ */
+export async function repairSpriteFaces(
+  job: Job,
+  stickerId: string,
+  layer: Extract<StickerLayerV1, { type: "sprite" }>,
+): Promise<Extract<StickerLayerV1, { type: "sprite" }>> {
+  const db = await getDatabase();
+  const store = getObjectStore();
+  const clips = [] as typeof layer.clips;
+  for (const clip of layer.clips) {
+    if (!clip.faceSourceAssetId) {
+      throw new Error(
+        `Sprite layer ${layer.id} has no saved raw face sheet for clip ${clip.id}. `
+        + "Create and review a revised generation plan to repair this older sticker.",
+      );
+    }
+    await assertJobStillRunning(job.id);
+    const [source] = await getReadyOwnedAssets(db, job.ownerId, [clip.faceSourceAssetId]);
+    if (source.stickerId !== stickerId) throw new Error(`Raw face sheet for ${clip.id} does not belong to this sticker`);
+    const raw = await store.get(source.r2Key);
+    const verdict = await inspectOrThrow({
+      kind: "clips",
+      character: layer.name,
+      faceCompositing: "masked",
+      sheet: { columns: clip.columns, rows: clip.rows, count: clip.frames.length },
+      image: { bytes: raw.bytes, mimeType: source.mimeType },
+    });
+    const registered = await registerFaceSlots(raw.bytes, {
+      columns: clip.columns,
+      rows: clip.rows,
+      frameCount: clip.frames.length,
+    }, { faceCompositing: "masked", registeredFrames: verdict.faceFrames });
+    if (!registered.maskBytes) throw new Error(`Could not recover a face aperture for clip ${clip.id}`);
+    const cleanId = derivedAssetId(job.id, `repair-face:${layer.id}:${clip.id}:body`);
+    const maskId = derivedAssetId(job.id, `repair-face:${layer.id}:${clip.id}:mask`);
+    const durationSeconds = clip.frames.reduce((sum, frame) => sum + frame.duration, 0);
+    const metadata = {
+      columns: clip.columns,
+      rows: clip.rows,
+      frameCount: clip.frames.length,
+      frameRate: clip.frames.length / durationSeconds,
+      durationSeconds,
+    };
+    await storeSheetAsset(job, stickerId, cleanId, registered.bytes, metadata, true);
+    await storeSheetAsset(job, stickerId, maskId, registered.maskBytes, metadata, true);
+    clips.push({
+      ...clip,
+      assetId: cleanId,
+      faceCompositing: "masked",
+      faceMaskAssetId: maskId,
+      frames: clip.frames.map((frame, index) => ({ duration: frame.duration, ...registered.frames[index] })),
+    });
+  }
+  const posterAssetId = await ensureSpritePoster(db, job.ownerId, stickerId, {
+    clip: clips.find((clip) => clip.id === layer.clipId) ?? clips[0],
+    expressions: { assetId: layer.expressions.assetId },
+    tile: layer.expressions.tiles.find((tile) => tile.id === layer.expressionId) ?? layer.expressions.tiles[0],
+  });
+  return { ...layer, clips, posterAssetId };
 }

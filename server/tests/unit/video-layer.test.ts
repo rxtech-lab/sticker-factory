@@ -34,10 +34,10 @@ describe("the v4 fixture", () => {
   });
 });
 
-describe("v3 documents upcast to v5 on read", () => {
+describe("v3 documents upcast to the current version on read", () => {
   it("accepts the stored v3 fixture and restamps it, keeping its sequence layer", () => {
     const document = StickerDocumentSchema.parse(v3Fixture);
-    expect(document.version).toBe(6);
+    expect(document.version).toBe(CURRENT_DOCUMENT_VERSION);
     expect(document.layers[0].type).toBe("sequence");
   });
 

@@ -24,6 +24,10 @@ public struct AnimatedSpriteFrame: Codable, Hashable, Sendable {
     }
 }
 
+public enum AnimatedFaceCompositing: String, Codable, Hashable, Sendable {
+    case overlay, masked
+}
+
 /// One motion of a character: a short sheet of body frames with per-frame timing.
 ///
 /// Timing is per frame rather than a rate, which is what makes a loop read as alive: an idle clip
@@ -37,13 +41,35 @@ public struct AnimatedSpriteClip: Codable, Hashable, Sendable, Identifiable {
     public var columns: Int
     public var rows: Int
     public var frames: [AnimatedSpriteFrame]
+    public var faceCompositing: AnimatedFaceCompositing
+    public var faceMaskAssetId: String?
+    public var faceSourceAssetId: String?
 
-    public init(id: String, assetId: String, columns: Int, rows: Int, frames: [AnimatedSpriteFrame]) {
+    public init(id: String, assetId: String, columns: Int, rows: Int, frames: [AnimatedSpriteFrame], faceCompositing: AnimatedFaceCompositing = .overlay, faceMaskAssetId: String? = nil, faceSourceAssetId: String? = nil) {
         self.id = id
         self.assetId = assetId
         self.columns = columns
         self.rows = rows
         self.frames = frames
+        self.faceCompositing = faceCompositing
+        self.faceMaskAssetId = faceMaskAssetId
+        self.faceSourceAssetId = faceSourceAssetId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, assetId, columns, rows, frames, faceCompositing, faceMaskAssetId, faceSourceAssetId
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        assetId = try c.decode(String.self, forKey: .assetId)
+        columns = try c.decode(Int.self, forKey: .columns)
+        rows = try c.decode(Int.self, forKey: .rows)
+        frames = try c.decode([AnimatedSpriteFrame].self, forKey: .frames)
+        faceCompositing = try c.decodeIfPresent(AnimatedFaceCompositing.self, forKey: .faceCompositing) ?? .overlay
+        faceMaskAssetId = try c.decodeIfPresent(String.self, forKey: .faceMaskAssetId)
+        faceSourceAssetId = try c.decodeIfPresent(String.self, forKey: .faceSourceAssetId)
     }
 
     /// One loop of the clip, in document seconds.
@@ -54,6 +80,8 @@ public struct AnimatedSpriteClip: Codable, Hashable, Sendable, Identifiable {
             && (1...8).contains(columns) && (1...8).contains(rows)
             && (1...8).contains(frames.count) && frames.count <= rows * columns
             && frames.allSatisfy(\.isValid)
+            && (faceCompositing == .overlay || faceMaskAssetId?.isAnimatedUUID == true)
+            && (faceSourceAssetId?.isAnimatedUUID ?? true)
     }
 }
 
