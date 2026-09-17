@@ -1,0 +1,9 @@
+{
+  "version": 3,
+  "durationSeconds": 2,
+  "framesPerClip": 6,
+  "poses": ["idle", "wave", "bounce", "sway", "wiggle", "hop", "spin", "dance"],
+  "moods": ["neutral", "happy", "surprised"],
+  "editableLayers": ["body", "eyes", "mouth"],
+  "note": "spin is retained as the stable control id; its user-facing label and motion are Partial Turn."
+}

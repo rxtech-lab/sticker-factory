@@ -1,0 +1,228 @@
+{
+  "version": 3,
+  "poses": [
+    {
+      "id": "idle",
+      "label": "Idle"
+    },
+    {
+      "id": "wave",
+      "label": "Greeting Wave"
+    },
+    {
+      "id": "bounce",
+      "label": "Bounce"
+    },
+    {
+      "id": "sway",
+      "label": "Sway"
+    },
+    {
+      "id": "wiggle",
+      "label": "Wiggle"
+    },
+    {
+      "id": "hop",
+      "label": "Hop"
+    },
+    {
+      "id": "spin",
+      "label": "Partial Turn"
+    },
+    {
+      "id": "dance",
+      "label": "Dance"
+    }
+  ],
+  "moods": [
+    {
+      "id": "neutral",
+      "label": "Neutral"
+    },
+    {
+      "id": "happy",
+      "label": "Happy"
+    },
+    {
+      "id": "surprised",
+      "label": "Surprised"
+    }
+  ],
+  "examples": [
+    {
+      "pose": "idle",
+      "mood": "neutral",
+      "file": "idle-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "idle",
+      "mood": "happy",
+      "file": "idle-happy.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "idle",
+      "mood": "surprised",
+      "file": "idle-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "wave",
+      "mood": "neutral",
+      "file": "wave-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "wave",
+      "mood": "happy",
+      "file": "wave-happy.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "wave",
+      "mood": "surprised",
+      "file": "wave-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "bounce",
+      "mood": "neutral",
+      "file": "bounce-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "bounce",
+      "mood": "happy",
+      "file": "bounce-happy.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "bounce",
+      "mood": "surprised",
+      "file": "bounce-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "sway",
+      "mood": "neutral",
+      "file": "sway-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "sway",
+      "mood": "happy",
+      "file": "sway-happy.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "sway",
+      "mood": "surprised",
+      "file": "sway-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "wiggle",
+      "mood": "neutral",
+      "file": "wiggle-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 4
+    },
+    {
+      "pose": "wiggle",
+      "mood": "happy",
+      "file": "wiggle-happy.gif",
+      "frames": 24,
+      "distinctFrames": 4
+    },
+    {
+      "pose": "wiggle",
+      "mood": "surprised",
+      "file": "wiggle-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 4
+    },
+    {
+      "pose": "hop",
+      "mood": "neutral",
+      "file": "hop-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "hop",
+      "mood": "happy",
+      "file": "hop-happy.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "hop",
+      "mood": "surprised",
+      "file": "hop-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "spin",
+      "mood": "neutral",
+      "file": "spin-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "spin",
+      "mood": "happy",
+      "file": "spin-happy.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "spin",
+      "mood": "surprised",
+      "file": "spin-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 5
+    },
+    {
+      "pose": "dance",
+      "mood": "neutral",
+      "file": "dance-neutral.gif",
+      "frames": 24,
+      "distinctFrames": 4
+    },
+    {
+      "pose": "dance",
+      "mood": "happy",
+      "file": "dance-happy.gif",
+      "frames": 24,
+      "distinctFrames": 4
+    },
+    {
+      "pose": "dance",
+      "mood": "surprised",
+      "file": "dance-surprised.gif",
+      "frames": 24,
+      "distinctFrames": 4
+    }
+  ],
+  "source": {
+    "workflow": "stickerGenerationWorkflow",
+    "generator": "editable-svg-mascot-v3",
+    "inspectedReference": "reference.png",
+    "optionId": "clay",
+    "prompt": "Animate the supplied pink limbless mascot while preserving its exact silhouette, pink palette, unequal glossy eyes, and editable body/eyes/mouth layers. 3D Clay is guidance only and never replaces a user's requested subject. Use Idle, Greeting Wave, Bounce, Sway, Wiggle, Hop, Partial Turn, and Dance with independent Neutral, Happy, and Surprised moods."
+  }
+}

@@ -26,6 +26,20 @@ struct GenerationActivityTests {
         #expect(state.applying(event(6, .init(note: "Late note"))) == nil)
     }
 
+    @Test func mascotPoseCoversEveryPhaseAndTerminalStateWinsOverStale() {
+        let pose = { (phase: String, stale: Bool) in
+            StickerGenerationAttributes.ContentState(message: phase, phase: phase).mascotPose(isStale: stale)
+        }
+        #expect(pose("queued", false) == .queued)
+        #expect(pose("running", false) == .running)
+        #expect(pose("waiting", false) == .waiting)
+        #expect(pose("unknown-working-phase", false) == .running)
+        #expect(pose("running", true) == .stale)
+        #expect(pose("completed", true) == .completed)
+        #expect(pose("failed", true) == .failed)
+        #expect(pose("cancelled", true) == .cancelled)
+    }
+
     @Test @MainActor func pollingChecksImmediatelyAndStopsAtCompletion() async throws {
         var delays: [TimeInterval] = []
         var requests = 0

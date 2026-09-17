@@ -8,7 +8,7 @@ const cache = new Map<string, Promise<AiReferenceImage>>();
 /** These are immutable, server-owned cover paths from the saved snapshot, never submitted URLs. */
 export async function creationPresetReferences(snapshot: CreationPresetSnapshot | null | undefined): Promise<AiPlanVisual[]> {
   return Promise.all((snapshot?.selections ?? []).flatMap(group => group.options.map(async option => {
-    if (!/^\/images\/creation\/v[\w.-]+\/[a-z0-9-]+\.webp$/.test(option.cover)) throw new Error('Unsupported saved preset cover path');
+    if (!/^\/images\/creation\/v[\w.-]+\/[a-z0-9-]+(?:\/cover)?\.webp$/.test(option.cover)) throw new Error('Unsupported saved preset cover path');
     let image = cache.get(option.cover);
     if (!image) {
       image = readFile(resolve(process.cwd(), `public${option.cover}`)).then(async bytes => ({
@@ -44,7 +44,7 @@ export async function withPresetArtworkReferences(references: AiReferenceImage[]
   if (references.length > 8) throw new Error('At most eight subject references are supported');
   if (!visuals.length) return {references,note:''};
   const board=await presetReferenceBoard(visuals);
-  const instruction='The labelled preset examples are visual guidance only: use their style/theme, never copy their orange cat, subject, lettering, panel layout, or background. Preserve the requested subject, user photo identity, and approved artwork. ';
+  const instruction='The labelled preset examples are visual guidance only: use their style/theme, never copy their mascot, subject, lettering, panel layout, or background. Preserve the requested subject, user photo identity, and approved artwork. ';
   if (references.length < 8) return {references:[...references,board],note:instruction+`Reference ${references.length+1} is the preset example board.`};
   const last=await sharp(references[7].bytes).resize(1024,1024,{fit:'contain',background:'#ffffff'}).png().toBuffer();
   const lower=await sharp(board.bytes).resize({width:1024}).png().toBuffer();

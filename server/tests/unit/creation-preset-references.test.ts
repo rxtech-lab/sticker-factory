@@ -36,7 +36,7 @@ describe('preset visual references',()=>{
   const snapshot=resolveCreationPresets(submission)!;
   const prepared=await withPresetArtworkReferences([],await creationPresetReferences(snapshot));
   expect(prepared.references).toHaveLength(1);
-  expect(prepared.note).toContain('never copy their orange cat');
+  expect(prepared.note).toContain('never copy their mascot');
   snapshot.selections[0].options[0].cover='/../../etc/passwd';
   await expect(creationPresetReferences(snapshot)).rejects.toThrow('Unsupported');
  });

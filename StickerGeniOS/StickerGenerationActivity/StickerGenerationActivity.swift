@@ -17,7 +17,7 @@ struct StickerGenerationActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    WinkyActivityLogo(size: 28)
+                    WinkyActivityMascot(state: context.state, isStale: context.isStale, size: 28)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     if let count = context.state.progressCountText {
@@ -51,11 +51,11 @@ struct StickerGenerationActivity: Widget {
                     .padding(.bottom, 8)
                 }
             } compactLeading: {
-                WinkyActivityLogo(size: 22)
+                WinkyActivityMascot(state: context.state, isStale: context.isStale, size: 22)
             } compactTrailing: {
                 GenerationCompactStatus(attributes: context.attributes, state: context.state, isStale: context.isStale)
             } minimal: {
-                WinkyActivityLogo(size: 22)
+                WinkyActivityMascot(state: context.state, isStale: context.isStale, size: 22)
             }
             .widgetURL(context.attributes.stickerURL)
             .keylineTint(.yellow)
@@ -63,17 +63,23 @@ struct StickerGenerationActivity: Widget {
     }
 }
 
-private struct WinkyActivityLogo: View {
+private struct WinkyActivityMascot: View {
+    let state: StickerGenerationAttributes.ContentState
+    let isStale: Bool
     let size: CGFloat
 
+    private var pose: GenerationMascotPose { state.mascotPose(isStale: isStale) }
+
     var body: some View {
-        Image("WinkyLogo")
+        Image(pose.assetName)
             .resizable()
             .renderingMode(.original)
             .scaledToFit()
             .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: size * 0.25))
-            .accessibilityLabel("Winky")
+            .id(pose)
+            .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            .animation(.easeInOut(duration: 0.25), value: pose)
+            .accessibilityLabel("Winky, \(pose.rawValue)")
     }
 }
 
@@ -136,7 +142,7 @@ struct GenerationActivityCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            WinkyActivityLogo(size: 44)
+            WinkyActivityMascot(state: state, isStale: isStale, size: 44)
             VStack(alignment: .leading, spacing: 5) {
                 Text(attributes.title).font(.headline).lineLimit(1)
                 Text(state.message).font(.subheadline).lineLimit(3).fixedSize(horizontal: false, vertical: true)

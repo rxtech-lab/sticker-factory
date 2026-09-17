@@ -1,0 +1,211 @@
+{
+  "version": 3,
+  "kind": "animated",
+  "title": "Kawaii pink mascot",
+  "summary": "A reference-backed controllable mascot with 8 looping actions and 3 independent moods.",
+  "conceptPrompt": "Animate the supplied pink limbless mascot while preserving its exact silhouette, pink palette, unequal glossy eyes, and editable body/eyes/mouth layers. Kawaii is guidance only and never replaces a user's requested subject. Use Idle, Greeting Wave, Bounce, Sway, Wiggle, Hop, Partial Turn, and Dance with independent Neutral, Happy, and Surprised moods.",
+  "posePreset": "ultra",
+  "editableLayers": [
+    "body",
+    "eyes",
+    "mouth"
+  ],
+  "configuration": {
+    "controls": [
+      {
+        "id": "pose",
+        "label": "Pose",
+        "type": "choice",
+        "defaultValue": "idle",
+        "options": [
+          {
+            "id": "idle",
+            "label": "Idle"
+          },
+          {
+            "id": "wave",
+            "label": "Greeting Wave"
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce"
+          },
+          {
+            "id": "sway",
+            "label": "Sway"
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle"
+          },
+          {
+            "id": "hop",
+            "label": "Hop"
+          },
+          {
+            "id": "spin",
+            "label": "Partial Turn"
+          },
+          {
+            "id": "dance",
+            "label": "Dance"
+          }
+        ]
+      },
+      {
+        "id": "mood",
+        "label": "Mood",
+        "type": "choice",
+        "defaultValue": "neutral",
+        "options": [
+          {
+            "id": "neutral",
+            "label": "Neutral"
+          },
+          {
+            "id": "happy",
+            "label": "Happy"
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised"
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": "pose_idle",
+        "selections": {
+          "pose": "idle"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "idle"
+          }
+        ]
+      },
+      {
+        "id": "pose_wave",
+        "selections": {
+          "pose": "wave"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "wave"
+          }
+        ]
+      },
+      {
+        "id": "pose_bounce",
+        "selections": {
+          "pose": "bounce"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "bounce"
+          }
+        ]
+      },
+      {
+        "id": "pose_sway",
+        "selections": {
+          "pose": "sway"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "sway"
+          }
+        ]
+      },
+      {
+        "id": "pose_wiggle",
+        "selections": {
+          "pose": "wiggle"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "wiggle"
+          }
+        ]
+      },
+      {
+        "id": "pose_hop",
+        "selections": {
+          "pose": "hop"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "hop"
+          }
+        ]
+      },
+      {
+        "id": "pose_spin",
+        "selections": {
+          "pose": "spin"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "spin"
+          }
+        ]
+      },
+      {
+        "id": "pose_dance",
+        "selections": {
+          "pose": "dance"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "dance"
+          }
+        ]
+      },
+      {
+        "id": "mood_neutral",
+        "selections": {
+          "mood": "neutral"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "mood_happy",
+        "selections": {
+          "mood": "happy"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "mood_surprised",
+        "selections": {
+          "mood": "surprised"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "expression": "surprised"
+          }
+        ]
+      }
+    ]
+  }
+}

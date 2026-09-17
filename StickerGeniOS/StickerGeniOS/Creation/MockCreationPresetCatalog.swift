@@ -25,7 +25,7 @@ nonisolated enum MockCreationPresetCatalog {
                     catalog.groups[g].options[o].cover =
                         URL(string: catalog.groups[g].options[o].cover.relativeString, relativeTo: base)!.absoluteURL
                     try catalog.groups[g].options[o].preview?.resolveURLs(relativeTo: base)
-                } else if let example = Bundle.main.url(forResource: "creation-cat-happy", withExtension: "png") {
+                } else if let example = Bundle.main.url(forResource: "creation-mascot-happy", withExtension: "png") {
                     catalog.groups[g].options[o].cover = example
                     if let preview = catalog.groups[g].options[o].preview {
                         guard let bundled = preview.bundled() else { throw StickerAPIError.invalidResponse }

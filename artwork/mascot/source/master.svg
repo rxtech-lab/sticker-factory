@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="eye" cx="36%" cy="28%" r="70%">
+      <stop offset="0" stop-color="#4f5058"/><stop offset="0.38" stop-color="#17181d"/><stop offset="1" stop-color="#050507"/>
+    </radialGradient>
+  </defs>
+  <g id="body">
+    <path d="M401,379C471.093,379 528,435.907 528,506C528,576.093 406.863,633 336.77,633C266.677,633 274,576.093 274,506C274,435.907 330.907,379 401,379Z" fill="#ffb8b8" transform="matrix(2.942711 0 0 3.104438 -691.13123 -1055.140193)"/>
+    <path d="M790.598,685.078C668.177,792.285 477.345,863.117 346.738,863.117C140.474,863.117 162.024,686.454 162.024,468.854C162.024,368.489 197.649,276.833 256.275,207.203C320.127,153.532 400.987,121.442 488.896,121.442C695.16,121.442 862.62,298.106 862.62,515.706C862.62,576.317 834.963,633.752 790.598,685.078Z" fill="#ffc8c8"/>
+  </g>
+  <g id="eyes">
+    <ellipse cx="496" cy="382" rx="67" ry="70" fill="url(#eye)" stroke="#23242a" stroke-width="7"/>
+    <ellipse cx="758" cy="305" rx="49" ry="52" fill="url(#eye)" stroke="#23242a" stroke-width="6"/>
+    <circle cx="468" cy="353" r="24" fill="#fff"/>
+    <circle cx="738" cy="284" r="18" fill="#fff"/>
+  </g>
+  <g id="mouth" fill="none" stroke="#743b4c" stroke-width="14" stroke-linecap="round">
+    <path d="M594 552 L650 552"/>
+  </g>
+</svg>

@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-16.2",
+  "version": "2026-09-17.1",
   "groups": [
     {
       "id": "style",
@@ -24,9 +24,9 @@
             "zh-Hans": "活力卡通",
             "zh-Hant": "活力卡通"
           },
-          "cover": "/images/creation/v1/bold-cartoon.webp",
+          "cover": "/images/creation/v3/bold-cartoon/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/bold-cartoon/wave-happy.gif",
+            "url": "/images/creation/v3/bold-cartoon/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -81,9 +81,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -125,122 +125,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/bold-cartoon/idle-neutral.gif"
+                "url": "/images/creation/v3/bold-cartoon/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/bold-cartoon/idle-happy.gif"
+                "url": "/images/creation/v3/bold-cartoon/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/bold-cartoon/idle-surprised.gif"
+                "url": "/images/creation/v3/bold-cartoon/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/bold-cartoon/wave-neutral.gif"
+                "url": "/images/creation/v3/bold-cartoon/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/bold-cartoon/wave-happy.gif"
+                "url": "/images/creation/v3/bold-cartoon/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/bold-cartoon/wave-surprised.gif"
+                "url": "/images/creation/v3/bold-cartoon/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/bold-cartoon/bounce-neutral.gif"
+                "url": "/images/creation/v3/bold-cartoon/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/bold-cartoon/bounce-happy.gif"
+                "url": "/images/creation/v3/bold-cartoon/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/bold-cartoon/bounce-surprised.gif"
+                "url": "/images/creation/v3/bold-cartoon/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/bold-cartoon/sway-neutral.gif"
+                "url": "/images/creation/v3/bold-cartoon/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/bold-cartoon/sway-happy.gif"
+                "url": "/images/creation/v3/bold-cartoon/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/bold-cartoon/sway-surprised.gif"
+                "url": "/images/creation/v3/bold-cartoon/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/bold-cartoon/wiggle-neutral.gif"
+                "url": "/images/creation/v3/bold-cartoon/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/bold-cartoon/wiggle-happy.gif"
+                "url": "/images/creation/v3/bold-cartoon/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/bold-cartoon/wiggle-surprised.gif"
+                "url": "/images/creation/v3/bold-cartoon/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/bold-cartoon/hop-neutral.gif"
+                "url": "/images/creation/v3/bold-cartoon/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/bold-cartoon/hop-happy.gif"
+                "url": "/images/creation/v3/bold-cartoon/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/bold-cartoon/hop-surprised.gif"
+                "url": "/images/creation/v3/bold-cartoon/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/bold-cartoon/spin-neutral.gif"
+                "url": "/images/creation/v3/bold-cartoon/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/bold-cartoon/spin-happy.gif"
+                "url": "/images/creation/v3/bold-cartoon/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/bold-cartoon/spin-surprised.gif"
+                "url": "/images/creation/v3/bold-cartoon/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/bold-cartoon/dance-neutral.gif"
+                "url": "/images/creation/v3/bold-cartoon/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/bold-cartoon/dance-happy.gif"
+                "url": "/images/creation/v3/bold-cartoon/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/bold-cartoon/dance-surprised.gif"
+                "url": "/images/creation/v3/bold-cartoon/dance-surprised.gif"
               }
             ]
           }
@@ -252,9 +252,9 @@
             "zh-Hans": "可爱萌系",
             "zh-Hant": "可愛萌系"
           },
-          "cover": "/images/creation/v1/kawaii.webp",
+          "cover": "/images/creation/v3/kawaii/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/kawaii/wave-happy.gif",
+            "url": "/images/creation/v3/kawaii/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -309,9 +309,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -353,122 +353,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/kawaii/idle-neutral.gif"
+                "url": "/images/creation/v3/kawaii/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/kawaii/idle-happy.gif"
+                "url": "/images/creation/v3/kawaii/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/kawaii/idle-surprised.gif"
+                "url": "/images/creation/v3/kawaii/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/kawaii/wave-neutral.gif"
+                "url": "/images/creation/v3/kawaii/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/kawaii/wave-happy.gif"
+                "url": "/images/creation/v3/kawaii/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/kawaii/wave-surprised.gif"
+                "url": "/images/creation/v3/kawaii/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/kawaii/bounce-neutral.gif"
+                "url": "/images/creation/v3/kawaii/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/kawaii/bounce-happy.gif"
+                "url": "/images/creation/v3/kawaii/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/kawaii/bounce-surprised.gif"
+                "url": "/images/creation/v3/kawaii/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/kawaii/sway-neutral.gif"
+                "url": "/images/creation/v3/kawaii/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/kawaii/sway-happy.gif"
+                "url": "/images/creation/v3/kawaii/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/kawaii/sway-surprised.gif"
+                "url": "/images/creation/v3/kawaii/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/kawaii/wiggle-neutral.gif"
+                "url": "/images/creation/v3/kawaii/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/kawaii/wiggle-happy.gif"
+                "url": "/images/creation/v3/kawaii/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/kawaii/wiggle-surprised.gif"
+                "url": "/images/creation/v3/kawaii/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/kawaii/hop-neutral.gif"
+                "url": "/images/creation/v3/kawaii/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/kawaii/hop-happy.gif"
+                "url": "/images/creation/v3/kawaii/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/kawaii/hop-surprised.gif"
+                "url": "/images/creation/v3/kawaii/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/kawaii/spin-neutral.gif"
+                "url": "/images/creation/v3/kawaii/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/kawaii/spin-happy.gif"
+                "url": "/images/creation/v3/kawaii/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/kawaii/spin-surprised.gif"
+                "url": "/images/creation/v3/kawaii/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/kawaii/dance-neutral.gif"
+                "url": "/images/creation/v3/kawaii/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/kawaii/dance-happy.gif"
+                "url": "/images/creation/v3/kawaii/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/kawaii/dance-surprised.gif"
+                "url": "/images/creation/v3/kawaii/dance-surprised.gif"
               }
             ]
           }
@@ -480,9 +480,9 @@
             "zh-Hans": "立体黏土",
             "zh-Hant": "立體黏土"
           },
-          "cover": "/images/creation/v1/clay.webp",
+          "cover": "/images/creation/v3/clay/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/clay/wave-happy.gif",
+            "url": "/images/creation/v3/clay/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -537,9 +537,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -581,122 +581,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/clay/idle-neutral.gif"
+                "url": "/images/creation/v3/clay/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/clay/idle-happy.gif"
+                "url": "/images/creation/v3/clay/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/clay/idle-surprised.gif"
+                "url": "/images/creation/v3/clay/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/clay/wave-neutral.gif"
+                "url": "/images/creation/v3/clay/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/clay/wave-happy.gif"
+                "url": "/images/creation/v3/clay/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/clay/wave-surprised.gif"
+                "url": "/images/creation/v3/clay/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/clay/bounce-neutral.gif"
+                "url": "/images/creation/v3/clay/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/clay/bounce-happy.gif"
+                "url": "/images/creation/v3/clay/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/clay/bounce-surprised.gif"
+                "url": "/images/creation/v3/clay/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/clay/sway-neutral.gif"
+                "url": "/images/creation/v3/clay/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/clay/sway-happy.gif"
+                "url": "/images/creation/v3/clay/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/clay/sway-surprised.gif"
+                "url": "/images/creation/v3/clay/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/clay/wiggle-neutral.gif"
+                "url": "/images/creation/v3/clay/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/clay/wiggle-happy.gif"
+                "url": "/images/creation/v3/clay/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/clay/wiggle-surprised.gif"
+                "url": "/images/creation/v3/clay/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/clay/hop-neutral.gif"
+                "url": "/images/creation/v3/clay/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/clay/hop-happy.gif"
+                "url": "/images/creation/v3/clay/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/clay/hop-surprised.gif"
+                "url": "/images/creation/v3/clay/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/clay/spin-neutral.gif"
+                "url": "/images/creation/v3/clay/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/clay/spin-happy.gif"
+                "url": "/images/creation/v3/clay/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/clay/spin-surprised.gif"
+                "url": "/images/creation/v3/clay/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/clay/dance-neutral.gif"
+                "url": "/images/creation/v3/clay/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/clay/dance-happy.gif"
+                "url": "/images/creation/v3/clay/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/clay/dance-surprised.gif"
+                "url": "/images/creation/v3/clay/dance-surprised.gif"
               }
             ]
           }
@@ -708,9 +708,9 @@
             "zh-Hans": "像素艺术",
             "zh-Hant": "像素藝術"
           },
-          "cover": "/images/creation/v1/pixel.webp",
+          "cover": "/images/creation/v3/pixel/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/pixel/wave-happy.gif",
+            "url": "/images/creation/v3/pixel/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -765,9 +765,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -809,122 +809,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/pixel/idle-neutral.gif"
+                "url": "/images/creation/v3/pixel/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/pixel/idle-happy.gif"
+                "url": "/images/creation/v3/pixel/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/pixel/idle-surprised.gif"
+                "url": "/images/creation/v3/pixel/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/pixel/wave-neutral.gif"
+                "url": "/images/creation/v3/pixel/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/pixel/wave-happy.gif"
+                "url": "/images/creation/v3/pixel/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/pixel/wave-surprised.gif"
+                "url": "/images/creation/v3/pixel/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/pixel/bounce-neutral.gif"
+                "url": "/images/creation/v3/pixel/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/pixel/bounce-happy.gif"
+                "url": "/images/creation/v3/pixel/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/pixel/bounce-surprised.gif"
+                "url": "/images/creation/v3/pixel/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/pixel/sway-neutral.gif"
+                "url": "/images/creation/v3/pixel/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/pixel/sway-happy.gif"
+                "url": "/images/creation/v3/pixel/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/pixel/sway-surprised.gif"
+                "url": "/images/creation/v3/pixel/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/pixel/wiggle-neutral.gif"
+                "url": "/images/creation/v3/pixel/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/pixel/wiggle-happy.gif"
+                "url": "/images/creation/v3/pixel/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/pixel/wiggle-surprised.gif"
+                "url": "/images/creation/v3/pixel/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/pixel/hop-neutral.gif"
+                "url": "/images/creation/v3/pixel/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/pixel/hop-happy.gif"
+                "url": "/images/creation/v3/pixel/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/pixel/hop-surprised.gif"
+                "url": "/images/creation/v3/pixel/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/pixel/spin-neutral.gif"
+                "url": "/images/creation/v3/pixel/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/pixel/spin-happy.gif"
+                "url": "/images/creation/v3/pixel/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/pixel/spin-surprised.gif"
+                "url": "/images/creation/v3/pixel/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/pixel/dance-neutral.gif"
+                "url": "/images/creation/v3/pixel/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/pixel/dance-happy.gif"
+                "url": "/images/creation/v3/pixel/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/pixel/dance-surprised.gif"
+                "url": "/images/creation/v3/pixel/dance-surprised.gif"
               }
             ]
           }
@@ -936,9 +936,9 @@
             "zh-Hans": "水彩",
             "zh-Hant": "水彩"
           },
-          "cover": "/images/creation/v1/watercolor.webp",
+          "cover": "/images/creation/v3/watercolor/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/watercolor/wave-happy.gif",
+            "url": "/images/creation/v3/watercolor/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -993,9 +993,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -1037,122 +1037,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/watercolor/idle-neutral.gif"
+                "url": "/images/creation/v3/watercolor/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/watercolor/idle-happy.gif"
+                "url": "/images/creation/v3/watercolor/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/watercolor/idle-surprised.gif"
+                "url": "/images/creation/v3/watercolor/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/watercolor/wave-neutral.gif"
+                "url": "/images/creation/v3/watercolor/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/watercolor/wave-happy.gif"
+                "url": "/images/creation/v3/watercolor/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/watercolor/wave-surprised.gif"
+                "url": "/images/creation/v3/watercolor/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/watercolor/bounce-neutral.gif"
+                "url": "/images/creation/v3/watercolor/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/watercolor/bounce-happy.gif"
+                "url": "/images/creation/v3/watercolor/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/watercolor/bounce-surprised.gif"
+                "url": "/images/creation/v3/watercolor/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/watercolor/sway-neutral.gif"
+                "url": "/images/creation/v3/watercolor/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/watercolor/sway-happy.gif"
+                "url": "/images/creation/v3/watercolor/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/watercolor/sway-surprised.gif"
+                "url": "/images/creation/v3/watercolor/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/watercolor/wiggle-neutral.gif"
+                "url": "/images/creation/v3/watercolor/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/watercolor/wiggle-happy.gif"
+                "url": "/images/creation/v3/watercolor/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/watercolor/wiggle-surprised.gif"
+                "url": "/images/creation/v3/watercolor/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/watercolor/hop-neutral.gif"
+                "url": "/images/creation/v3/watercolor/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/watercolor/hop-happy.gif"
+                "url": "/images/creation/v3/watercolor/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/watercolor/hop-surprised.gif"
+                "url": "/images/creation/v3/watercolor/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/watercolor/spin-neutral.gif"
+                "url": "/images/creation/v3/watercolor/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/watercolor/spin-happy.gif"
+                "url": "/images/creation/v3/watercolor/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/watercolor/spin-surprised.gif"
+                "url": "/images/creation/v3/watercolor/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/watercolor/dance-neutral.gif"
+                "url": "/images/creation/v3/watercolor/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/watercolor/dance-happy.gif"
+                "url": "/images/creation/v3/watercolor/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/watercolor/dance-surprised.gif"
+                "url": "/images/creation/v3/watercolor/dance-surprised.gif"
               }
             ]
           }
@@ -1164,9 +1164,9 @@
             "zh-Hans": "剪纸",
             "zh-Hant": "剪紙"
           },
-          "cover": "/images/creation/v1/paper-cut.webp",
+          "cover": "/images/creation/v3/paper-cut/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/paper-cut/wave-happy.gif",
+            "url": "/images/creation/v3/paper-cut/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -1221,9 +1221,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -1265,122 +1265,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/paper-cut/idle-neutral.gif"
+                "url": "/images/creation/v3/paper-cut/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/paper-cut/idle-happy.gif"
+                "url": "/images/creation/v3/paper-cut/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/paper-cut/idle-surprised.gif"
+                "url": "/images/creation/v3/paper-cut/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/paper-cut/wave-neutral.gif"
+                "url": "/images/creation/v3/paper-cut/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/paper-cut/wave-happy.gif"
+                "url": "/images/creation/v3/paper-cut/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/paper-cut/wave-surprised.gif"
+                "url": "/images/creation/v3/paper-cut/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/paper-cut/bounce-neutral.gif"
+                "url": "/images/creation/v3/paper-cut/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/paper-cut/bounce-happy.gif"
+                "url": "/images/creation/v3/paper-cut/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/paper-cut/bounce-surprised.gif"
+                "url": "/images/creation/v3/paper-cut/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/paper-cut/sway-neutral.gif"
+                "url": "/images/creation/v3/paper-cut/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/paper-cut/sway-happy.gif"
+                "url": "/images/creation/v3/paper-cut/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/paper-cut/sway-surprised.gif"
+                "url": "/images/creation/v3/paper-cut/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/paper-cut/wiggle-neutral.gif"
+                "url": "/images/creation/v3/paper-cut/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/paper-cut/wiggle-happy.gif"
+                "url": "/images/creation/v3/paper-cut/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/paper-cut/wiggle-surprised.gif"
+                "url": "/images/creation/v3/paper-cut/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/paper-cut/hop-neutral.gif"
+                "url": "/images/creation/v3/paper-cut/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/paper-cut/hop-happy.gif"
+                "url": "/images/creation/v3/paper-cut/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/paper-cut/hop-surprised.gif"
+                "url": "/images/creation/v3/paper-cut/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/paper-cut/spin-neutral.gif"
+                "url": "/images/creation/v3/paper-cut/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/paper-cut/spin-happy.gif"
+                "url": "/images/creation/v3/paper-cut/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/paper-cut/spin-surprised.gif"
+                "url": "/images/creation/v3/paper-cut/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/paper-cut/dance-neutral.gif"
+                "url": "/images/creation/v3/paper-cut/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/paper-cut/dance-happy.gif"
+                "url": "/images/creation/v3/paper-cut/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/paper-cut/dance-surprised.gif"
+                "url": "/images/creation/v3/paper-cut/dance-surprised.gif"
               }
             ]
           }
@@ -1410,9 +1410,9 @@
             "zh-Hans": "日常心情",
             "zh-Hant": "日常心情"
           },
-          "cover": "/images/creation/v1/everyday.webp",
+          "cover": "/images/creation/v3/everyday/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/everyday/wave-happy.gif",
+            "url": "/images/creation/v3/everyday/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -1467,9 +1467,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -1511,122 +1511,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/everyday/idle-neutral.gif"
+                "url": "/images/creation/v3/everyday/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/everyday/idle-happy.gif"
+                "url": "/images/creation/v3/everyday/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/everyday/idle-surprised.gif"
+                "url": "/images/creation/v3/everyday/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/everyday/wave-neutral.gif"
+                "url": "/images/creation/v3/everyday/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/everyday/wave-happy.gif"
+                "url": "/images/creation/v3/everyday/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/everyday/wave-surprised.gif"
+                "url": "/images/creation/v3/everyday/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/everyday/bounce-neutral.gif"
+                "url": "/images/creation/v3/everyday/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/everyday/bounce-happy.gif"
+                "url": "/images/creation/v3/everyday/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/everyday/bounce-surprised.gif"
+                "url": "/images/creation/v3/everyday/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/everyday/sway-neutral.gif"
+                "url": "/images/creation/v3/everyday/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/everyday/sway-happy.gif"
+                "url": "/images/creation/v3/everyday/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/everyday/sway-surprised.gif"
+                "url": "/images/creation/v3/everyday/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/everyday/wiggle-neutral.gif"
+                "url": "/images/creation/v3/everyday/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/everyday/wiggle-happy.gif"
+                "url": "/images/creation/v3/everyday/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/everyday/wiggle-surprised.gif"
+                "url": "/images/creation/v3/everyday/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/everyday/hop-neutral.gif"
+                "url": "/images/creation/v3/everyday/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/everyday/hop-happy.gif"
+                "url": "/images/creation/v3/everyday/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/everyday/hop-surprised.gif"
+                "url": "/images/creation/v3/everyday/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/everyday/spin-neutral.gif"
+                "url": "/images/creation/v3/everyday/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/everyday/spin-happy.gif"
+                "url": "/images/creation/v3/everyday/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/everyday/spin-surprised.gif"
+                "url": "/images/creation/v3/everyday/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/everyday/dance-neutral.gif"
+                "url": "/images/creation/v3/everyday/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/everyday/dance-happy.gif"
+                "url": "/images/creation/v3/everyday/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/everyday/dance-surprised.gif"
+                "url": "/images/creation/v3/everyday/dance-surprised.gif"
               }
             ]
           }
@@ -1638,9 +1638,9 @@
             "zh-Hans": "惬意时光",
             "zh-Hant": "愜意時光"
           },
-          "cover": "/images/creation/v1/cozy.webp",
+          "cover": "/images/creation/v3/cozy/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/cozy/wave-happy.gif",
+            "url": "/images/creation/v3/cozy/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -1695,9 +1695,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -1739,122 +1739,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/cozy/idle-neutral.gif"
+                "url": "/images/creation/v3/cozy/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/cozy/idle-happy.gif"
+                "url": "/images/creation/v3/cozy/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/cozy/idle-surprised.gif"
+                "url": "/images/creation/v3/cozy/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/cozy/wave-neutral.gif"
+                "url": "/images/creation/v3/cozy/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/cozy/wave-happy.gif"
+                "url": "/images/creation/v3/cozy/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/cozy/wave-surprised.gif"
+                "url": "/images/creation/v3/cozy/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/cozy/bounce-neutral.gif"
+                "url": "/images/creation/v3/cozy/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/cozy/bounce-happy.gif"
+                "url": "/images/creation/v3/cozy/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/cozy/bounce-surprised.gif"
+                "url": "/images/creation/v3/cozy/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/cozy/sway-neutral.gif"
+                "url": "/images/creation/v3/cozy/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/cozy/sway-happy.gif"
+                "url": "/images/creation/v3/cozy/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/cozy/sway-surprised.gif"
+                "url": "/images/creation/v3/cozy/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/cozy/wiggle-neutral.gif"
+                "url": "/images/creation/v3/cozy/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/cozy/wiggle-happy.gif"
+                "url": "/images/creation/v3/cozy/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/cozy/wiggle-surprised.gif"
+                "url": "/images/creation/v3/cozy/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/cozy/hop-neutral.gif"
+                "url": "/images/creation/v3/cozy/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/cozy/hop-happy.gif"
+                "url": "/images/creation/v3/cozy/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/cozy/hop-surprised.gif"
+                "url": "/images/creation/v3/cozy/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/cozy/spin-neutral.gif"
+                "url": "/images/creation/v3/cozy/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/cozy/spin-happy.gif"
+                "url": "/images/creation/v3/cozy/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/cozy/spin-surprised.gif"
+                "url": "/images/creation/v3/cozy/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/cozy/dance-neutral.gif"
+                "url": "/images/creation/v3/cozy/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/cozy/dance-happy.gif"
+                "url": "/images/creation/v3/cozy/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/cozy/dance-surprised.gif"
+                "url": "/images/creation/v3/cozy/dance-surprised.gif"
               }
             ]
           }
@@ -1866,9 +1866,9 @@
             "zh-Hans": "自然",
             "zh-Hant": "自然"
           },
-          "cover": "/images/creation/v1/nature.webp",
+          "cover": "/images/creation/v3/nature/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/nature/wave-happy.gif",
+            "url": "/images/creation/v3/nature/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -1923,9 +1923,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -1967,122 +1967,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/nature/idle-neutral.gif"
+                "url": "/images/creation/v3/nature/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/nature/idle-happy.gif"
+                "url": "/images/creation/v3/nature/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/nature/idle-surprised.gif"
+                "url": "/images/creation/v3/nature/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/nature/wave-neutral.gif"
+                "url": "/images/creation/v3/nature/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/nature/wave-happy.gif"
+                "url": "/images/creation/v3/nature/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/nature/wave-surprised.gif"
+                "url": "/images/creation/v3/nature/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/nature/bounce-neutral.gif"
+                "url": "/images/creation/v3/nature/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/nature/bounce-happy.gif"
+                "url": "/images/creation/v3/nature/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/nature/bounce-surprised.gif"
+                "url": "/images/creation/v3/nature/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/nature/sway-neutral.gif"
+                "url": "/images/creation/v3/nature/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/nature/sway-happy.gif"
+                "url": "/images/creation/v3/nature/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/nature/sway-surprised.gif"
+                "url": "/images/creation/v3/nature/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/nature/wiggle-neutral.gif"
+                "url": "/images/creation/v3/nature/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/nature/wiggle-happy.gif"
+                "url": "/images/creation/v3/nature/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/nature/wiggle-surprised.gif"
+                "url": "/images/creation/v3/nature/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/nature/hop-neutral.gif"
+                "url": "/images/creation/v3/nature/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/nature/hop-happy.gif"
+                "url": "/images/creation/v3/nature/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/nature/hop-surprised.gif"
+                "url": "/images/creation/v3/nature/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/nature/spin-neutral.gif"
+                "url": "/images/creation/v3/nature/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/nature/spin-happy.gif"
+                "url": "/images/creation/v3/nature/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/nature/spin-surprised.gif"
+                "url": "/images/creation/v3/nature/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/nature/dance-neutral.gif"
+                "url": "/images/creation/v3/nature/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/nature/dance-happy.gif"
+                "url": "/images/creation/v3/nature/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/nature/dance-surprised.gif"
+                "url": "/images/creation/v3/nature/dance-surprised.gif"
               }
             ]
           }
@@ -2094,9 +2094,9 @@
             "zh-Hans": "太空",
             "zh-Hant": "太空"
           },
-          "cover": "/images/creation/v1/space.webp",
+          "cover": "/images/creation/v3/space/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/space/wave-happy.gif",
+            "url": "/images/creation/v3/space/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -2151,9 +2151,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -2195,122 +2195,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/space/idle-neutral.gif"
+                "url": "/images/creation/v3/space/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/space/idle-happy.gif"
+                "url": "/images/creation/v3/space/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/space/idle-surprised.gif"
+                "url": "/images/creation/v3/space/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/space/wave-neutral.gif"
+                "url": "/images/creation/v3/space/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/space/wave-happy.gif"
+                "url": "/images/creation/v3/space/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/space/wave-surprised.gif"
+                "url": "/images/creation/v3/space/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/space/bounce-neutral.gif"
+                "url": "/images/creation/v3/space/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/space/bounce-happy.gif"
+                "url": "/images/creation/v3/space/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/space/bounce-surprised.gif"
+                "url": "/images/creation/v3/space/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/space/sway-neutral.gif"
+                "url": "/images/creation/v3/space/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/space/sway-happy.gif"
+                "url": "/images/creation/v3/space/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/space/sway-surprised.gif"
+                "url": "/images/creation/v3/space/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/space/wiggle-neutral.gif"
+                "url": "/images/creation/v3/space/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/space/wiggle-happy.gif"
+                "url": "/images/creation/v3/space/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/space/wiggle-surprised.gif"
+                "url": "/images/creation/v3/space/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/space/hop-neutral.gif"
+                "url": "/images/creation/v3/space/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/space/hop-happy.gif"
+                "url": "/images/creation/v3/space/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/space/hop-surprised.gif"
+                "url": "/images/creation/v3/space/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/space/spin-neutral.gif"
+                "url": "/images/creation/v3/space/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/space/spin-happy.gif"
+                "url": "/images/creation/v3/space/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/space/spin-surprised.gif"
+                "url": "/images/creation/v3/space/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/space/dance-neutral.gif"
+                "url": "/images/creation/v3/space/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/space/dance-happy.gif"
+                "url": "/images/creation/v3/space/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/space/dance-surprised.gif"
+                "url": "/images/creation/v3/space/dance-surprised.gif"
               }
             ]
           }
@@ -2322,9 +2322,9 @@
             "zh-Hans": "庆祝",
             "zh-Hant": "慶祝"
           },
-          "cover": "/images/creation/v1/celebration.webp",
+          "cover": "/images/creation/v3/celebration/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/celebration/wave-happy.gif",
+            "url": "/images/creation/v3/celebration/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -2379,9 +2379,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -2423,122 +2423,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/celebration/idle-neutral.gif"
+                "url": "/images/creation/v3/celebration/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/celebration/idle-happy.gif"
+                "url": "/images/creation/v3/celebration/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/celebration/idle-surprised.gif"
+                "url": "/images/creation/v3/celebration/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/celebration/wave-neutral.gif"
+                "url": "/images/creation/v3/celebration/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/celebration/wave-happy.gif"
+                "url": "/images/creation/v3/celebration/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/celebration/wave-surprised.gif"
+                "url": "/images/creation/v3/celebration/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/celebration/bounce-neutral.gif"
+                "url": "/images/creation/v3/celebration/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/celebration/bounce-happy.gif"
+                "url": "/images/creation/v3/celebration/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/celebration/bounce-surprised.gif"
+                "url": "/images/creation/v3/celebration/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/celebration/sway-neutral.gif"
+                "url": "/images/creation/v3/celebration/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/celebration/sway-happy.gif"
+                "url": "/images/creation/v3/celebration/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/celebration/sway-surprised.gif"
+                "url": "/images/creation/v3/celebration/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/celebration/wiggle-neutral.gif"
+                "url": "/images/creation/v3/celebration/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/celebration/wiggle-happy.gif"
+                "url": "/images/creation/v3/celebration/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/celebration/wiggle-surprised.gif"
+                "url": "/images/creation/v3/celebration/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/celebration/hop-neutral.gif"
+                "url": "/images/creation/v3/celebration/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/celebration/hop-happy.gif"
+                "url": "/images/creation/v3/celebration/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/celebration/hop-surprised.gif"
+                "url": "/images/creation/v3/celebration/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/celebration/spin-neutral.gif"
+                "url": "/images/creation/v3/celebration/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/celebration/spin-happy.gif"
+                "url": "/images/creation/v3/celebration/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/celebration/spin-surprised.gif"
+                "url": "/images/creation/v3/celebration/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/celebration/dance-neutral.gif"
+                "url": "/images/creation/v3/celebration/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/celebration/dance-happy.gif"
+                "url": "/images/creation/v3/celebration/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/celebration/dance-surprised.gif"
+                "url": "/images/creation/v3/celebration/dance-surprised.gif"
               }
             ]
           }
@@ -2550,9 +2550,9 @@
             "zh-Hans": "奇幻",
             "zh-Hant": "奇幻"
           },
-          "cover": "/images/creation/v1/fantasy.webp",
+          "cover": "/images/creation/v3/fantasy/cover.webp",
           "preview": {
-            "url": "/images/creation/v2/fantasy/wave-happy.gif",
+            "url": "/images/creation/v3/fantasy/wave-happy.gif",
             "defaultPose": "wave",
             "defaultMood": "happy",
             "poses": [
@@ -2607,9 +2607,9 @@
               {
                 "id": "spin",
                 "title": {
-                  "en": "Spin",
-                  "zh-Hans": "转身",
-                  "zh-Hant": "轉身"
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
                 }
               },
               {
@@ -2651,122 +2651,122 @@
               {
                 "pose": "idle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/fantasy/idle-neutral.gif"
+                "url": "/images/creation/v3/fantasy/idle-neutral.gif"
               },
               {
                 "pose": "idle",
                 "mood": "happy",
-                "url": "/images/creation/v2/fantasy/idle-happy.gif"
+                "url": "/images/creation/v3/fantasy/idle-happy.gif"
               },
               {
                 "pose": "idle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/fantasy/idle-surprised.gif"
+                "url": "/images/creation/v3/fantasy/idle-surprised.gif"
               },
               {
                 "pose": "wave",
                 "mood": "neutral",
-                "url": "/images/creation/v2/fantasy/wave-neutral.gif"
+                "url": "/images/creation/v3/fantasy/wave-neutral.gif"
               },
               {
                 "pose": "wave",
                 "mood": "happy",
-                "url": "/images/creation/v2/fantasy/wave-happy.gif"
+                "url": "/images/creation/v3/fantasy/wave-happy.gif"
               },
               {
                 "pose": "wave",
                 "mood": "surprised",
-                "url": "/images/creation/v2/fantasy/wave-surprised.gif"
+                "url": "/images/creation/v3/fantasy/wave-surprised.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "neutral",
-                "url": "/images/creation/v2/fantasy/bounce-neutral.gif"
+                "url": "/images/creation/v3/fantasy/bounce-neutral.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "happy",
-                "url": "/images/creation/v2/fantasy/bounce-happy.gif"
+                "url": "/images/creation/v3/fantasy/bounce-happy.gif"
               },
               {
                 "pose": "bounce",
                 "mood": "surprised",
-                "url": "/images/creation/v2/fantasy/bounce-surprised.gif"
+                "url": "/images/creation/v3/fantasy/bounce-surprised.gif"
               },
               {
                 "pose": "sway",
                 "mood": "neutral",
-                "url": "/images/creation/v2/fantasy/sway-neutral.gif"
+                "url": "/images/creation/v3/fantasy/sway-neutral.gif"
               },
               {
                 "pose": "sway",
                 "mood": "happy",
-                "url": "/images/creation/v2/fantasy/sway-happy.gif"
+                "url": "/images/creation/v3/fantasy/sway-happy.gif"
               },
               {
                 "pose": "sway",
                 "mood": "surprised",
-                "url": "/images/creation/v2/fantasy/sway-surprised.gif"
+                "url": "/images/creation/v3/fantasy/sway-surprised.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "neutral",
-                "url": "/images/creation/v2/fantasy/wiggle-neutral.gif"
+                "url": "/images/creation/v3/fantasy/wiggle-neutral.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "happy",
-                "url": "/images/creation/v2/fantasy/wiggle-happy.gif"
+                "url": "/images/creation/v3/fantasy/wiggle-happy.gif"
               },
               {
                 "pose": "wiggle",
                 "mood": "surprised",
-                "url": "/images/creation/v2/fantasy/wiggle-surprised.gif"
+                "url": "/images/creation/v3/fantasy/wiggle-surprised.gif"
               },
               {
                 "pose": "hop",
                 "mood": "neutral",
-                "url": "/images/creation/v2/fantasy/hop-neutral.gif"
+                "url": "/images/creation/v3/fantasy/hop-neutral.gif"
               },
               {
                 "pose": "hop",
                 "mood": "happy",
-                "url": "/images/creation/v2/fantasy/hop-happy.gif"
+                "url": "/images/creation/v3/fantasy/hop-happy.gif"
               },
               {
                 "pose": "hop",
                 "mood": "surprised",
-                "url": "/images/creation/v2/fantasy/hop-surprised.gif"
+                "url": "/images/creation/v3/fantasy/hop-surprised.gif"
               },
               {
                 "pose": "spin",
                 "mood": "neutral",
-                "url": "/images/creation/v2/fantasy/spin-neutral.gif"
+                "url": "/images/creation/v3/fantasy/spin-neutral.gif"
               },
               {
                 "pose": "spin",
                 "mood": "happy",
-                "url": "/images/creation/v2/fantasy/spin-happy.gif"
+                "url": "/images/creation/v3/fantasy/spin-happy.gif"
               },
               {
                 "pose": "spin",
                 "mood": "surprised",
-                "url": "/images/creation/v2/fantasy/spin-surprised.gif"
+                "url": "/images/creation/v3/fantasy/spin-surprised.gif"
               },
               {
                 "pose": "dance",
                 "mood": "neutral",
-                "url": "/images/creation/v2/fantasy/dance-neutral.gif"
+                "url": "/images/creation/v3/fantasy/dance-neutral.gif"
               },
               {
                 "pose": "dance",
                 "mood": "happy",
-                "url": "/images/creation/v2/fantasy/dance-happy.gif"
+                "url": "/images/creation/v3/fantasy/dance-happy.gif"
               },
               {
                 "pose": "dance",
                 "mood": "surprised",
-                "url": "/images/creation/v2/fantasy/dance-surprised.gif"
+                "url": "/images/creation/v3/fantasy/dance-surprised.gif"
               }
             ]
           }

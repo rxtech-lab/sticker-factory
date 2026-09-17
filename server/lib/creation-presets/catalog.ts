@@ -3,12 +3,12 @@ import { CreationPresetCatalogSchema, type PresetText } from "@/lib/contracts/cr
 
 const text = (en: string, simplified: string, traditional: string): PresetText => ({ en, "zh-Hans": simplified, "zh-Hant": traditional });
 export const SHARED_PRESET_PROMPT = "Preserve the user's subject and reference identity. Keep the result readable at sticker size with a clean transparent silhouette. Add lettering only when requested. Combine selected themes coherently without crowding the subject. Presets are creative guidance: retain the approved artwork when building or editing it; do not redesign approved parts to reapply a preset.";
-const option = (id: string, title: PresetText, prompt: string) => ({ id, title, prompt, cover: `/images/creation/v1/${id}.webp`, preview: creationPreview(id) });
+const option = (id: string, title: PresetText, prompt: string) => ({ id, title, prompt, cover: `/images/creation/v3/${id}/cover.webp`, preview: creationPreview(id) });
 
 // Bump the version whenever titles, prompts, requirements, or options change. Existing projects
 // use their saved snapshot, so editing this catalog only affects future creations.
 export const creationPresetCatalog = CreationPresetCatalogSchema.parse({
-  version: "2026-09-16.2",
+  version: "2026-09-17.1",
   groups: [{
     id: "style", type: "single_choice", title: text("Style", "风格", "風格"),
     description: text("Choose how your sticker is drawn.", "选择贴纸的绘画风格。", "選擇貼圖的繪畫風格。"),
