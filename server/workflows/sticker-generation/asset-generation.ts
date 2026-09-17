@@ -377,6 +377,9 @@ export interface SpriteBuild {
     assetId: string;
     columns: number;
     rows: number;
+    faceCompositing: "overlay" | "masked";
+    faceMaskAssetId?: string;
+    faceSourceAssetId?: string;
     frames: Array<{ duration: number; faceX: number; faceY: number; faceSize: number }>;
   }>;
   expressions: {

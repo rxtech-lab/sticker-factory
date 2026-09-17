@@ -5,7 +5,7 @@ import { PlanV1Schema, assertControllablePlan, assertPlanAllowedForJob, planGene
 import { CreateStickerRequestSchema } from "@/lib/contracts/api";
 import { configurationCoverage, configurationLayerCombinations, configurationSelections } from "@/lib/contracts/configuration";
 import {
-  StickerDocumentSchema, documentRenderableLayers, downcastForClient, layerImageAssetIds, resolveStickerConfiguration, spriteClip, spriteExpressionTile,
+  CURRENT_DOCUMENT_VERSION, StickerDocumentSchema, documentRenderableLayers, downcastForClient, layerImageAssetIds, resolveStickerConfiguration, spriteClip, spriteExpressionTile,
 } from "@/lib/contracts/sticker";
 
 const document = () => StickerDocumentSchema.parse(fixture);
@@ -13,7 +13,12 @@ const document = () => StickerDocumentSchema.parse(fixture);
 describe("sprite layer contract", () => {
   it("upcasts the shared Swift fixture without changing its content", () => {
     const source = document();
-    expect(JSON.parse(JSON.stringify(source))).toEqual({ ...fixture, version: 6 });
+    const expected = structuredClone(fixture) as unknown as { version: number; layers: Record<string, unknown>[] };
+    expected.version = CURRENT_DOCUMENT_VERSION;
+    for (const layer of expected.layers) if (layer.type === "sprite") {
+      for (const clip of layer.clips as Record<string, unknown>[]) Object.assign(clip, { faceCompositing: "overlay" });
+    }
+    expect(JSON.parse(JSON.stringify(source))).toEqual(expected);
     expect(configurationSelections(source.configuration!)).toHaveLength(6);
     expect(configurationCoverage(source.configuration!)).toHaveLength(6);
     expect(configurationLayerCombinations(source.configuration!)).toEqual(new Map([["hero", 6]]));
@@ -86,7 +91,8 @@ describe("sprite layer contract", () => {
     expect(hero.expressionId).toBe("sad");
     expect(spriteClip(hero).assetId).toBe("32222222-2222-4222-8222-222222222222");
     expect(spriteExpressionTile(hero).x).toBe(0.71);
-    expect(hero.clips).toEqual(fixture.layers[0].clips);
+    const fixtureSprite = fixture.layers.find((layer) => layer.type === "sprite");
+    expect(hero.clips).toEqual(fixtureSprite!.clips!.map((clip) => ({ ...clip, faceCompositing: "overlay" })));
     expect(result.layers[1].hidden).toBe(true);
     expect(result.speed).toBe(0.5);
     // Only the mood changed: the pose stays on the authored default.
@@ -107,7 +113,7 @@ describe("sprite layer contract", () => {
     const legacy = downcastForClient(source, 4);
     expect(legacy).toMatchObject({ version: 4, layers: [{ type: "image", assetId: "34444444-4444-4444-8444-444444444444", name: "Cat" }, {}] });
     expect(legacy).not.toHaveProperty("configuration");
-    expect(StickerDocumentSchema.parse(legacy).version).toBe(6);
+    expect(StickerDocumentSchema.parse(legacy).version).toBe(CURRENT_DOCUMENT_VERSION);
   });
 
   it.each(["static", "clip", "expression", "default", "source", "fps", "layer"])("rejects an invalid %s before rendering", (failure) => {

@@ -43,6 +43,21 @@ struct ConfigurationTests {
         #expect(result.configuration?.controls.map(\.id) == ["sparkles", "speed"])
         #expect(result.configuration?.variants.isEmpty == true)
     }
+    @MainActor @Test func optionPlacementInitializesTheFamilyAndUndoRestoresIt() throws {
+        let editor = AnimatedDocumentEditor(document: try document())
+        editor.selectVariant("sad")
+        editor.selectedLayerID = "hero"
+        editor.setOptionAnchor(forLayer: "hero") { $0.position.x = 0.72 }
+        let mood = try #require(editor.document.configuration?.variants.filter { $0.selections["mood"] != nil })
+        #expect(mood.allSatisfy { $0.layers.first(where: { $0.layerId == "hero" })?.anchor != nil })
+        #expect(editor.displayDocument.layer(id: "hero")?.anchor.position.x == 0.72)
+        editor.moveLayer(id: "hero", toIndex: 1)
+        #expect(editor.displayDocument.layers.map(\.id) == ["spark", "hero"])
+        editor.undo()
+        #expect(editor.displayDocument.layers.map(\.id) == ["hero", "spark"])
+        editor.undo()
+        #expect(editor.document.configuration?.variants.first(where: { $0.id == "sad" })?.layers[0].anchor == nil)
+    }
     @Test func everyChoiceCombinationResolvesDeterministically() throws {
         let source = try document()
         for values in try #require(source.configuration).choiceSelections {
@@ -135,7 +150,13 @@ struct ConfigurationTests {
         #expect(solo.controlGroups.filter { $0.layerID != nil }.count == 1)
     }
 
-    @Test func aCharacterCannotOutgrowTheCombinationBudget() throws {
+    /// The device counts a character's states; it does not price them.
+    ///
+    /// Eighty-one states on one sprite is over every budget the server has ever set, and this
+    /// document still validates here — how much may be prepared is the server's to say, over
+    /// `GET /api/v1/configuration-limits` and its own check on the way in. What the device owes is
+    /// the count those decisions are made from.
+    @Test func aCharactersCombinationsAreCountedRatherThanPriced() throws {
         var source = try castDocument()
         // Two axes selected together, twice over, is the only shape that can overrun one sprite:
         // three options on each of four axes acting on the dog is eighty-one states for it alone.
@@ -160,6 +181,7 @@ struct ConfigurationTests {
             }
         }
         #expect(try #require(source.configuration).layerCombinationCounts["sidekick"] == 81)
-        #expect(throws: AnimatedConfigurationError.self) { try source.validated() }
+        #expect(try #require(source.configuration).preparedStateCount == 87)
+        #expect(throws: Never.self) { try source.validated() }
     }
 }

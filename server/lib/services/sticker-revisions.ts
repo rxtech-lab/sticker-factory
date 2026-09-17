@@ -1,10 +1,10 @@
-import { requiresConfigurationV6 } from "@/lib/contracts/configuration";
+import { requiresConfigurationV6, requiresConfigurationV7 } from "@/lib/contracts/configuration";
 // The revision lifecycle - candidate, accept, reject, revert - and the device-side edit that
 // saves a new revision directly.
 
 import { and, eq, inArray, max, ne } from "drizzle-orm";
 import type { SaveEditedDocumentRequest } from "@/lib/contracts/api";
-import { StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
+import { CURRENT_DOCUMENT_VERSION, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
 import { chatMessages, chatThreads, generationJobs, stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
@@ -189,7 +189,7 @@ export async function saveEditedRevision(
   stickerId: string,
   request: SaveEditedDocumentRequest,
   revisionId = crypto.randomUUID(),
-  clientVersion = 6,
+  clientVersion = CURRENT_DOCUMENT_VERSION,
 ) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
 
@@ -232,6 +232,12 @@ export async function saveEditedRevision(
     eq(stickerRevisions.stickerId, stickerId),
   )).then(firstRow);
   if (!parent) throw new ApiError(422, "INVALID_PARENT_REVISION", "The revision parent does not belong to this sticker");
+  const requiresV7 = requiresConfigurationV7(parent.documentJson.configuration)
+    || parent.documentJson.layers.some((layer) => layer.type === "sprite"
+      && layer.clips.some((clip) => clip.faceCompositing === "masked"));
+  if (requiresV7 && clientVersion < 7) {
+    throw new ApiError(409, "STICKER_CLIENT_UPDATE_REQUIRED", "Update the app before editing this sticker's masks, placement, or stacking controls");
+  }
   if (requiresConfigurationV6(parent.documentJson.configuration) && clientVersion < 6) throw new ApiError(409, "STICKER_CLIENT_UPDATE_REQUIRED", "Update the app before editing these caption controls");
   if (parent.documentJson.configuration && clientVersion < 5) throw new ApiError(409, "STICKER_CLIENT_UPDATE_REQUIRED", "Update the app before editing this configurable sticker");
   // Editing forward from a branch that was already turned down would resurrect it silently.

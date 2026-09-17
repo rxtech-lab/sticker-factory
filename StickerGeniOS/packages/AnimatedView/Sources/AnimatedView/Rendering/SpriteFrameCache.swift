@@ -34,6 +34,7 @@ public final class SpriteFrameCache {
         let rows: Int
         let index: Int
         let sheetAssetId: String
+        let maskAssetId: String?
         let tileId: String
         let face: AnimatedSpriteFrame
     }
@@ -46,7 +47,8 @@ public final class SpriteFrameCache {
         guard clip.columns > 0, clip.rows > 0, index >= 0, index < clip.frames.count else { return nil }
         let key = Key(
             clipAssetId: clip.assetId, columns: clip.columns, rows: clip.rows, index: index,
-            sheetAssetId: layer.expressions.assetId, tileId: tile.id, face: clip.frames[index]
+            sheetAssetId: layer.expressions.assetId, maskAssetId: clip.faceMaskAssetId,
+            tileId: tile.id, face: clip.frames[index]
         )
         if let cached = storage[key] {
             touch(key)
@@ -54,7 +56,11 @@ public final class SpriteFrameCache {
         }
         guard let sheet = assets.image(for: clip.assetId)?.animatedCGImage,
               let faces = assets.image(for: layer.expressions.assetId)?.animatedCGImage,
-              let composed = Self.composite(sheet: sheet, faces: faces, clip: clip, index: index, tile: tile)
+              let composed = Self.composite(
+                sheet: sheet, faces: faces,
+                maskSheet: clip.faceMaskAssetId.flatMap { assets.image(for: $0)?.animatedCGImage },
+                clip: clip, index: index, tile: tile
+              )
         else { return nil }
         let image = PlatformImage(animatedCGImage: composed)
         storage[key] = image
@@ -67,6 +73,7 @@ public final class SpriteFrameCache {
     public nonisolated static func composite(
         sheet: CGImage,
         faces: CGImage,
+        maskSheet: CGImage? = nil,
         clip: AnimatedSpriteClip,
         index: Int,
         tile: AnimatedSpriteExpressionTile
@@ -110,7 +117,15 @@ public final class SpriteFrameCache {
         // The slot is registered top-down; CoreGraphics draws bottom-up, so the y flips here and
         // nowhere else.
         let centre = CGPoint(x: frame.faceX * Double(cellWidth), y: Double(cellHeight) - frame.faceY * Double(cellHeight))
-        context.draw(face, in: CGRect(x: centre.x - faceWidth / 2, y: centre.y - faceHeight / 2, width: faceWidth, height: faceHeight))
+        if clip.faceCompositing == .masked {
+            guard let maskSheet, let maskCell = maskSheet.cropping(to: cellRect) else { return nil }
+            context.saveGState()
+            context.clip(to: CGRect(x: 0, y: 0, width: cellWidth, height: cellHeight), mask: maskCell)
+            context.draw(face, in: CGRect(x: centre.x - faceWidth / 2, y: centre.y - faceHeight / 2, width: faceWidth, height: faceHeight))
+            context.restoreGState()
+        } else {
+            context.draw(face, in: CGRect(x: centre.x - faceWidth / 2, y: centre.y - faceHeight / 2, width: faceWidth, height: faceHeight))
+        }
         return context.makeImage()
     }
 

@@ -9,11 +9,11 @@ import Foundation
 ///
 /// Coordinates are normalized and keyframe times are absolute seconds.
 public struct AnimatedDocument: Codable, Hashable, Sendable {
-    public static let currentVersion = 6
+    public static let currentVersion = 7
     /// Versions this build can read. v3 only *added* the `sequence` layer and v4 only added the
     /// `video` layer, so a v2 document is already a valid v4 one and needs no rewriting —
     /// accepting it is the whole migration.
-    public static let readableVersions: ClosedRange<Int> = 2...6
+    public static let readableVersions: ClosedRange<Int> = 2...7
     public static let maximumLayerCount = 12
     public static let maximumKeyframeCount = 128
     public static let durationRange: ClosedRange<Double> = 0.1...30
@@ -200,6 +200,11 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
         if let configuration {
             if version < 6 && configuration.variants.contains(where: { $0.layers.contains { $0.text != nil || $0.hidden != nil } }) {
                 throw AnimatedConfigurationError.invalid("Caption and visibility variants need a version 6 document")
+            }
+            if version < 7 && configuration.variants.contains(where: { variant in
+                variant.layerOrder != nil || variant.layers.contains { $0.anchor != nil }
+            }) {
+                throw AnimatedConfigurationError.invalid("Option placement and layer order need a version 7 document")
             }
             guard version >= 5, kind == .animated else {
                 throw AnimatedConfigurationError.invalid("Configurable stickers need an animated version 5 document")

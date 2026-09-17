@@ -139,6 +139,7 @@ export async function validateDocumentAssetReferences(
     // same ownership bar as everything else the document names.
     ...sequenceLayers.flatMap((layer) => (layer.posterAssetId ? [layer.posterAssetId] : [])),
     ...spriteLayers.map((layer) => layer.posterAssetId),
+    ...spriteLayers.flatMap((layer) => layer.clips.flatMap((clip) => clip.faceSourceAssetId ? [clip.faceSourceAssetId] : [])),
     ...svgAssetIds,
     ...backgroundAssetIds,
   ])];

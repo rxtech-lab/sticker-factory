@@ -371,7 +371,11 @@ struct StickerChatView: View {
         }
         .sheet(item: $planEditorTarget) { target in
             NavigationStack {
-                PlanEditorSheet(record: target.record, focus: target.focus) { edit, posePreset in
+                PlanEditorSheet(
+                    record: target.record,
+                    focus: target.focus,
+                    limits: store.configurationLimits
+                ) { edit, posePreset in
                     try await store.editPlan(stickerID: stickerID, current: target.record, edit: edit, posePreset: posePreset)
                 }
             }

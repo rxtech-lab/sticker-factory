@@ -769,7 +769,7 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         case .video(let v): [v.posterAssetId]
         // Every clip sheet and the expression sheet, whatever is selected: a control can switch to
         // any of them without another download. The poster is for consumers that cannot composite.
-        case .sprite(let v): v.clips.map(\.assetId) + [v.expressions.assetId]
+        case .sprite(let v): v.clips.flatMap { [$0.assetId, $0.faceMaskAssetId].compactMap { $0 } } + [v.expressions.assetId]
         case .text, .shape, .svg, .particle, .unsupported: []
         }
     }

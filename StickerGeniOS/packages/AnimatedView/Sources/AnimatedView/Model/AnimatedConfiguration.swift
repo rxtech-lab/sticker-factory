@@ -102,16 +102,18 @@ public struct AnimatedVariantLayer: Codable, Hashable, Sendable {
     public var layerId: String
     public var source: AnimatedVariantSource?
     public var animations: [AnimationSpec]?
+    public var anchor: AnimatedAnchor?
     /// For a sprite layer: which body clip plays. A pose control binds this.
     public var clip: String?
     /// For a sprite layer: which face is drawn into every frame's slot. A mood control binds this.
     public var expression: String?
     public var text: String?
     public var hidden: Bool?
-    public init(layerId: String, source: AnimatedVariantSource? = nil, animations: [AnimationSpec]? = nil, clip: String? = nil, expression: String? = nil, text: String? = nil, hidden: Bool? = nil) {
+    public init(layerId: String, source: AnimatedVariantSource? = nil, animations: [AnimationSpec]? = nil, anchor: AnimatedAnchor? = nil, clip: String? = nil, expression: String? = nil, text: String? = nil, hidden: Bool? = nil) {
         self.layerId = layerId
         self.source = source
         self.animations = animations
+        self.anchor = anchor
         self.clip = clip
         self.expression = expression
         self.text = text
@@ -123,8 +125,9 @@ public struct AnimatedVariant: Codable, Hashable, Sendable, Identifiable {
     public var id: String
     public var selections: [String: String]
     public var layers: [AnimatedVariantLayer]
-    public init(id: String, selections: [String: String], layers: [AnimatedVariantLayer]) {
-        self.id = id; self.selections = selections; self.layers = layers
+    public var layerOrder: [String]?
+    public init(id: String, selections: [String: String], layers: [AnimatedVariantLayer], layerOrder: [String]? = nil) {
+        self.id = id; self.selections = selections; self.layers = layers; self.layerOrder = layerOrder
     }
 }
 
@@ -142,20 +145,16 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
     public func normalizedValues(_ values: [String: AnimatedControlValue] = [:]) -> [String: AnimatedControlValue] {
         Dictionary(controls.map { ($0.id, $0.normalized(values[$0.id])) }, uniquingKeysWith: { _, new in new })
     }
-    /// States one configurable layer can be prepared in — the old whole-sticker cap, now per character.
-    public static let maximumLayerCombinations = 64
-    /// Every layer's states added up: what bounds validation and preparation.
-    public static let maximumPreparedStates = 128
-
     /// Every pairing of every choice, which is what the plan card quotes to the user. Preparing a
     /// cast is priced on ``preparedStateCount``; this is the far larger number it buys them.
+    ///
+    /// Saturates rather than caps. How many combinations are *allowed* is the server's to say — see
+    /// `GET /api/v1/configuration-limits` — so the only thing guarded here is the arithmetic.
     public var combinationCount: Int {
         controls.reduce(1) { count, control in
             guard control.type == .choice else { return count }
-            let options = control.options?.count ?? 0
-            return count > Self.maximumPreparedStates || options > 8
-                ? Self.maximumPreparedStates + 1
-                : min(Self.maximumPreparedStates + 1, count * options)
+            let (product, overflowed) = count.multipliedReportingOverflow(by: control.options?.count ?? 0)
+            return overflowed ? .max : product
         }
     }
     private static func product(_ controls: [AnimatedControl]) -> [[String: AnimatedControlValue]] {
@@ -167,7 +166,7 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
         }
     }
     public var choiceSelections: [[String: AnimatedControlValue]] {
-        guard combinationCount <= Self.maximumPreparedStates else { return [] }
+        guard combinationCount < .max else { return [] }
         return Self.product(controls)
     }
 
@@ -249,7 +248,9 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
     public func keepingLayers(_ ids: Set<String>) -> Self? {
         var result = self
         result.variants = variants.compactMap { variant in
-            var next = variant; next.layers = variant.layers.filter { ids.contains($0.layerId) }
+            var next = variant
+            next.layers = variant.layers.filter { ids.contains($0.layerId) }
+            next.layerOrder = variant.layerOrder?.filter { ids.contains($0) }
             return next.layers.isEmpty ? nil : next
         }
         let axes = Set(result.variants.flatMap { $0.selections.keys })
@@ -264,9 +265,11 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
 
     public func validated(layerIds: Set<String>, planned: Bool = false) throws {
         func validID(_ id: String) -> Bool { id.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil }
-        // Sixteen controls and a hundred and twenty-eight variants: a cast of four characters needs
-        // a pose and a mood each before it has spent anything on speed or on hiding an accessory.
-        try require((1...16).contains(controls.count) && variants.count <= 128, "Too many controls or variants")
+        // Shape only, never size. How many controls, options, variants or prepared states a
+        // configuration may have is the server's to decide and the server's to refuse; a document
+        // that reached this device was already accepted there, and a plan on its way out is checked
+        // against `GET /api/v1/configuration-limits` by the editor that composed it.
+        try require(!controls.isEmpty, "A configuration needs at least one control")
         try require(Set(controls.map(\.id)).count == controls.count, "Control ids must be unique")
         try require(Set(variants.map(\.id)).count == variants.count, "Variant ids must be unique")
         var properties: [String: String] = [:]
@@ -281,7 +284,7 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
             case .choice:
                 let options = control.options ?? []
                 let uniqueOptions = Set(options.map(\.id)).count == options.count
-                try require((2...8).contains(options.count) && uniqueOptions, "Each choice needs unique options")
+                try require(uniqueOptions, "Each choice needs unique options")
                 try require(options.allSatisfy { validID($0.id) && !$0.label.isEmpty && $0.label.count <= 80 }, "Invalid option name")
                 try require(options.contains { $0.id == control.defaultValue.string }, "Default option is missing")
             case .number:
@@ -299,7 +302,7 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
             case .toggle:
                 let ids = control.layerIds ?? []
                 let uniqueLayers = Set(ids).count == ids.count
-                let sized = !ids.isEmpty && ids.count <= 32 && uniqueLayers
+                let sized = !ids.isEmpty && uniqueLayers
                 try require(control.defaultValue.bool != nil && sized, "Invalid visibility control")
                 for id in ids {
                     try require(layerIds.contains(id), "Missing configurable layer \(id)")
@@ -311,7 +314,7 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
         var used = Set<String>()
         for variant in variants {
             let axes = variant.selections.keys.sorted()
-            try require(validID(variant.id) && !axes.isEmpty && !variant.layers.isEmpty && variant.layers.count <= 32, "Invalid variant")
+            try require(validID(variant.id) && !axes.isEmpty && !variant.layers.isEmpty, "Invalid variant")
             var expected = 1
             for axis in axes {
                 guard let control = controls.first(where: { $0.id == axis }), control.type == .choice,
@@ -322,6 +325,7 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
             }
             let family = axes.joined(separator: "|")
             let targets = try variantTargets(for: variant.layers, layerIds: layerIds, planned: planned)
+                .union(try variantOrderTargets(variant.layerOrder, layerIds: layerIds))
             for target in targets { try claim(target, "choices:\(family)") }
             var entry = families[family] ?? (expected, [], targets)
             try require(entry.targets == targets, "Every option must bind the same properties")
@@ -331,19 +335,6 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
         }
         for (_, entry) in families { try require(entry.keys.count == entry.expected, "Some choice combinations have no artwork") }
         try require(controls.filter { $0.type == .choice }.allSatisfy { used.contains($0.id) }, "A choice has no variants")
-        // The cap is per layer rather than per sticker: one character's pose cannot change how
-        // another resolves, so two characters at three poses and three moods each are nine states
-        // apiece, not eighty-one. Only controls acting on one layer multiply.
-        for (layerID, count) in layerCombinationCounts.sorted(by: { $0.key < $1.key }) {
-            try require(
-                count <= Self.maximumLayerCombinations,
-                "Character \(layerID) has \(count) mood/pose combinations; at most \(Self.maximumLayerCombinations) can be prepared"
-            )
-        }
-        try require(
-            preparedStateCount <= Self.maximumPreparedStates,
-            "At most \(Self.maximumPreparedStates) states in total can be prepared, and these controls reach \(preparedStateCount)"
-        )
     }
 
     /// Checks one variant's layer patches and returns the properties they bind.
@@ -358,7 +349,7 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
         var targets = Set<String>()
         for patch in layers {
             try require(layerIds.contains(patch.layerId), "Missing configurable layer \(patch.layerId)")
-            let bound = patch.source != nil || patch.animations != nil || patch.clip != nil
+            let bound = patch.source != nil || patch.animations != nil || patch.anchor != nil || patch.clip != nil
                 || patch.expression != nil || patch.text != nil || patch.hidden != nil
             try require(bound, "Empty variant layer")
             // Clip and expression are separate properties on purpose: that is what lets a mood
@@ -375,6 +366,10 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
             }
             if patch.hidden != nil {
                 try require(targets.insert("\(patch.layerId).hidden").inserted, "Duplicate visibility binding")
+            }
+            if let anchor = patch.anchor {
+                try require(anchor.isValid, "Invalid option placement")
+                try require(targets.insert("\(patch.layerId).anchor").inserted, "Duplicate placement binding")
             }
             if let source = patch.source {
                 try require(targets.insert("\(patch.layerId).source").inserted, "Duplicate artwork binding")
@@ -408,6 +403,12 @@ public struct AnimatedControlConfiguration: Codable, Hashable, Sendable {
         }
         return targets
     }
+
+    private func variantOrderTargets(_ order: [String]?, layerIds: Set<String>) throws -> Set<String> {
+        guard let order else { return [] }
+        try require(order.count == layerIds.count && Set(order) == layerIds, "Option layer order must list every layer once")
+        return ["document.layerOrder"]
+    }
 }
 
 public enum AnimatedConfigurationError: Error, LocalizedError, Equatable {
@@ -426,6 +427,7 @@ extension AnimatedDocument {
         guard let configuration else { return result }
         try configuration.validated(layerIds: Set(layers.map(\.id)))
         let values = configuration.normalizedValues(selected)
+        var layerOrder: [String]?
         for variant in configuration.variants where variant.selections.allSatisfy({ values[$0.key]?.string == $0.value }) {
             for patch in variant.layers {
                 guard let index = result.layers.firstIndex(where: { $0.id == patch.layerId }) else {
@@ -440,6 +442,7 @@ extension AnimatedDocument {
                     result.layers[index] = .text(layer)
                 }
                 if let hidden = patch.hidden { result.layers[index].base.hidden = hidden }
+                if let anchor = patch.anchor { result.layers[index].base.anchor = anchor }
                 if let animations = patch.animations {
                     result.layers[index].base.animations = animations
                     result.layers[index].base.animation = try AnimationCompiler.compile(
@@ -465,6 +468,7 @@ extension AnimatedDocument {
                     result.layers[index] = .sprite(sprite)
                 }
             }
+            if let order = variant.layerOrder { layerOrder = order }
         }
         for control in configuration.controls {
             if control.type == .number { result.speed = values[control.id]?.number ?? 1 }
@@ -473,6 +477,10 @@ extension AnimatedDocument {
                     result.layers[index].base.hidden = !(values[control.id]?.bool ?? true)
                 }
             }
+        }
+        if let layerOrder {
+            let byID = Dictionary(uniqueKeysWithValues: result.layers.map { ($0.id, $0) })
+            result.layers = layerOrder.compactMap { byID[$0] }
         }
         return try result.validated()
     }

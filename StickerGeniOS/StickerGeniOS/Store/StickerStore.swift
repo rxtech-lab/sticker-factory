@@ -115,7 +115,27 @@ final class StickerStore {
     /// The same, for a remote search: a failed query leaves no results and no way to run it again.
     private(set) var librarySearchFailure: String?
 
+    /// The editor's budget, once the server has said what it is.
+    ///
+    /// `nil` until then, and `nil` means "no limits known" rather than zero: the numbers belong to
+    /// the server, so an app that has not heard lets the server do the refusing.
+    private(set) var configurationLimits: ConfigurationLimits?
+    @ObservationIgnored private var configurationLimitsTask: Task<Void, Never>?
+
     let api: StickerAPIClientProtocol
+
+    /// Asks the server for the editor's budget, once.
+    ///
+    /// Failure is deliberately silent: the editor then enforces nothing, which is the same
+    /// position a first launch starts from, and the plan is still checked where it is decided.
+    func loadConfigurationLimits() {
+        guard configurationLimits == nil, configurationLimitsTask == nil else { return }
+        configurationLimitsTask = Task { [weak self] in
+            let limits = try? await self?.api.configurationLimits()
+            self?.configurationLimits = limits
+            self?.configurationLimitsTask = nil
+        }
+    }
 
     /// The job lifecycle as this store sees it. Shares a category with the export sheet's own trace
     /// so one filter shows the whole chain: registered → streamed → applied → settled.

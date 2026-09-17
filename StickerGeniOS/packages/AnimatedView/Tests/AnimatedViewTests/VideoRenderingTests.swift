@@ -242,14 +242,14 @@ struct VideoRenderingTests {
         let document = AnimatedDocument(
             version: 4, kind: .animated, durationSeconds: 3, fps: 24, layers: [.video(videoLayer(frameCount: 72, frameRate: 24))]
         )
-        #expect(AnimatedDocument.currentVersion == 5)
+        #expect(AnimatedDocument.currentVersion == 7)
         try document.validated()
         var older = document
         older.version = 3
         try older.validated()
         var newer = document
-        newer.version = 6
-        #expect(throws: AnimatedDocumentError.unsupportedVersion(6)) { try newer.validated() }
+        newer.version = 8
+        #expect(throws: AnimatedDocumentError.unsupportedVersion(8)) { try newer.validated() }
     }
 
     @Test func rejectsAVideoLayerWithoutAPoster() {

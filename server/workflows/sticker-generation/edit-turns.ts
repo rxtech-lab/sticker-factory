@@ -21,6 +21,7 @@ import { getObjectStore } from "@/lib/storage/r2";
 import { emptyDocument, generateAndStoreAsset, generateAndStoreVideoAsset, selectImageReferences } from "./asset-generation";
 import { assertDocumentAssetsOwned, assertJobStillRunning, beginToolCall, finishToolCall, insertAssistantMessage, isAbortError, renderWorkingDocument, showStickerThroughTool, toolCallLabeller, turnResult } from "./turn-context";
 import type { AiTurnResult, StickerToolName } from "./turn-context";
+import { repairSpriteFaces } from "./sprite-artwork";
 
 /**
  * How many paid redraws one edit turn may spend.
@@ -84,6 +85,8 @@ export async function executeEditTurn(
   const draftState = () => ({ revision: changes, document: working,
     pendingReviewSelections: working.configuration || configurationRequested ? pendingReviewSelections() : [] });
   let generations = 0;
+  const drawnAssets = new Map<string, Promise<string>>();
+  let lastRejectedOperation: { signature: string; message: string } | undefined;
   /** Clips bought this turn. One is the whole budget; see `createVideoLayer` below. */
   let clips = 0;
   let snapshot = 0;
@@ -144,6 +147,9 @@ export async function executeEditTurn(
    * inviting the model to try again spends real money re-attempting the same picture.
    */
   const draw = async (prompt: string, source?: StickerLayerV1 & { type: "image" }): Promise<string> => {
+    const drawKey = JSON.stringify([source?.assetId ?? null, prompt]);
+    const reused = drawnAssets.get(drawKey);
+    if (reused) return reused;
     if (generations >= MAX_EDIT_IMAGE_GENERATIONS) {
       throw new Error(
         `This turn has already drawn ${generations} images, which is the limit. `
@@ -152,44 +158,49 @@ export async function executeEditTurn(
     }
     // Slotted by generation count, so a replay that makes the same calls in the same order reuses
     // the images it already paid for instead of buying them a second time.
-    const assetId = derivedAssetId(job.id, `edit-${generations}`);
-    const artwork = source ? await loadArtwork(source).catch(abort) : undefined;
-    // New artwork is composited over the existing sticker. Its image request must not ask the
-    // model to rebuild that composition from the chat history or the approved plan.
-    const isolatedLayer = !source;
-    const selectedReferences = await selectImageReferences(
-      isolatedLayer
-        ? `Draw only this new isolated overlay element: ${prompt}. Select references only if useful for its style or likeness; do not reproduce the existing sticker or its scenery.`
-        : prompt,
-      history,
-      [
-        ...(artwork
-          ? [{ label: `current artwork for layer ${source?.name ?? "unknown"}`, image: artwork, required: true }]
-          : []),
-        ...options.references.map((image, index) => ({
-          label: isolatedLayer
-            ? `optional style or likeness reference ${index + 1}; do not copy its full composition`
-            : index < (options.requiredReferenceCount ?? 0)
-            ? "approved plan image"
-            : `original or carried reference ${index - (options.requiredReferenceCount ?? 0) + 1}`,
-          image,
-          required: !isolatedLayer && index < (options.requiredReferenceCount ?? 0),
-        })),
-      ],
-    ).catch(abort);
-    await generateAndStoreAsset(job, sticker.id, {
-      assetId,
-      prompt,
-      references: selectedReferences,
-      conversationContext: isolatedLayer ? undefined : history,
-      mode: artwork ? "conversation_edit" : "generate",
-      isolatedLayer,
-    }).catch(abort);
+    const generationIndex = generations;
     generations += 1;
-    return assetId;
+    const assetId = derivedAssetId(job.id, `edit-${generationIndex}`);
+    const request = (async () => {
+      const artwork = source ? await loadArtwork(source).catch(abort) : undefined;
+      // New artwork is composited over the existing sticker. Its image request must not ask the
+      // model to rebuild that composition from the chat history or the approved plan.
+      const isolatedLayer = !source;
+      const selectedReferences = await selectImageReferences(
+        isolatedLayer
+          ? `Draw only this new isolated overlay element: ${prompt}. Select references only if useful for its style or likeness; do not reproduce the existing sticker or its scenery.`
+          : prompt,
+        history,
+        [
+          ...(artwork
+            ? [{ label: `current artwork for layer ${source?.name ?? "unknown"}`, image: artwork, required: true }]
+            : []),
+          ...options.references.map((image, index) => ({
+            label: isolatedLayer
+              ? `optional style or likeness reference ${index + 1}; do not copy its full composition`
+              : index < (options.requiredReferenceCount ?? 0)
+              ? "approved plan image"
+              : `original or carried reference ${index - (options.requiredReferenceCount ?? 0) + 1}`,
+            image,
+            required: !isolatedLayer && index < (options.requiredReferenceCount ?? 0),
+          })),
+        ],
+      ).catch(abort);
+      await generateAndStoreAsset(job, sticker.id, {
+        assetId,
+        prompt,
+        references: selectedReferences,
+        conversationContext: isolatedLayer ? undefined : history,
+        mode: artwork ? "conversation_edit" : "generate",
+        isolatedLayer,
+      }).catch(abort);
+      return assetId;
+    })();
+    drawnAssets.set(drawKey, request);
+    return request;
   };
 
-  const session: EditDraftingSession = {
+  const rawSession: EditDraftingSession = {
     editImageLayer: async ({ layerId, prompt }) => {
       const call = await openCall("edit_image_layer");
       try {
@@ -220,6 +231,11 @@ export async function executeEditTurn(
         const assetId = await draw(prompt);
         const layer = emptyDocument(working.kind, assetId).layers[0];
         layer.id = `image_${assetId.replaceAll("-", "").slice(0, 12)}`;
+        if (working.layers.some((item) => item.id === layer.id)) {
+          throw new Error(
+            `Artwork ${layer.id} is already in the sticker. Review the current draft and use edit_layers to place or bind it instead of adding it again.`,
+          );
+        }
         layer.name = name;
         // Anything the model left unsaid is filled from the free canvas rather than from the
         // centre: a new element dropped at full size over the middle covers whatever was there,
@@ -242,6 +258,27 @@ export async function executeEditTurn(
         const state = await land([
           { op: "addLayer", layer, index },
           { op: "setLayerAnimations", layerId: layer.id, animations: [], anchor },
+        ], { offCanvas: "clamp" });
+        await finishToolCall(job, call, "complete", state);
+        return state;
+      } catch (error) {
+        await finishToolCall(job, call, "failed", error);
+        throw error;
+      }
+    },
+    repairSpriteFaces: async ({ layerId }) => {
+      const call = await openCall("repair_sprite_faces");
+      try {
+        const layer = working.layers.find((item) => item.id === layerId);
+        if (!layer) throw new Error(`Unknown layer ${layerId}`);
+        if (layer.type !== "sprite") throw new Error(`Layer ${layerId} is not a sprite layer`);
+        if (layer.clips.every((clip) => clip.faceCompositing === "masked")) {
+          throw new Error(`Sprite layer ${layerId} already uses foreground-safe face masks`);
+        }
+        const repaired = await repairSpriteFaces(job, sticker.id, layer).catch(abort);
+        const state = await land([
+          { op: "removeLayer", layerId },
+          { op: "addLayer", index: working.layers.indexOf(layer), layer: repaired },
         ], { offCanvas: "clamp" });
         await finishToolCall(job, call, "complete", state);
         return state;
@@ -418,12 +455,21 @@ export async function executeEditTurn(
       const editsConfiguration = operations.some((operation) => operation.op === "updateConfiguration");
       configurationRequested ||= editsConfiguration;
       try {
+        const signature = JSON.stringify(operations);
+        if (lastRejectedOperation?.signature === signature) {
+          throw new Error(`This unchanged edit was already rejected: ${lastRejectedOperation.message}. Review and correct the operation before retrying.`);
+        }
         for (const operation of operations) validateEditOperation(operation);
         const state = await land(operations);
+        lastRejectedOperation = undefined;
         if (editsConfiguration) configurationError = undefined;
         await finishToolCall(job, call, "complete", state);
         return state;
       } catch (error) {
+        lastRejectedOperation = {
+          signature: JSON.stringify(operations),
+          message: error instanceof Error ? error.message : String(error),
+        };
         if (editsConfiguration) configurationError = error;
         await finishToolCall(job, call, "failed", error);
         throw error;
@@ -443,6 +489,25 @@ export async function executeEditTurn(
         throw error;
       }
     },
+  };
+
+  // A provider may emit several tool calls in one model step. Every call observes and mutates the
+  // same draft, so queue them here at the workflow boundary rather than relying on one provider's
+  // execution order. Generation ids are already reserved before awaiting the model call above.
+  let mutationQueue: Promise<void> = Promise.resolve();
+  const serial = <T>(run: () => Promise<T>): Promise<T> => {
+    const result = mutationQueue.then(run, run);
+    mutationQueue = result.then(() => undefined, () => undefined);
+    return result;
+  };
+  const session: EditDraftingSession = {
+    editImageLayer: (input) => serial(() => rawSession.editImageLayer(input)),
+    addImageLayer: (input) => serial(() => rawSession.addImageLayer(input)),
+    repairSpriteFaces: (input) => serial(() => rawSession.repairSpriteFaces(input)),
+    createVideoLayer: (input) => serial(() => rawSession.createVideoLayer(input)),
+    renderSticker: (input) => serial(() => rawSession.renderSticker(input)),
+    applyOperations: (input) => serial(() => rawSession.applyOperations(input)),
+    finalizeEdit: () => serial(() => rawSession.finalizeEdit()),
   };
 
   let result: { revision: number; finalized: boolean } | undefined;

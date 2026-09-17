@@ -18,6 +18,9 @@ struct StickerConfigurationEditor: View {
     @Binding var configuration: AnimatedControlConfiguration?
     let layers: [Layer]
     var planned = false
+    /// What the server says a configuration may spend. Nil until the app has heard, and nil greys
+    /// out nothing: an editor that does not know the budget lets the server refuse the plan.
+    var limits: ConfigurationLimits?
     var onRequestArtwork: ((String) -> Void)?
     @State private var selectedLayer = ""
 
@@ -61,7 +64,7 @@ struct StickerConfigurationEditor: View {
                 get: { canHideLayer },
                 set: { visibility($0) }
             ))
-            .disabled(controls.count >= 16 && !canHideLayer)
+            .disabled(atControlCeiling && !canHideLayer)
 
             ForEach(controls) { control in
                 PosterCard(padding: 14) {
@@ -81,17 +84,17 @@ struct StickerConfigurationEditor: View {
                     }
                 }
                 Button("Mood") { addChoice("Mood", artwork: true) }
-                    .disabled(selectedLayerCombinations > 32 || (sprite != nil && spriteBound(\.expression)))
+                    .disabled(atCombinationCeiling || (sprite != nil && spriteBound(\.expression)))
                 Button("Pose") { addChoice("Pose", artwork: true) }
-                    .disabled(selectedLayerCombinations > 32 || (sprite != nil && spriteBound(\.clip)))
+                    .disabled(atCombinationCeiling || (sprite != nil && spriteBound(\.clip)))
                 if sprite == nil {
-                    Button("Movement") { addChoice("Movement", artwork: false) }.disabled(selectedLayerCombinations > 32)
+                    Button("Movement") { addChoice("Movement", artwork: false) }.disabled(atCombinationCeiling)
                 }
             } label: {
                 PosterMenuLabel("Add control", icon: .add).frame(maxWidth: .infinity)
             }
             .buttonStyle(.posterSecondary)
-            .disabled(controls.count >= 16 || layers.isEmpty)
+            .disabled(atControlCeiling || layers.isEmpty)
 
             if let configuration {
                 // With a cast, the product is what the sticker can show but the per-character count
@@ -110,10 +113,13 @@ struct StickerConfigurationEditor: View {
     private var validationMessage: String? {
         do {
             try configuration?.validated(layerIds: Set(layers.map(\.id)), planned: planned)
-            return nil
         } catch {
             return error.localizedDescription
         }
+        // `validated` answers whether the configuration makes sense. Whether it is affordable is
+        // a separate question, and only the server knows the answer.
+        guard let configuration, let limits else { return nil }
+        return limits.issue(for: configuration)
     }
 
     private func controlFields(_ control: AnimatedControl) -> some View {
@@ -144,7 +150,7 @@ struct StickerConfigurationEditor: View {
                                 }
                             }
                         ))
-                        let canRemove = (control.options?.count ?? 0) > 2
+                        let canRemove = (control.options?.count ?? 0) > (limits?.controlOptionsMinimum ?? 1)
                         Button(role: .destructive) { removeOption(option.id, control: control) } label: {
                             PosterSymbol("minus.circle")
                                 .font(.system(size: 17, weight: .bold, design: .rounded))
@@ -158,7 +164,7 @@ struct StickerConfigurationEditor: View {
                 }
                 Button { addOption(control) } label: { PosterMenuLabel("Add option", icon: .add) }
                     .buttonStyle(.posterSecondaryCompact)
-                    .disabled((control.options?.count ?? 0) >= 8 || wouldExceedCombinations(control))
+                    .disabled(wouldExceedCombinations(control))
                 ForEach(configuration?.variants.filter { $0.selections[control.id] != nil } ?? []) { variant in
                     variantFields(variant)
                 }
@@ -320,12 +326,22 @@ struct StickerConfigurationEditor: View {
     /// How many states the layer being edited can already be prepared in. The ceiling is per
     /// character, so adding a control to the dog must not read as spending the cat's budget.
     private var selectedLayerCombinations: Int { configuration?.layerCombinationCounts[layerID] ?? 1 }
-    /// Whether one more option on this control would put its character past the 64-state ceiling.
+    /// Whether the configuration is already at the control ceiling the server set.
+    private var atControlCeiling: Bool { limits.map { controls.count >= $0.controls } ?? false }
+    /// Whether one more control on the selected character would put it past its ceiling.
+    private var atCombinationCeiling: Bool {
+        limits?.exceedsLayerCombinations(addingControlTo: selectedLayerCombinations) ?? false
+    }
+    /// Whether one more option on this control would put its character past its ceiling, or the
+    /// control past the options it is allowed to offer.
     private func wouldExceedCombinations(_ control: AnimatedControl) -> Bool {
+        guard let limits else { return false }
         let options = control.options?.count ?? 0
-        guard let configuration, let layerID = configuration.layerIDs(for: control).first else { return false }
+        guard let configuration, let layerID = configuration.layerIDs(for: control).first else {
+            return options >= limits.controlOptions
+        }
         let counts = configuration.layerCombinationCounts
-        return (counts[layerID] ?? 1) / max(1, options) * (options + 1) > AnimatedControlConfiguration.maximumLayerCombinations
+        return limits.exceedsLayerCombinations(addingOptionTo: counts[layerID] ?? 1, options: options)
     }
     private func update(_ id: String, _ body: (inout AnimatedControl) -> Void) {
         guard let i = configuration?.controls.firstIndex(where: { $0.id == id }) else { return }

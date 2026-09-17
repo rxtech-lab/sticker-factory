@@ -257,10 +257,28 @@ private struct ToolCallRow: View {
                                     .frame(maxWidth: .infinity, minHeight: 180)
                             }
                         } else {
-                            Text(message.toolDetails ?? fallbackDetails)
-                                .font(.body.monospaced())
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            let details = message.toolDetails ?? fallbackDetails
+                            if message.status == .failed {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text(message.readableToolFailure ?? "The edit could not be applied.")
+                                        .font(.body)
+                                    if let correction = message.toolFailureCorrection {
+                                        Label(correction, systemImage: "wrench.and.screwdriver")
+                                            .foregroundStyle(AppColors.muted)
+                                    }
+                                    DisclosureGroup("Technical details") {
+                                        Text(details)
+                                            .font(.body.monospaced())
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                }
+                            } else {
+                                Text(details)
+                                    .font(.body.monospaced())
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -622,5 +640,24 @@ nonisolated extension ChatMessage {
               let assetID = result["previewAssetId"] as? String, !assetID.isEmpty
         else { return nil }
         return assetID
+    }
+
+    private var parsedToolFailure: [String: Any]? {
+        guard let data = toolDetails?.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        if let value = json as? [String: Any] { return value }
+        if let values = json as? [[String: Any]] { return values.first }
+        return nil
+    }
+
+    var readableToolFailure: String? {
+        if let message = parsedToolFailure?["message"] as? String { return message }
+        guard let text = toolDetails?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return text.first == "[" || text.first == "{" ? "The edit has an invalid or incomplete setting." : text
+    }
+
+    var toolFailureCorrection: String? {
+        (parsedToolFailure?["correction"] as? String)
+            ?? ((parsedToolFailure?["params"] as? [String: Any])?["correction"] as? String)
     }
 }

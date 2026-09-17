@@ -258,6 +258,7 @@ struct StickerEditorSheet: View {
     @State private var confirmingUnpublish = false
     @State private var photoItem: PhotosPickerItem?
     @State private var pickerContinuation: CheckedContinuation<String?, Never>?
+    @State private var savedParentRevisionID: String?
 
     private var isPublished: Bool {
         context.store.stickers.first { $0.id == context.stickerID }?.status == .published
@@ -273,8 +274,20 @@ struct StickerEditorSheet: View {
                 // renders a square frame that letterboxes anything else. Size that does reach the
                 // sticker is chosen at send time in WinkySticker, from the three renditions a
                 // publish uploads — see `StickerExportMetadataPolicy.attachmentDimensions`.
-                configuration: .init(allowsCanvasResize: false),
-                onPickImageAsset: { await pickImageAsset() }
+                configuration: .init(
+                    allowsCanvasResize: false,
+                    controlLimits: context.store.configurationLimits.map {
+                        .init(
+                            controls: $0.controls,
+                            controlOptions: $0.controlOptions,
+                            variants: $0.variants,
+                            layerCombinations: $0.layerCombinations,
+                            preparedStates: $0.preparedStates
+                        )
+                    }
+                ),
+                onPickImageAsset: { await pickImageAsset() },
+                onRequestAIArtwork: { prompt in Task { await requestAIArtwork(prompt) } }
             )
             .navigationTitle("Edit Sticker")
             .navigationBarTitleDisplayMode(.inline)
@@ -338,15 +351,50 @@ struct StickerEditorSheet: View {
             // The editor's issue banner is advisory and never blocks typing, so this is the first
             // point anything insists the document is whole.
             let validated = try document.validated()
-            try await context.store.saveEditedDocument(
+            let saved = try await context.store.saveEditedDocument(
                 stickerID: context.stickerID,
-                parentRevisionID: context.revisionID,
+                parentRevisionID: savedParentRevisionID ?? context.revisionID,
                 document: validated
             )
+            savedParentRevisionID = saved.revisionId
             Haptics.success()
             onFinished(true)
         } catch {
             // Deliberately does not dismiss: an edit lost to a flaky connection is unrecoverable.
+            errorMessage = error.localizedDescription
+            Haptics.failure()
+        }
+    }
+
+    /// AI artwork starts from a persisted, valid draft so the tool receives stable control and
+    /// option ids. A failed save leaves this editor and its undo history on screen.
+    private func requestAIArtwork(_ prompt: String) async {
+        guard !isSaving else { return }
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+        do {
+            let validated = try document.validated()
+            let saved = try await context.store.saveEditedDocument(
+                stickerID: context.stickerID,
+                parentRevisionID: savedParentRevisionID ?? context.revisionID,
+                document: validated,
+                note: "Saved before requesting option artwork"
+            )
+            savedParentRevisionID = saved.revisionId
+            try await context.store.sendMessage(
+                stickerID: context.stickerID,
+                content: prompt,
+                references: [],
+                mask: nil,
+                targetLayerID: nil,
+                intent: .edit,
+                imagePlacement: .replace,
+                baseRevisionID: saved.revisionId
+            )
+            Haptics.success()
+            onFinished(true)
+        } catch {
             errorMessage = error.localizedDescription
             Haptics.failure()
         }

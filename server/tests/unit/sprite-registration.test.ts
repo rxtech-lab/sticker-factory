@@ -102,4 +102,50 @@ describe("registerExpressionTiles and compositeSpriteFrame", () => {
     const small = await sharp(await compositeSpriteFrame({ atlas, clip: { ...GRID, frames }, index: 0, sheet, tile: tiles[0], edge: 64 })).metadata();
     expect(Math.max(small.width!, small.height!)).toBe(64);
   });
+
+  it("keeps foreground props above a masked face and accepts a fully covered face", async () => {
+    const cells = regular.map((face, index) => {
+      const ox = (index % GRID.columns) * CELL.width, oy = Math.floor(index / GRID.columns) * CELL.height;
+      const marker = index === 5 ? "" : `<ellipse cx="${ox + face!.cx}" cy="${oy + face!.cy}" rx="${face!.rx}" ry="${face!.ry}" fill="#FF00FF"/>`;
+      // The cup is drawn after the marker. Frame 6 covers the complete registered face.
+      const cup = index === 5
+        ? `<ellipse cx="${ox + 65}" cy="${oy + 60}" rx="34" ry="28" fill="#663300"/>`
+        : `<rect x="${ox + 36}" y="${oy + 58}" width="48" height="24" rx="8" fill="#663300"/>`;
+      return `<rect x="${ox + 20}" y="${oy + 20}" width="80" height="120" rx="30" fill="#F4A261"/>${marker}${cup}`;
+    }).join("");
+    const body = new Uint8Array(await sharp(Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="320">${cells}</svg>`,
+    )).png().toBuffer());
+    const registeredFrames = regular.map((face) => ({
+      faceX: face!.cx / CELL.width,
+      faceY: face!.cy / CELL.height,
+      faceSize: face!.rx * 2 / CELL.width,
+    }));
+    const registered = await registerFaceSlots(body, GRID, {
+      faceCompositing: "masked",
+      registeredFrames,
+    });
+    expect(registered.frames).toEqual(registeredFrames);
+    expect(registered.maskBytes).toBeDefined();
+    const sheet = await faceSheet();
+    const tiles = await registerExpressionTiles(sheet, { columns: 3, rows: 1, frameCount: 3 });
+    const partial = await compositeSpriteFrame({
+      atlas: registered.bytes, maskAtlas: registered.maskBytes,
+      clip: { ...GRID, frames: registered.frames, faceCompositing: "masked" }, index: 0, sheet, tile: tiles[0],
+    });
+    const visibleFace = await pixel(partial, 60, 49);
+    expect(visibleFace[1]).toBeGreaterThan(visibleFace[0]); // green expression
+    expect(visibleFace[1]).toBeGreaterThan(visibleFace[2]);
+    const cup = await pixel(partial, 60, 68);
+    expect(cup[0]).toBeGreaterThan(cup[1]);
+    expect(cup[2]).toBeLessThan(40);
+
+    const covered = await compositeSpriteFrame({
+      atlas: registered.bytes, maskAtlas: registered.maskBytes,
+      clip: { ...GRID, frames: registered.frames, faceCompositing: "masked" }, index: 5, sheet, tile: tiles[0],
+    });
+    const coveredCentre = await pixel(covered, 65, 60);
+    expect(coveredCentre[0]).toBeGreaterThan(coveredCentre[1]);
+    expect(coveredCentre[2]).toBeLessThan(40);
+  });
 });

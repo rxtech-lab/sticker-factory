@@ -11,15 +11,34 @@ public struct AnimatedEditorConfiguration: Sendable {
     public var allowsCanvasResize: Bool
     public var allowsKindChange: Bool
     public var allowedLayerTypes: Set<AnimatedLayerType>
+    public var controlLimits: AnimatedEditorControlLimits?
 
     public init(
         allowsCanvasResize: Bool = true,
         allowsKindChange: Bool = true,
-        allowedLayerTypes: Set<AnimatedLayerType> = Set(AnimatedLayerType.allCases)
+        allowedLayerTypes: Set<AnimatedLayerType> = Set(AnimatedLayerType.allCases),
+        controlLimits: AnimatedEditorControlLimits? = nil
     ) {
         self.allowsCanvasResize = allowsCanvasResize
         self.allowsKindChange = allowsKindChange
         self.allowedLayerTypes = allowedLayerTypes
+        self.controlLimits = controlLimits
+    }
+}
+
+public struct AnimatedEditorControlLimits: Sendable {
+    public var controls: Int
+    public var controlOptions: Int
+    public var variants: Int
+    public var layerCombinations: Int
+    public var preparedStates: Int
+
+    public init(controls: Int, controlOptions: Int, variants: Int, layerCombinations: Int, preparedStates: Int) {
+        self.controls = controls
+        self.controlOptions = controlOptions
+        self.variants = variants
+        self.layerCombinations = layerCombinations
+        self.preparedStates = preparedStates
     }
 }
 
@@ -36,6 +55,7 @@ public struct AnimatedIconEditor: View {
     private let assets: any AnimatedAssetProvider
     private let configuration: AnimatedEditorConfiguration
     private let onPickImageAsset: (@MainActor () async -> String?)?
+    private let onRequestAIArtwork: ((String) -> Void)?
 
     @State private var editor: AnimatedDocumentEditor
     @State private var pane = Pane.layers
@@ -48,23 +68,26 @@ public struct AnimatedIconEditor: View {
         document: Binding<AnimatedDocument>,
         assets: any AnimatedAssetProvider = EmptyAnimatedAssets(),
         configuration: AnimatedEditorConfiguration = .init(),
-        onPickImageAsset: (@MainActor () async -> String?)? = nil
+        onPickImageAsset: (@MainActor () async -> String?)? = nil,
+        onRequestAIArtwork: ((String) -> Void)? = nil
     ) {
         self._document = document
         self.assets = assets
         self.configuration = configuration
         self.onPickImageAsset = onPickImageAsset
+        self.onRequestAIArtwork = onRequestAIArtwork
         self._editor = State(initialValue: AnimatedDocumentEditor(document: document.wrappedValue))
     }
 
     private enum Pane: String, CaseIterable, Identifiable {
-        case layers, style, motion
+        case layers, style, motion, controls
         var id: Self { self }
         var label: String {
             switch self {
             case .layers: "Layers"
             case .style: "Style"
             case .motion: "Motion"
+            case .controls: "Controls"
             }
         }
     }
@@ -179,12 +202,9 @@ public struct AnimatedIconEditor: View {
 
             Divider()
 
-            Group {
-                if editor.selectedKeyframe != nil {
-                    AnimatedEditorKeyframeInspector(editor: editor)
-                } else {
-                    inspector
-                }
+            VStack(spacing: 0) {
+                panePicker
+                paneContent
             }
             .frame(width: 320)
         }
@@ -196,6 +216,14 @@ public struct AnimatedIconEditor: View {
         case .layers: layerList
         case .style: inspector
         case .motion: AnimatedEditorKeyframeInspector(editor: editor)
+        case .controls:
+            AnimatedEditorControlsPane(
+                editor: editor,
+                assets: assets,
+                limits: configuration.controlLimits,
+                onRequestImageAsset: { replaceOptionArtwork() },
+                onRequestAIArtwork: onRequestAIArtwork
+            )
         }
     }
 
@@ -364,6 +392,14 @@ public struct AnimatedIconEditor: View {
                 value.maskAssetId = assetID
                 $0 = .image(value)
             }
+        }
+    }
+
+    private func replaceOptionArtwork() {
+        guard let onPickImageAsset, let layerID = editor.selectedLayerID else { return }
+        Task { @MainActor in
+            guard let assetID = await onPickImageAsset() else { return }
+            editor.setOptionArtwork(.init(kind: .image, assetId: assetID), forLayer: layerID)
         }
     }
 }

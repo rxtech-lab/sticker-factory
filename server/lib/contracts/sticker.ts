@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { StickerConfigurationSchema, ConfigurationChangesSchema, updateConfiguration, requiresConfigurationV6, configurationIssues, configurationCoverage, configurationKeepingLayers, controlLayerIds, normalizedControlValues, type StickerControlValues, type StickerConfiguration } from "./configuration";
+import { StickerConfigurationSchema, ConfigurationChangesSchema, updateConfiguration, requiresConfigurationV6, requiresConfigurationV7, configurationIssueDetails, configurationIssues, configurationCoverage, configurationKeepingLayers, controlLayerIds, normalizedControlValues, type StickerControlValues, type StickerConfiguration } from "./configuration";
 import { selectSpriteState, spriteDocumentIssues } from "./sprite";
 import { compileLayerAnimation, countKeyframes, type AnimationTiming } from "@/lib/animation/compile";
 import {
@@ -63,10 +63,10 @@ export * from "./layers";
  * v5 adds `configuration` — controls a viewer can set and the layer variants they select — and the
  * `sprite` layer, a character whose body clips and face expressions compose at draw time. A client
  * below v5 is served the resolved default with each sprite replaced by its poster still.
- * v6 adds native caption and choice-driven visibility bindings. Older clients receive the
- * resolved default when those bindings are used; v5 clients can still animate its sprites.
+ * v6 adds native caption and choice-driven visibility bindings. v7 adds per-option placement and
+ * stacking, plus masked sprite faces whose foreground artwork survives expression compositing.
  */
-export const CURRENT_DOCUMENT_VERSION = 6;
+export const CURRENT_DOCUMENT_VERSION = 7;
 
 /**
  * How big a stored document may get, serialized.
@@ -431,6 +431,11 @@ const LegacyStickerDocumentV5Schema = z.discriminatedUnion("kind", [
   AnimatedDocumentV1Schema.extend({ version: z.literal(5) }),
 ]);
 const upcastV5ToV6 = (document: z.infer<typeof LegacyStickerDocumentV5Schema>): unknown => ({ ...document, version: 6 });
+const LegacyStickerDocumentV6Schema = z.discriminatedUnion("kind", [
+  StaticDocumentV1Schema.extend({ version: z.literal(6) }),
+  AnimatedDocumentV1Schema.extend({ version: z.literal(6) }),
+]);
+const upcastV6ToV7 = (document: z.infer<typeof LegacyStickerDocumentV6Schema>): unknown => ({ ...document, version: 7 });
 const upcastV4ToV5 = (document: z.infer<typeof LegacyStickerDocumentV4Schema>): unknown => ({ ...document, version: 5 as const });
 export const MIN_CLIENT_DOCUMENT_VERSION = 2;
 
@@ -463,8 +468,20 @@ export function downcastForClient(document: StickerDocument, clientVersion: numb
   if (clientVersion >= CURRENT_DOCUMENT_VERSION) return document;
 
   if (clientVersion >= 5) {
-    const compatible = requiresConfigurationV6(document.configuration) ? resolveStickerConfiguration(document) : document;
-    return { ...compatible, version: 5 };
+    const needsMaskedPoster = document.layers.some((layer) => layer.type === "sprite"
+      && layer.clips.some((clip) => clip.faceCompositing === "masked"));
+    const needsResolvedConfiguration = requiresConfigurationV7(document.configuration)
+      || (clientVersion < 6 && requiresConfigurationV6(document.configuration));
+    const compatible = needsResolvedConfiguration || needsMaskedPoster
+      ? resolveStickerConfiguration(document) : document;
+    return {
+      ...compatible,
+      version: clientVersion,
+      layers: compatible.layers.map((layer) => layer.type === "sprite"
+        && layer.clips.some((clip) => clip.faceCompositing === "masked")
+        ? { ...layerBaseOf(layer), type: "image" as const, assetId: layer.posterAssetId, contentMode: layer.contentMode }
+        : layer),
+    };
   }
   document = resolveStickerConfiguration(document);
   // A sprite composes at draw time, which nothing below v5 can do; its poster is the resting pose
@@ -528,19 +545,32 @@ const CurrentDocumentSchema = z.discriminatedUnion("kind", [
  */
 export const StickerDocumentSchema = z.union([
   CurrentDocumentSchema,
-  LegacyStickerDocumentV5Schema.transform(upcastV5ToV6).pipe(CurrentDocumentSchema),
-  LegacyStickerDocumentV4Schema.transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(CurrentDocumentSchema),
-  LegacyStickerDocumentV3Schema.transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV6Schema.transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV5Schema.transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV4Schema.transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV3Schema.transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
   LegacyStickerDocumentV2Schema.transform(upcastV2ToV3)
-    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(CurrentDocumentSchema),
+    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
   LegacyStickerDocumentV1Schema.transform(upcastV1ToV2)
     .pipe(LegacyStickerDocumentV2Schema).transform(upcastV2ToV3)
-    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(CurrentDocumentSchema),
+    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
 ]).superRefine((document, context) => {
   if (document.configuration) {
-    const issues = configurationIssues(document.configuration, new Set(document.layers.map((layer) => layer.id)));
-    if (document.kind !== "animated") issues.push("Configurable stickers need an animated document");
-    for (const message of issues) context.addIssue({ code: "custom", message });
+    const details = configurationIssueDetails(document.configuration, new Set(document.layers.map((layer) => layer.id)));
+    if (document.kind !== "animated") details.push({ message: "Configurable stickers need an animated document", path: ["kind"] });
+    for (const issue of details) context.addIssue({
+      code: "custom",
+      message: issue.message,
+      path: ["configuration", ...issue.path],
+      params: {
+        controlId: issue.controlId,
+        optionId: issue.optionId,
+        layerId: issue.layerId,
+        field: issue.field,
+        correction: issue.correction,
+      },
+    });
+    const issues = details.map((issue) => issue.message);
     if (!issues.length) {
       const heaviest = new Map<string, number>();
       for (const values of configurationCoverage(document.configuration)) {
@@ -778,7 +808,7 @@ export function layerImageAssetIds(layer: StickerLayerV1): string[] {
   // Every clip sheet and the expression sheet: a resolved layer draws one clip, but the artwork a
   // document *needs* is whatever any control can select, and the poster is asked for explicitly.
   case "sprite":
-    return [...layer.clips.map((clip) => clip.assetId), layer.expressions.assetId];
+    return [...layer.clips.flatMap((clip) => [clip.assetId, clip.faceMaskAssetId].filter((id): id is string => Boolean(id))), layer.expressions.assetId];
   case "text":
   case "shape":
   case "svg":
@@ -986,6 +1016,7 @@ export function resolveStickerConfiguration<T extends { configuration?: StickerC
   const issues = configurationIssues(configuration, new Set(document.layers.map((layer) => layer.id)));
   if (issues.length) throw new Error(issues.join("; "));
   const values = normalizedControlValues(configuration, selected);
+  let layerOrder: string[] | undefined;
   for (const variant of configuration.variants) {
     if (!Object.entries(variant.selections).every(([id, value]) => values[id] === value)) continue;
     for (const patch of variant.layers) {
@@ -1001,6 +1032,7 @@ export function resolveStickerConfiguration<T extends { configuration?: StickerC
         layer.text = patch.text;
       }
       if (patch.hidden !== undefined) layer.hidden = patch.hidden;
+      if (patch.anchor !== undefined) layer.anchor = patch.anchor;
       if (patch.animations !== undefined) {
         layer.animations = patch.animations;
         layer.animation = compileLayerAnimation(patch.animations, layer.anchor, { kind: document.kind, durationSeconds: document.durationSeconds });
@@ -1011,12 +1043,17 @@ export function resolveStickerConfiguration<T extends { configuration?: StickerC
       }
       document.layers[index] = layer;
     }
+    if (variant.layerOrder !== undefined) layerOrder = variant.layerOrder;
   }
   for (const control of configuration.controls) {
     if (control.type === "number") document.speed = values[control.id] as number;
     if (control.type === "toggle") {
       for (const layer of document.layers) if (control.layerIds.includes(layer.id)) layer.hidden = !values[control.id];
     }
+  }
+  if (layerOrder) {
+    const byId = new Map(document.layers.map((layer) => [layer.id, layer]));
+    document.layers = layerOrder.map((id) => byId.get(id)).filter((layer): layer is StickerLayerV1 => Boolean(layer));
   }
   return document;
 }

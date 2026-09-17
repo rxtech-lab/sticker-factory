@@ -101,6 +101,7 @@ export type StickerToolName =
   | "edit_layers"
   | "edit_image_layer"
   | "add_image_layer"
+  | "repair_sprite_faces"
   | "create_video"
   | "generate-video"
   | "finalize_edit"
@@ -265,7 +266,34 @@ export function toolCallLabeller(): (toolName: StickerToolName) => string {
 
 function formatToolDetails(details: unknown): string | undefined {
   if (details === undefined) return undefined;
-  if (details instanceof Error) return details.message.slice(0, 16000);
+  if (details instanceof Error) {
+    const message = details.message.slice(0, 16000);
+    // Zod already supplies field-level issues. Preserve that array so clients can lead with the
+    // first readable issue and keep the rest under technical details.
+    try {
+      const parsed = JSON.parse(message);
+      if (Array.isArray(parsed)) {
+        const first = parsed.find((issue) => issue && typeof issue.message === "string");
+        return JSON.stringify({
+          category: "configuration",
+          message: first?.message ?? "The edit has an invalid or incomplete setting.",
+          correction: first?.params?.correction,
+          issues: parsed,
+        }, null, 2);
+      }
+    } catch { /* ordinary error message */ }
+    const lowered = `${details.name} ${message}`.toLowerCase();
+    const category = lowered.includes("timeout") || lowered.includes("timed out")
+      ? "timeout"
+      : lowered.includes("asset") || lowered.includes("artwork") || lowered.includes("sheet")
+        ? "asset"
+        : lowered.includes("provider") || lowered.includes("model") || lowered.includes("generation")
+          ? "image_provider"
+          : lowered.includes("configuration") || lowered.includes("variant") || lowered.includes("control")
+            ? "configuration"
+            : "edit";
+    return JSON.stringify({ category, message }, null, 2);
+  }
   const text = typeof details === "string" ? details : JSON.stringify(details, (_key, value) => {
     if (value instanceof Uint8Array) return `[Image/media: ${value.byteLength} bytes]`;
     if (value?.type === "Buffer" && Array.isArray(value.data)) return `[Image/media: ${value.data.length} bytes]`;

@@ -136,6 +136,8 @@ export const PlanLayerSourceV1Schema = z.discriminatedUnion("kind", [
     clips: z.array(z.object({
       id: LayerIdSchema,
       label: z.string().trim().min(1).max(80),
+      /** Use masked when a hand, cup, instrument, or other body artwork passes in front of the face. */
+      faceCompositing: z.enum(["overlay", "masked"]).default("overlay"),
       /** What the body does across the frames, in order. The first frame is the resting pose. */
       prompt: z.string().trim().min(1).max(1_000),
       /** How long each frame holds. Six frames is the norm; a still pose may be one. */
@@ -209,6 +211,10 @@ export const PlanLayerV1Schema = z.object({
   }
 });
 
+/** Layers one plan may hold. Twelve rather than eight: a two-character scene spends two of them
+ *  before any scenery. Served to the plan editor with the rest of the budget. */
+export const MAX_PLAN_LAYERS = 12;
+
 export const PlanTimingV1Schema = z.object({
   durationSeconds: z.number().min(0.5).max(4).default(2),
   fps: z.number().int().min(1).max(30).default(30),
@@ -233,8 +239,7 @@ export const PlanV1Schema = z.object({
   summary: z.string().trim().min(1).max(1_000),
   kind: z.enum(["static", "animated"]),
   timing: PlanTimingV1Schema.default({ durationSeconds: 2, fps: 30, loop: "loop" }),
-  /** Twelve rather than eight: a two-character scene spends two of them before any scenery. */
-  layers: z.array(PlanLayerV1Schema).max(12),
+  layers: z.array(PlanLayerV1Schema).max(MAX_PLAN_LAYERS),
   /**
    * How to draw the finished static reference the user approves before animated parts are made.
    *
