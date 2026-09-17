@@ -27,7 +27,7 @@ for (const group of catalog.groups) for (const option of group.options) {
     const metadata = await sharp(resolve(input, filename), { animated: true }).metadata();
     if ((metadata.pages ?? 1) < 2) throw new Error(`Still preview: ${option.id}/${filename}`);
   }
-  const output = resolve("public/images/creation/v2", option.id);
+  const output = resolve("public/images/creation/v3", option.id);
   await mkdir(output, { recursive: true });
   await cp(input, output, { recursive: true });
   if (option.id === "bold-cartoon") {

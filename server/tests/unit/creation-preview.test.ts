@@ -19,9 +19,10 @@ describe("generated creation previews", () => {
   it("ships real animated GIFs for every style, theme, pose and mood", async () => {
     const styles = new Set<string>();
     for (const group of creationPresetCatalog.groups) for (const option of group.options) {
-      const root = resolve("public/images/creation/v2", option.id);
+      const root = resolve("public/images/creation/v3", option.id);
       const source = JSON.parse(await readFile(resolve(root, "manifest.json"), "utf8"));
       expect(source.source.workflow).toBe("stickerGenerationWorkflow");
+      expect(source.source.generator).toBe("editable-svg-mascot-v3");
       const document = StickerDocumentSchema.parse(JSON.parse(await readFile(resolve(root, "document.json"), "utf8")));
       expect(document.layers.some(layer => layer.type === "sprite")).toBe(true);
       const firstFrames = new Set<string>();

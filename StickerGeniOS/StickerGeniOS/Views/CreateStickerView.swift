@@ -60,9 +60,9 @@ struct CreateStickerView: View {
             if let tutorialMode { _ = handleTutorialAction(tutorialMode) }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing")
                 && ProcessInfo.processInfo.arguments.contains("--ui-creation-reference"),
-                let url = Bundle.main.url(forResource: "creation-cat-happy", withExtension: "png"),
+                let url = Bundle.main.url(forResource: "creation-mascot-happy", withExtension: "png"),
                 let data = try? Data(contentsOf: url) {
-                references = [.init(data: data, filename: "cat.png", mimeType: "image/png")]
+                references = [.init(data: data, filename: "mascot.png", mimeType: "image/png")]
             }
         }
         .onChange(of: kind) { _, _ in flow.animationReviewed = false }

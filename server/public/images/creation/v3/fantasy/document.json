@@ -1,0 +1,657 @@
+{
+  "configuration": {
+    "controls": [
+      {
+        "id": "pose",
+        "label": "Pose",
+        "type": "choice",
+        "defaultValue": "idle",
+        "options": [
+          {
+            "id": "idle",
+            "label": "Idle"
+          },
+          {
+            "id": "wave",
+            "label": "Greeting Wave"
+          },
+          {
+            "id": "bounce",
+            "label": "Bounce"
+          },
+          {
+            "id": "sway",
+            "label": "Sway"
+          },
+          {
+            "id": "wiggle",
+            "label": "Wiggle"
+          },
+          {
+            "id": "hop",
+            "label": "Hop"
+          },
+          {
+            "id": "spin",
+            "label": "Partial Turn"
+          },
+          {
+            "id": "dance",
+            "label": "Dance"
+          }
+        ]
+      },
+      {
+        "id": "mood",
+        "label": "Mood",
+        "type": "choice",
+        "defaultValue": "neutral",
+        "options": [
+          {
+            "id": "neutral",
+            "label": "Neutral"
+          },
+          {
+            "id": "happy",
+            "label": "Happy"
+          },
+          {
+            "id": "surprised",
+            "label": "Surprised"
+          }
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": "pose_idle",
+        "selections": {
+          "pose": "idle"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "idle"
+          }
+        ]
+      },
+      {
+        "id": "pose_wave",
+        "selections": {
+          "pose": "wave"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "wave"
+          }
+        ]
+      },
+      {
+        "id": "pose_bounce",
+        "selections": {
+          "pose": "bounce"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "bounce"
+          }
+        ]
+      },
+      {
+        "id": "pose_sway",
+        "selections": {
+          "pose": "sway"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "sway"
+          }
+        ]
+      },
+      {
+        "id": "pose_wiggle",
+        "selections": {
+          "pose": "wiggle"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "wiggle"
+          }
+        ]
+      },
+      {
+        "id": "pose_hop",
+        "selections": {
+          "pose": "hop"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "hop"
+          }
+        ]
+      },
+      {
+        "id": "pose_spin",
+        "selections": {
+          "pose": "spin"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "spin"
+          }
+        ]
+      },
+      {
+        "id": "pose_dance",
+        "selections": {
+          "pose": "dance"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "clip": "dance"
+          }
+        ]
+      },
+      {
+        "id": "mood_neutral",
+        "selections": {
+          "mood": "neutral"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "expression": "neutral"
+          }
+        ]
+      },
+      {
+        "id": "mood_happy",
+        "selections": {
+          "mood": "happy"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "expression": "happy"
+          }
+        ]
+      },
+      {
+        "id": "mood_surprised",
+        "selections": {
+          "mood": "surprised"
+        },
+        "layers": [
+          {
+            "layerId": "mascot",
+            "expression": "surprised"
+          }
+        ]
+      }
+    ]
+  },
+  "version": 7,
+  "canvas": {
+    "width": 1024,
+    "height": 1024,
+    "coordinateSpace": "normalized",
+    "transparent": true
+  },
+  "layers": [
+    {
+      "id": "mascot",
+      "name": "Pink mascot — Fantasy",
+      "hidden": false,
+      "anchor": {
+        "position": {
+          "x": 0.5,
+          "y": 0.53
+        },
+        "scale": {
+          "x": 1,
+          "y": 1
+        },
+        "rotationDegrees": 0,
+        "opacity": 1,
+        "trim": {
+          "start": 0,
+          "end": 1
+        }
+      },
+      "animations": [],
+      "animation": {
+        "position": [
+          {
+            "timeSeconds": 0,
+            "easing": "linear",
+            "x": 0.5,
+            "y": 0.53
+          }
+        ],
+        "scale": [],
+        "rotation": [],
+        "opacity": [],
+        "effects": [],
+        "trim": [],
+        "wipe": [],
+        "sheen": [],
+        "glow": []
+      },
+      "blendMode": "normal",
+      "type": "sprite",
+      "clips": [
+        {
+          "id": "idle",
+          "assetId": "d775d55c-aa5b-4484-96b9-88bb5e83fce8",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            }
+          ],
+          "faceCompositing": "overlay"
+        },
+        {
+          "id": "wave",
+          "assetId": "70a871fd-baa1-4ba0-995f-81ca6e258bc0",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            }
+          ],
+          "faceCompositing": "overlay"
+        },
+        {
+          "id": "bounce",
+          "assetId": "caf84cbb-c041-4093-b932-41005a614122",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            }
+          ],
+          "faceCompositing": "overlay"
+        },
+        {
+          "id": "sway",
+          "assetId": "8161a73b-93eb-4253-942b-432d78fb3006",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            }
+          ],
+          "faceCompositing": "overlay"
+        },
+        {
+          "id": "wiggle",
+          "assetId": "ddf3e202-3426-4bac-8ba8-ed4b6c75b60a",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            }
+          ],
+          "faceCompositing": "overlay"
+        },
+        {
+          "id": "hop",
+          "assetId": "8cf95dac-bb8b-49dd-90df-8986a8c3cdf1",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            }
+          ],
+          "faceCompositing": "overlay"
+        },
+        {
+          "id": "spin",
+          "assetId": "f8b208a4-2128-4434-ac8e-20ed8d4d07fe",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            }
+          ],
+          "faceCompositing": "overlay"
+        },
+        {
+          "id": "dance",
+          "assetId": "0ab65c57-0396-4087-8ef8-81812dbd9b1f",
+          "columns": 3,
+          "rows": 2,
+          "frames": [
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            },
+            {
+              "duration": 0.3333333333333333,
+              "faceX": 0.61,
+              "faceY": 0.48,
+              "faceSize": 0.38
+            }
+          ],
+          "faceCompositing": "overlay"
+        }
+      ],
+      "expressions": {
+        "assetId": "6d5047d5-840e-4074-9b21-937798e90ec5",
+        "columns": 2,
+        "rows": 2,
+        "tiles": [
+          {
+            "id": "neutral",
+            "x": 0,
+            "y": 0,
+            "width": 0.5,
+            "height": 0.5
+          },
+          {
+            "id": "happy",
+            "x": 0.5,
+            "y": 0,
+            "width": 0.5,
+            "height": 0.5
+          },
+          {
+            "id": "surprised",
+            "x": 0,
+            "y": 0.5,
+            "width": 0.5,
+            "height": 0.5
+          }
+        ]
+      },
+      "clipId": "idle",
+      "expressionId": "neutral",
+      "contentMode": "fit",
+      "posterAssetId": "5fc56e9a-892c-4b35-84ec-f27343f5b702"
+    }
+  ],
+  "background": {
+    "type": "none"
+  },
+  "mp4Background": {
+    "type": "solid",
+    "color": "#FFFFFF"
+  },
+  "kind": "animated",
+  "durationSeconds": 2,
+  "fps": 30,
+  "loop": "loop",
+  "speed": 1
+}

@@ -98,19 +98,10 @@ struct CreationPresetChips: View {
     let presets: CreationPresetDisplay
     @Environment(\.locale) private var locale
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            chips(horizontal: true)
-            chips(horizontal: false)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("creation-preset-chips")
-    }
-    @ViewBuilder private func chips(horizontal: Bool) -> some View {
-        if horizontal {
-            HStack(spacing: 6) { content }.fixedSize(horizontal: true, vertical: false)
-        } else {
-            VStack(alignment: .leading, spacing: 6) { content }
-        }
+        // Chips sit above the trailing-aligned user bubble, so wrapped rows hug the trailing edge.
+        TrailingFlowLayout(spacing: 6) { content }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("creation-preset-chips")
     }
     private var content: some View {
         ForEach(presets.selections) { group in
@@ -124,6 +115,57 @@ struct CreationPresetChips: View {
                     .overlay(Capsule().stroke(AppColors.ink.opacity(0.2), lineWidth: 1))
             }
         }
+    }
+}
+
+/// Lays subviews out in rows, wrapping when a row runs out of width, with each row aligned trailing.
+private struct TrailingFlowLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = rows(for: subviews, maxWidth: proposal.width ?? .infinity)
+        let width = rows.map(\.width).max() ?? 0
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(for: subviews, maxWidth: bounds.width) {
+            var x = bounds.maxX - row.width
+            for index in row.indices {
+                var size = subviews[index].sizeThatFits(.unspecified)
+                size.width = min(size.width, bounds.width)
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
+                    proposal: ProposedViewSize(size)
+                )
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row { var indices: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
+
+    private func rows(for subviews: Subviews, maxWidth: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+        for index in subviews.indices {
+            // Clamp so a single chip wider than the container still gets its own row.
+            var size = subviews[index].sizeThatFits(.unspecified)
+            size.width = min(size.width, maxWidth)
+            let proposedWidth = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            if !current.indices.isEmpty && proposedWidth > maxWidth {
+                rows.append(current)
+                current = Row()
+            }
+            current.width = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            current.height = max(current.height, size.height)
+            current.indices.append(index)
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
     }
 }
 

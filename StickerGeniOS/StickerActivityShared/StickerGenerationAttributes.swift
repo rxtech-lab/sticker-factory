@@ -1,6 +1,12 @@
 import ActivityKit
 import Foundation
 
+nonisolated enum GenerationMascotPose: String, CaseIterable, Sendable {
+    case queued, running, waiting, stale, completed, failed, cancelled
+
+    var assetName: String { "ActivityMascot" + rawValue.capitalized }
+}
+
 /// Keep this content state in sync with the server's liveActivitySnapshot payload.
 nonisolated struct StickerGenerationAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable, Sendable {
@@ -28,6 +34,24 @@ nonisolated struct StickerGenerationAttributes: ActivityAttributes {
         }
 
         var isFinished: Bool { ["completed", "failed", "cancelled"].contains(phase) }
+
+        /// Terminal phases deliberately win over stale delivery so the final outcome is never
+        /// replaced by an out-of-date pose. Unrecognized working phases use the focused pose.
+        func mascotPose(isStale: Bool) -> GenerationMascotPose {
+            switch phase {
+            case "completed": return .completed
+            case "failed": return .failed
+            case "cancelled": return .cancelled
+            default: break
+            }
+            if isStale { return .stale }
+            switch phase {
+            case "queued": return .queued
+            case "waiting": return .waiting
+            default: return .running
+            }
+        }
+
         var symbol: String {
             switch phase {
             case "completed": "checkmark.circle.fill"
