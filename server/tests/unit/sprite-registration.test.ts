@@ -148,4 +148,21 @@ describe("registerExpressionTiles and compositeSpriteFrame", () => {
     expect(coveredCentre[0]).toBeGreaterThan(coveredCentre[1]);
     expect(coveredCentre[2]).toBeLessThan(40);
   });
+
+  it("falls back to the visible marker when a masked registration misses it", async () => {
+    const body = await bodySheet(regular);
+    const measured = (await registerFaceSlots(body, GRID)).frames;
+    // A vision inspector's estimate that lands nowhere near any cell's marker.
+    const offMarker = (faceSize: number) => regular.map(() => ({ faceX: 0.1, faceY: 0.9, faceSize }));
+
+    const wider = await registerFaceSlots(body, GRID, { faceCompositing: "masked", registeredFrames: offMarker(0.5) });
+    wider.frames.forEach((frame, index) => {
+      expect(frame.faceX).toBeCloseTo(measured[index].faceX, 5);
+      expect(frame.faceY).toBeCloseTo(measured[index].faceY, 5);
+      expect(frame.faceSize).toBe(0.5); // a plausible full face behind a partly hidden marker
+    });
+
+    const implausible = await registerFaceSlots(body, GRID, { faceCompositing: "masked", registeredFrames: offMarker(0.95) });
+    expect(implausible.frames).toEqual(measured);
+  });
 });

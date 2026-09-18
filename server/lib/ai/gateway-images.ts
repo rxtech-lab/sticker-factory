@@ -112,7 +112,7 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
       "2. No eye, brow, nose, mouth, or teeth remain anywhere on the body outside that oval: not on a grille, bumper, chest, screen, belly, or panel.",
       "3. One character only, with no second head or miniature portrait.",
       input.faceCompositing === "masked"
-        ? "Return faceFrames for every used cell. Each entry is the full unobstructed face opening as normalized faceX, faceY, and faceSize (width divided by cell width), inferred from the head even when the visible magenta is partly or fully covered."
+        ? `Return faceFrames with exactly ${count} entries, in cell order. Each entry is the full unobstructed face opening of that cell, inferred from the head even when the visible magenta is partly or fully covered. Coordinates are relative to that single cell, never the whole sheet: (0,0) is the cell's top-left corner and (1,1) its bottom-right. faceX and faceY are the centre of the face opening; faceSize is its width divided by the cell width. Where magenta is visible, the centre must lie on or next to it; extend the opening only over the part hidden behind a foreground object.`
         : "",
       "Report ok=false when any used cell breaks a rule, one short problem per failing cell naming the cell number and the leftover feature and where it sits.",
     ]
@@ -146,7 +146,7 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
             faceX: z.number().min(0).max(1),
             faceY: z.number().min(0).max(1),
             faceSize: z.number().min(0.02).max(1),
-          }).strict()).optional(),
+          }).strict()).optional().describe("One full face opening per used cell, in cell order. Coordinates are fractions of that single cell, not the sheet; faceX/faceY is the opening's centre."),
         }).strict(),
       }),
     },

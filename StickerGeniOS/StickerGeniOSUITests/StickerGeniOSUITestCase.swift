@@ -39,8 +39,9 @@ class StickerGeniOSUITestCase: XCTestCase {
     }
 
     func enterCreationIdea() {
-        element("sticker-prompt").tap()
-        element("sticker-prompt").typeText("A friendly cat")
+        let prompt = element("sticker-prompt")
+        XCTAssertTrue(focusTextField(prompt, in: app), app.debugDescription)
+        prompt.typeText("A friendly cat")
         element("creation-next").tap()
     }
 
@@ -105,5 +106,40 @@ class StickerGeniOSUITestCase: XCTestCase {
 
     func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+}
+
+@MainActor
+extension XCTestCase {
+    /// Focuses a text field, and reports whether the field took the focus.
+    ///
+    /// A sheet still animating in already has its field in the hierarchy, so a tap sent in that
+    /// window lands on a view that is moving and is swallowed. Nothing fails there: the run reaches
+    /// `typeText` and fails on "Neither element nor any descendant has keyboard focus", which reads
+    /// as a broken field rather than as the tap that never took. The frame is therefore waited out
+    /// until it stops moving, and the tap is retried against the keyboard it is supposed to raise.
+    func focusTextField(_ field: XCUIElement, in app: XCUIApplication,
+                        attempts: Int = 3, settleSamples: Int = 10) -> Bool {
+        guard field.waitForExistence(timeout: 15) else { return false }
+        var previous = field.frame
+        for _ in 0..<settleSamples {
+            pause(0.2)
+            let current = field.frame
+            if current == previous && field.isHittable { break }
+            previous = current
+        }
+        for _ in 0..<attempts {
+            if field.hasFocus { return true }
+            field.tap()
+            // `hasFocus` is the direct answer; a raised keyboard is accepted alongside it so this
+            // can only wait where the old single tap already typed.
+            if app.keyboards.firstMatch.waitForExistence(timeout: 5) || field.hasFocus { return true }
+        }
+        return field.hasFocus
+    }
+
+    /// Lets the UI run for `interval` without blocking the runner's main thread.
+    func pause(_ interval: TimeInterval) {
+        _ = XCTWaiter.wait(for: [XCTestExpectation(description: "pause")], timeout: interval)
     }
 }

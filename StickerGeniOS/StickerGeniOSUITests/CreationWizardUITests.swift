@@ -21,7 +21,11 @@ import XCTest
     }
     private func next() { element("creation-next").tap() }
     private func idea(_ text: String = "A friendly orange cat") {
-        element("sticker-prompt").tap(); element("sticker-prompt").typeText(text); next()
+        // The motion-enabled launch presents this sheet with a full animation, so the tap has to
+        // wait the presentation out rather than fire as soon as the field exists.
+        let prompt = element("sticker-prompt")
+        XCTAssertTrue(focusTextField(prompt, in: app), app.debugDescription)
+        prompt.typeText(text); next()
     }
     private func choices(style: String = "bold-cartoon", themes: [String] = []) {
         next()

@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { traceEvent } from "@/lib/observability/trace";
 import { SpriteSheetValidationError } from "./sprite-atlas";
 
 /**
@@ -92,6 +93,26 @@ function median(values: number[]): number {
 }
 
 /**
+ * Picks a masked frame's face slot from the inspector's full-face estimate and the visible marker.
+ *
+ * The estimate comes from a vision model that is loose with coordinates — it sometimes answers in
+ * sheet space rather than cell space — while the marker is measured pixel-exactly. When the two
+ * disagree, the marker's position wins, keeping the estimate's larger width only when it is a
+ * plausible extension of a partly hidden marker. Redrawing the sheet would not fix a bad estimate.
+ */
+function reconcileRegistration(frame: number, registered: FaceSlot, measured: FaceSlot): FaceSlot {
+  const distance = Math.hypot(registered.faceX - measured.faceX, registered.faceY - measured.faceY);
+  if (distance <= Math.max(0.08, registered.faceSize * 0.65) && measured.faceSize <= registered.faceSize * 1.3) {
+    return registered;
+  }
+  traceEvent("sprite.face.registration_mismatch", { frame: frame + 1, registered, measured });
+  const faceSize = registered.faceSize > measured.faceSize && registered.faceSize <= measured.faceSize * 2
+    ? registered.faceSize
+    : measured.faceSize;
+  return { ...measured, faceSize };
+}
+
+/**
  * Finds the face placeholder in every cell of a clip sheet and paints it out.
  *
  * Fails, with a message naming the frame, whenever a cell's placeholder is missing, scattered,
@@ -146,17 +167,11 @@ export async function registerFaceSlots(
       || registered.faceY < 0 || registered.faceY > 1 || registered.faceSize < 0.02 || registered.faceSize > 1)) {
       throw new SpriteSheetValidationError("face-placeholder", `Sprite frame ${frame + 1} has invalid full-face registration`);
     }
-    if (registered && measured) {
-      const distance = Math.hypot(registered.faceX - measured.faceX, registered.faceY - measured.faceY);
-      if (distance > Math.max(0.08, registered.faceSize * 0.65)
-          || measured.faceSize > registered.faceSize * 1.3) {
-        throw new SpriteSheetValidationError(
-          "face-placeholder",
-          `Sprite frame ${frame + 1} has full-face registration that does not match its visible marker`,
-        );
-      }
+    if (options.faceCompositing === "masked" && registered) {
+      frames.push(measured ? reconcileRegistration(frame, registered, measured) : registered);
+    } else {
+      frames.push(measured!);
     }
-    frames.push(options.faceCompositing === "masked" && registered ? registered : measured!);
   }
 
   // Inpaint: the placeholder grown by two pixels, so its antialiased rim goes too, filled with the

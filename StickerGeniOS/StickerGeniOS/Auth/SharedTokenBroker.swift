@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 nonisolated struct OAuthRefreshResponse: Decodable, Sendable {
@@ -27,6 +26,8 @@ nonisolated struct URLSessionOAuthRefreshTransport: OAuthRefreshTransport {
     func refresh(tokenURL: URL, clientID: String, refreshToken: String) async throws -> OAuthRefreshResponse {
         var request = URLRequest(url: tokenURL)
         request.httpMethod = "POST"
+        // Bounds how long the shared refresh lock can be held.
+        request.timeoutInterval = 15
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         var components = URLComponents()
         components.queryItems = [
@@ -114,7 +115,7 @@ actor SharedTokenBroker {
         guard let lockURL = self.lockURL else { throw TokenBrokerError.lockUnavailable }
         let expiryLeeway = self.expiryLeeway
         let task = Task.detached(priority: nil) {
-            let processLock = try AppGroupProcessLock(url: lockURL)
+            let processLock = try AppGroupProcessLock(url: lockURL, unavailableError: TokenBrokerError.lockUnavailable)
             try processLock.lock()
             defer { processLock.unlock() }
 
@@ -134,6 +135,7 @@ actor SharedTokenBroker {
                     expiresAt: Date().addingTimeInterval(max(30, response.expiresIn)),
                     subject: JWTClaims.subject(in: response.accessToken) ?? current.subject
                 )
+                try processLock.ensureHeld()
                 try vault.replace(with: replacement)
                 return replacement.accessToken
             } catch {
@@ -161,7 +163,7 @@ actor SharedTokenBroker {
         guard let lockURL else { throw TokenBrokerError.lockUnavailable }
         let vault = self.vault
         try await Task.detached {
-            let lock = try AppGroupProcessLock(url: lockURL)
+            let lock = try AppGroupProcessLock(url: lockURL, unavailableError: TokenBrokerError.lockUnavailable)
             try lock.lock()
             defer { lock.unlock() }
             // Re-read while holding the cross-process lock so an extension
@@ -186,28 +188,5 @@ actor SharedTokenBroker {
         if let containerURL { return containerURL.appending(path: AppConfiguration.refreshLockFilename) }
         guard allowTemporaryFallback else { return nil }
         return temporaryDirectory.appending(path: "sticker-factory-\(AppConfiguration.refreshLockFilename)")
-    }
-}
-
-nonisolated final class AppGroupProcessLock: @unchecked Sendable {
-    private let descriptor: Int32
-    private var isLocked = false
-
-    init(url: URL) throws {
-        let descriptor = Darwin.open(url.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-        guard descriptor >= 0 else { throw TokenBrokerError.lockUnavailable }
-        self.descriptor = descriptor
-    }
-
-    deinit { Darwin.close(descriptor) }
-
-    func lock() throws {
-        guard flock(descriptor, LOCK_EX) == 0 else { throw TokenBrokerError.lockUnavailable }
-        isLocked = true
-    }
-
-    func unlock() {
-        if isLocked { flock(descriptor, LOCK_UN) }
-        isLocked = false
     }
 }

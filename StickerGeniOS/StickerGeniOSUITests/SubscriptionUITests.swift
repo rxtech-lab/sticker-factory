@@ -83,7 +83,9 @@ final class SubscriptionUITests: StickerGeniOSUITestCase {
         XCTAssertTrue(pullToRefresh(scroll, until: app.staticTexts["Refresh fixture grant 250"]),
                       app.debugDescription)
         XCTAssertFalse(originalGrant.exists)
-        XCTAssertTrue(app.staticTexts["250"].exists)
+        // The balance and the ledger are two responses, and the row can be on screen a frame before
+        // the number it changed. Waited on rather than read once: instantly is not what this asserts.
+        XCTAssertTrue(app.staticTexts["250"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertFalse(app.staticTexts["cancelled"].exists)
     }
 }
