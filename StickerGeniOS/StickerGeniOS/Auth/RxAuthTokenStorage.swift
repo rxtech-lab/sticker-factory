@@ -113,7 +113,7 @@ nonisolated final class RxAuthSharedTokenStorage: TokenStorageProtocol, @uncheck
         staged = nil
         stagedAccountChange = false
         guard let processLockURL else { throw TokenBrokerError.lockUnavailable }
-        let processLock = try AppGroupProcessLock(url: processLockURL)
+        let processLock = try AppGroupProcessLock(url: processLockURL, unavailableError: TokenBrokerError.lockUnavailable)
         try processLock.lock()
         defer { processLock.unlock() }
         _ = try vault.load()
@@ -122,7 +122,7 @@ nonisolated final class RxAuthSharedTokenStorage: TokenStorageProtocol, @uncheck
 
     private func commit(_ bundle: SharedTokenBundle) throws {
         guard let processLockURL else { throw TokenBrokerError.lockUnavailable }
-        let processLock = try AppGroupProcessLock(url: processLockURL)
+        let processLock = try AppGroupProcessLock(url: processLockURL, unavailableError: TokenBrokerError.lockUnavailable)
         try processLock.lock()
         defer { processLock.unlock() }
         if stagedAccountChange { SharedLogoutPurger.purge() }

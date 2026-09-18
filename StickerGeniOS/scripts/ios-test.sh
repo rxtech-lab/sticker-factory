@@ -82,6 +82,8 @@ xcodebuild \
   -disableAutomaticPackageResolution \
   "${PARALLEL_ARGS[@]}" \
   "${RESULT_BUNDLE_ARGS[@]}" \
+  -retry-tests-on-failure \
+  -test-iterations "${STICKER_FACTORY_TEST_ITERATIONS:-2}" \
   CODE_SIGNING_ALLOWED=NO \
   test
 

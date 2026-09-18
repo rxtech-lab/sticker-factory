@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import Security
 
@@ -261,6 +260,8 @@ struct URLSessionSharedOAuthRefreshTransport: SharedOAuthRefreshTransport {
 
         var request = URLRequest(url: tokenURL)
         request.httpMethod = "POST"
+        // Bounds how long the shared refresh lock can be held.
+        request.timeoutInterval = 15
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
@@ -396,16 +397,12 @@ actor SharedTokenBroker {
         now: @escaping @Sendable () -> Date,
         lockURL: URL
     ) async throws -> AuthenticatedSession {
-        let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-        guard descriptor >= 0 else {
-            throw SharedAuthenticationError.appGroupUnavailable
-        }
-        defer { close(descriptor) }
-
-        guard flock(descriptor, LOCK_EX) == 0 else {
-            throw SharedAuthenticationError.appGroupUnavailable
-        }
-        defer { flock(descriptor, LOCK_UN) }
+        let processLock = try AppGroupProcessLock(
+            url: lockURL,
+            unavailableError: SharedAuthenticationError.appGroupUnavailable
+        )
+        try processLock.lock()
+        defer { processLock.unlock() }
 
         // Another process may have completed rotation while this one waited.
         guard let latest = try storage.read() else {
@@ -442,6 +439,7 @@ actor SharedTokenBroker {
             expiresAt: expiration,
             subject: JWTClaims.decode(payload.accessToken)?.subject ?? latest.resolvedSubject
         )
+        try processLock.ensureHeld()
         try storage.replace(with: rotated)
         return try session(from: rotated)
     }
@@ -458,11 +456,12 @@ actor SharedTokenBroker {
         at lockURL: URL,
         operation: () throws -> Void
     ) throws {
-        let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-        guard descriptor >= 0 else { throw SharedAuthenticationError.appGroupUnavailable }
-        defer { close(descriptor) }
-        guard flock(descriptor, LOCK_EX) == 0 else { throw SharedAuthenticationError.appGroupUnavailable }
-        defer { flock(descriptor, LOCK_UN) }
+        let processLock = try AppGroupProcessLock(
+            url: lockURL,
+            unavailableError: SharedAuthenticationError.appGroupUnavailable
+        )
+        try processLock.lock()
+        defer { processLock.unlock() }
         try operation()
     }
 

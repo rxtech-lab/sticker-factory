@@ -213,6 +213,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AppColors.swift,
+				Auth/AppGroupProcessLock.swift,
 				Haptics.swift,
 				Views/DesignSystem.swift,
 				Views/PosterIcons.swift,

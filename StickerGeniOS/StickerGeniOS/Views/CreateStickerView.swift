@@ -205,6 +205,13 @@ struct CreateStickerView: View {
             Text("What are we making?").font(.posterDisplay(26, weight: .heavy))
             CreationDemoPreview(animated: kind == .animated)
                 .frame(height: 280).frame(maxWidth: .infinity)
+            Label(
+                "Just an example of this sticker type — your own sticker won’t look like this.",
+                systemImage: "info.circle"
+            )
+            .font(.system(size: 12, design: .rounded))
+            .foregroundStyle(AppColors.muted)
+            .frame(maxWidth: .infinity, alignment: .center)
             Picker("Sticker type", selection: $kind) {
                 ForEach(StickerKind.allCases) { value in Label(value.label, systemImage: value.symbol).tag(value) }
             }
@@ -276,20 +283,33 @@ struct CreateStickerView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Ready to create?").font(.posterDisplay(26, weight: .heavy))
             Text("Review your choices. Tap any section to change it.").foregroundStyle(AppColors.muted)
-            overviewRow(String(localized: "Your idea"), value: prompt, step: .idea)
-            if !references.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 10) {
-                        ForEach(references) { reference in
-                            if let image = UIImage(data: reference.data) {
-                                Image(uiImage: image).resizable().scaledToFit().frame(width: 64, height: 64)
+            overviewRow(String(localized: "Your idea"), value: prompt, step: .idea) {
+                if !references.isEmpty {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 10) {
+                            ForEach(references) { reference in
+                                if let image = UIImage(data: reference.data) {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 56, height: 56)
+                                        .clipShape(.rect(cornerRadius: 12, style: .continuous))
+                                        .posterSurface(
+                                            cornerRadius: 12,
+                                            fill: AppColors.card,
+                                            lineWidth: Poster.hairline,
+                                            offset: .zero
+                                        )
+                                }
                             }
                         }
                     }
-                }.accessibilityLabel(String(localized: "Reference images"))
-                    .onTapGesture { flow.edit(.idea) }
+                    .scrollIndicators(.hidden)
+                    .onTapGesture { flow.edit(.idea); Haptics.selection() }
+                    .accessibilityLabel(String(localized: "Reference images"))
                     .accessibilityAddTraits(.isButton)
                     .accessibilityIdentifier("creation-overview-references")
+                }
             }
             overviewRow(String(localized: "Sticker type"), value: kind.label, step: .kind)
             ForEach(flow.catalog?.visibleGroups ?? []) { group in
@@ -312,19 +332,32 @@ struct CreateStickerView: View {
     }
 
     private func overviewRow(_ title: String, value: String, step: CreationWizardState.Step) -> some View {
-        Button {
-            flow.edit(step); Haptics.selection()
-        } label: {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title).font(.posterLabel(11)).foregroundStyle(AppColors.muted)
-                    Text(value).font(.system(size: 16, weight: .semibold, design: .rounded)).foregroundStyle(AppColors.ink)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").foregroundStyle(AppColors.ink)
-            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .posterSurface(cornerRadius: Poster.tileRadius, fill: AppColors.paper, offset: .zero)
-        }.buttonStyle(.plain).accessibilityIdentifier("creation-overview-\(overviewID(step))")
+        overviewRow(title, value: value, step: step) { EmptyView() }
+    }
+
+    /// `extra` rides inside the row's card, under the value — so attachments belonging to a choice
+    /// read as part of it rather than floating between rows. It stays *outside* the button: a
+    /// button's label collapses into one accessibility element, which would swallow whatever
+    /// identifiers and traits the attachment carries.
+    private func overviewRow<Extra: View>(
+        _ title: String, value: String, step: CreationWizardState.Step, @ViewBuilder extra: () -> Extra
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                flow.edit(step); Haptics.selection()
+            } label: {
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(title).font(.posterLabel(11)).foregroundStyle(AppColors.muted)
+                        Text(value).font(.system(size: 16, weight: .semibold, design: .rounded)).foregroundStyle(AppColors.ink)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").foregroundStyle(AppColors.ink)
+                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(.rect)
+            }.buttonStyle(.plain).accessibilityIdentifier("creation-overview-\(overviewID(step))")
+            extra()
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .posterSurface(cornerRadius: Poster.tileRadius, fill: AppColors.paper, offset: .zero)
     }
     private func overviewID(_ step: CreationWizardState.Step) -> String {
         switch step {
@@ -513,9 +546,14 @@ private struct ReferenceThumbnail: View {
                     : "Reference photo. Tap to lift a subject out of it."
             )
 
+            // A real SF Symbol, not PosterSymbol: that one substitutes a plain "×" text glyph with
+            // no circle behind it, which disappeared against the card.
             Button(action: remove) {
-                PosterSymbol("xmark.circle.fill")
-                    .foregroundStyle(AppColors.card, AppColors.ink)
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 22, weight: .bold))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(AppColors.card, AppColors.coral)
+                    .shadow(color: AppColors.ink.opacity(0.35), radius: 1.5, y: 1)
             }
             .accessibilityLabel("Remove reference")
             .offset(x: 5, y: -5)
