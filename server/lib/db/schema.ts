@@ -121,6 +121,13 @@ export const stickers = pgTable("stickers", {
   creationPresets: jsonb("creation_presets").$type<CreationPresetSnapshot>(),
   controllable: boolean("controllable").notNull().default(false),
   posePreset: text("pose_preset", { enum: ["low", "medium", "high", "ultra"] }),
+  /**
+   * Whether the character travels around the canvas rather than resting in place.
+   *
+   * Defaults to false, and like `controllable` it is a standing choice rather than a per-turn one:
+   * a sticker asked to hold still must still hold still two edits later.
+   */
+  motion: boolean("motion").notNull().default(false),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
   deletedAt: timestampColumn("deleted_at"),

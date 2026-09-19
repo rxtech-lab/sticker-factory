@@ -261,6 +261,13 @@ export async function animateSticker(
       "two moves cannot be chained on one layer: an arcTo or moveTo followed by another is rejected.",
       "One arc per layer. For repeated hops in place use bounce, and to move several things along",
       "different trajectories give each its own layer.",
+      // x/y accept -1 to 2 so that entrances and exits can start and finish out of frame. Nothing
+      // stops a plain move from using that room, and a looping sticker that ends out there snaps
+      // back to its resting spot the instant the clock wraps.
+      "Land on canvas. x and y may run from -1 to 2, but that room is for entrances and exits: a",
+      "layer that is still visible outside 0-1 when the loop ends jumps back to its starting place",
+      "as it repeats. Finish a move inside the frame, or pair it with a fadeOut so the layer is gone",
+      "before it gets there.",
       "",
       // Neither prompt used to mention easing at all, so every spec landed on the easeInOut
       // default, including the sampled ones where it is actively wrong.

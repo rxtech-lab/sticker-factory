@@ -124,22 +124,22 @@ it("redraws a face-plate sheet the inspector rejects with the same one-retry rul
   } finally { await t.close(); }
 });
 
-it("gives up after the second rejection, and re-inspects the saved sheet before reusing it on retry", async () => {
+it("gives up once the redraw budget is spent, and re-inspects the saved sheet before reusing it on retry", async () => {
   let accept = false;
   const provider = new Provider((input) => input.kind === "clips" && !accept);
   const t = await setup(provider);
   try {
     await expect(t.run()).rejects.toThrow(`Generated sheet was rejected: ${PROBLEM}`);
-    expect(provider.requests).toHaveLength(2);
-    expect(provider.inspections).toHaveLength(2);
+    expect(provider.requests).toHaveLength(3);
+    expect(provider.inspections).toHaveLength(3);
     expect(await t.assetState(t.rawIdle)).toBe("failed");
 
     // The user retries and the inspector now passes the saved pixels: they are inspected again on
     // the recovery path rather than trusted, then reused, so only hop and the faces are bought.
     accept = true;
     const builds = await t.run();
-    expect(provider.requests).toHaveLength(4);
-    expect(provider.inspections.map((item) => item.kind)).toEqual(["clips", "clips", "clips", "clips", "expressions"]);
+    expect(provider.requests).toHaveLength(5);
+    expect(provider.inspections.map((item) => item.kind)).toEqual(["clips", "clips", "clips", "clips", "clips", "expressions"]);
     expect(await t.assetState(t.rawIdle)).toBe("ready");
     expect(builds.get("hero")!.clips).toHaveLength(2);
   } finally { await t.close(); }
@@ -201,15 +201,19 @@ it.each([false, true])("repairs expression grid drift without redrawing, includi
   } finally { await t.close(); }
 });
 
-it.each(["clips", "expressions"])("stops after one corrective redraw when %s remain clipped", async (kind) => {
+it.each(["clips", "expressions"])("stops after the corrective redraws when %s remain clipped", async (kind) => {
   let fail = true;
   const provider = new Provider(() => false, async (output, input) =>
     fail && (kind === "expressions" ? input.sheet?.tiles : input.sheet?.facePlaceholder) ? clipOuterEdge(output) : output);
   const t = await setup(provider);
   try {
     await expect(t.run()).rejects.toThrow("Generated pose frame 1 is clipped at its cell boundary");
-    const count = kind === "clips" ? 2 : 4;
+    const count = kind === "clips" ? 3 : 5;
     expect(provider.requests).toHaveLength(count);
+    // The correction escalates: a model that ignored the first margin rule is told to draw smaller.
+    const redraws = provider.requests.slice(-2).map((request) => request.prompt);
+    expect(redraws[0]).toContain("20%");
+    expect(redraws[1]).toContain("25%");
     expect(await t.assetState(kind === "clips" ? t.rawIdle : t.expressionsId)).toBe("failed");
     fail = false;
     await t.run();
@@ -229,8 +233,8 @@ it("shares the redraw budget between clipping and visual inspection", async () =
   const t = await setup(provider);
   try {
     await expect(t.run()).rejects.toThrow(PROBLEM);
-    expect(provider.requests).toHaveLength(2);
-    expect(provider.inspections).toHaveLength(1);
+    expect(provider.requests).toHaveLength(3);
+    expect(provider.inspections).toHaveLength(2);
     expect(await t.assetState(t.rawIdle)).toBe("failed");
   } finally { await t.close(); }
 });
@@ -274,12 +278,12 @@ it("re-inspects failed expression pixels with the body guide and reuses them onl
   const t = await setup(provider);
   try {
     await expect(t.run()).rejects.toThrow(`Generated sheet was rejected: ${PROBLEM}`);
-    expect(provider.requests).toHaveLength(4);
+    expect(provider.requests).toHaveLength(5);
     expect(await t.assetState(t.expressionsId)).toBe("failed");
     accept = true;
     const builds = await t.run();
-    expect(provider.requests).toHaveLength(4);
-    expect(provider.inspections.filter(input => input.kind === "expressions")).toHaveLength(3);
+    expect(provider.requests).toHaveLength(5);
+    expect(provider.inspections.filter(input => input.kind === "expressions")).toHaveLength(4);
     expect(provider.inspections.at(-1)?.faceGuide).toBeDefined();
     expect(await t.assetState(t.expressionsId)).toBe("ready");
     expect(builds.get("hero")!.expressions.tiles).toHaveLength(3);

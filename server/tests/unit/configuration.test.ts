@@ -6,7 +6,8 @@ import { StickerDocumentSchema, applyStickerOperationsV1, downcastForClient, doc
 import { PlanV1Schema, applyPlanEdit, planGenerationCount } from "@/lib/contracts/plan";
 import { StickerConfigurationSchema } from "@/lib/contracts/configuration";
 import { configurationCoverage, configurationIssueDetails, configurationSelections } from "@/lib/contracts/configuration";
-import { validateGeneratedAtlas, configurationFromPlan } from "@/workflows/sticker-generation/configurable-artwork";
+import { validateGeneratedAtlas } from "@/lib/render/sprite-atlas";
+import { configurationFromPlan } from "@/workflows/sticker-generation/configurable-artwork";
 
 const document = () => StickerDocumentSchema.parse(fixture);
 describe("configurable document v5", () => {
@@ -160,5 +161,34 @@ describe("configurable plans", () => {
     const cell = await sharp({ create: { width: 32, height: 32, channels: 4, background: "red" } }).png().toBuffer();
     const aligned = await sharp(blank).composite([{ input: cell, left: 16, top: 16 }, { input: cell, left: 80, top: 16 }]).png().toBuffer();
     await expect(validateGeneratedAtlas(aligned, { columns: 2, rows: 1, frameCount: 2 })).resolves.toBeUndefined();
+  });
+
+  // The reported artifact: a plane whose wing overshot its cell and reappeared as a sliver inside
+  // the neighbouring frame. The wing crosses the boundary over only 8 rows, which is under the
+  // `(width + height) * 0.1` border-ring count the gate used to apply, so this sheet passed
+  // validation and the bleed was baked into every pose.
+  it("rejects a thin overshoot that the border-ring count let through", async () => {
+    const blank = await sharp({ create: { width: 128, height: 64, channels: 4, background: "#00000000" } }).png().toBuffer();
+    const body = await sharp({ create: { width: 32, height: 32, channels: 4, background: "red" } }).png().toBuffer();
+    const wing = await sharp({ create: { width: 20, height: 8, channels: 4, background: "red" } }).png().toBuffer();
+    const bled = await sharp(blank).composite([
+      { input: body, left: 16, top: 16 },
+      // Starts inside cell 0 and runs to x=67, four pixels past the 64px boundary.
+      { input: wing, left: 48, top: 30 },
+      { input: body, left: 80, top: 16 },
+    ]).png().toBuffer();
+    await expect(validateGeneratedAtlas(bled, { columns: 2, rows: 1, frameCount: 2 }))
+      .rejects.toThrow("frame 1 is clipped at its cell boundary");
+  });
+
+  it("rejects artwork left in a cell the sheet never asked for", async () => {
+    const blank = await sharp({ create: { width: 128, height: 64, channels: 4, background: "#00000000" } }).png().toBuffer();
+    const body = await sharp({ create: { width: 32, height: 32, channels: 4, background: "red" } }).png().toBuffer();
+    const extra = await sharp(blank).composite([
+      { input: body, left: 16, top: 16 },
+      { input: body, left: 80, top: 16 },
+    ]).png().toBuffer();
+    await expect(validateGeneratedAtlas(extra, { columns: 2, rows: 1, frameCount: 1 }))
+      .rejects.toThrow("artwork in unused cell 2");
   });
 });

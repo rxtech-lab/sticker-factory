@@ -6,14 +6,13 @@ import { planSpriteLayers, spriteSheetGrid, type PlanV1 } from "@/lib/contracts/
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, generationJobs } from "@/lib/db/schema";
 import { registerExpressionTiles, registerFaceSlots } from "@/lib/render/sprite-registration";
-import { padGeneratedAtlas, SpriteSheetValidationError } from "@/lib/render/sprite-atlas";
 import { derivedAssetId, ensureSpritePoster, getReadyOwnedAssets } from "@/lib/services/assets";
 import { appendGenerationEvent } from "@/lib/services/events";
 import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import { getAiProvider, type AiSheetInspection, type AiSheetInspectionContext } from "@/lib/ai/gateway";
 import { generatedLayers, generateAndStoreAsset, type SpriteBuild } from "./asset-generation";
-import { validateGeneratedAtlas } from "./configurable-artwork";
-import { assertJobStillRunning, beginToolCall, finishToolCall, reportTurnNote } from "./turn-context";
+import { drawSheet, prepareSheet, SheetRejected } from "./sheet-drawing";
+import { assertJobStillRunning, beginToolCall, finishToolCall } from "./turn-context";
 import type { StickerLayerV1 } from "@/lib/contracts/sticker";
 
 /**
@@ -29,8 +28,8 @@ import type { StickerLayerV1 } from "@/lib/contracts/sticker";
  *
  * Registration proves the shape of a sheet, not its content: a magenta oval in every cell says
  * nothing about the mouth the model also left on the bumper. So every sheet is shown to a vision
- * inspector once it registers. Layout and inspection failures share one corrective redraw, with
- * the specific problems appended to the prompt before the build gives up on that sheet.
+ * inspector once it registers. Layout and inspection failures share the corrective redraws
+ * `drawSheet` allows, with the specific problems appended to the prompt each time.
  */
 
 type Reference = { bytes: Uint8Array; mimeType: string };
@@ -55,50 +54,10 @@ export function expressionSheetGrid(count: number): { columns: number; rows: num
   return count <= 4 ? { columns: 2, rows: 2 } : count <= 6 ? { columns: 3, rows: 2 } : { columns: 3, rows: 3 };
 }
 
-/** What a rejected sheet was rejected for, so the one redraw it earns can be told what to fix. */
-export class SheetRejected extends Error {
-  constructor(readonly problems: string[]) {
-    super(`Generated sheet was rejected: ${problems.join("; ")}`);
-    this.name = "SheetRejected";
-  }
-}
-
 async function inspectOrThrow(input: AiSheetInspectionContext): Promise<Extract<AiSheetInspection, { ok: true }>> {
   const verdict = await getAiProvider().inspectSpriteSheet(input);
   if (!verdict.ok) throw new SheetRejected(verdict.problems);
   return verdict;
-}
-
-/** Only failures in generated artwork justify another paid image, never infrastructure errors. */
-function redrawFeedback(error: unknown): string[] | undefined {
-  if (error instanceof SheetRejected) return error.problems;
-  if (!(error instanceof SpriteSheetValidationError)) return undefined;
-  const correction = error.reason === "clipped"
-    ? "Redraw the entire sheet at one smaller uniform scale. Leave at least 20% of every cell's width and height transparent on each side, including the outer edges of the sheet. Fit every complete pose and effect within the central 60%; never crop a drawing or shrink just one frame."
-    : error.reason === "empty"
-      ? "Draw every requested frame in its specified row-major cell; no used cell may be empty. Keep unused cells transparent."
-      : "Give every frame exactly one flat solid magenta face placeholder in the specified face region, with no scattered magenta or oversized marker.";
-  return [error.message, correction];
-}
-
-/** Repair intact drawings before spending on a redraw, and register only the repaired pixels. */
-async function prepareSheet<T>(
-  original: Uint8Array, grid: { columns: number; rows: number; frameCount: number },
-  register: (bytes: Uint8Array, grid: { columns: number; rows: number; frameCount: number }) => Promise<T>,
-): Promise<{ bytes: Uint8Array; repaired: boolean; registered: T }> {
-  const validate = async (bytes: Uint8Array) => {
-    await validateGeneratedAtlas(bytes, grid);
-    return register(bytes, grid);
-  };
-  try { return { bytes: original, repaired: false, registered: await validate(original) }; }
-  catch (error) {
-    if (!(error instanceof SpriteSheetValidationError) || error.reason !== "clipped") throw error;
-    // A clear seam preserves complete artwork. Padding already-cut cells would hide missing pixels.
-    let bytes: Uint8Array;
-    try { bytes = await padGeneratedAtlas(original, grid); }
-    catch { throw error; }
-    return { bytes, repaired: true, registered: await validate(bytes) };
-  }
 }
 
 /** The plan's face region, or the assumption the prompts made before the plan could name one. */
@@ -166,12 +125,6 @@ async function storeSheetAsset(
   } });
 }
 
-/** Failed sheets are not reused unless they can be repaired and fully registered. */
-async function discardSheet(assetId: string): Promise<void> {
-  const db = await getDatabase();
-  await db.update(assets).set({ state: "failed" }).where(eq(assets.id, assetId));
-}
-
 async function buildClip(
   job: Job, stickerId: string, assetJobId: string, layer: PlanV1["layers"][number], source: SpriteSource,
   clip: SpriteSource["clips"][number], references: Reference[],
@@ -195,46 +148,19 @@ async function buildClip(
       });
     });
   };
-  let prepared: Awaited<ReturnType<typeof prepare>> | undefined;
-  let feedback: string[] | undefined;
-  // Older attempts may have rejected an intact sheet solely for drifting across the grid.
-  // Try the saved pixels before buying another image; missing face markers still require redraw.
-  const db = await getDatabase();
-  const existing = await db.select().from(assets).where(eq(assets.id, ids.raw)).then(firstRow);
-  if (existing?.state === "failed" && existing.ownerId === job.ownerId && existing.stickerId === stickerId) {
-    const saved = await getObjectStore().get(existing.r2Key);
-    try { prepared = await prepare(saved.bytes); }
-    catch (error) {
-      feedback = redrawFeedback(error);
-      if (!feedback) throw error;
-    }
-  }
-  const recoveredSavedSheet = Boolean(prepared);
   // Layout and visual inspection share a single retry budget for this sheet.
-  for (let attempt = 0; !prepared; attempt += 1) {
-    await assertJobStillRunning(job.id);
-    await generateAndStoreAsset(job, stickerId, {
+  const { prepared, recoveredSavedSheet } = await drawSheet({
+    job, stickerId, assetId: ids.raw, prepare,
+    generate: (feedback) => generateAndStoreAsset(job, stickerId, {
       assetId: ids.raw, references, mode: "conversation_edit", keepFrame: true, quality: "medium",
       sheet: { ...grid, count: frameCount, facePlaceholder: true, faceRegion: source.face },
       sequence: { ...grid, frameCount, frameRate: frameCount / durationSeconds },
       prompt: spriteClipPrompt(layer, source, clip, references.length > 2, feedback),
-    });
-    try {
-      const raw = await getObjectStore().get(objectKey(job.ownerId, ids.raw, "image/png"));
-      prepared = await prepare(raw.bytes);
-    } catch (error) {
-      await discardSheet(ids.raw);
-      const problems = redrawFeedback(error);
-      if (problems && attempt === 0) {
-        feedback = problems;
-        await reportTurnNote(job, error instanceof SheetRejected
-          ? "Redrawing the sheet with the reviewer's notes"
-          : "Correcting the frame layout and redrawing the sheet");
-        continue;
-      }
-      throw error;
-    }
-  }
+    }),
+    note: (error) => error instanceof SheetRejected
+      ? "Redrawing the sheet with the reviewer's notes"
+      : "Correcting the frame layout and redrawing the sheet",
+  });
   const metadata = { ...sheetGrid, frameRate: frameCount / durationSeconds, durationSeconds };
   if (prepared.repaired || recoveredSavedSheet) {
     await storeSheetAsset(job, stickerId, ids.raw, prepared.bytes, metadata, true);
@@ -280,45 +206,20 @@ async function buildExpressions(
   };
   // A prior inspection may have lacked the body-opening context. Re-review saved pixels, never
   // trust a failed sheet or buy another expression sheet before checking whether it can be reused.
-  let prepared: Awaited<ReturnType<typeof prepare>> | undefined;
-  let feedback: string[] | undefined;
-  const db = await getDatabase();
-  const existing = await db.select().from(assets).where(eq(assets.id, assetId)).then(firstRow);
-  if (existing?.state === "failed" && existing.ownerId === job.ownerId && existing.stickerId === stickerId) {
-    const saved = await getObjectStore().get(existing.r2Key);
-    try { prepared = await prepare(saved.bytes); }
-    catch (error) {
-      feedback = redrawFeedback(error);
-      if (!feedback) throw error;
-    }
-  }
-  const recoveredSavedSheet = Boolean(prepared);
-  // Same repair-first, single-redraw budget as `buildClip`.
-  for (let attempt = 0; !prepared; attempt += 1) {
-    await assertJobStillRunning(job.id);
-    await generateAndStoreAsset(job, stickerId, {
+  // Same repair-first, shared redraw budget as `buildClip`.
+  const { prepared, recoveredSavedSheet } = await drawSheet({
+    job, stickerId, assetId, prepare,
+    generate: (feedback) => generateAndStoreAsset(job, stickerId, {
       assetId, references: [...references, { bytes: guide, mimeType: "image/png" }],
       mode: "conversation_edit", keepFrame: true, quality: "medium",
       sheet: { ...grid, count, tiles: true, faceRegion: source.face },
       sequence: { ...grid, frameCount: count, frameRate: 1 },
       prompt: spriteExpressionPrompt(layer, source, references.length > 2, feedback),
-    });
-    try {
-      const sheet = await getObjectStore().get(objectKey(job.ownerId, assetId, "image/png"));
-      prepared = await prepare(sheet.bytes);
-    } catch (error) {
-      await discardSheet(assetId);
-      const problems = redrawFeedback(error);
-      if (problems && attempt === 0) {
-        feedback = problems;
-        await reportTurnNote(job, error instanceof SheetRejected
-          ? "Redrawing the faces with the reviewer's notes"
-          : "Correcting the face layout and redrawing the sheet");
-        continue;
-      }
-      throw error;
-    }
-  }
+    }),
+    note: (error) => error instanceof SheetRejected
+      ? "Redrawing the faces with the reviewer's notes"
+      : "Correcting the face layout and redrawing the sheet",
+  });
   if (prepared.repaired || recoveredSavedSheet) {
     await storeSheetAsset(job, stickerId, assetId, prepared.bytes, {
       ...grid, frameCount: count, frameRate: 1, durationSeconds: count,

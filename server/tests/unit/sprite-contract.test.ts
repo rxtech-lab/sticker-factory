@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fixture from "@/fixtures/sticker-document-v5-sprite.json";
 import { composeCreditHold, jobCreditHold } from "@/lib/subscription/pricing";
-import { PlanV1Schema, assertControllablePlan, assertPlanAllowedForJob, planGenerationCount, planSpriteSheetCount } from "@/lib/contracts/plan";
+import { PlanV1Schema, assertControllablePlan, assertNonControllablePlan, assertPlanAllowedForJob, planGenerationCount, planSpriteSheetCount } from "@/lib/contracts/plan";
 import { CreateStickerRequestSchema } from "@/lib/contracts/api";
 import { configurationCoverage, configurationLayerCombinations, configurationSelections } from "@/lib/contracts/configuration";
 import {
@@ -202,6 +202,41 @@ describe("sprite plans", () => {
     const unbound = structuredClone(plan());
     unbound.configuration = undefined;
     expect(() => assertControllablePlan(unbound)).toThrow(/no controls/);
+  });
+
+  // The same switch read the other way. This direction went unchecked, so a request whose wording
+  // sounded like switchable moods built a sprite for a user who had left the switch off — and
+  // charged them `1 + clips + 1` generations for it.
+  it("keeps a sprite out of a project that did not ask to be controllable", () => {
+    expect(() => assertNonControllablePlan(plan())).toThrow(/not controllable/);
+
+    const drawn = structuredClone(plan());
+    drawn.layers[0].source = { kind: "generate", prompt: "A round orange cat, happy" } as never;
+    drawn.configuration = undefined;
+    expect(() => assertNonControllablePlan(drawn)).not.toThrow();
+  });
+
+  // Controls are not the thing being refused: only the two bindings that need a sprite to answer
+  // them. A caption the user can switch costs no artwork and builds no character.
+  it("still allows a plain project the controls that cost no artwork", () => {
+    const captioned = structuredClone(plan());
+    captioned.layers[0].source = { kind: "generate", prompt: "A round orange cat, happy" } as never;
+    captioned.configuration = {
+      controls: [{
+        id: "caption", label: "Caption", type: "choice", defaultValue: "hi",
+        options: [{ id: "hi", label: "Hi" }, { id: "bye", label: "Bye" }],
+      }],
+      variants: [
+        { id: "hi", selections: { caption: "hi" }, layers: [{ layerId: captioned.layers[0].layerId, text: "Hi" }] },
+        { id: "bye", selections: { caption: "bye" }, layers: [{ layerId: captioned.layers[0].layerId, text: "Bye" }] },
+      ],
+    } as never;
+    expect(() => assertNonControllablePlan(captioned)).not.toThrow();
+
+    const posed = structuredClone(captioned);
+    (posed.configuration as never as { variants: Array<{ layers: Array<Record<string, unknown>> }> })
+      .variants[0].layers[0].clip = "idle";
+    expect(() => assertNonControllablePlan(posed)).toThrow(/binds clip or expression/);
   });
 
   /** A cast: one sprite layer each, one pair of controls each, no shared axis between them. */

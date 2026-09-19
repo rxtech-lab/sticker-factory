@@ -194,6 +194,13 @@ export async function reportTurnTokens(
  * `label` is the display text and the replay identity. A composed turn generates several parts
  * through the same tool, so each needs a distinct label — otherwise they de-duplicate onto one
  * row and the user sees a single stuck spinner instead of per-part progress.
+ *
+ * A row this job already failed is reopened rather than returned as-is. The step boundary is the
+ * retry boundary, so a replayed turn re-runs the part that threw — and `finishToolCall` only
+ * writes to rows that are still `streaming`. Left failed, the row could never record the attempt
+ * that succeeded: the user watched a step that had recovered stay broken, and
+ * `completedBuildSteps` went on reporting it as unfinished for the rest of the run. A `complete`
+ * row is left alone, since that part is replayed work that already landed.
  */
 export async function beginToolCall(
   job: typeof generationJobs.$inferSelect,
@@ -209,10 +216,19 @@ export async function beginToolCall(
     eq(chatMessages.content, label),
   )).then(firstRow);
   if (existing) {
+    const reopened = existing.status === "failed";
+    if (reopened) {
+      await db.update(chatMessages).set({ status: "streaming" }).where(and(
+        eq(chatMessages.id, existing.id),
+        eq(chatMessages.jobId, job.id),
+        eq(chatMessages.role, "system"),
+        eq(chatMessages.status, "failed"),
+      ));
+    }
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       toolCallId: existing.id,
       toolName: label,
-      toolStatus: existing.status,
+      toolStatus: reopened ? "streaming" : existing.status,
     });
     return existing.id;
   }
@@ -251,9 +267,9 @@ export async function beginToolCall(
 /**
  * Numbers repeated calls to the same tool within one turn: `create_animation`, `create_animation #2`.
  *
- * `beginToolCall` de-duplicates on the label, so a bare name reused for a retry would find the row
- * it already marked failed, leave it failed, and show the user a permanently broken step that
- * actually succeeded.
+ * `beginToolCall` de-duplicates on the label, so a bare name reused for a second call would land
+ * both on one row: the user sees a single spinner instead of two steps, and the later call
+ * overwrites the earlier one's outcome.
  */
 export function toolCallLabeller(): (toolName: StickerToolName) => string {
   const calls = new Map<StickerToolName, number>();

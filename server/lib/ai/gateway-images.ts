@@ -111,6 +111,12 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
         : "1. Exactly one flat, solid magenta (#FF00FF) oval sits on the face region, with no eyes, mouth, outline or other features drawn inside it.",
       "2. No eye, brow, nose, mouth, or teeth remain anywhere on the body outside that oval: not on a grille, bumper, chest, screen, belly, or panel.",
       "3. One character only, with no second head or miniature portrait.",
+      // The pixel gate in `validateGeneratedAtlas` measures containment, but it cannot tell a
+      // character that drifts cell to cell — each frame stays inside its own box while the body
+      // marches sideways — from one that is deliberately posed. Played back, that drift reads as
+      // the sticker sliding off its own canvas, so it is checked here where the frames are seen
+      // together.
+      "4. The whole drawing sits inside its own cell with clear transparent margin on all four sides: no outline, limb, accessory, shadow or effect touches a cell edge or continues into a neighbouring cell. The body is at the same scale and the same position in every cell, so the frames register when flipped through; only the pose within that fixed footprint changes.",
       input.faceCompositing === "masked"
         ? `Return faceFrames with exactly ${count} entries, in cell order. Each entry is the full unobstructed face opening of that cell, inferred from the head even when the visible magenta is partly or fully covered. Coordinates are relative to that single cell, never the whole sheet: (0,0) is the cell's top-left corner and (1,1) its bottom-right. faceX and faceY are the centre of the face opening; faceSize is its width divided by the cell width. Where magenta is visible, the centre must lie on or next to it; extend the opening only over the part hidden behind a foreground object.`
         : "",

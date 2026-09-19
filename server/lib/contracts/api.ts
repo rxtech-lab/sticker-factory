@@ -150,10 +150,21 @@ export const CreateStickerRequestSchema = z.object({
   quick: QuickGenerationSchema,
   controllable: ControllableGenerationSchema,
   posePreset: PosePresetSchema.optional(),
+  /**
+   * Whether the character may travel around the canvas, rather than resting in place.
+   *
+   * Absent means no. A controllable sticker is posed by its controls, and a body that drifts,
+   * floats or bobs underneath that fights them — so idle motion is something the user opts into
+   * rather than something every character arrives with.
+   */
+  motion: z.boolean().optional(),
   useQuickModeAllowance: z.boolean().optional(),
 }).strict().superRefine((request, ctx) => {
   if (request.posePreset && !request.controllable) {
     ctx.addIssue({ code: "custom", path: ["posePreset"], message: "Pose presets require a controllable animation" });
+  }
+  if (request.motion !== undefined && request.kind !== "animated") {
+    ctx.addIssue({ code: "custom", path: ["motion"], message: "Motion requires an animated sticker" });
   }
   if (!request.controllable) return;
   if (request.kind !== "animated") {

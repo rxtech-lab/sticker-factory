@@ -1,6 +1,4 @@
 import { buildAssetsReady, completedBuildSteps } from "./build-checkpoints";
-import sharp from "sharp";
-import { SpriteSheetValidationError } from "@/lib/render/sprite-atlas";
 import { eq } from "drizzle-orm";
 import { plannedConfiguration, type PlanV1 } from "@/lib/contracts/plan";
 import { updateConfiguration, type StickerConfiguration } from "@/lib/contracts/configuration";
@@ -8,8 +6,9 @@ import { getDatabase } from "@/lib/db/client";
 import { assets, generationJobs } from "@/lib/db/schema";
 import { derivedAssetId, ensureAtlasPoster, getReadyOwnedAssets } from "@/lib/services/assets";
 import { appendGenerationEvent } from "@/lib/services/events";
-import { getObjectStore, objectKey } from "@/lib/storage/r2";
+import { getObjectStore, inspectImage, objectKey } from "@/lib/storage/r2";
 import { generatedLayers, generateAndStoreAsset } from "./asset-generation";
+import { drawSheet, prepareSheet } from "./sheet-drawing";
 import { assertJobStillRunning, beginToolCall, finishToolCall } from "./turn-context";
 
 function variantAssetId(jobId: string, variantId: string, layerId: string): string {
@@ -35,22 +34,6 @@ export function configurationFromPlan(plan: PlanV1, jobId: string, base?: Sticke
   return plan.baseRevisionId ? updateConfiguration(base, {
     ...plan.configurationChanges, upsertControls: converted.controls, upsertVariants: converted.variants,
   }) : converted;
-}
-
-/** Alpha padding catches sheets whose frames bleed across cells before they can become variants. */
-export async function validateGeneratedAtlas(bytes: Uint8Array, grid: { columns: number; rows: number; frameCount: number }): Promise<void> {
-  const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const width = Math.floor(info.width / grid.columns), height = Math.floor(info.height / grid.rows);
-  for (let frame = 0; frame < grid.frameCount; frame++) {
-    const ox = (frame % grid.columns) * width, oy = Math.floor(frame / grid.columns) * height;
-    let visible = 0, border = 0;
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      const alpha = data[((oy + y) * info.width + ox + x) * info.channels + info.channels - 1];
-      if (alpha > 24) { visible++; if (x === 0 || y === 0 || x === width - 1 || y === height - 1) border++; }
-    }
-    if (visible < width * height * 0.005) throw new SpriteSheetValidationError("empty", `Generated pose frame ${frame + 1} is empty`);
-    if (border > (width + height) * 0.1) throw new SpriteSheetValidationError("clipped", `Generated pose frame ${frame + 1} is clipped at its cell boundary`);
-  }
 }
 
 export async function generatePlannedVariants(
@@ -94,23 +77,44 @@ export async function generatePlannedVariants(
       const baselineId = layer?.source.kind === "existing" ? layer.source.assetId : generatedLayers(plan, assetJobId).find((asset) => asset.layer.layerId === patch.layerId)?.assetId ?? (retained?.type === "image" ? retained.assetId : undefined);
       const baselineRow = baselineId ? (await getReadyOwnedAssets(db, job.ownerId, [baselineId]))[0] : undefined;
       const baseline = baselineRow ? await getObjectStore().get(baselineRow.r2Key) : undefined;
+      const name = layer?.name ?? retained?.name ?? patch.layerId;
+      const references = [reference, ...(baseline ? [{ bytes: baseline.bytes, mimeType: baselineRow!.mimeType }] : [])];
+      // The grid, the cell margins and the transparent trailing cells are `sheetInstruction`'s to
+      // state, and it is given the sheet below. Repeating them here only risks contradicting it.
       const framing = source.kind === "frames"
-        ? `Create a ${source.columns} column by ${source.rows} row sprite sheet. Put exactly ${source.frameCount} animation frames in row-major order. `
-          + "Use identical cell sizes, character scale and registration in every cell, matching the isolated layer reference framing. Leave transparent padding on every cell edge. No dividers, labels or text. Trailing unused cells must be transparent. "
-          + `Animate only the ${layer?.name ?? retained?.name ?? patch.layerId} layer. All expressions and poses must retain the approved character's identity. `
-        : `Draw only the ${layer?.name ?? retained?.name ?? patch.layerId} layer, in exactly the same framing, position and scale as the isolated layer reference. Make every other pixel transparent. `;
-      await generateAndStoreAsset(job, stickerId, {
-        assetId, references: [reference, ...(baseline ? [{ bytes: baseline.bytes, mimeType: baselineRow!.mimeType }] : [])], mode: "conversation_edit", keepFrame: true,
-        prompt: "Use the approved sticker as the exact character reference. Preserve its silhouette, colours, outlines, shading, texture and proportions. "
-          + framing + `Selected state: ${JSON.stringify(variant.selections)}. ${source.prompt}`,
-        ...(source.kind === "frames" ? { sequence: source } : {}),
-      });
-      if (source.kind === "frames") {
-        const stored = await getObjectStore().get(objectKey(job.ownerId, assetId, "image/png"));
-        try { await validateGeneratedAtlas(stored.bytes, source); }
-        catch (error) {
-          await db.update(assets).set({ state: "failed" }).where(eq(assets.id, assetId));
-          throw error;
+        ? `Animate only the ${name} layer, in the same framing and at the same scale as the isolated layer reference. All poses and expressions must retain the approved character's identity. `
+        : `Draw only the ${name} layer, in exactly the same framing, position and scale as the isolated layer reference. Make every other pixel transparent. `;
+      const prompt = (feedback?: string[]) =>
+        "Use the approved sticker as the exact character reference. Preserve its silhouette, colours, outlines, shading, texture and proportions. "
+        + framing + `Selected state: ${JSON.stringify(variant.selections)}. ${source.prompt}`
+        + (feedback?.length ? ` A previous attempt was rejected: ${feedback.join("; ")}. Fix every listed problem in this drawing.` : "");
+      if (source.kind !== "frames") {
+        await generateAndStoreAsset(job, stickerId, {
+          assetId, references, mode: "conversation_edit", keepFrame: true, prompt: prompt(),
+        });
+      } else {
+        // A pose sheet gets the same treatment as a sprite's: repaired when the drawings are intact
+        // but drifted, redrawn with the specific complaint when they are not. Before this it had
+        // neither, so one overshooting wing failed the whole turn — and failed it again on every
+        // replay, because nothing about the request had changed.
+        const { prepared, recoveredSavedSheet } = await drawSheet({
+          job, stickerId, assetId,
+          generate: (feedback) => generateAndStoreAsset(job, stickerId, {
+            assetId, references, mode: "conversation_edit", keepFrame: true,
+            sheet: { columns: source.columns, rows: source.rows, count: source.frameCount },
+            sequence: source, prompt: prompt(feedback),
+          }),
+          prepare: (bytes) => prepareSheet(bytes, source, async () => undefined),
+          note: () => "Correcting the frame layout and redrawing the poses",
+        });
+        if (prepared.repaired || recoveredSavedSheet) {
+          const inspection = await inspectImage(prepared.bytes);
+          const r2Key = objectKey(job.ownerId, assetId, "image/png");
+          await getObjectStore().put(r2Key, { bytes: prepared.bytes, contentType: "image/png", metadata: { sha256: inspection.sha256 } });
+          await db.update(assets).set({
+            state: "ready", byteSize: inspection.byteSize, sha256: inspection.sha256,
+            hasAlpha: inspection.hasTransparentPixels, readyAt: new Date(),
+          }).where(eq(assets.id, assetId));
         }
         const posterId = await ensureAtlasPoster(db, job.ownerId, stickerId, { ...source, assetId });
         if (!posterId) throw new Error("Could not prepare the pose's still preview");

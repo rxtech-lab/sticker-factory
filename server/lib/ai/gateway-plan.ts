@@ -502,6 +502,21 @@ export async function planSticker(
     ].join("\n"),
     messages: userTurn([
       `Sticker kind: ${input.stickerKind}`,
+      // Also enforced deterministically: `create_plan` and `update_plan` strip travelling specs
+      // when this is off. Said here anyway so the plan the user reads matches what gets built.
+      input.stickerKind === "animated" && !input.motion
+        ? "This sticker stays put. Give no layer a float, bounce, moveTo or arcTo: the subject rests"
+          + " in one place and acts there. It may still breathe, blink, tilt, squash, pulse, wiggle,"
+          + " turn, or change expression — everything except travelling around the canvas. For a"
+          + " sprite, the idle clip is a resting pose that holds its spot rather than drifting,"
+          + " hovering or bobbing across its frames. Do not describe the sticker as floating,"
+          + " flying, hovering or moving around in the summary."
+        : "",
+      input.stickerKind === "animated" && input.motion
+        ? "The user asked for this sticker to move around: the subject may travel across the canvas."
+          + " Keep it inside the frame at the end of the loop so it does not jump when the loop"
+          + " repeats."
+        : "",
       input.posePreset
         ? `Pose variety: ${input.posePreset}. Create exactly ${POSE_COUNTS[input.posePreset]} distinct selectable body clips per character, including idle. This overrides the default pose-count suggestion. Add meaningful actions suited to the subject when increasing; keep retained clip IDs when decreasing. Give every clip a pose option and variant binding. This changes the number of clips, not frames or moods. Preserve the current plan's subject, look, composition, moods and timing unless the user asks otherwise. Describe this setting using its preset label, without raw pose counts.`
         : "",
@@ -517,6 +532,20 @@ export async function planSticker(
           + " expressions its own subject calls for, set each sprite's face to the one region all of its"
           + " facial features share, and give every one of them a mood control, a pose"
           + " control, or both. Everything else about the sticker still follows their request."
+        : "",
+      // The converse of the clause above, and just as much a project requirement. Without it the
+      // sprite guidance further up — "use it whenever the user asks for a character whose moods,
+      // expressions, poses or actions can be switched" — read as permission to build one from the
+      // wording alone, and a request like "a cat that waves and smiles" quietly became a sprite
+      // that costs several extra generations. `create_plan` rejects one if it is ignored.
+      !input.controllable
+        ? "This project is NOT controllable: the user left the moods-and-poses switch off. Plan no"
+          + " sprite layers and no clip or expression bindings, however much their wording sounds"
+          + " like switchable moods, poses or actions — the switch is their answer and it overrides"
+          + " what the request implies. Draw each character once, with generate, in the single pose"
+          + " the request describes, and express what it does with animations. Controls that hide a"
+          + " layer or change text are still allowed. Do not mention the switch or offer to turn it"
+          + " on; just plan the sticker they asked for."
         : "",
       priorArtNote(priorArt),
       attachedImagesNote(

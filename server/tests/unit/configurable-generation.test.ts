@@ -33,12 +33,14 @@ it("reuses the approved reference and resumes completed variants after a bad spr
     await db.insert(assets).values({ id: sourceId, ownerId: "owner", stickerId: sticker.stickerId, kind: "master", state: "ready", r2Key,
       mimeType: "image/png", byteSize: approved.length, width: 1024, height: 1024, sha256: inspection.sha256, hasAlpha: true });
     const requests: AiImageInput[] = [];
-    let failedSheet = false;
+    let failedSheets = 0;
     class Provider extends MockAiProvider {
       override async generateStickerImage(input: AiImageInput): Promise<AiImageOutput> {
         requests.push(input);
-        if (input.prompt.includes("sprite sheet")) {
-          if (!failedSheet) { failedSheet = true; return { bytes: blank, mimeType: "image/png" }; }
+        // A pose sheet is recognised by the grid it asks for, which is also what earns it the
+        // margin rules. Every attempt this turn can afford comes back unusable.
+        if (input.sheet) {
+          if (failedSheets < 3) { failedSheets += 1; return { bytes: blank, mimeType: "image/png" }; }
           return { bytes: frames, mimeType: "image/png" };
         }
         return { bytes: approved, mimeType: "image/png" };
@@ -55,10 +57,16 @@ it("reuses the approved reference and resumes completed variants after a bad spr
       ] } });
     const reference = { bytes: approved, mimeType: "image/png" };
     await expect(generatePlannedVariants(job, sticker.stickerId, plan, job.id, reference)).rejects.toThrow("empty");
+    // One expression, then the sheet redrawn until the budget is spent, each redraw carrying the
+    // complaint that the last one earned.
+    expect(requests).toHaveLength(4);
+    expect(requests[1].sheet).toMatchObject({ columns: 2, rows: 1, count: 2 });
+    expect(requests[1].prompt).not.toContain("A previous attempt was rejected");
+    expect(requests[2].prompt).toContain("no used cell may be empty");
     const document = documentFromPlan(plan, job.id);
     await expect(validateDocumentAssetReferences(db, "owner", sticker.stickerId, document)).rejects.toThrow();
     await generatePlannedVariants(job, sticker.stickerId, plan, job.id, reference);
-    expect(requests).toHaveLength(3); // The ready happy expression was reused, not bought again.
+    expect(requests).toHaveLength(5); // The ready happy expression was reused, not bought again.
     for (const request of requests) {
       expect(request.keepFrame).toBe(true);
       expect(request.mode).toBe("conversation_edit");

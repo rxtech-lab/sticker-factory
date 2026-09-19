@@ -68,7 +68,21 @@ struct CreationPresetsTests {
         #expect(!flow.valid(catalog.groups[2]))
         catalog.groups = []; flow.step = .catalog
         flow.apply(catalog, review: false, kind: .animated)
-        #expect(flow.step == .animation)
+        // With no preset groups left there is nothing to jump to, so the catalog hands over to the
+        // step that follows them: references, which now sits between the presets and the animation
+        // page so the user chooses a style and a theme before being asked for artwork to match.
+        #expect(flow.step == .references)
+    }
+    @Test func referencesFollowThePresetGroups() throws {
+        var flow = CreationWizardState()
+        flow.apply(try catalog(), review: false)
+        let animated = flow.steps(kind: .animated)
+        let presets = animated.lastIndex { if case .preset = $0 { return true } else { return false } }
+        #expect(try #require(presets) < #require(animated.firstIndex(of: .references)))
+        #expect(try #require(animated.firstIndex(of: .references)) < #require(animated.firstIndex(of: .animation)))
+        #expect(try #require(animated.firstIndex(of: .references)) < #require(animated.firstIndex(of: .overview)))
+        // Still its own step when there is no animation page to follow it.
+        #expect(flow.steps(kind: .static).contains(.references))
     }
     @Test func bundledControlDemoRendersEveryMoodAndPoseAtEachLevel() throws {
         let demo = try CreationDemo.load()

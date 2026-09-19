@@ -378,9 +378,15 @@ public enum AnimationCompiler {
             try merge(&out.opacity, [opacity(start, anchorOpacity, .linear), opacity(end, 0, ease)], .opacity)
 
         case .slideIn(let direction, let distance), .slideOut(let direction, let distance):
-            let offset = directionOffset(direction, distance)
-            let away = AnimatedPoint(x: anchorPosition.x + offset.x, y: anchorPosition.y + offset.y)
             let entering = spec.type == .slideIn
+            // `directionOffset` names the direction of *travel*, so it answers "where does a slide
+            // that ends up moving this way begin?" — the side opposite the motion. That is exactly
+            // the off-canvas point an entrance starts from, but the mirror image of where an exit
+            // belongs: `slideOut(.right)` has to finish to the *right* of the anchor. Negating the
+            // distance for the exiting case flips the offset to the far side and keeps one
+            // direction convention for both. Mirrored in `server/lib/animation/compile.ts`.
+            let offset = directionOffset(direction, entering ? distance : -distance)
+            let away = AnimatedPoint(x: anchorPosition.x + offset.x, y: anchorPosition.y + offset.y)
             try merge(&out.position, [
                 entering
                     ? position(start, away.x, away.y, .linear)

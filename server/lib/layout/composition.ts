@@ -61,19 +61,44 @@ export type Bounds = {
 export const LAYER_FIT = 0.86;
 
 /** Conservative rotated bounds for the same square layer box the native/server renderers use. */
-export function layerBounds(layer: StickerDocument["layers"][number]): Bounds {
-  const radians = (layer.anchor.rotationDegrees * Math.PI) / 180;
+function boundsFor(
+  type: StickerDocument["layers"][number]["type"],
+  position: { x: number; y: number },
+  rawScale: { x: number; y: number },
+  rotationDegrees: number,
+): Bounds {
+  const radians = (rotationDegrees * Math.PI) / 180;
   const cosine = Math.abs(Math.cos(radians));
   const sine = Math.abs(Math.sin(radians));
-  const scale = effectiveLayerScale(layer.type, layer.anchor.scale);
+  const scale = effectiveLayerScale(type, rawScale);
   const halfWidth = (LAYER_FIT / 2) * (cosine * scale.x + sine * scale.y);
   const halfHeight = (LAYER_FIT / 2) * (sine * scale.x + cosine * scale.y);
   return {
-    left: layer.anchor.position.x - halfWidth,
-    right: layer.anchor.position.x + halfWidth,
-    top: layer.anchor.position.y - halfHeight,
-    bottom: layer.anchor.position.y + halfHeight,
+    left: position.x - halfWidth,
+    right: position.x + halfWidth,
+    top: position.y - halfHeight,
+    bottom: position.y + halfHeight,
   };
+}
+
+export function layerBounds(layer: StickerDocument["layers"][number]): Bounds {
+  return boundsFor(layer.type, layer.anchor.position, layer.anchor.scale, layer.anchor.rotationDegrees);
+}
+
+/**
+ * The layer's box on the timeline's last frame.
+ *
+ * A channel with no keyframes sits at the anchor, and one that has them clamps to its final
+ * keyframe past the end (see `lib/animation/compile`), so the last entry of each channel *is* the
+ * resting state the sticker finishes in.
+ */
+function layerEndBounds(layer: StickerDocument["layers"][number]): { bounds: Bounds; opacity: number } {
+  const last = <T>(track: readonly T[]): T | undefined => (track.length ? track[track.length - 1] : undefined);
+  const position = last(layer.animation.position) ?? layer.anchor.position;
+  const scale = last(layer.animation.scale) ?? layer.anchor.scale;
+  const rotation = last(layer.animation.rotation)?.degrees ?? layer.anchor.rotationDegrees;
+  const opacity = last(layer.animation.opacity)?.value ?? layer.anchor.opacity;
+  return { bounds: boundsFor(layer.type, position, scale, rotation), opacity };
 }
 
 /** How much of the smaller of two boxes the other one covers, 0 when they are apart. */
@@ -102,6 +127,20 @@ function boundsLeaveCanvas(box: Bounds): boolean {
 
 export type LayoutDiagnostics = {
   offCanvasLayerIds: string[];
+  /**
+   * Layers that finish the loop still visible but outside the canvas.
+   *
+   * Kept apart from `offCanvasLayerIds` because the two have different cures. That list is about
+   * *resting* placement, which a layout placement fixes by moving the anchor; this one is about
+   * motion, which a placement cannot reach — the layer has to be given a destination back inside
+   * the frame instead.
+   *
+   * Opacity is what separates a bug from an exit. `slideOut` and `fadeOut` legitimately finish off
+   * canvas, but they finish at zero opacity, so nothing pops. A layer that is still *visible* out
+   * there is the reported artifact: it travels past the edge, the loop clock wraps, and it snaps
+   * back to where it started.
+   */
+  motionLeavesCanvasLayerIds: string[];
   substantialOverlaps: Array<{
     layerIds: [string, string];
     /** Intersection area divided by the smaller layer box's area. */
@@ -122,6 +161,10 @@ export function layoutDiagnostics(document: StickerDocument): LayoutDiagnostics 
   const offCanvasLayerIds = visible.flatMap((layer) => (
     boundsLeaveCanvas(bounds.get(layer.id)!) ? [layer.id] : []
   ));
+  const motionLeavesCanvasLayerIds = visible.flatMap((layer) => {
+    const end = layerEndBounds(layer);
+    return end.opacity > 0 && boundsLeaveCanvas(end.bounds) ? [layer.id] : [];
+  });
   const substantialOverlaps: LayoutDiagnostics["substantialOverlaps"] = [];
   for (let first = 0; first < visible.length; first += 1) {
     for (let second = first + 1; second < visible.length; second += 1) {
@@ -137,7 +180,7 @@ export function layoutDiagnostics(document: StickerDocument): LayoutDiagnostics 
       }
     }
   }
-  return { offCanvasLayerIds, substantialOverlaps };
+  return { offCanvasLayerIds, motionLeavesCanvasLayerIds, substantialOverlaps };
 }
 
 /** Applies a layout-only correction while preserving every layer and every generated asset. */

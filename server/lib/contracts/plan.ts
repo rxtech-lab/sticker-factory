@@ -462,6 +462,47 @@ export function planVideoCount(plan: Pick<PlanV1, "layers">): number {
   return plan.layers.filter((layer) => layer.source.kind === "video").length;
 }
 
+/**
+ * Motion that carries a character around the canvas rather than letting it act in place.
+ *
+ * Entrances and exits are deliberately absent. `slideIn` and `slideOut` travel too, but they are
+ * one-shot arrivals and departures rather than a restless idle, and a sticker that is asked to hold
+ * still may still arrive. What makes a resting character look wrong is the repeating drift —
+ * `float` and `bounce` — and the absolute moves that relocate it, `moveTo` and `arcTo`.
+ */
+const TRAVELLING_SPEC_TYPES: ReadonlySet<string> = new Set(["float", "bounce", "moveTo", "arcTo"]);
+
+/**
+ * Strips travel from a plan whose sticker was asked to stay put.
+ *
+ * Done deterministically rather than left to the prompt because "the plane bobs when I did not ask
+ * it to" is exactly the kind of instruction a model drops one plan in ten, and the cost of it
+ * slipping through is a sheet the user pays to redraw. The prompt still asks — this is the floor,
+ * not the whole mechanism.
+ *
+ * Only layer-level animation is removed. A sprite's clips are frames the artwork is drawn into, so
+ * a resting character can still breathe and blink; what it stops doing is leaving its spot.
+ */
+export function withoutLayerTravel<T extends Pick<PlanV1, "layers" | "configuration">>(plan: T): T {
+  const strip = <A extends { type: string }>(animations: readonly A[] | undefined) => (
+    animations?.filter((animation) => !TRAVELLING_SPEC_TYPES.has(animation.type))
+  );
+  const configuration = plan.configuration && {
+    ...plan.configuration,
+    variants: plan.configuration.variants.map((variant) => ({
+      ...variant,
+      layers: variant.layers.map((layer) => (
+        layer.animations ? { ...layer, animations: strip(layer.animations) } : layer
+      )),
+    })),
+  };
+  return {
+    ...plan,
+    layers: plan.layers.map((layer) => ({ ...layer, animations: strip(layer.animations) ?? [] })),
+    ...(configuration ? { configuration } : {}),
+  };
+}
+
 /** Ensures the selected preset produces real, selectable clips on every character. */
 export function assertPlanPosePreset(plan: Pick<PlanV1, "layers" | "configuration" | "configurationChanges" | "baseRevisionId">, preset: PosePreset): void {
   assertControllablePlan(plan);
@@ -532,6 +573,50 @@ export function assertControllablePlan(plan: Pick<PlanV1, "layers" | "configurat
       `${unbound.length > 1 ? "Sprites" : "Sprite"} ${unbound.map(({ layer }) => layer.layerId).join(", ")} `
       + `${unbound.length > 1 ? "have" : "has"} no controls: add a choice control per character whose variants `
       + "bind clip (a pose picker) or expression (a mood picker) on it, one variant per option, each with its own control id.",
+    );
+  }
+}
+
+/**
+ * Rejects a plan that builds a controllable character the project did not ask for.
+ *
+ * The mirror of `assertControllablePlan`, and it exists because that check only ever ran in one
+ * direction: a controllable project was made to build sprites, but a plain one was never stopped
+ * from building them anyway. The planner is told to reach for a sprite "whenever the user asks for
+ * a character whose moods, expressions, emotions, poses, or actions can be switched", so a request
+ * like "a cat that waves and smiles" produced a controllable sticker from a user who had left the
+ * switch off.
+ *
+ * That is not only the wrong shape. A sprite costs `1 + clips + 1` image generations against one
+ * for an ordinary layer, so an unrequested one quietly charges several times what the user agreed
+ * to — which is why the switch wins over anything the prompt implies, rather than being treated as
+ * a default the wording can talk its way past.
+ *
+ * Controls themselves are left alone. A toggle that hides a layer or a control that swaps a caption
+ * costs no artwork and builds no character, so only `clip` and `expression` bindings — the two that
+ * exist to pose a sprite — are refused alongside the sprite layers.
+ */
+export function assertNonControllablePlan(
+  plan: Pick<PlanV1, "layers" | "configuration" | "configurationChanges" | "baseRevisionId">,
+): void {
+  const sprites = planSpriteLayers(plan);
+  if (sprites.length) {
+    throw new Error(
+      `${sprites.length > 1 ? "Layers" : "Layer"} ${sprites.map(({ layer }) => layer.layerId).join(", ")} `
+      + `${sprites.length > 1 ? "use" : "uses"} a sprite source, but this project is not controllable: the user left `
+      + "the moods-and-poses switch off, and a sprite costs several extra image generations they did not ask for. "
+      + "Re-plan the characters with generate sources — one drawing each, in the single pose the request describes — "
+      + "and express any movement with animations instead of selectable body clips.",
+    );
+  }
+  const posed = (plannedConfiguration(plan)?.variants ?? []).flatMap((variant) => variant.layers.flatMap((patch) => (
+    patch.clip !== undefined || patch.expression !== undefined ? [patch.layerId] : []
+  )));
+  if (posed.length) {
+    throw new Error(
+      `${[...new Set(posed)].join(", ")} ${posed.length > 1 ? "bind" : "binds"} clip or expression, which only a sprite `
+      + "can answer, and this project is not controllable. Drop those bindings. Controls that hide a layer or change "
+      + "text are still fine.",
     );
   }
 }

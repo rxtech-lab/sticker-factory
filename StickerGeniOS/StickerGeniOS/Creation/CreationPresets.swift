@@ -123,7 +123,7 @@ nonisolated struct CreationPresetDisplay: Codable, Hashable, Sendable {
 
 /// Navigation and choices live above individual pages, so changing steps never loses the draft.
 nonisolated struct CreationWizardState {
-    enum Step: Hashable { case idea, kind, catalog, preset(String), animation, overview }
+    enum Step: Hashable { case idea, kind, catalog, preset(String), references, animation, overview }
     var step: Step = .idea
     var catalog: CreationPresetCatalog?
     var selections: [String: Set<String>] = [:]
@@ -131,9 +131,12 @@ nonisolated struct CreationWizardState {
     var animationReviewed = false
     var requiresCatalogRefresh = false
 
+    /// References come after the preset groups so the user picks a style and a theme before being
+    /// asked for artwork to match: uploading first meant choosing references for a look they had
+    /// not seen yet.
     func steps(kind: StickerKind) -> [Step] {
         [.idea, .kind] + (catalog.map { $0.visibleGroups.map { .preset($0.id) } } ?? [.catalog])
-            + (kind == .animated ? [.animation] : []) + [.overview]
+            + [.references] + (kind == .animated ? [.animation] : []) + [.overview]
     }
     func valid(_ group: CreationPresetGroup) -> Bool { group.accepts(selections[group.id] ?? []) }
     var firstInvalidGroup: CreationPresetGroup? { catalog?.visibleGroups.first { !valid($0) } }
@@ -168,9 +171,9 @@ nonisolated struct CreationWizardState {
         requiresCatalogRefresh = false
         if review || step == .catalog {
             editingOverview = false
-            step = updated.visibleGroups.first.map { .preset($0.id) } ?? (kind == .animated ? .animation : .overview)
+            step = updated.visibleGroups.first.map { .preset($0.id) } ?? .references
         } else if case .preset(let id) = step, !updated.visibleGroups.contains(where: { $0.id == id }) {
-            step = updated.visibleGroups.first.map { .preset($0.id) } ?? (kind == .animated ? .animation : .overview)
+            step = updated.visibleGroups.first.map { .preset($0.id) } ?? .references
         }
     }
     mutating func edit(_ destination: Step) { editingOverview = true; step = destination }

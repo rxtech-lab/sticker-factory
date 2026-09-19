@@ -37,6 +37,9 @@ export async function createSticker(db: Database, ownerId: string, request: Crea
       creationPresets,
       controllable: request.controllable,
       posePreset: request.posePreset,
+      // Absent means still: the column's own default carries the same answer, so an older client
+      // that never sends the field gets a sticker that holds its place.
+      motion: request.motion ?? false,
       status: "draft",
       createdAt: now,
       updatedAt: now,
