@@ -385,6 +385,7 @@ final class StickerStore {
         prompt: String,
         controllable: Bool = false,
         posePreset: PosePreset? = nil,
+        motion: Bool = false,
         references: [PendingMediaAttachment],
         presets: CreationPresetSubmission? = nil
     ) async throws -> Sticker {
@@ -393,7 +394,7 @@ final class StickerStore {
             let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
             let response = try await api.createSticker(
                 .init(presets: presets, title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs,
-                      controllable: controllable, posePreset: controllable ? posePreset : nil),
+                      controllable: controllable, posePreset: controllable ? posePreset : nil, motion: motion),
                 idempotencyKey: UUID().uuidString
             )
             let detail = try await api.sticker(id: response.stickerId)

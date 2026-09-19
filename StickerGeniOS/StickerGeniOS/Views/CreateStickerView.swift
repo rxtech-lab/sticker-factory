@@ -19,6 +19,7 @@ struct CreateStickerView: View {
     /// Animated only — a still has no clips to switch between — so `generate` reads it through
     /// `wantsControls` rather than on its own.
     @State private var controllable = false
+    @State private var motion = false
     @State private var posePreset: PosePreset = .medium
     @State private var prompt = ""
     @State private var pickerItems: [PhotosPickerItem] = []
@@ -93,6 +94,7 @@ struct CreateStickerView: View {
                 CreationPresetPage(group: group, flow: $flow, animated: kind == .animated)
             }
             if flow.requiresCatalogRefresh { catalogPage }
+        case .references: referencesPage
         case .animation: animationPage
         case .overview: overviewPage
         }
@@ -129,7 +131,16 @@ struct CreateStickerView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
+        }
+    }
 
+    /// Its own step, after the style and theme pages.
+    ///
+    /// References used to sit under the prompt on the first screen, which asked the user to pick
+    /// artwork to match a look they had not chosen yet. Coming after the preset groups, the
+    /// choice is made against a style and theme they have already seen.
+    private var referencesPage: some View {
+        VStack(spacing: 18) {
             PosterCard {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -196,7 +207,6 @@ struct CreateStickerView: View {
                     }
                 }
             }
-
         }
     }
 
@@ -276,6 +286,19 @@ struct CreateStickerView: View {
                         onAction: handleTutorialAction)
                 }
             }
+            // Off by default. A character that drifts around underneath its own pose and mood
+            // controls fights them, so travel is something to ask for rather than something every
+            // animated sticker arrives with.
+            PosterCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    PosterToggleRow(
+                        title: String(localized: "Move around the canvas"),
+                        isOn: $motion, identifier: "sticker-motion-toggle"
+                    )
+                    Text("Off means the sticker stays in one place — it can still breathe, blink and react.")
+                        .font(.footnote).foregroundStyle(AppColors.muted)
+                }
+            }
         }
     }
 
@@ -283,7 +306,23 @@ struct CreateStickerView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Ready to create?").font(.posterDisplay(26, weight: .heavy))
             Text("Review your choices. Tap any section to change it.").foregroundStyle(AppColors.muted)
-            overviewRow(String(localized: "Your idea"), value: prompt, step: .idea) {
+            overviewRow(String(localized: "Your idea"), value: prompt, step: .idea)
+            overviewRow(String(localized: "Sticker type"), value: kind.label, step: .kind)
+            ForEach(flow.catalog?.visibleGroups ?? []) { group in
+                let names = group.options.filter { flow.selections[group.id, default: []].contains($0.id) }.map {
+                    $0.title.localized(locale)
+                }
+                overviewRow(
+                    group.title.localized(locale),
+                    value: names.isEmpty ? String(localized: "None") : names.joined(separator: ", "), step: .preset(group.id))
+            }
+            overviewRow(
+                String(localized: "Reference images"),
+                value: references.isEmpty
+                    ? String(localized: "None")
+                    : String(localized: "\(references.count) selected"),
+                step: .references
+            ) {
                 if !references.isEmpty {
                     ScrollView(.horizontal) {
                         HStack(spacing: 10) {
@@ -305,27 +344,21 @@ struct CreateStickerView: View {
                         }
                     }
                     .scrollIndicators(.hidden)
-                    .onTapGesture { flow.edit(.idea); Haptics.selection() }
+                    .onTapGesture { flow.edit(.references); Haptics.selection() }
                     .accessibilityLabel(String(localized: "Reference images"))
                     .accessibilityAddTraits(.isButton)
                     .accessibilityIdentifier("creation-overview-references")
                 }
-            }
-            overviewRow(String(localized: "Sticker type"), value: kind.label, step: .kind)
-            ForEach(flow.catalog?.visibleGroups ?? []) { group in
-                let names = group.options.filter { flow.selections[group.id, default: []].contains($0.id) }.map {
-                    $0.title.localized(locale)
-                }
-                overviewRow(
-                    group.title.localized(locale),
-                    value: names.isEmpty ? String(localized: "None") : names.joined(separator: ", "), step: .preset(group.id))
+
             }
             if kind == .animated {
                 overviewRow(
                     String(localized: "Animation"),
-                    value: controllable
+                    value: (controllable
                         ? String(localized: "Switchable moods and poses") + " · " + posePreset.creationLabel
-                        : String(localized: "Looping animation"), step: .animation)
+                        : String(localized: "Looping animation"))
+                        + " · " + (motion ? String(localized: "Moves around") : String(localized: "Stays in place")),
+                    step: .animation)
             }
             if flow.requiresCatalogRefresh { catalogPage }
         }
@@ -364,6 +397,7 @@ struct CreateStickerView: View {
         case .idea: "idea"
         case .kind: "kind"
         case .animation: "animation"
+        case .references: "references"
         case .preset(let id): id
         default: "settings"
         }
@@ -464,6 +498,10 @@ struct CreateStickerView: View {
     /// the server would refuse rather than one it silently ignores.
     private var wantsControls: Bool { kind == .animated && controllable }
 
+    /// Same reasoning as `wantsControls`: the server refuses `motion` on a static sticker, and the
+    /// switch stays on screen across a change of type.
+    private var wantsMotion: Bool { kind == .animated && motion }
+
     private func generate() async {
         guard canContinue, let presets = flow.submission else { return }
         isGenerating = true
@@ -474,6 +512,7 @@ struct CreateStickerView: View {
                 prompt: prompt,
                 controllable: wantsControls,
                 posePreset: wantsControls ? posePreset : nil,
+                motion: wantsMotion,
                 references: references,
                 presets: presets
             )

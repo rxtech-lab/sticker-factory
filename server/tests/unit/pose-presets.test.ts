@@ -13,7 +13,7 @@ async function presetPlan(posePreset: PosePreset): Promise<PlanV1> {
     updatePlan: async () => ({ planId: "test-plan", revision: 1 }),
     showPlan: async () => ({ planId: "test-plan", revision: 1 }),
   } as PlanDraftingSession;
-  await new MockAiProvider().planSticker({ instruction: "A happy cat", history: "", stickerKind: "animated", controllable: true,
+  await new MockAiProvider().planSticker({ instruction: "A happy cat", history: "", stickerKind: "animated", controllable: true, motion: false,
     posePreset, rejectedReasons: [], sequenceAssets: [], references: [], priorArt: [] }, session);
   return result!;
 }

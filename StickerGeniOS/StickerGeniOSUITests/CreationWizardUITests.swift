@@ -34,6 +34,31 @@ import XCTest
         next()
         for id in themes { tapVisible(element("preset-option-theme-\(id)")) }
         next()
+        skipReferences()
+    }
+
+    /// Steps over the references page when the wizard is sitting on it.
+    ///
+    /// References sit between the preset pages and whatever follows them, and no test here picks
+    /// one. Stepping over it leaves the caller on the page after the presets — the overview for a
+    /// static sticker, the animation page for an animated one.
+    private func skipReferences() {
+        if element("add-reference-images").waitForExistence(timeout: 2) { next() }
+    }
+
+    /// Advances to the review page from wherever the wizard is, by what is on screen.
+    ///
+    /// The steps between the last preset page and the overview are not a fixed count: references
+    /// is one, animation is another and only exists for an animated sticker.
+    private func toOverview() {
+        let generate = element("generate-sticker-button")
+        for _ in 0..<6 {
+            if generate.waitForExistence(timeout: 2) { return }
+            let forward = element("creation-next")
+            guard forward.exists, forward.isHittable else { continue }
+            forward.tap()
+        }
+        XCTAssertTrue(generate.waitForExistence(timeout: 15), app.debugDescription)
     }
     private func tapVisible(_ item: XCUIElement) {
         for _ in 0..<6 {
@@ -158,7 +183,8 @@ import XCTest
         let preview = element("preset-preview-theme")
         assertMoving(preview)
         next()
-        XCTAssertTrue(element("sticker-controllable-toggle").waitForExistence(timeout: 15))
+        skipReferences()
+        XCTAssertTrue(element("sticker-controllable-toggle").waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(element("creation-selection-preview-pixel").waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(element("creation-selection-preview-space").exists)
         capture("selected-pixel-and-space")
@@ -185,7 +211,7 @@ import XCTest
         element("creation-catalog-retry").tap()
         XCTAssertTrue(element("preset-option-style-bold-cartoon").waitForExistence(timeout: 15))
         XCTAssertFalse(element("creation-next").isEnabled)
-        element("preset-option-style-bold-cartoon").tap(); next(); next()
+        element("preset-option-style-bold-cartoon").tap(); toOverview()
         element("creation-overview-idea").tap()
         XCTAssertEqual(element("sticker-prompt").value as? String, "A friendly orange cat")
     }
@@ -195,7 +221,7 @@ import XCTest
         XCTAssertTrue(element("preset-option-style-bold-cartoon").waitForExistence(timeout: 15))
         XCTAssertFalse(element("creation-next").isEnabled)
         XCTAssertFalse(element("preset-option-style-clay").exists)
-        element("preset-option-style-bold-cartoon").tap(); next(); next()
+        element("preset-option-style-bold-cartoon").tap(); toOverview()
         XCTAssertTrue(element("creation-overview-theme").label.contains("Space"))
         element("generate-sticker-button").tap()
         XCTAssertTrue(element("chat-composer").waitForExistence(timeout: 15))
@@ -208,13 +234,15 @@ import XCTest
         XCTAssertTrue(element("generate-sticker-button").isEnabled)
         element("creation-overview-references").tap()
         XCTAssertTrue(app.buttons["Remove reference"].exists)
+        // The prompt lives on the idea page now that references have one of their own.
+        next(); element("creation-overview-idea").tap()
         XCTAssertEqual(element("sticker-prompt").value as? String, "A friendly orange cat")
         next(); XCTAssertTrue(element("creation-overview-style").label.contains("Bold Cartoon"))
     }
     func testFutureGroupBecomesPageOverviewAndChip() {
         launch(["--ui-creation-future-group"]); idea(); choices()
         XCTAssertTrue(element("preset-option-occasion-everyday").waitForExistence(timeout: 15))
-        element("preset-option-occasion-everyday").tap(); next()
+        element("preset-option-occasion-everyday").tap(); toOverview()
         XCTAssertTrue(element("creation-overview-occasion").exists)
         element("generate-sticker-button").tap()
         XCTAssertTrue(element("creation-preset-chip-occasion-everyday").waitForExistence(timeout: 15))

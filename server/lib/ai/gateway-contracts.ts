@@ -190,6 +190,12 @@ export interface AiPlanContext {
    * it in words, so nothing in `instruction` need mention it.
    */
   controllable: boolean;
+  /**
+   * The user asked for the subject to travel around the canvas. Off by default, and like
+   * `controllable` it was chosen with a switch rather than in words, so `instruction` will not
+   * mention it either way.
+   */
+  motion: boolean;
   posePreset?: PosePreset;
   document?: StickerDocument;
   /** Reasons the user gave for turning down earlier plans, so the agent does not repeat them. */

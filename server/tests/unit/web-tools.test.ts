@@ -125,7 +125,7 @@ describe("agent web research loops", () => {
       updatePlan: vi.fn(), showPlan: vi.fn(),
       finalizePlan: vi.fn().mockResolvedValue({ planId: "plan-1", revision: 1 }),
     };
-    expect(await planSticker({ instruction: "Research and plan a bird", history: "", stickerKind: "static", controllable: false, rejectedReasons: [], sequenceAssets: [], references: [], priorArt: [] }, session))
+    expect(await planSticker({ instruction: "Research and plan a bird", history: "", stickerKind: "static", controllable: false, motion: false, rejectedReasons: [], sequenceAssets: [], references: [], priorArt: [] }, session))
       .toEqual({ planId: "plan-1", revision: 1, finalized: true });
     expect(session.createPlan).toHaveBeenCalledOnce();
     expect(model.doGenerateCalls[0].tools?.map((tool) => tool.name)).toEqual(expect.arrayContaining(webNames));

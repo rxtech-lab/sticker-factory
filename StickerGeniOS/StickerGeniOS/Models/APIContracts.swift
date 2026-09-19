@@ -770,6 +770,13 @@ nonisolated struct CreateStickerRequest: Codable, Sendable {
     /// Animated only, and refused in quick mode.
     var controllable = false
     var posePreset: PosePreset?
+    /// Let the subject travel around the canvas instead of resting in place.
+    ///
+    /// Stored on the project for the same reason `controllable` is: a sticker asked to hold still
+    /// has to hold still on every later revision too. Animated only. Absent means still, which is
+    /// also the column's default, so an older build that never sends it gets a sticker that stays
+    /// where it was put.
+    var motion = false
 }
 
 /// Turns an image the app already holds into a static sticker project, with nothing generated.

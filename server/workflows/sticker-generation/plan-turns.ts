@@ -8,7 +8,7 @@ import { creationPresetGuidance } from "@/lib/creation-presets/selection";
 import { renderPlanAnimationPreview } from "./plan-animation-preview";
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { assertAnimatedPlanUsesReferenceBackedArtwork, assertControllablePlan, assertPlanPosePreset, assertPlanAllowedForJob, assertPlanReuseIsResolvable, assertSpriteFaces, planRequiresConcept, type PlanV1 } from "@/lib/contracts/plan";
+import { assertAnimatedPlanUsesReferenceBackedArtwork, assertControllablePlan, assertNonControllablePlan, assertPlanPosePreset, assertPlanAllowedForJob, assertPlanReuseIsResolvable, assertSpriteFaces, planRequiresConcept, withoutLayerTravel, type PlanV1 } from "@/lib/contracts/plan";
 import { applyStickerOperationsV1, type StickerDocument, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import { chatMessages, generationJobs, plans, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -227,12 +227,15 @@ export async function executePlanTurn(
       try {
         await checkBase(plan);
         assertPlanAllowedForJob(plan, job);
-        if (sticker.controllable) assertControllablePlan(plan);
+        if (sticker.controllable) assertControllablePlan(plan); else assertNonControllablePlan(plan);
         assertSpriteFaces(plan);
         if (sticker.posePreset) {
           assertPlanPosePreset(plan, sticker.posePreset);
           plan = { ...plan, posePreset: sticker.posePreset };
         }
+        // A sticker that was not asked to move keeps its idle drift stripped on every revision,
+        // not just the first: the planner re-proposes a float as readily as it proposed one.
+        if (!sticker.motion) plan = withoutLayerTravel(plan);
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const created = await createPlan(db, {
@@ -258,12 +261,15 @@ export async function executePlanTurn(
       try {
         await checkBase(plan);
         assertPlanAllowedForJob(plan, job);
-        if (sticker.controllable) assertControllablePlan(plan);
+        if (sticker.controllable) assertControllablePlan(plan); else assertNonControllablePlan(plan);
         assertSpriteFaces(plan);
         if (sticker.posePreset) {
           assertPlanPosePreset(plan, sticker.posePreset);
           plan = { ...plan, posePreset: sticker.posePreset };
         }
+        // A sticker that was not asked to move keeps its idle drift stripped on every revision,
+        // not just the first: the planner re-proposes a float as readily as it proposed one.
+        if (!sticker.motion) plan = withoutLayerTravel(plan);
         assertAnimatedPlanUsesReferenceBackedArtwork(plan);
         assertPlanReuseIsResolvable(plan, activeDocument, sequenceAssets.map((asset) => asset.assetId));
         const updated = await updatePlan(db, { ownerId: job.ownerId, stickerId: sticker.id, planId, plan });
@@ -311,6 +317,7 @@ export async function executePlanTurn(
     history,
     stickerKind: sticker.kind,
     controllable: sticker.controllable,
+    motion: sticker.motion,
     posePreset: sticker.posePreset ?? undefined,
     document: activeDocument,
     baseRevisionId,

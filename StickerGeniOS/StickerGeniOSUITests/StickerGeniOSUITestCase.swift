@@ -45,14 +45,34 @@ class StickerGeniOSUITestCase: XCTestCase {
         element("creation-next").tap()
     }
 
+    /// Walks from the type page to the overview, picking the one required preset on the way.
+    ///
+    /// Driven by what is on screen rather than by a tap count. The number of pages in between is
+    /// not fixed — the preset catalog decides how many preset pages there are, it is still loading
+    /// when this runs, and references and animation add their own — so counting taps made this
+    /// helper fail whenever a step was added or the catalog resolved at a different moment.
     func finishCreationChoices() {
-        element("creation-next").tap()
-        element("creation-next").tap()
-        XCTAssertTrue(element("preset-option-style-bold-cartoon").waitForExistence(timeout: 15))
-        element("preset-option-style-bold-cartoon").tap()
-        element("creation-next").tap()
-        element("creation-next").tap()
-        XCTAssertTrue(element("generate-sticker-button").waitForExistence(timeout: 15))
+        let style = element("preset-option-style-bold-cartoon")
+        let generate = element("generate-sticker-button")
+        advance(until: style)
+        XCTAssertTrue(style.waitForExistence(timeout: 15), app.debugDescription)
+        style.tap()
+        advance(until: generate)
+        XCTAssertTrue(generate.waitForExistence(timeout: 15), app.debugDescription)
+    }
+
+    /// Taps Next until `target` appears, leaving the wizard alone once it has.
+    ///
+    /// Subclasses that stop somewhere short of the overview — on the animation page, on references —
+    /// drive themselves with this for the same reason `finishCreationChoices` does: the pages
+    /// between the presets and the end are not a fixed count.
+    func advance(until target: XCUIElement, limit: Int = 6) {
+        for _ in 0..<limit {
+            if target.waitForExistence(timeout: 2) { return }
+            let next = element("creation-next")
+            guard next.exists, next.isHittable else { continue }
+            next.tap()
+        }
     }
 
     func openCreateSheet() {

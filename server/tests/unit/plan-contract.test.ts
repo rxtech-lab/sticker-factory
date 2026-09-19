@@ -8,6 +8,7 @@ import {
   planLayerAnchor,
   planVideoCount,
   PlanV1Schema,
+  withoutLayerTravel,
 } from "@/lib/contracts/plan";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { derivedAssetId } from "@/lib/services/assets";
@@ -324,5 +325,67 @@ describe("planned layout compiles into a valid document", () => {
 
   it("is valid for an animated document", () => {
     expect(documentFrom("animated").layers).toHaveLength(2);
+  });
+});
+
+describe("stripping travel from a sticker asked to hold still", () => {
+  const moving = () => PlanV1Schema.parse(plan({
+    layers: [
+      {
+        layerId: "part_0",
+        name: "Plane",
+        source: { kind: "generate", prompt: "A plane" },
+        x: 0.5, y: 0.5, scaleX: 0.6, scaleY: 0.6,
+        animations: [
+          { type: "float", amplitude: 0.04, cycles: 2, duration: 2 },
+          { type: "wiggle", amplitudeDegrees: 8, cycles: 3, duration: 1 },
+          { type: "fadeIn", duration: 0.3 },
+        ],
+      },
+    ],
+  }));
+
+  it("removes drift and absolute moves but keeps acting in place", () => {
+    const still = withoutLayerTravel(moving());
+    expect(still.layers[0].animations.map((animation) => animation.type)).toEqual(["wiggle", "fadeIn"]);
+  });
+
+  it("leaves a plan that was already still untouched", () => {
+    const already = PlanV1Schema.parse(plan());
+    expect(withoutLayerTravel(already)).toEqual(already);
+  });
+
+  it("strips the same motion from configurable variants", () => {
+    const configured = PlanV1Schema.parse(plan({
+      configuration: {
+        controls: [{
+          id: "pose", label: "Pose", type: "choice", defaultValue: "rest",
+          options: [{ id: "rest", label: "Rest" }, { id: "wave", label: "Wave" }],
+        }],
+        variants: [
+          {
+            id: "rest",
+            selections: { pose: "rest" },
+            layers: [{
+              layerId: "part_0",
+              animations: [
+                { type: "bounce", height: 0.12, bounces: 2, duration: 1 },
+                { type: "pulse", minScale: 0.92, maxScale: 1.08, cycles: 2, duration: 1 },
+              ],
+            }],
+          },
+          {
+            id: "wave",
+            selections: { pose: "wave" },
+            layers: [{
+              layerId: "part_0",
+              animations: [{ type: "wiggle", amplitudeDegrees: 8, cycles: 3, duration: 1 }],
+            }],
+          },
+        ],
+      },
+    }));
+    const still = withoutLayerTravel(configured);
+    expect(still.configuration!.variants[0].layers[0].animations!.map((a) => a.type)).toEqual(["pulse"]);
   });
 });

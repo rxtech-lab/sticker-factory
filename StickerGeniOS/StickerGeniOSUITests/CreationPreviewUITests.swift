@@ -6,7 +6,9 @@ final class CreationPreviewUITests: StickerGeniOSUITestCase {
     func testStaticCreationOpensChat() {
         openCreateSheet()
         XCTAssertFalse(element("sticker-kind-picker").exists)
-        XCTAssertTrue(element("add-reference-images").exists)
+        // References are a step of their own now, after the preset pages, so the idea page opens
+        // on the prompt alone.
+        XCTAssertFalse(element("add-reference-images").exists)
         XCTAssertFalse(app.buttons["Review privacy"].exists)
 
         let prompt = element("sticker-prompt")
@@ -14,8 +16,18 @@ final class CreationPreviewUITests: StickerGeniOSUITestCase {
         prompt.tap()
         prompt.typeText("A cheerful blue cloud with a thick white outline")
 
-        finishCreationChoices()
+        let style = element("preset-option-style-bold-cartoon")
+        advance(until: style)
+        XCTAssertTrue(style.waitForExistence(timeout: 15), app.debugDescription)
+        style.tap()
+
+        let references = element("add-reference-images")
+        advance(until: references)
+        XCTAssertTrue(references.exists, app.debugDescription)
+
         let generate = element("generate-sticker-button")
+        advance(until: generate)
+        XCTAssertTrue(generate.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(generate.isEnabled)
         generate.tap()
 
@@ -117,9 +129,10 @@ final class CreationPreviewUITests: StickerGeniOSUITestCase {
         let preset = element("preset-option-style-bold-cartoon")
         XCTAssertTrue(preset.waitForExistence(timeout: 15))
         preset.tap()
-        element("creation-next").tap()
-        element("creation-next").tap()
+        // Not a tap count: the theme page and the references page both sit between the style
+        // page and the animation one, and references was added without this test noticing.
         let toggle = element("sticker-controllable-toggle")
+        advance(until: toggle)
         XCTAssertTrue(toggle.waitForExistence(timeout: 15), app.debugDescription)
         toggle.switches.firstMatch.tap()
         XCTAssertEqual(toggle.switches.firstMatch.value as? String, "1")

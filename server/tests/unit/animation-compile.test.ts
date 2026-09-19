@@ -132,11 +132,30 @@ describe("per spec type", () => {
       },
     },
     {
+      // Both slide specs name the direction of travel, so an exit leaves the way it is named:
+      // `left` departs leftwards, ending below the anchor's x rather than above it.
       name: "slideOut departs from the anchor",
       input: { type: "slideOut", direction: "left", distance: 0.4, duration: 0.5 },
       expect: (c) => {
         expect(c.position[0]).toMatchObject({ x: 0.5 });
+        expect(c.position[1]).toMatchObject({ x: 0.1 });
+      },
+    },
+    {
+      name: "slideOut right exits to the right",
+      input: { type: "slideOut", direction: "right", distance: 0.4, duration: 0.5 },
+      expect: (c) => {
+        expect(c.position[0]).toMatchObject({ x: 0.5 });
         expect(c.position[1]).toMatchObject({ x: 0.9 });
+      },
+    },
+    {
+      // The entrance keeps its own convention: `right` starts left of the anchor and travels right.
+      name: "slideIn right enters from the left",
+      input: { type: "slideIn", direction: "right", distance: 0.4, duration: 0.5 },
+      expect: (c) => {
+        expect(c.position[0]).toMatchObject({ x: 0.1 });
+        expect(c.position[1]).toMatchObject({ x: 0.5 });
       },
     },
     {
