@@ -26,7 +26,7 @@ final class SubscriptionConnectionTests: XCTestCase {
         XCTAssertTrue(report.contains("storekit.refresh.request"))
         XCTAssertTrue(report.contains("ASDErrorDomain (530)"))
         XCTAssertTrue(report.contains("Unable to Complete Request"))
-        XCTAssertFalse(store.isReady, "Failed verification must not select a billing environment")
+        XCTAssertFalse(store.isReady, "A provider that throws must not select a billing environment")
         shouldFail = false
         store.retryConnection()
         try await settled(store)

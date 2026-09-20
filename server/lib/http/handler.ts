@@ -37,7 +37,7 @@ export async function withApiAuth(
       }
       stage = "handler";
       const response = await timeStage("handler", () =>
-        withBillingRequest(request, authenticatedPrincipal, () => action(authenticatedPrincipal, db, context)));
+        withBillingRequest(request, authenticatedPrincipal, () => action(authenticatedPrincipal, db, context), db));
       status = response.status;
       response.headers.set("x-request-id", requestId);
       return withTimings(response);

@@ -260,7 +260,8 @@ final class QuickModeModel {
             request.setValue("Bearer \(try await token(attempt == 1))", forHTTPHeaderField: "Authorization")
             // The allowance endpoint reads the plan through the billing service, which selects its
             // key from this proof. Without it the App Clip cannot even ask what it is allowed.
-            request.setValue(await QuickAppTransaction.proof(), forHTTPHeaderField: QuickAppTransaction.headerField)
+            await QuickAppTransaction.sign(&request, appTransaction: await QuickAppTransaction.proof(),
+                                           fallback: QuickAppTransaction.transactionProof)
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw MessagesStickerCreationError.invalidResponse }
             if http.statusCode == 401 && attempt == 0 { continue }

@@ -92,7 +92,8 @@ nonisolated struct SubscriptionStoreKitFailure: LocalizedError, Sendable {
             @unknown default: reason = "other"
             }
         } else if [NSURLErrorDomain, SKErrorDomain, NSCocoaErrorDomain,
-                   "ASDErrorDomain", "AMSErrorDomain", "SSErrorDomain"].contains(nsError.domain) {
+                   "ASDErrorDomain", "AMSErrorDomain", "SSErrorDomain",
+                   "SKInternalErrorDomain"].contains(nsError.domain) {
             domain = nsError.domain
         }
 

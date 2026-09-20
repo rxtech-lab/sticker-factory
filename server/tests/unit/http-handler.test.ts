@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Environment, SignedDataVerifier, VerificationException, VerificationStatus } from "@apple/app-store-server-library";
 import { eq } from "drizzle-orm";
 import type { ApiPrincipal } from "@/lib/auth/bearer";
 import { firstRow, setDatabaseForTests, type Database } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { withApiAuth } from "@/lib/http/handler";
+import { requestBillingEnvironment } from "@/lib/subscription/environment";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { GET as listStickers } from "@/app/api/v1/stickers/route";
 import { GET as listLibrarySections } from "@/app/api/v1/library/sections/route";
@@ -65,6 +67,31 @@ describe("withApiAuth user provisioning", () => {
           details: { currentVersion: "1.1", minimumVersion: "1.2" },
         },
       });
+    }
+  });
+
+  it("remembers the billing environment Apple verified for a write", async () => {
+    process.env.IOS_OAUTH_CLIENT_ID = principal.clientId;
+    vi.stubEnv("RX_SUBSCRIPTION_SANDBOX_API_KEY", "rxs_sandbox_test");
+    vi.spyOn(SignedDataVerifier.prototype, "verifyAndDecodeAppTransaction").mockImplementation(async function(this: SignedDataVerifier) {
+      const config = this as unknown as { environment: Environment };
+      if (config.environment !== Environment.SANDBOX) throw new VerificationException(VerificationStatus.INVALID_ENVIRONMENT);
+      await Promise.resolve();
+      return { receiptType: Environment.SANDBOX };
+    });
+    try {
+      const write = (headers: Record<string, string>) => withApiAuth(
+        new Request("http://localhost/api/v1/stickers", { method: "POST", headers }),
+        async () => Response.json({ environment: await requestBillingEnvironment() }),
+      );
+      expect(await (await write({ "x-storekit-app-transaction": "signed.sandbox.proof" })).json()).toEqual({ environment: "sandbox" });
+      expect(await db.select().from(users).where(eq(users.id, principal.sub)).then(firstRow))
+        .toMatchObject({ lastBillingEnvironment: "sandbox" });
+      // The same user, from a device whose StoreKit produced nothing.
+      expect(await (await write({})).json()).toEqual({ environment: "sandbox" });
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
     }
   });
 

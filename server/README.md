@@ -169,16 +169,23 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
   (`app.rxlab.stickerfactory`, `6805825708`). Apple stamps its own identifier into the App Clip's
   transaction, so a Clip token also accepts `<bundle>.Clip`, and an iOS token also accepts the
   Messages extension's `<bundle>.message` — one app record either way. The authenticated web OAuth
-  client uses production; mobile clients with missing or invalid proof cannot perform billing
-  operations. Reads and refunds remain available without proof; refund routing comes from the saved
-  job. The App Clip is the exception to "reads are free": its allowance endpoint reads the plan
-  through the billing service, so it needs proof like a write does.
-- Apply migration `0006_job_billing_environment` before deploying. New jobs store their billing
+  client uses production. Reads and refunds remain available without proof; refund routing comes
+  from the saved job. The App Clip is the exception to "reads are free": its allowance endpoint
+  reads the plan through the billing service, so it resolves an environment like a write does.
+- StoreKit cannot produce an `AppTransaction` for every Apple ID (`SKInternalErrorDomain` 21 on
+  TestFlight), so missing proof is not a refusal. A device in that state sends a signed purchase as
+  `X-StoreKit-Transaction` instead, verified the same way and read only when the app transaction
+  header is absent. With neither, a mobile request uses `users.last_billing_environment` — the
+  environment Apple last proved for that user, written only from a verified signature — and
+  production when there is none. Sandbox is therefore never reachable without an Apple signature.
+  A proof that is presented and does not verify is still `403 INVALID_BILLING_ENVIRONMENT`, and
+  any other OAuth client without proof is still `403 BILLING_ENVIRONMENT_REQUIRED`.
+- Apply migrations `0006_job_billing_environment` and `0015_user_last_billing_environment` before
+  deploying; a verified request writes the latter's column. New jobs store their billing
   environment next to the reservation. Background settlement, cancellation, and refunds use that
   saved environment even if the user later switches builds. Never copy a production key into the
   sandbox variable (or vice versa); missing or mismatched keys return an error.
-- Roll out a new iOS build together with the server changes. Older mobile builds do not send proof
-  and receive `BILLING_ENVIRONMENT_REQUIRED` for billing operations once split keys are enabled.
+- Older mobile builds that send no proof are billed against production once split keys are enabled.
   No deployment-wide `RX_SUBSCRIPTION_ENVIRONMENT` is needed for dual-environment routing.
 - `RX_SUBSCRIPTION_API_KEY` remains supported for legacy/local single-environment deployments.
   An explicit `RX_SUBSCRIPTION_ENVIRONMENT=sandbox|production` remains available for a dedicated

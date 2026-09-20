@@ -5,6 +5,7 @@ import { generationJobs, type GenerationJobRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import {
   InsufficientCreditsError,
+  currentBillingEnvironment,
   fetchEntitlements,
   releaseReservation,
   reserveCredits,
@@ -46,7 +47,12 @@ export async function holdCreditsForJob(input: {
   description: string;
   metadata?: Record<string, unknown>;
 }): Promise<string | null> {
-  if (!subscriptionEnabled() || input.amount <= 0) return null;
+  if (!subscriptionEnabled()) return null;
+  // Resolved here even for a free job. Every caller goes on to record the job's environment from
+  // inside its insert transaction, and the first resolution reads and writes the users table on
+  // the outer connection — which must not happen while that transaction is holding it.
+  await currentBillingEnvironment();
+  if (input.amount <= 0) return null;
 
   try {
     const reservation = await reserveCredits({

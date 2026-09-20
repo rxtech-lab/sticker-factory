@@ -20,7 +20,26 @@ function verifier(environment: Environment, bundleId: string, appAppleId: number
   return value;
 }
 
-export async function verifyAppBillingEnvironment(proof: string, clientId: string): Promise<BillingEnvironment> {
+export function verifyAppBillingEnvironment(proof: string, clientId: string): Promise<BillingEnvironment> {
+  return verifyBillingEnvironment(proof, clientId, "appTransaction");
+}
+
+/**
+ * The same question answered from a purchase rather than the install.
+ *
+ * `AppTransaction` fails outright for some Apple IDs, and a device in that state can still hold a
+ * signed `Transaction`. It names its environment under the same Apple signature, so it is as good
+ * a proof of sandbox or production as the one it stands in for.
+ */
+export function verifyTransactionBillingEnvironment(proof: string, clientId: string): Promise<BillingEnvironment> {
+  return verifyBillingEnvironment(proof, clientId, "transaction");
+}
+
+async function verifyBillingEnvironment(
+  proof: string,
+  clientId: string,
+  kind: "appTransaction" | "transaction",
+): Promise<BillingEnvironment> {
   if (proof.length > 16_384 || proof.split(".").length !== 3) throw invalidProof();
   const bundleId = process.env.APPLE_BUNDLE_ID?.trim() || "app.rxlab.stickerfactory";
   const appAppleId = Number(process.env.APPLE_APP_ID?.trim() || APP_STORE_ID);
@@ -40,7 +59,9 @@ export async function verifyAppBillingEnvironment(proof: string, clientId: strin
       [Environment.SANDBOX, "sandbox"], [Environment.PRODUCTION, "production"],
     ] as const) {
       try {
-        await verifier(appleEnvironment, expectedBundle, appAppleId).verifyAndDecodeAppTransaction(proof);
+        const apple = verifier(appleEnvironment, expectedBundle, appAppleId);
+        if (kind === "transaction") await apple.verifyAndDecodeTransaction(proof);
+        else await apple.verifyAndDecodeAppTransaction(proof);
         return billingEnvironment;
       } catch (error) {
         if (error instanceof VerificationException && error.status === VerificationStatus.RETRYABLE_VERIFICATION_FAILURE) {

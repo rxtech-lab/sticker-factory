@@ -18,7 +18,33 @@ struct BillingRequestTests {
         #expect(request.value(forHTTPHeaderField: "X-StoreKit-App-Transaction") == nil)
     }
 
-    private func performRead(proof: String?) async throws -> URLRequest {
+    @Test("A signed purchase stands in when StoreKit cannot read the app transaction")
+    func purchaseStandsInForMissingProof() async throws {
+        let request = try await performRead(proof: nil, purchase: "signed.sandbox.purchase")
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-Transaction") == "signed.sandbox.purchase")
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-App-Transaction") == nil)
+    }
+
+    @Test("The purchase is never sent, or even resolved, alongside a working app transaction")
+    func purchaseIsNotSentWithProof() async throws {
+        let resolutions = BillingResolutionCount()
+        let request = try await performRead(proof: "signed.sandbox.proof") {
+            resolutions.increment()
+            return "signed.sandbox.purchase"
+        }
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-App-Transaction") == "signed.sandbox.proof")
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-Transaction") == nil)
+        #expect(resolutions.value == 0)
+    }
+
+    private func performRead(proof: String?, purchase: String? = nil) async throws -> URLRequest {
+        try await performRead(proof: proof) { purchase }
+    }
+
+    private func performRead(
+        proof: String?,
+        purchase: @escaping @Sendable () async -> String?
+    ) async throws -> URLRequest {
         let vault = InMemoryTokenVault(.init(accessToken: "access-token", refreshToken: "refresh",
             idToken: nil, expiresAt: .distantFuture, subject: "user"))
         let broker = SharedTokenBroker(vault: vault, transport: RejectingRefreshTransport(),
@@ -28,11 +54,19 @@ struct BillingRequestTests {
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel() }
         let api = StickerAPIClient(baseURL: URL(string: "https://billing-request.example")!,
-            tokenBroker: broker, session: session, appTransactionProvider: { proof })
+            tokenBroker: broker, session: session, appTransactionProvider: { proof },
+            transactionProofProvider: purchase)
         let page = try await api.listStickers(cursor: nil)
         #expect(page.items.isEmpty)
         return try #require(BillingRequestProtocol.capture.get())
     }
+}
+
+private final class BillingResolutionCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
 }
 
 private final class BillingRequestCapture: @unchecked Sendable {
@@ -197,7 +231,8 @@ struct BillingProofRetryTests {
         defer { session.invalidateAndCancel() }
         let api = StickerAPIClient(baseURL: URL(string: "https://billing-retry.example")!,
             tokenBroker: broker, session: session,
-            appTransactionProvider: { proof }, appTransactionRefresher: { refreshed })
+            appTransactionProvider: { proof }, appTransactionRefresher: { refreshed },
+            transactionProofProvider: { nil })
         return try await api.sendChatMessage(
             stickerID: "sticker-1",
             request: .init(text: "make it blue", intent: .chat, attachments: [],
