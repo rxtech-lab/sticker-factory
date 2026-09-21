@@ -20,8 +20,8 @@ function verifier(environment: Environment, bundleId: string, appAppleId: number
   return value;
 }
 
-export function verifyAppBillingEnvironment(proof: string, clientId: string): Promise<BillingEnvironment> {
-  return verifyBillingEnvironment(proof, clientId, "appTransaction");
+export function verifyAppBillingEnvironment(proof: string): Promise<BillingEnvironment> {
+  return verifyBillingEnvironment(proof, "appTransaction");
 }
 
 /**
@@ -31,13 +31,12 @@ export function verifyAppBillingEnvironment(proof: string, clientId: string): Pr
  * signed `Transaction`. It names its environment under the same Apple signature, so it is as good
  * a proof of sandbox or production as the one it stands in for.
  */
-export function verifyTransactionBillingEnvironment(proof: string, clientId: string): Promise<BillingEnvironment> {
-  return verifyBillingEnvironment(proof, clientId, "transaction");
+export function verifyTransactionBillingEnvironment(proof: string): Promise<BillingEnvironment> {
+  return verifyBillingEnvironment(proof, "transaction");
 }
 
 async function verifyBillingEnvironment(
   proof: string,
-  clientId: string,
   kind: "appTransaction" | "transaction",
 ): Promise<BillingEnvironment> {
   if (proof.length > 16_384 || proof.split(".").length !== 3) throw invalidProof();
@@ -47,11 +46,10 @@ async function verifyBillingEnvironment(
     throw new ApiError(503, "SUBSCRIPTION_NOT_CONFIGURED", "The App Store app ID is invalid");
   }
   // Apple stamps the App Clip's own identifier into its transaction. An app extension's copy of
-  // StoreKit reports the containing app, but the Messages extension's identifier is accepted too:
-  // both are this one app record, and a signed, Apple-issued proof should not be refused over
-  // which of the two Apple wrote into it.
-  const bundleIds = clientId === process.env.APP_CLIP_OAUTH_CLIENT_ID?.trim()
-    ? [bundleId, `${bundleId}.Clip`] : [bundleId, `${bundleId}.message`];
+  // StoreKit reports the containing app, but the Messages extension's identifier is accepted too.
+  // All three are this one app record and bill as the full app. The Clip signs in with the full
+  // app's OAuth client, so the token cannot say which of them sent the proof.
+  const bundleIds = [bundleId, `${bundleId}.Clip`, `${bundleId}.message`];
   // Try only real Apple environments. The library intentionally skips signature
   // verification for Xcode, so that environment must never be accepted here.
   for (const expectedBundle of bundleIds) {

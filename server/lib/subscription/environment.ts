@@ -34,8 +34,8 @@ export function withBillingRequest<T>(request: Request, principal: ApiPrincipal,
     const transaction = appTransaction ? null : request.headers.get(TRANSACTION_HEADER);
     if (appTransaction || transaction) {
       const verified = appTransaction
-        ? await verifyAppBillingEnvironment(appTransaction, principal.clientId)
-        : await verifyTransactionBillingEnvironment(transaction!, principal.clientId);
+        ? await verifyAppBillingEnvironment(appTransaction)
+        : await verifyTransactionBillingEnvironment(transaction!);
       if (verified !== "xcode") await rememberEnvironment(db, principal.sub, verified);
       return verified;
     }

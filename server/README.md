@@ -157,6 +157,21 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
   `402 SUBSCRIPTION_REQUIRED`, and a billing service that cannot be reached is `503`, never an empty
   wallet. Settle and release swallow their errors — a job that really ran must not be reported as
   failed because billing hiccuped, and an unreleased hold expires on its own.
+- Two daily allowances sit beside points, both RxSubscription usage items recorded through
+  `POST /api/v1/usage` (`lib/subscription/daily-usage.ts`). `daily_sticker_generation` is spent once
+  per newly generated sticker (`POST /api/v1/stickers`). `daily_sticker_refinement` is spent once
+  per user message: that first prompt, every follow-up chat message, confirming a plan, and
+  rejecting a plan with a reason. Retrying a failed turn, importing, on-device edits, exports, and
+  dismissing a plan without a reason spend nothing, and quick-mode requests stay on
+  `quick_mode_allowance` alone. The limit, reset, and overage policy live in RxSubscription; the
+  server hard-codes none of it, and an explicit `limit: null` is unlimited. Past the limit is
+  `402 DAILY_LIMIT_REACHED` with `details.item`, which the app shows as an error rather than the
+  paywall. Points are held first and the hold is released on refusal, so running out of points
+  never spends an allowance. Usage cannot be refunded, so a new sticker reads both allowances
+  before recording either, and an accepted use stays counted even if the turn later fails. A
+  missing item is `503 DAILY_USAGE_NOT_CONFIGURED` and an unreadable one
+  `503 DAILY_USAGE_UNAVAILABLE` — both items must exist in the sandbox **and** production
+  RxSubscription applications before this deploys, or generation and chat fail closed.
 - Set `RX_SUBSCRIPTION_URL`, `RX_SUBSCRIPTION_SANDBOX_API_KEY`, and
   `RX_SUBSCRIPTION_PRODUCTION_API_KEY` to serve TestFlight and App Store users together. Both
   keys are server-only secrets. Every Apple surface that can spend credits sends
@@ -167,8 +182,9 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
   transactions are never accepted as Apple proof.
 - `APPLE_BUNDLE_ID` and `APPLE_APP_ID` optionally override the existing Sticker Factory identity
   (`app.rxlab.stickerfactory`, `6805825708`). Apple stamps its own identifier into the App Clip's
-  transaction, so a Clip token also accepts `<bundle>.Clip`, and an iOS token also accepts the
-  Messages extension's `<bundle>.message` — one app record either way. The authenticated web OAuth
+  transaction, so a proof may also carry `<bundle>.Clip` or the Messages extension's
+  `<bundle>.message`. All three are one app record and bill as the full app, whichever OAuth
+  client signed the token (the Clip shares the full app's client). The authenticated web OAuth
   client uses production. Reads and refunds remain available without proof; refund routing comes
   from the saved job. The App Clip is the exception to "reads are free": its allowance endpoint
   reads the plan through the billing service, so it resolves an environment like a write does.

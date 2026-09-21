@@ -24,6 +24,8 @@ Quick mode sends `useQuickModeAllowance: true` on creation and revision. This se
 
 Accounts with only the `free` plan (or no plan) do not spend points. If RxSubscription returns any non-free plan, Sticker Factory first holds points through the existing balance reservation API, then records usage. Insufficient points therefore does not consume an attempt. A rejected usage request releases the point hold. Successful jobs settle the actual API-priced cost; failed or cancelled jobs release the point hold. Accepted attempts remain counted even if generation or job creation later fails, because the existing usage API does not provide usage refunds.
 
+The Clip bills as the full app. Its StoreKit proof carries `app.rxlab.stickerfactory.Clip`, and the server accepts that identifier for the full app's App Store record whichever OAuth client signed the token. It uses the same sandbox/production billing keys and points balance as the full app.
+
 Generation and automatic publication are separate durable steps within one operation. A publication retry does not redraw or record another attempt. Closing the App Clip leaves the job running; its pending job is restored on reopening. Pending HTTP requests retain their idempotency key through lost responses and are scoped to the signed-in account. Point settlement failures retain their reservation ID on the Sticker Factory job for reconciliation.
 
 ## Apple registration

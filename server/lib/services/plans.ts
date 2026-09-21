@@ -1,5 +1,5 @@
 import { loadPlanBase } from "./plan-base";
-import { currentBillingEnvironment } from "@/lib/subscription/client";
+import { currentBillingEnvironment, DAILY_STICKER_REFINEMENT_ITEM } from "@/lib/subscription/client";
 import { and, desc, eq, inArray, isNotNull, isNull, max, ne } from "drizzle-orm";
 import { ZodError } from "zod";
 import {
@@ -20,6 +20,7 @@ import { assets, chatMessages, chatThreads, generationEvents, generationJobs, pl
 import { ApiError } from "@/lib/http/errors";
 import { isActiveJobConstraint } from "@/lib/services/stickers";
 import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
+import { consumeDailyUsage } from "@/lib/subscription/daily-usage";
 import { composeCreditHold, jobCreditHold } from "@/lib/subscription/pricing";
 
 export type SerializedPlan = {
@@ -544,6 +545,8 @@ export async function confirmPlan(
     metadata: { jobId, stickerId, kind: "compose", planId, generations, videos },
   });
   try {
+    // Confirming a plan is a user turn, so it spends the daily message allowance.
+    await consumeDailyUsage(ownerId, [DAILY_STICKER_REFINEMENT_ITEM], jobId);
     await db.transaction(async (tx) => {
       try {
         await tx.insert(generationJobs).values({
@@ -658,6 +661,8 @@ export async function cancelPlan(
     metadata: { jobId, stickerId, kind: "plan", planId },
   });
   try {
+    // The typed reason is a user message, so it spends the daily message allowance.
+    await consumeDailyUsage(ownerId, [DAILY_STICKER_REFINEMENT_ITEM], jobId);
     await db.transaction(async (tx) => {
       const claimed = await cancel(tx);
       if (claimed.length === 0) {

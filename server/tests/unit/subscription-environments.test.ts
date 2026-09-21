@@ -228,7 +228,7 @@ it.each(["Sandbox", "Production", "Xcode"])("rejects fabricated %s app transacti
   vi.restoreAllMocks();
   const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
   const payload = Buffer.from(JSON.stringify({ receiptType, bundleId: "app.rxlab.stickerfactory", appAppleId: 6805825708 })).toString("base64url");
-  await expect(verifyAppBillingEnvironment(`${header}.${payload}.fake`, "ios"))
+  await expect(verifyAppBillingEnvironment(`${header}.${payload}.fake`))
     .rejects.toMatchObject({ code: "INVALID_BILLING_ENVIRONMENT" });
   expect(calls).toHaveLength(0);
 });
@@ -242,6 +242,22 @@ it("accepts a proof Apple stamped with the Messages extension's bundle identifie
     return { receiptType: Environment.PRODUCTION };
   });
   expect(await withBillingRequest(request("production"), principal, hold)).toBe("hold-rxs_production_test");
+});
+
+// The App Clip signs in with the full app's OAuth client, so its token cannot say it is the Clip.
+it("bills an App Clip proof as the full app when the Clip shares the app's OAuth client", async () => {
+  vi.stubEnv("APP_CLIP_OAUTH_CLIENT_ID", "");
+  const clipOnly = async function(this: SignedDataVerifier) {
+    const config = this as unknown as { environment: Environment; bundleId: string };
+    if (config.bundleId !== "app.rxlab.stickerfactory.Clip") throw new VerificationException(VerificationStatus.INVALID_APP_IDENTIFIER);
+    if (config.environment !== Environment.SANDBOX) throw new VerificationException(VerificationStatus.INVALID_ENVIRONMENT);
+    await Promise.resolve();
+    return { receiptType: Environment.SANDBOX, environment: Environment.SANDBOX };
+  };
+  vi.mocked(SignedDataVerifier.prototype.verifyAndDecodeAppTransaction).mockImplementation(clipOnly);
+  vi.mocked(SignedDataVerifier.prototype.verifyAndDecodeTransaction).mockImplementation(clipOnly);
+  expect(await withBillingRequest(request("sandbox"), principal, hold)).toBe("hold-rxs_sandbox_test");
+  expect(await withBillingRequest(purchase("sandbox"), principal, hold)).toBe("hold-rxs_sandbox_test");
 });
 
 it("reports transient Apple verification failures without trying another balance", async () => {

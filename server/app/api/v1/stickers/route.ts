@@ -50,11 +50,12 @@ export async function POST(request: Request) {
           attachments: body.referenceAssetIds.map((assetId) => ({ assetId, kind: "reference" as const })),
           imagePlacement: "replace",
           quick: body.quick,
-        }, appClip);
+        }, appClip, true);
       } catch (error) {
         // A missing usage endpoint/item definitively rejected the operation before
         // a generation job or usage record existed. Keep uploaded inputs for a retry.
-        const safeToRetry = error instanceof ApiError && error.code === "APP_CLIP_USAGE_NOT_CONFIGURED";
+        const safeToRetry = error instanceof ApiError &&
+          (error.code === "APP_CLIP_USAGE_NOT_CONFIGURED" || error.code === "DAILY_USAGE_NOT_CONFIGURED");
         let rolledBack = false;
         try {
           if (safeToRetry && body.referenceAssetIds.length > 0) {
