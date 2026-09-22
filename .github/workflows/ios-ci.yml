@@ -73,6 +73,16 @@ jobs:
           xcrun simctl shutdown all 2>/dev/null || true
           xcrun simctl erase all 2>/dev/null || true
           xcrun simctl --set testing delete all 2>/dev/null || true
+          # An erased device runs its first-boot data migration, and the parallel workers' clones
+          # each inherit that pending migration and run it at once. The slowest clone then sits on
+          # the boot progress screen for minutes while xcodebuild already schedules tests on it, so
+          # every tap lands nowhere. Boot the base device once so the clones copy a migrated disk.
+          udid="$(xcrun simctl list devices available \
+            | awk -F '[()]' '/^    iPhone 17 Pro \(/ { id = $2 } END { print id }')"
+          if [ -n "$udid" ]; then
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl shutdown "$udid"
+          fi
 
       - name: Run ${{ matrix.plan }}
         env:

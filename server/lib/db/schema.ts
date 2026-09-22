@@ -89,10 +89,17 @@ export const users = pgTable("users", {
   deletionRequestId: text("deletion_request_id"),
   /** Set once the deletion has run. The account is gone; only public pack attribution remains. */
   deletedAt: timestampColumn("deleted_at"),
+  /**
+   * The billing environment Apple last proved for this user. It stands in when StoreKit cannot
+   * produce a proof at all, and is only ever written from a verified signature — never `xcode`,
+   * which the verifier does not accept.
+   */
+  lastBillingEnvironment: text("last_billing_environment", { enum: ["sandbox", "production"] }),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   index("users_deletion_scheduled_at_idx").on(table.deletionScheduledAt),
+  check("users_last_billing_environment_check", sql`${table.lastBillingEnvironment} IN ('sandbox', 'production')`),
 ]);
 
 export const stickers = pgTable("stickers", {

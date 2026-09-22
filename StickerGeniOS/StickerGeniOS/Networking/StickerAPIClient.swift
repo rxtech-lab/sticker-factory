@@ -143,6 +143,8 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     /// Asks StoreKit again after the server has said the proof was missing. Separate from the
     /// provider so the ordinary path stays a cache read and only a refusal pays for a new one.
     private let appTransactionRefresher: @Sendable () async -> String?
+    /// A signed purchase, sent in the app transaction's place when StoreKit cannot produce one.
+    private let transactionProofProvider: @Sendable () async -> String?
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     /// Called when the server declines a request for want of credits or a plan.
@@ -166,7 +168,8 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         // cancels its event stream — resolved to `nil`, and the next billing write went out with no
         // proof and came back 403. See `QuickAppTransaction`.
         appTransactionProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.proof,
-        appTransactionRefresher: @escaping @Sendable () async -> String? = QuickAppTransaction.refreshedProof
+        appTransactionRefresher: @escaping @Sendable () async -> String? = QuickAppTransaction.refreshedProof,
+        transactionProofProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.transactionProof
     ) {
         self.baseURL = baseURL
         self.tokenBroker = tokenBroker
@@ -175,6 +178,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         self.acceptLanguage = acceptLanguage
         self.appTransactionProvider = appTransactionProvider
         self.appTransactionRefresher = appTransactionRefresher
+        self.transactionProofProvider = transactionProofProvider
         encoder = JSONEncoder.api
         decoder = JSONDecoder.api
     }
@@ -790,8 +794,10 @@ actor StickerAPIClient: StickerAPIClientProtocol {
             let (retryData, retryResponse) = try await session.data(for: request)
             return try decode(retryData, response: retryResponse, context: "\(context) (retried after 401)")
         }
-        // A refusal for want of Apple's signed billing environment is recoverable, and recovering it
-        // here is the difference between a turn that goes through and a user retyping their message:
+        // Current servers no longer refuse a mobile request for missing proof; this stays for one
+        // that has not been upgraded. There, a refusal for want of Apple's signed billing environment
+        // is recoverable, and recovering it here is the difference between a turn that goes through
+        // and a user retyping their message:
         // the request never reached billing, so nothing was reserved and nothing was charged, and it
         // still carries its idempotency key. The one thing that changed is that StoreKit was
         // unreachable — or the resolving task was cancelled — when this request was built, so the
@@ -799,7 +805,8 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         if response.statusCode == 403,
            Self.refusedForMissingBillingProof(data),
            let refreshed = await appTransactionRefresher() {
-            request.setValue(refreshed, forHTTPHeaderField: "X-StoreKit-App-Transaction")
+            request.setValue(refreshed, forHTTPHeaderField: QuickAppTransaction.headerField)
+            request.setValue(nil, forHTTPHeaderField: QuickAppTransaction.transactionHeaderField)
             let (retryData, retryResponse) = try await session.data(for: request)
             return try decode(retryData, response: retryResponse, context: "\(context) (retried with refreshed billing proof)")
         }
@@ -824,9 +831,11 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         request.setValue("Bearer \(try await tokenBroker.validAccessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         // Apple signs the environment; a plain sandbox/production header is not proof.
-        // Keep reads usable if StoreKit is unavailable. Billing writes fail closed on the server,
-        // and `send` retries one that failed only because this came back empty.
-        request.setValue(await appTransactionProvider(), forHTTPHeaderField: "X-StoreKit-App-Transaction")
+        // StoreKit cannot produce an app transaction for every Apple ID, so a signed purchase
+        // stands in when it fails. With neither, the server bills against the environment Apple
+        // last proved for this user.
+        await QuickAppTransaction.sign(&request, appTransaction: await appTransactionProvider(),
+                                       fallback: transactionProofProvider)
         Self.addClientMetadataHeaders(
             to: &request,
             appVersion: appVersion,

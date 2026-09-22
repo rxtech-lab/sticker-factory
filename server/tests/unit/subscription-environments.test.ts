@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Environment, SignedDataVerifier, VerificationException, VerificationStatus } from "@apple/app-store-server-library";
 import { eq } from "drizzle-orm";
-import { APP_TRANSACTION_HEADER, withBillingRequest } from "@/lib/subscription/environment";
+import { APP_TRANSACTION_HEADER, TRANSACTION_HEADER, withBillingRequest } from "@/lib/subscription/environment";
 import { verifyAppBillingEnvironment } from "@/lib/subscription/verify-app-transaction";
 import { currentBillingEnvironment, fetchEntitlements, recordGenerationUsage } from "@/lib/subscription/client";
 import { chargeJobCredits, refundJobCredits, holdCreditsForJob, requirePublishEntitlement } from "@/lib/subscription/credits";
 import { subscriptionConfig } from "@/lib/subscription/config";
-import { generationJobs, type GenerationJobRow } from "@/lib/db/schema";
+import { generationJobs, users, type GenerationJobRow } from "@/lib/db/schema";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { seedUser } from "@/tests/helpers/packs";
-import { createChatTurn, createSticker } from "@/lib/services/stickers";
+import { createChatTurn, createExportJob, createSticker } from "@/lib/services/stickers";
 
 const principal = { sub: "user-1", clientId: "ios", scopes: [] };
 let calls: { path: string; key: string; body: Record<string, unknown> }[];
@@ -46,6 +46,13 @@ beforeEach(() => {
     if (config.environment !== expected) throw new VerificationException(VerificationStatus.INVALID_ENVIRONMENT);
     await Promise.resolve();
     return { receiptType: expected };
+  });
+  vi.spyOn(SignedDataVerifier.prototype, "verifyAndDecodeTransaction").mockImplementation(async function(this: SignedDataVerifier, proof) {
+    const config = this as unknown as { environment: Environment };
+    const expected = proof === "signed.sandbox.purchase" ? Environment.SANDBOX : Environment.PRODUCTION;
+    if (config.environment !== expected) throw new VerificationException(VerificationStatus.INVALID_ENVIRONMENT);
+    await Promise.resolve();
+    return { environment: expected };
   });
 });
 
@@ -90,17 +97,95 @@ it("never assigns a legacy hold to the environment of a later request", async ()
   expect(calls).toHaveLength(0);
 });
 
-it("requires proof for mobile billing but keeps reads usable", async () => {
+it("bills a mobile request without proof against production and keeps reads usable", async () => {
   expect(await withBillingRequest(request(), principal, async () => "read succeeded")).toBe("read succeeded");
-  await expect(withBillingRequest(request(), principal, hold)).rejects.toMatchObject({ code: "BILLING_ENVIRONMENT_REQUIRED" });
-  expect(calls).toHaveLength(0);
+  expect(await withBillingRequest(request(), principal, hold)).toBe("hold-rxs_production_test");
+  expect(await withBillingRequest(request(), { ...principal, clientId: "clip" }, hold)).toBe("hold-rxs_production_test");
+  expect(SignedDataVerifier.prototype.verifyAndDecodeAppTransaction).not.toHaveBeenCalled();
 });
 
 it("does not trust a plain environment header or a platform claim", async () => {
   const req = request();
   req.headers.set("x-subscription-environment", "sandbox");
   req.headers.set("x-client-platform", "web");
-  await expect(withBillingRequest(req, principal, hold)).rejects.toMatchObject({ status: 403 });
+  expect(await withBillingRequest(req, principal, hold)).toBe("hold-rxs_production_test");
+});
+
+it("still refuses a client that is neither the web app nor one of the mobile apps", async () => {
+  await expect(withBillingRequest(request(), { ...principal, clientId: "partner" }, hold))
+    .rejects.toMatchObject({ status: 403, code: "BILLING_ENVIRONMENT_REQUIRED" });
+  expect(calls).toHaveLength(0);
+});
+
+it("reuses the last Apple-verified environment when StoreKit cannot produce a proof", async () => {
+  const handle = await createTestDatabase();
+  try {
+    await seedUser(handle.db, principal.sub, "Tester");
+    const stored = async () => (await handle.db.select().from(users).where(eq(users.id, principal.sub)))[0].lastBillingEnvironment;
+    const held = (req: Request) => withBillingRequest(req, principal, hold, handle.db);
+
+    expect(await held(request())).toBe("hold-rxs_production_test");
+    expect(await stored()).toBeNull();
+    expect(await held(request("sandbox"))).toBe("hold-rxs_sandbox_test");
+    expect(await stored()).toBe("sandbox");
+    expect(await held(request())).toBe("hold-rxs_sandbox_test");
+    // A working production install corrects the record rather than staying pinned to sandbox.
+    expect(await held(request("production"))).toBe("hold-rxs_production_test");
+    expect(await held(request())).toBe("hold-rxs_production_test");
+  } finally { await handle.close(); }
+});
+
+it("falls back to production for a read that arrives before the user row exists", async () => {
+  const handle = await createTestDatabase();
+  try {
+    await withBillingRequest(request(), principal, () => fetchEntitlements(principal.sub), handle.db);
+    expect(calls[0].key).toBe("rxs_production_test");
+    expect(await handle.db.select().from(users)).toHaveLength(0);
+  } finally { await handle.close(); }
+});
+
+function purchase(environment: string, appTransaction?: string) {
+  const req = request(appTransaction);
+  req.headers.set(TRANSACTION_HEADER, `signed.${environment}.purchase`);
+  return req;
+}
+
+it("accepts a signed purchase as proof when the app transaction is unavailable", async () => {
+  const handle = await createTestDatabase();
+  try {
+    await seedUser(handle.db, principal.sub, "Tester");
+    expect(await withBillingRequest(purchase("sandbox"), principal, hold, handle.db)).toBe("hold-rxs_sandbox_test");
+    expect(await withBillingRequest(request(), principal, hold, handle.db)).toBe("hold-rxs_sandbox_test");
+  } finally { await handle.close(); }
+});
+
+it("ignores the purchase when the app transaction is present", async () => {
+  expect(await withBillingRequest(purchase("sandbox", "production"), principal, hold)).toBe("hold-rxs_production_test");
+  expect(SignedDataVerifier.prototype.verifyAndDecodeTransaction).not.toHaveBeenCalled();
+});
+
+it("refuses a purchase Apple did not sign instead of falling back", async () => {
+  vi.mocked(SignedDataVerifier.prototype.verifyAndDecodeTransaction)
+    .mockRejectedValue(new VerificationException(VerificationStatus.VERIFICATION_FAILURE));
+  await expect(withBillingRequest(purchase("sandbox"), principal, hold))
+    .rejects.toMatchObject({ status: 403, code: "INVALID_BILLING_ENVIRONMENT" });
+  vi.mocked(SignedDataVerifier.prototype.verifyAndDecodeTransaction)
+    .mockRejectedValue(new VerificationException(VerificationStatus.RETRYABLE_VERIFICATION_FAILURE));
+  await expect(withBillingRequest(purchase("sandbox"), principal, hold)).rejects.toMatchObject({ status: 503 });
+  expect(calls).toHaveLength(0);
+});
+
+it("resolves a free job's environment before its insert transaction opens", async () => {
+  const handle = await createTestDatabase();
+  try {
+    await seedUser(handle.db, principal.sub, "Tester");
+    const jobId = await withBillingRequest(request("sandbox"), principal, async () => {
+      const sticker = await createSticker(handle.db, principal.sub, { title: "Cat", kind: "static", prompt: "Cat", referenceAssetIds: [] });
+      return createExportJob(handle.db, principal.sub, sticker.stickerId);
+    }, handle.db);
+    const [saved] = await handle.db.select().from(generationJobs).where(eq(generationJobs.id, jobId));
+    expect(saved).toMatchObject({ billingEnvironment: "sandbox", reservationId: null });
+  } finally { await handle.close(); }
 });
 
 it("routes the authenticated web client to production without Apple proof", async () => {
@@ -143,7 +228,7 @@ it.each(["Sandbox", "Production", "Xcode"])("rejects fabricated %s app transacti
   vi.restoreAllMocks();
   const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
   const payload = Buffer.from(JSON.stringify({ receiptType, bundleId: "app.rxlab.stickerfactory", appAppleId: 6805825708 })).toString("base64url");
-  await expect(verifyAppBillingEnvironment(`${header}.${payload}.fake`, "ios"))
+  await expect(verifyAppBillingEnvironment(`${header}.${payload}.fake`))
     .rejects.toMatchObject({ code: "INVALID_BILLING_ENVIRONMENT" });
   expect(calls).toHaveLength(0);
 });
@@ -157,6 +242,22 @@ it("accepts a proof Apple stamped with the Messages extension's bundle identifie
     return { receiptType: Environment.PRODUCTION };
   });
   expect(await withBillingRequest(request("production"), principal, hold)).toBe("hold-rxs_production_test");
+});
+
+// The App Clip signs in with the full app's OAuth client, so its token cannot say it is the Clip.
+it("bills an App Clip proof as the full app when the Clip shares the app's OAuth client", async () => {
+  vi.stubEnv("APP_CLIP_OAUTH_CLIENT_ID", "");
+  const clipOnly = async function(this: SignedDataVerifier) {
+    const config = this as unknown as { environment: Environment; bundleId: string };
+    if (config.bundleId !== "app.rxlab.stickerfactory.Clip") throw new VerificationException(VerificationStatus.INVALID_APP_IDENTIFIER);
+    if (config.environment !== Environment.SANDBOX) throw new VerificationException(VerificationStatus.INVALID_ENVIRONMENT);
+    await Promise.resolve();
+    return { receiptType: Environment.SANDBOX, environment: Environment.SANDBOX };
+  };
+  vi.mocked(SignedDataVerifier.prototype.verifyAndDecodeAppTransaction).mockImplementation(clipOnly);
+  vi.mocked(SignedDataVerifier.prototype.verifyAndDecodeTransaction).mockImplementation(clipOnly);
+  expect(await withBillingRequest(request("sandbox"), principal, hold)).toBe("hold-rxs_sandbox_test");
+  expect(await withBillingRequest(purchase("sandbox"), principal, hold)).toBe("hold-rxs_sandbox_test");
 });
 
 it("reports transient Apple verification failures without trying another balance", async () => {

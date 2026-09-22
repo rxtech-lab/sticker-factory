@@ -209,9 +209,15 @@ export const QUICK_MODE_USAGE_ITEM = "quick_mode_allowance";
 export async function fetchUsage(rxlabUserId: string) {
   return call<{ usage: UsageAllowance[] }>(await requireConfig(), "GET", "usage", { query: { rxlabUserId } });
 }
+/** One per newly generated sticker, and one per user message. Both reset daily in RxSubscription. */
+export const DAILY_STICKER_GENERATION_ITEM = "daily_sticker_generation";
+export const DAILY_STICKER_REFINEMENT_ITEM = "daily_sticker_refinement";
 /** The deployed usage API records one attempt and enforces the server's allowance. */
-export async function recordGenerationUsage(rxlabUserId: string, jobId: string) {
+export async function recordUsage(rxlabUserId: string, item: string, idempotencyKey: string, metadata: Record<string, unknown>) {
   return call<{ allowed: boolean; reason?: string }>(await requireConfig(), "POST", "usage", { body: {
-    rxlabUserId, item: QUICK_MODE_USAGE_ITEM, amount: 1, idempotencyKey: jobId, metadata: { jobId },
+    rxlabUserId, item, amount: 1, idempotencyKey, metadata,
   } });
+}
+export async function recordGenerationUsage(rxlabUserId: string, jobId: string) {
+  return recordUsage(rxlabUserId, QUICK_MODE_USAGE_ITEM, jobId, { jobId });
 }

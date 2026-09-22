@@ -24,20 +24,44 @@ nonisolated enum SubscriptionDiagnostics {
 }
 
 nonisolated extension SubscriptionEnvironment {
-    static func currentVerified(refreshing: Bool = false) async throws -> Self? {
-        // Refresh can ask for App Store credentials, so only a user's retry requests it.
+    /// The environment the App Store receipt's file name implies, for when StoreKit will not say.
+    ///
+    /// TestFlight and sandbox installs carry `sandboxReceipt`; an App Store install carries
+    /// `receipt`. It is unsigned, which is acceptable for the one thing it decides here: which
+    /// publishable key the on-device paywall talks to. The subscription service verifies every
+    /// purchase from Apple's signature, and the Sticker Factory server never sees this guess.
+    static func receiptFallback(receiptName: String?) -> Self {
+        receiptName == "sandboxReceipt" ? .sandbox : .production
+    }
+
+    static func currentVerified(
+        refreshing: Bool = false,
+        appTransaction: (Bool) async throws -> VerificationResult<AppTransaction> = { refreshing in
+            // Refresh can ask for App Store credentials, so only a user's retry requests it.
+            if refreshing { return try await AppTransaction.refresh() }
+            return try await AppTransaction.shared
+        },
+        receiptName: () -> String? = { Bundle.main.appStoreReceiptURL?.lastPathComponent }
+    ) async throws -> Self? {
         let source = refreshing ? "storekit.refresh" : "storekit.shared"
         let result: VerificationResult<AppTransaction>
         do {
             SubscriptionDiagnostics.logger.info("stage=\(source, privacy: .public) started")
-            if refreshing {
-                result = try await AppTransaction.refresh()
-            } else {
-                result = try await AppTransaction.shared
-            }
+            result = try await appTransaction(refreshing)
         } catch {
+            // Some Apple IDs cannot read their app transaction at all — TestFlight answers
+            // `SKInternalErrorDomain` 21 on every attempt — and refusing to connect left them with
+            // no way to subscribe or restore. The failure is still recorded; it just no longer
+            // decides whether the paywall opens.
             SubscriptionDiagnostics.failure(error, stage: "\(source).request")
-            throw SubscriptionStoreKitFailure(error, stage: refreshing ? .refreshRequest : .sharedRequest)
+            let failure = SubscriptionStoreKitFailure(error, stage: refreshing ? .refreshRequest : .sharedRequest)
+            await AppTelemetry.failure(failure, operation: "subscription_environment_fallback")
+            let environment = receiptFallback(receiptName: receiptName())
+            SubscriptionDiagnostics.logger.info("""
+                stage=\(source, privacy: .public) receipt_fallback \
+                environment=\(environment.rawValue, privacy: .public)
+                """)
+            return environment
         }
         switch result {
         case .unverified(_, let error):

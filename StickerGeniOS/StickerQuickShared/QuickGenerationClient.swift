@@ -155,8 +155,15 @@ nonisolated enum MessagesStickerCreationError: Error, LocalizedError, Equatable,
 ///
 /// Xcode-signed transactions are dropped rather than sent: the server never accepts one, because
 /// Apple's verifier skips signature checking for that environment.
+///
+/// StoreKit cannot produce an `AppTransaction` for every Apple ID — on TestFlight some fail with
+/// `SKInternalErrorDomain` 21 however often they are asked. A device in that state sends a signed
+/// purchase instead (`transactionProof`), which names its environment under the same signature.
+/// With neither, the server falls back to what Apple last proved for the user.
 nonisolated enum QuickAppTransaction {
     static let headerField = "X-StoreKit-App-Transaction"
+    /// Carries a signed `Transaction`, and only when there is no `AppTransaction` to send.
+    static let transactionHeaderField = "X-StoreKit-Transaction"
 
     /// Resolved once per process, on a task of its own, and shared by everyone who asks at once.
     ///
@@ -212,6 +219,49 @@ nonisolated enum QuickAppTransaction {
               case .verified(let transaction) = result,
               transaction.environment != .xcode else { return nil }
         return result.jwsRepresentation
+    }
+
+    private static let transactionCache = Cache()
+
+    /// A signed purchase, for a device whose `AppTransaction` cannot be read.
+    ///
+    /// Resolved only once the app transaction has come back empty, so a device where StoreKit works
+    /// never enumerates its purchases for this.
+    static func transactionProof() async -> String? {
+        await transactionCache.value(refreshing: false, resolving: resolveTransactionFromStoreKit)
+    }
+
+    /// Entitlements first because that is where a subscription lives; the full history after it
+    /// is what finds a points top-up, which is a consumable and never an entitlement.
+    private static let resolveTransactionFromStoreKit: @Sendable () async -> String? = {
+        for await result in Transaction.currentEntitlements {
+            if let proof = signedPurchase(result) { return proof }
+        }
+        for await result in Transaction.all {
+            if let proof = signedPurchase(result) { return proof }
+        }
+        return nil
+    }
+
+    private static func signedPurchase(_ result: VerificationResult<Transaction>) -> String? {
+        guard case .verified(let transaction) = result, transaction.environment != .xcode else { return nil }
+        return result.jwsRepresentation
+    }
+
+    /// Puts Apple's proof on a request: the app transaction when there is one, otherwise a purchase.
+    ///
+    /// Exactly one header is ever set. The server reads the purchase only when the app transaction
+    /// is absent, so sending both would say nothing more and cost an enumeration of StoreKit.
+    static func sign(
+        _ request: inout URLRequest,
+        appTransaction: String?,
+        fallback: @Sendable () async -> String?
+    ) async {
+        if let appTransaction {
+            request.setValue(appTransaction, forHTTPHeaderField: headerField)
+        } else if let purchase = await fallback() {
+            request.setValue(purchase, forHTTPHeaderField: transactionHeaderField)
+        }
     }
 }
 
@@ -290,17 +340,20 @@ nonisolated struct MessagesStickerCreationClient: Sendable {
     private let transport: any StickerHTTPTransport
     private let useQuickModeAllowance: Bool
     private let appTransactionProvider: @Sendable () async -> String?
+    private let transactionProofProvider: @Sendable () async -> String?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     init(
         bundle: Bundle = .main,
         transport: any StickerHTTPTransport,
-        appTransactionProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.proof
+        appTransactionProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.proof,
+        transactionProofProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.transactionProof
     ) throws {
         baseURL = try MessagesAPIConfiguration.baseURL(bundle: bundle)
         self.transport = transport
         self.appTransactionProvider = appTransactionProvider
+        self.transactionProofProvider = transactionProofProvider
         useQuickModeAllowance = false
     }
 
@@ -308,12 +361,14 @@ nonisolated struct MessagesStickerCreationClient: Sendable {
         baseURL: URL,
         transport: any StickerHTTPTransport,
         useQuickModeAllowance: Bool = false,
-        appTransactionProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.proof
+        appTransactionProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.proof,
+        transactionProofProvider: @escaping @Sendable () async -> String? = QuickAppTransaction.transactionProof
     ) {
         self.baseURL = baseURL
         self.transport = transport
         self.useQuickModeAllowance = useQuickModeAllowance
         self.appTransactionProvider = appTransactionProvider
+        self.transactionProofProvider = transactionProofProvider
     }
 
     func createUploadIntent(
@@ -451,7 +506,7 @@ nonisolated struct MessagesStickerCreationClient: Sendable {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(await appTransactionProvider(), forHTTPHeaderField: QuickAppTransaction.headerField)
+        await QuickAppTransaction.sign(&request, appTransaction: await appTransactionProvider(), fallback: transactionProofProvider)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let result = try await transport.data(for: request)
         // Only 401 is a token problem. A 403 — an unverified billing environment, a route the App
@@ -485,7 +540,7 @@ nonisolated struct MessagesStickerCreationClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
-        request.setValue(await appTransactionProvider(), forHTTPHeaderField: QuickAppTransaction.headerField)
+        await QuickAppTransaction.sign(&request, appTransaction: await appTransactionProvider(), fallback: transactionProofProvider)
 
         let result = try await transport.data(for: request)
         // 401 only: see `get`.

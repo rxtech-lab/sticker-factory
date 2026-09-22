@@ -48,13 +48,49 @@ struct QuickBillingProofTests {
         let client = MessagesStickerCreationClient(
             baseURL: URL(string: "https://api.example/")!,
             transport: transport,
-            appTransactionProvider: { nil }
+            appTransactionProvider: { nil },
+            transactionProofProvider: { nil }
         )
 
         _ = try await client.publish(stickerID: "sticker-1", accessToken: "access-token", idempotencyKey: "publish-key")
 
         let request = try #require(await transport.request())
         #expect(request.value(forHTTPHeaderField: "X-StoreKit-App-Transaction") == nil)
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-Transaction") == nil)
+    }
+
+    @Test("A signed purchase stands in when StoreKit cannot read the app transaction")
+    func purchaseStandsInForMissingProof() async throws {
+        let transport = QuickProofTransport(statusCode: 202, body: #"{"job":{"id":"job-1","state":"queued"}}"#)
+        let client = MessagesStickerCreationClient(
+            baseURL: URL(string: "https://api.example/")!,
+            transport: transport,
+            appTransactionProvider: { nil },
+            transactionProofProvider: { "signed.purchase" }
+        )
+
+        _ = try await client.publish(stickerID: "sticker-1", accessToken: "access-token", idempotencyKey: "publish-key")
+
+        let request = try #require(await transport.request())
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-Transaction") == "signed.purchase")
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-App-Transaction") == nil)
+    }
+
+    @Test("A working app transaction is sent alone")
+    func proofIsSentWithoutThePurchase() async throws {
+        let transport = QuickProofTransport(statusCode: 202, body: #"{"job":{"id":"job-1","state":"queued"}}"#)
+        let client = MessagesStickerCreationClient(
+            baseURL: URL(string: "https://api.example/")!,
+            transport: transport,
+            appTransactionProvider: { "signed.app.transaction" },
+            transactionProofProvider: { "signed.purchase" }
+        )
+
+        _ = try await client.publish(stickerID: "sticker-1", accessToken: "access-token", idempotencyKey: "publish-key")
+
+        let request = try #require(await transport.request())
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-App-Transaction") == "signed.app.transaction")
+        #expect(request.value(forHTTPHeaderField: "X-StoreKit-Transaction") == nil)
     }
 
     @Test("A 403 keeps its own message instead of being retried as an expired token")
@@ -66,7 +102,8 @@ struct QuickBillingProofTests {
                 statusCode: 403,
                 body: #"{"error":{"code":"BILLING_ENVIRONMENT_REQUIRED","message":"\#(message)"}}"#
             ),
-            appTransactionProvider: { nil }
+            appTransactionProvider: { nil },
+            transactionProofProvider: { nil }
         )
 
         await #expect(throws: MessagesStickerCreationError.server(statusCode: 403, message: message)) {

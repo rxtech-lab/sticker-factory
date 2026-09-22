@@ -2,6 +2,8 @@ import { currentBillingEnvironment } from "@/lib/subscription/client";
 // Chat turns: starting one, retrying a failed one, and reading the transcript back.
 
 import { quickGenerationPolicy, recordAppClipUsage } from "@/lib/subscription/app-clip";
+import { DAILY_STICKER_GENERATION_ITEM, DAILY_STICKER_REFINEMENT_ITEM } from "@/lib/subscription/client";
+import { consumeDailyUsage } from "@/lib/subscription/daily-usage";
 import { and, asc, count, desc, eq, gt, inArray, isNull, lt, max, sql } from "drizzle-orm";
 import type { PostChatMessageRequest } from "@/lib/contracts/api";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
@@ -21,6 +23,7 @@ export async function createChatTurn(
   stickerId: string,
   request: PostChatMessageRequest,
   appClip = false,
+  newSticker = false,
 ) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
   if (request.planPoseUpdate && (sticker.kind !== "animated" || request.quick)) {
@@ -133,6 +136,11 @@ export async function createChatTurn(
     // Check points before consuming an attempt. The existing usage API records
     // immediately; generation failures keep the attempt but release point holds.
     if (appClip) await recordAppClipUsage(ownerId, jobId);
+    // Every user message spends the daily message allowance; the one that opens a
+    // new sticker spends the daily sticker allowance too.
+    else await consumeDailyUsage(ownerId, newSticker
+      ? [DAILY_STICKER_GENERATION_ITEM, DAILY_STICKER_REFINEMENT_ITEM]
+      : [DAILY_STICKER_REFINEMENT_ITEM], jobId);
     await db.transaction(async (tx) => {
       if (request.planPoseUpdate) {
         // Serialize against manual edits and version restoration. The active-job constraint guards concurrent builds.

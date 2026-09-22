@@ -28,6 +28,14 @@ struct AppTelemetryTests {
         #expect(!String(describing: safe.userInfo).contains("private-account"))
     }
 
+    @Test("StoreKit's internal domain is named rather than reported as other")
+    func internalStoreKitDomainIsNamed() {
+        let source = StoreKitError.systemError(NSError(domain: "SKInternalErrorDomain", code: 21))
+        let failure = SubscriptionStoreKitFailure(source, stage: .sharedRequest)
+        #expect(failure.errorCodes.contains("SKInternalErrorDomain (21)"))
+        #expect(!failure.errorCodes.contains("other"))
+    }
+
     @Test("StoreKit verification failures identify the failed verification")
     func verificationDiagnostics() {
         let failure = SubscriptionStoreKitFailure(
