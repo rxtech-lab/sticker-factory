@@ -288,6 +288,19 @@ struct StoreAndPublisherTests {
         store.reset()
     }
 
+    @Test("A timed-out stream reconciliation does not open an action alert")
+    func timedOutReconciliationIsSilent() async throws {
+        let api = LiveTurnStreamAPI(timesOutDuringReconciliation: true)
+        let store = StickerStore(api: api)
+
+        store.observeExternalJob(jobID: "live-job", stickerID: api.stickerID)
+        try await waitUntil { store.jobs[api.stickerID]?.streamErrorMessage != nil }
+
+        #expect(store.errorMessage == nil)
+        #expect(store.computingStickerIDs.contains(api.stickerID))
+        store.reset()
+    }
+
     /// The chat's waiting card is only as good as what the store keeps, and the store used to keep
     /// none of this: `stage`, the label and the counts were decoded and then dropped, so a turn that
     /// was audibly busy on the Lock Screen was three dots in the app.

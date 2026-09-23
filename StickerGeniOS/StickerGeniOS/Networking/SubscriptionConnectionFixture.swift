@@ -5,7 +5,7 @@ import StoreKit
 /// Uses the real connection, client and paywall after a simulated StoreKit failure.
 /// No Apple credentials or production requests are involved in this UI test.
 nonisolated final class SubscriptionConnectionFixture: URLProtocol, @unchecked Sendable {
-    @MainActor static func makeStore() -> SubscriptionStore {
+    @MainActor static func makeStore(availableGenerations: Int? = nil) -> SubscriptionStore {
         let configuration = AppConfiguration(
             appVersion: "test", appBuild: "1",
             apiBaseURL: URL(string: "https://subscription-ui-test.invalid")!,
@@ -25,6 +25,7 @@ nonisolated final class SubscriptionConnectionFixture: URLProtocol, @unchecked S
         return SubscriptionStore(
             configuration: configuration, tokenBroker: broker,
             environmentProvider: { refreshing in
+                if availableGenerations != nil { return .sandbox }
                 if refreshing {
                     retryCount += 1
                     if retryCount > 1 { return .sandbox }
@@ -61,10 +62,16 @@ nonisolated final class SubscriptionConnectionFixture: URLProtocol, @unchecked S
              ]}}}
             """
         } else {
+            let usage = ProcessInfo.processInfo.arguments.contains("--ui-free-generation-allowance")
+                ? """
+                [{"key":"daily_sticker_generation","name":"Stickers","used":2,"limit":5,
+                  "remaining":3,"resetPolicy":"daily"}]
+                """
+                : "[]"
             json = """
             {"user":{"id":"test","rxlabUserId":"subscription-ui-test","level":0},"plans":[],"roles":[],
              "permissions":[],"features":{},
-             "balances":[{"unit":"points","name":"Points","precision":0,"amount":42,"available":42}],"usage":[]}
+             "balances":[{"unit":"points","name":"Points","precision":0,"amount":42,"available":42}],"usage":\(usage)}
             """
         }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,

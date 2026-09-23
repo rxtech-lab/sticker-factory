@@ -3,6 +3,49 @@ import XCTest
 @MainActor
 final class SubscriptionUITests: StickerGeniOSUITestCase {
     @MainActor
+    func testFreeGenerationNumberAndFreeTagAppearOnLibraryCreateButton() {
+        app.terminate()
+        app.launchArguments.append("--ui-free-generation-allowance")
+        app.launch()
+
+        let create = element("create-sticker-button")
+        XCTAssertTrue(create.waitForExistence(timeout: 15))
+        XCTAssertEqual(create.value as? String, "3 free sticker generations remaining today")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Number above and FREE below Create"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        create.tap()
+        XCTAssertTrue(element("sticker-prompt").waitForExistence(timeout: 15))
+    }
+
+    @MainActor
+    func testFreeGenerationChipAppearsAboveReviewChoices() {
+        app.terminate()
+        app.launchArguments.append("--ui-free-generation-allowance")
+        app.launch()
+
+        openCreateSheet()
+        let chip = element("free-sticker-generations-chip")
+        XCTAssertFalse(chip.exists)
+        enterCreationIdea()
+        finishCreationChoices()
+
+        let title = app.staticTexts["Ready to create?"]
+        let review = app.staticTexts["Review your choices. Tap any section to change it."]
+        XCTAssertTrue(chip.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(title.exists)
+        XCTAssertTrue(review.exists)
+        XCTAssertGreaterThan(chip.frame.minY, title.frame.maxY)
+        XCTAssertLessThan(chip.frame.maxY, review.frame.minY)
+        XCTAssertLessThan(chip.frame.maxY, element("generate-sticker-button").frame.minY)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Free generations above review choices"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testSubscriptionControlsRemainVisibleWhenStoreKitCannotInitialize() {
         app.terminate()
         app.launchArguments.append("--ui-subscription-unavailable")

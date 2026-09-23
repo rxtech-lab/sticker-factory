@@ -3,8 +3,10 @@ import CryptoKit
 import Foundation
 import ImageIO
 import UIKit
+import os
 
 actor MessagesPlaybackService {
+    private let logger = Logger(subsystem: "app.rxlab.stickerfactory.message", category: "playback")
     /// Failures that mean "the network is not there", as opposed to "the server said no". Only
     /// these fall back to the manifest cached on disk; anything else is a real error to surface.
     private static let offlineCodes: Set<URLError.Code> = [
@@ -51,9 +53,36 @@ actor MessagesPlaybackService {
                 try await client.fetchPlayback(stickerID: stickerID, revisionID: revisionID, accessToken: token)
             }
             try Task.checkCancellation()
-            guard account == (try await accountID()), bundle.stickerId == stickerID, bundle.revisionId == revisionID,
-                  bundle.version == 1, bundle.document.configuration != nil else { throw StickerLibraryError.invalidResponse }
-            _ = try bundle.document.validated()
+            let accountMatches = account == (try await accountID())
+            guard accountMatches, bundle.stickerId == stickerID, bundle.revisionId == revisionID,
+                  bundle.version == 1, bundle.document.configuration != nil else {
+                logger.error(
+                    """
+                    playback metadata rejected sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                    accountMatches=\(accountMatches) stickerMatches=\(bundle.stickerId == stickerID) \
+                    revisionMatches=\(bundle.revisionId == revisionID) version=\(bundle.version) \
+                    hasConfiguration=\(bundle.document.configuration != nil)
+                    """
+                )
+                throw StickerLibraryError.invalidResponse
+            }
+            do {
+                _ = try bundle.document.validated()
+            } catch {
+                logger.error(
+                    """
+                    playback document rejected sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                    error=\(String(describing: error), privacy: .private)
+                    """
+                )
+                throw error
+            }
+            logger.info(
+                """
+                playback bundle accepted sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                assets=\(bundle.assets.count) layers=\(bundle.document.layers.count)
+                """
+            )
             try JSONEncoder().encode(bundle).write(to: path, options: .atomic)
             return (account, bundle)
         } catch let error as URLError where Self.offlineCodes.contains(error.code) {
@@ -77,6 +106,13 @@ actor MessagesPlaybackService {
         let sized = descriptors.allSatisfy { $0.width > 0 && $0.height > 0 && $0.width <= 8192 && $0.height <= 8192 }
         let totalBytes = descriptors.reduce(0) { $0 + $1.byteSize }
         guard descriptors.count == required.count, totalBytes <= 128 * 1024 * 1024, sized else {
+            logger.error(
+                """
+                playback assets rejected sticker=\(bundle.stickerId, privacy: .private) \
+                revision=\(bundle.revisionId, privacy: .private) required=\(required.count) described=\(descriptors.count) \
+                totalBytes=\(totalBytes) dimensionsValid=\(sized)
+                """
+            )
             throw StickerLibraryError.invalidResponse
         }
         let fullCost = descriptors.reduce(0.0) { $0 + Double($1.width) * Double($1.height) * 4 }
@@ -101,7 +137,13 @@ actor MessagesPlaybackService {
                     kCGImageSourceCreateThumbnailFromImageAlways: true,
                     kCGImageSourceThumbnailMaxPixelSize: max(64, Int(Double(max(asset.width, asset.height)) * scale)),
                     kCGImageSourceShouldCacheImmediately: true
-                  ] as CFDictionary) else { throw StickerLibraryError.invalidResponse }
+                  ] as CFDictionary) else {
+                logger.error("""
+                    playback image decode failed asset=\(asset.id, privacy: .private) bytes=\(data.count) width=\(asset.width) \
+                    height=\(asset.height)
+                    """)
+                throw StickerLibraryError.invalidResponse
+            }
             images[asset.id] = UIImage(cgImage: image)
         }
         guard accountID == (try await self.accountID()) else { throw SharedAuthenticationError.missingCredentials }

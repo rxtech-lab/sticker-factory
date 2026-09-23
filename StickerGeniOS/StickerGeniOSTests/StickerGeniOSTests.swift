@@ -26,6 +26,21 @@ func waitUntil(
 
 @Suite("Sticker document and API contracts")
 struct StickerContractTests {
+    @Test("Static creation omits motion while animated creation sends the choice")
+    func createStickerMotionPayload() throws {
+        func payload(kind: StickerKind, motion: Bool?) throws -> [String: Any] {
+            let request = CreateStickerRequest(
+                presets: nil, title: "Cat", kind: kind, prompt: "A round orange cat",
+                referenceAssetIds: [], motion: motion
+            )
+            return try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
+        }
+
+        #expect(try payload(kind: .static, motion: nil)["motion"] == nil)
+        #expect(try payload(kind: .animated, motion: false)["motion"] as? Bool == false)
+        #expect(try payload(kind: .animated, motion: true)["motion"] as? Bool == true)
+    }
+
     @Test("Authenticated requests carry iOS app version and language metadata")
     func clientMetadataHeaders() throws {
         var request = URLRequest(url: try #require(URL(string: "https://api.example/stickers")))

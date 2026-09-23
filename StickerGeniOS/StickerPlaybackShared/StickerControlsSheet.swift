@@ -90,7 +90,19 @@ struct StickerControlsSheet: View {
 
     private var resolved: AnimatedDocument? { try? settings.resolvedDocument(document) }
     private var playbackDocuments: [AnimatedDocument]? { try? settings.playbackDocuments(document) }
-    private var artworkIsReady: Bool { settings.canPlay && playbackDocuments != nil && loadedDocuments == playbackDocuments }
+    /// What the artwork depends on: the playback documents with speed taken out.
+    ///
+    /// Speed is folded into each resolved document, but it never changes which sheets or images are
+    /// needed. Keying the asset load on the documents themselves reloaded — hashed and decoded —
+    /// every asset on each step of the speed slider, and blanked the preview while it did.
+    private var assetDocuments: [AnimatedDocument]? {
+        playbackDocuments?.map { document in
+            var document = document
+            document.speed = 1
+            return document
+        }
+    }
+    private var artworkIsReady: Bool { settings.canPlay && assetDocuments != nil && loadedDocuments == assetDocuments }
     private var busy: Bool { phase != nil }
     /// The host has artwork for exactly the pose now on screen.
     private var isPrepared: Bool { preparedSending != nil && preparedSettings == settings }
@@ -170,7 +182,7 @@ struct StickerControlsSheet: View {
         // through at the corners and while the detent is being dragged.
         .presentationBackground(AppColors.paper)
         .interactiveDismissDisabled(busy)
-        .task(id: playbackDocuments) { await refreshAssets() }
+        .task(id: assetDocuments) { await refreshAssets() }
         .onChange(of: artworkIsReady && !busy, initial: true) { _, ready in
             onOutputReadinessChange?(ready)
         }
@@ -292,11 +304,15 @@ struct StickerControlsSheet: View {
 
     private func refreshAssets() async {
         guard settings.canPlay else { loadedDocuments = nil; errorMessage = nil; return }
-        guard let target = playbackDocuments else { errorMessage = String(localized: "This sticker's controls are invalid."); return }
+        guard let target = assetDocuments else { errorMessage = String(localized: "This sticker's controls are invalid."); return }
         do {
+            // A picker scrolled through, or a slider bound to a clip, changes the target many
+            // times in a row. Once artwork is showing, wait for the choice to settle; the task is
+            // keyed on the target, so each new value cancels the previous wait.
+            if loadedDocuments != nil { try await Task.sleep(for: .milliseconds(300)) }
             let loaded = try await loadAssets(target)
             try Task.checkCancellation()
-            guard target == playbackDocuments else { return }
+            guard target == assetDocuments else { return }
             guard target.allSatisfy({ loaded.containsArtwork(for: $0) }) else { throw StickerExportError.renderFailed }
             assets = loaded; loadedDocuments = target; errorMessage = nil
             playbackOrigin = Date()

@@ -394,7 +394,8 @@ final class StickerStore {
             let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
             let response = try await api.createSticker(
                 .init(presets: presets, title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs,
-                      controllable: controllable, posePreset: controllable ? posePreset : nil, motion: motion),
+                      controllable: controllable, posePreset: controllable ? posePreset : nil,
+                      motion: kind == .animated ? motion : nil),
                 idempotencyKey: UUID().uuidString
             )
             let detail = try await api.sticker(id: response.stickerId)
@@ -500,13 +501,13 @@ final class StickerStore {
         }
     }
 
-    func loadDetail(stickerID: String) async {
+    func loadDetail(stickerID: String, reportError: Bool = true) async {
         do {
             absorb(detail: try await api.sticker(id: stickerID))
-            errorMessage = nil
+            if reportError { errorMessage = nil }
         } catch {
             guard !Self.isCancellation(error) else { return }
-            errorMessage = error.localizedDescription
+            if reportError { errorMessage = error.localizedDescription }
         }
     }
 
@@ -538,7 +539,7 @@ final class StickerStore {
     /// whether the turn is over, and treating it as if it did is what ends a turn the server is
     /// still running.
     @discardableResult
-    func loadMessages(stickerID: String) async -> Bool {
+    func loadMessages(stickerID: String, reportError: Bool = true) async -> Bool {
         loadingMessageStickerIDs.insert(stickerID)
         defer { loadingMessageStickerIDs.remove(stickerID) }
         do {
@@ -546,11 +547,11 @@ final class StickerStore {
             messages[stickerID] = page.items
             nextMessageBeforeSequence[stickerID] = page.nextBeforeSequence
             resumeLatestUnfinishedTurn(stickerID: stickerID, messages: page.items)
-            errorMessage = nil
+            if reportError { errorMessage = nil }
             return true
         } catch {
             guard !Self.isCancellation(error) else { return false }
-            errorMessage = error.localizedDescription
+            if reportError { errorMessage = error.localizedDescription }
             return false
         }
     }

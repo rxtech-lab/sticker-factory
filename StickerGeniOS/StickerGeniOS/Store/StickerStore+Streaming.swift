@@ -5,6 +5,19 @@ import OSLog
 /// The live half of the store: generation-job observation, the event stream it folds into
 /// messages, and the reconciliation that settles a turn the stream never finished.
 extension StickerStore {
+    /// Attaches to every job the library listing says is still running, so the grid can show its
+    /// progress — including after a relaunch, when nothing in this process started them.
+    ///
+    /// A job this store is already streaming is left alone; `observe` would otherwise restart it.
+    func attachActiveLibraryJobs() {
+        for sticker in stickers {
+            guard let generation = sticker.generation,
+                  jobs[sticker.id]?.jobID != generation.jobId || observations[sticker.id] == nil else { continue }
+            if jobs[sticker.id]?.jobID == generation.jobId, jobs[sticker.id]?.isTerminal == true { continue }
+            observe(jobID: generation.jobId, stickerID: sticker.id, sourceMessageID: nil)
+        }
+    }
+
     func observeExternalJob(jobID: String, stickerID: String) {
         reattachAttempts[stickerID] = 0
         observe(jobID: jobID, stickerID: stickerID, sourceMessageID: nil, force: true, startsGeneration: true)
@@ -172,7 +185,7 @@ extension StickerStore {
         if event.type == .candidate || event.type == .completed {
             streamingDocuments[stickerID] = nil
             if let detail = try? await api.sticker(id: stickerID) { absorb(detail: detail) }
-            await loadMessages(stickerID: stickerID)
+            await loadMessages(stickerID: stickerID, reportError: false)
         }
         if event.type == .failed || event.data.cancelled == true {
             streamingDocuments[stickerID] = nil
@@ -252,8 +265,10 @@ extension StickerStore {
         observations[stickerID] = nil
         streamingDocuments[stickerID] = nil
 
-        await loadDetail(stickerID: stickerID)
-        let reconciled = await loadMessages(stickerID: stickerID)
+        // A stream commonly drops while iOS suspends the app. Reconciliation can time out before
+        // networking wakes again; keep the last snapshot and retry without opening an action alert.
+        await loadDetail(stickerID: stickerID, reportError: false)
+        let reconciled = await loadMessages(stickerID: stickerID, reportError: false)
 
         // `loadMessages` may have re-attached a genuinely unfinished turn.
         guard jobs[stickerID]?.jobID == jobID, observations[stickerID] == nil else { return }
@@ -329,7 +344,7 @@ extension StickerStore {
                 guard let self, !Task.isCancelled else { return }
                 guard self.computingStickerIDs.contains(stickerID) else { continue }
                 guard let jobID = self.jobs[stickerID]?.jobID else { continue }
-                await self.loadMessages(stickerID: stickerID)
+                await self.loadMessages(stickerID: stickerID, reportError: false)
                 await self.settleIfResolved(stickerID: stickerID, jobID: jobID)
             }
         }

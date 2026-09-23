@@ -383,6 +383,9 @@
     "%lld fps" : {
 
     },
+    "%lld free sticker generations remaining today" : {
+
+    },
     "%lld generations remaining" : {
 
     },
@@ -438,6 +441,9 @@
       }
     },
     "%lld selectable poses per character" : {
+
+    },
+    "%lld selected" : {
 
     },
     "%lld stickers" : {
@@ -2745,6 +2751,22 @@
         }
       }
     },
+    "Creating your sticker…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在制作你的贴纸…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在製作你的貼紙…"
+          }
+        }
+      }
+    },
     "Creator" : {
       "localizations" : {
         "zh-CN" : {
@@ -3174,6 +3196,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "關閉連線警告"
+          }
+        }
+      }
+    },
+    "Dismiss publish reminder" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭发布提醒"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉發佈提醒"
           }
         }
       }
@@ -4173,6 +4211,12 @@
           }
         }
       }
+    },
+    "FREE" : {
+
+    },
+    "Free sticker generations left today: %lld" : {
+
     },
     "Fresh off the press" : {
       "localizations" : {
@@ -5505,6 +5549,9 @@
         }
       }
     },
+    "Mask image" : {
+
+    },
     "Maximum" : {
       "localizations" : {
         "zh-CN" : {
@@ -5613,6 +5660,9 @@
     "MOTION" : {
 
     },
+    "Move around the canvas" : {
+
+    },
     "Move to draft" : {
       "localizations" : {
         "zh-CN" : {
@@ -5630,6 +5680,9 @@
       }
     },
     "Movement" : {
+
+    },
+    "Moves around" : {
 
     },
     "MP4 background" : {
@@ -6132,6 +6185,22 @@
     "Not prepared. Save this pack again to try it." : {
 
     },
+    "Not published yet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未發佈"
+          }
+        }
+      }
+    },
     "Not published yet, so there is no artwork to send." : {
       "localizations" : {
         "zh-CN" : {
@@ -6341,6 +6410,9 @@
         }
       }
     },
+    "Off means the sticker stays in one place — it can still breathe, blink and react." : {
+
+    },
     "OK" : {
       "localizations" : {
         "zh-CN" : {
@@ -6504,10 +6576,16 @@
         }
       }
     },
+    "Open mask image" : {
+
+    },
     "Open plan image" : {
 
     },
     "Open plan reference" : {
+
+    },
+    "Open reference image" : {
 
     },
     "Open Sticker actions to compare versions, restore an earlier one, or publish the current version." : {
@@ -7156,6 +7234,22 @@
         }
       }
     },
+    "Publish" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈"
+          }
+        }
+      }
+    },
     "Publish a pack and it will appear here." : {
       "localizations" : {
         "zh-CN" : {
@@ -7248,6 +7342,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "發佈貼圖包"
+          }
+        }
+      }
+    },
+    "Publish to use it in Messages." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布后即可在“信息”中使用。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發佈後即可在「訊息」中使用。"
           }
         }
       }
@@ -7544,6 +7654,9 @@
           }
         }
       }
+    },
+    "Reference image" : {
+
     },
     "Reference image attachment" : {
       "localizations" : {
@@ -7872,6 +7985,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "回復購買"
+          }
+        }
+      }
+    },
+    "Restored your last attempt. Pick up where you left off." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已恢复你上次的尝试，可以从中断处继续。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已恢復你上次的嘗試，可以從中斷處繼續。"
           }
         }
       }
@@ -9057,6 +9186,22 @@
         }
       }
     },
+    "Start over" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新开始"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新開始"
+          }
+        }
+      }
+    },
     "Start with a prompt and optional photos. The assistant will propose a plan before it generates anything." : {
       "localizations" : {
         "zh-CN" : {
@@ -9190,6 +9335,9 @@
           }
         }
       }
+    },
+    "Stays in place" : {
+
     },
     "Step %lld of %lld" : {
       "localizations" : {
@@ -11681,6 +11829,38 @@
     },
     "Waiting for the first update…" : {
 
+    },
+    "Waiting for your input" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待你的输入"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待你的輸入"
+          }
+        }
+      }
+    },
+    "Waiting to start…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待开始…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待開始…"
+          }
+        }
+      }
     },
     "Waiting…" : {
       "localizations" : {

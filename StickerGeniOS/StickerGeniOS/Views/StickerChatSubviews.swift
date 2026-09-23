@@ -510,17 +510,33 @@ struct AssistantWorkingCard: View {
 private struct ChatAttachmentThumbnail: View {
     let attachment: ChatAttachment
     let image: UIImage?
+    @State private var showingImage = false
 
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
+                Button { showingImage = true } label: {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                }
+                .buttonStyle(.posterPlain)
+                .accessibilityLabel(attachment.kind == .mask ? "Open mask image" : "Open reference image")
+                .accessibilityIdentifier("open-chat-reference-image")
+                .fullScreenCover(isPresented: $showingImage) {
+                    PlanImageViewer(
+                        image: image,
+                        title: attachment.kind == .mask
+                            ? String(localized: "Mask image")
+                            : String(localized: "Reference image"),
+                        accessibilityPrefix: "reference-image"
+                    )
+                }
             } else {
                 PosterSymbol(attachment.kind == .mask ? "circle.lefthalf.filled" : "photo")
                     .font(.title2)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(attachment.kind == .mask ? "Mask attachment" : "Reference image attachment")
             }
         }
         .frame(width: 82, height: 82)
@@ -531,7 +547,6 @@ private struct ChatAttachmentThumbnail: View {
             lineWidth: Poster.hairline,
             offset: CGSize(width: 2, height: 2)
         )
-        .accessibilityLabel(attachment.kind == .mask ? "Mask attachment" : "Reference image attachment")
     }
 }
 

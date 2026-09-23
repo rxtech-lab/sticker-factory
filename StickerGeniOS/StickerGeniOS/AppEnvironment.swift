@@ -121,6 +121,9 @@ final class AppEnvironment {
         if isUITesting, arguments.contains("--ui-subscription-unavailable") {
             subscription = SubscriptionConnectionFixture.makeStore()
         }
+        if isUITesting, arguments.contains("--ui-free-generation-allowance") {
+            subscription = SubscriptionConnectionFixture.makeStore(availableGenerations: 3)
+        }
         #endif
         let environment = AppEnvironment(
             configuration: configuration,

@@ -1,4 +1,6 @@
+import AnimatedView
 import Foundation
+import os
 
 enum StickerLibraryError: Error, LocalizedError, Sendable {
     case invalidConfiguration
@@ -33,6 +35,7 @@ struct DownloadedRendition: Sendable {
 
 struct StickerLibraryClient: Sendable {
     static let maximumPageCount = 100
+    private static let playbackLogger = Logger(subsystem: "app.rxlab.stickerfactory.message", category: "playback")
 
     private let baseURL: URL
     private let transport: any StickerHTTPTransport
@@ -195,6 +198,12 @@ struct StickerLibraryClient: Sendable {
             guard let envelope = try? JSONDecoder().decode(AssetDownloadEnvelope.self, from: result.data),
                   let signedURL = URL(string: envelope.url),
                   signedURL.scheme == "https" else {
+                Self.playbackLogger.error(
+                    """
+                    asset download envelope rejected asset=\(assetID, privacy: .private) status=\(result.response.statusCode) \
+                    bytes=\(result.data.count) contentType=\(contentType ?? "missing", privacy: .public)
+                    """
+                )
                 throw StickerLibraryError.invalidResponse
             }
             var signedRequest = URLRequest(url: signedURL)
@@ -219,11 +228,50 @@ struct StickerLibraryClient: Sendable {
         components.queryItems = [URLQueryItem(name: "revisionId", value: revisionID)]
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("5", forHTTPHeaderField: "X-Sticker-Contract")
+        request.setValue(String(AnimatedDocument.currentVersion), forHTTPHeaderField: "X-Sticker-Contract")
         addClientHeaders(to: &request)
         let result = try await transport.data(for: request)
+        Self.playbackLogger.info(
+            """
+            playback response sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+            status=\(result.response.statusCode) bytes=\(result.data.count) \
+            contentType=\(result.response.value(forHTTPHeaderField: "Content-Type") ?? "missing", privacy: .public)
+            """
+        )
         try Self.validate(result)
-        return try JSONDecoder().decode(StickerPlaybackBundle.self, from: result.data)
+        do {
+            return try JSONDecoder().decode(StickerPlaybackBundle.self, from: result.data)
+        } catch {
+            Self.playbackLogger.error(
+                """
+                playback decode failed sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                reason=\(Self.decodingFailure(error), privacy: .public)
+                """
+            )
+            throw error
+        }
+    }
+
+    private static func decodingFailure(_ error: Error) -> String {
+        let path: [any CodingKey]
+        let reason: String
+        switch error {
+        case DecodingError.typeMismatch(let type, let context):
+            path = context.codingPath
+            reason = "typeMismatch(\(type))"
+        case DecodingError.valueNotFound(let type, let context):
+            path = context.codingPath
+            reason = "valueNotFound(\(type))"
+        case DecodingError.keyNotFound(let key, let context):
+            path = context.codingPath + [key]
+            reason = "keyNotFound"
+        case DecodingError.dataCorrupted(let context):
+            path = context.codingPath
+            reason = "dataCorrupted"
+        default:
+            return String(describing: type(of: error))
+        }
+        return "\(reason) path=\(path.map(\.stringValue).joined(separator: "."))"
     }
 
     private func addClientHeaders(to request: inout URLRequest) {

@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// Shared by the current plan and saved versions. Each presentation starts fitted to the screen.
+/// Shared by plan artwork and uploaded images. Each presentation starts fitted to the screen.
 struct PlanImageViewer: View {
     let image: UIImage
+    var title = String(localized: "Plan image")
+    var accessibilityPrefix = "plan-image"
     @Environment(\.dismiss) private var dismiss
     @State private var zoom: CGFloat = 1
 
@@ -11,9 +13,9 @@ struct PlanImageViewer: View {
 
     var body: some View {
         NavigationStack {
-            ZoomablePlanImage(image: image, zoom: $zoom)
+            ZoomablePlanImage(image: image, zoom: $zoom, accessibilityLabel: title)
                 .background(Color.black)
-                .accessibilityIdentifier("plan-image-zoom-surface")
+                .accessibilityIdentifier("\(accessibilityPrefix)-zoom-surface")
                 .safeAreaInset(edge: .bottom) {
                     HStack(spacing: 28) {
                         Button { zoom = max(1, zoom / 1.5) } label: {
@@ -21,7 +23,7 @@ struct PlanImageViewer: View {
                                 .frame(width: 44, height: 44)
                         }
                         .disabled(zoom <= 1.01)
-                        .accessibilityIdentifier("plan-image-zoom-out")
+                        .accessibilityIdentifier("\(accessibilityPrefix)-zoom-out")
                         Button { zoom = 1 } label: {
                             Text(zoomLabel)
                                 .monospacedDigit()
@@ -29,13 +31,13 @@ struct PlanImageViewer: View {
                         }
                         .accessibilityLabel("Reset zoom")
                         .accessibilityValue(zoomLabel)
-                        .accessibilityIdentifier("plan-image-reset-zoom")
+                        .accessibilityIdentifier("\(accessibilityPrefix)-reset-zoom")
                         Button { zoom = min(6, zoom * 1.5) } label: {
                             Label("Zoom in", systemImage: "plus.magnifyingglass")
                                 .frame(width: 44, height: 44)
                         }
                         .disabled(zoom >= 5.99)
-                        .accessibilityIdentifier("plan-image-zoom-in")
+                        .accessibilityIdentifier("\(accessibilityPrefix)-zoom-in")
                     }
                     .labelStyle(.iconOnly)
                     .font(.title3)
@@ -43,34 +45,38 @@ struct PlanImageViewer: View {
                     .frame(maxWidth: .infinity)
                     .background(.ultraThinMaterial)
                 }
-                .navigationTitle("Plan image")
+                .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
-                        Text("Plan image")
+                        Text(title)
                             .font(.headline)
                             .foregroundStyle(.white)
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
-                            .accessibilityIdentifier("plan-image-close")
+                            .accessibilityIdentifier("\(accessibilityPrefix)-close")
                     }
                 }
         }
+        .foregroundStyle(.white)
+        .tint(.white)
         .preferredColorScheme(.dark)
-        .accessibilityIdentifier("plan-image-viewer")
+        .accessibilityIdentifier("\(accessibilityPrefix)-viewer")
     }
 }
 
 private struct ZoomablePlanImage: UIViewRepresentable {
     let image: UIImage
     @Binding var zoom: CGFloat
+    let accessibilityLabel: String
 
     func makeCoordinator() -> Coordinator { Coordinator(zoom: $zoom) }
 
     func makeUIView(context: Context) -> PlanImageScrollView {
         let view = PlanImageScrollView()
         view.imageView.image = image
+        view.imageView.accessibilityLabel = accessibilityLabel
         view.delegate = context.coordinator
         let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
@@ -81,6 +87,7 @@ private struct ZoomablePlanImage: UIViewRepresentable {
     func updateUIView(_ view: PlanImageScrollView, context: Context) {
         context.coordinator.zoom = $zoom
         if view.imageView.image !== image { view.imageView.image = image }
+        view.imageView.accessibilityLabel = accessibilityLabel
         if abs(view.zoomScale - zoom) > 0.01 {
             context.coordinator.isUpdating = true
             view.setZoomScale(zoom, animated: false)
@@ -132,7 +139,6 @@ private final class PlanImageScrollView: UIScrollView {
         contentInsetAdjustmentBehavior = .never
         imageView.contentMode = .scaleAspectFit
         imageView.isAccessibilityElement = true
-        imageView.accessibilityLabel = String(localized: "Plan image")
         imageView.accessibilityHint = String(localized: "Pinch to zoom. Drag to move around. Double tap to zoom or reset.")
         addSubview(imageView)
     }

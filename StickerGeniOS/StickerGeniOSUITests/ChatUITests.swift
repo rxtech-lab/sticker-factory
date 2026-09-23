@@ -3,6 +3,31 @@ import XCTest
 @MainActor
 final class ChatUITests: StickerGeniOSUITestCase {
     @MainActor
+    func testUploadedReferenceImageOpensFullScreenAndZooms() {
+        app.terminate()
+        app.launchArguments.append("--ui-chat-reference-image")
+        app.launch()
+        element("library-sticker-sticker-demo").tap()
+
+        let reference = app.buttons["open-chat-reference-image"]
+        XCTAssertTrue(reference.waitForExistence(timeout: 15))
+        reference.tap()
+
+        let close = app.buttons["reference-image-close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 15))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Uploaded reference image viewer"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let zoom = app.buttons["reference-image-reset-zoom"]
+        XCTAssertEqual(zoom.value as? String, "100%")
+        app.buttons["reference-image-zoom-in"].tap()
+        XCTAssertEqual(zoom.value as? String, "150%")
+        close.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 15))
+    }
+
+    @MainActor
     func testChatToolbarMenuExposesGroupedActions() {
         let card = element("library-sticker-sticker-demo")
         XCTAssertTrue(card.waitForExistence(timeout: 15))

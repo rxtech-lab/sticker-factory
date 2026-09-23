@@ -315,6 +315,19 @@ struct StickerMessagesContractTests {
         #expect(await transport.requestedLanguages() == ["zh-Hans-CN"])
     }
 
+    @Test("Playback requests the document version supported by the Messages renderer")
+    func playbackUsesCurrentDocumentContract() async throws {
+        let transport = PlaybackContractTransport()
+        let client = StickerLibraryClient(baseURL: URL(string: "https://api.example/")!, transport: transport)
+
+        let bundle = try await client.fetchPlayback(
+            stickerID: "sticker-1", revisionID: "revision-1", accessToken: "access"
+        )
+
+        #expect(await transport.requestedContractVersion() == String(bundle.document.version))
+        #expect(bundle.document.configuration != nil)
+    }
+
     @Test("A server with no sections endpoint falls back to the flat library")
     func fetchSectionsFallsBackOn404() async throws {
         // The extension ships inside the app binary and can be newer than the server it talks to.
