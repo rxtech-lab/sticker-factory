@@ -25,6 +25,9 @@ it("shows the body sheet with its face region and returns the inspector's proble
   expect(text).toContain("Character: Car. Face region: the windshield.");
   expect(text).toContain("3 columns by 2 rows; the first 6 cells are used");
   expect(text).toContain("outside that oval");
+  // A face on a carried charm is design, and pose motion like perked ears is not drift.
+  expect(text).toContain("separate small accessory");
+  expect(text).toContain("is not drift");
   expect(call.messages[0].content.filter((part: { type: string }) => part.type === "image")).toHaveLength(1);
   expect(call.toolChoice).toBe("required");
   expect(Object.keys(call.tools)).toEqual(["report_sheet"]);

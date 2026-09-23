@@ -109,14 +109,19 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
       input.faceCompositing === "masked"
         ? "1. A flat solid magenta (#FF00FF) face opening sits behind any hand, cup, instrument, hair, or prop that crosses it. Foreground objects remain fully drawn and may hide some or all of the opening."
         : "1. Exactly one flat, solid magenta (#FF00FF) oval sits on the face region, with no eyes, mouth, outline or other features drawn inside it.",
-      "2. No eye, brow, nose, mouth, or teeth remain anywhere on the body outside that oval: not on a grille, bumper, chest, screen, belly, or panel.",
+      // Scoped to the character's own anatomy: a kawaii reference often puts a little face on a
+      // charm or plush it carries, and the image model is told to preserve the reference. Rejecting
+      // that face failed every redraw of every cell, since the reference keeps asking for it back.
+      "2. No eye, brow, nose, mouth, or teeth of the character remain anywhere on its body outside that oval: not on a grille, bumper, chest, screen, belly, or panel. A face that belongs to a separate small accessory the character wears or carries — a charm, keychain, badge, toy, plush, or a print on its bag or clothing — is part of the approved design, not a leftover feature; never reject it.",
       "3. One character only, with no second head or miniature portrait.",
+      "4. The whole drawing sits inside its own cell with clear transparent margin on all four sides: no outline, limb, accessory, shadow or effect touches a cell edge or continues into a neighbouring cell.",
       // The pixel gate in `validateGeneratedAtlas` measures containment, but it cannot tell a
       // character that drifts cell to cell — each frame stays inside its own box while the body
       // marches sideways — from one that is deliberately posed. Played back, that drift reads as
       // the sticker sliding off its own canvas, so it is checked here where the frames are seen
-      // together.
-      "4. The whole drawing sits inside its own cell with clear transparent margin on all four sides: no outline, limb, accessory, shadow or effect touches a cell edge or continues into a neighbouring cell. The body is at the same scale and the same position in every cell, so the frames register when flipped through; only the pose within that fixed footprint changes.",
+      // together. Only gross drift: judged strictly, raised ears or a tilted head read as the body
+      // moving up, and the verdict flipped between draws of the same pose.
+      "5. The body is drawn at the same scale in every cell and its anchor — feet, base, or torso — stays roughly in place. Motion the clip calls for, such as raised or perked ears, a tilted or turned head, lifted paws, leaning, or a small bounce or breath, changes the silhouette's top and sides and is not drift. Reject only an obvious whole-body slide or scale change of more than about a sixth of the cell; never reject a small offset.",
       input.faceCompositing === "masked"
         ? `Return faceFrames with exactly ${count} entries, in cell order. Each entry is the full unobstructed face opening of that cell, inferred from the head even when the visible magenta is partly or fully covered. Coordinates are relative to that single cell, never the whole sheet: (0,0) is the cell's top-left corner and (1,1) its bottom-right. faceX and faceY are the centre of the face opening; faceSize is its width divided by the cell width. Where magenta is visible, the centre must lie on or next to it; extend the opening only over the part hidden behind a foreground object.`
         : "",
