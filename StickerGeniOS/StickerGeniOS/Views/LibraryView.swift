@@ -378,7 +378,7 @@ struct LibraryView: View {
                 CreateStickerView(store: store, onCreated: { sticker in
                     showingCreation = false
                     openedStickerID = sticker.id
-                }, tutorialMode: tutorialCreationMode)
+                }, tutorialMode: tutorialCreationMode, subscription: subscription)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Close") {

@@ -440,6 +440,9 @@
     "%lld selectable poses per character" : {
 
     },
+    "%lld selected" : {
+
+    },
     "%lld stickers" : {
 
     },
@@ -5613,6 +5616,9 @@
     "MOTION" : {
 
     },
+    "Move around the canvas" : {
+
+    },
     "Move to draft" : {
       "localizations" : {
         "zh-CN" : {
@@ -5630,6 +5636,9 @@
       }
     },
     "Movement" : {
+
+    },
+    "Moves around" : {
 
     },
     "MP4 background" : {
@@ -6340,6 +6349,9 @@
           }
         }
       }
+    },
+    "Off means the sticker stays in one place — it can still breathe, blink and react." : {
+
     },
     "OK" : {
       "localizations" : {
@@ -9190,6 +9202,9 @@
           }
         }
       }
+    },
+    "Stays in place" : {
+
     },
     "Step %lld of %lld" : {
       "localizations" : {

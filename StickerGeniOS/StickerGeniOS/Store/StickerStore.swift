@@ -394,7 +394,8 @@ final class StickerStore {
             let title = String(prompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
             let response = try await api.createSticker(
                 .init(presets: presets, title: title, kind: kind, prompt: prompt, referenceAssetIds: assetIDs,
-                      controllable: controllable, posePreset: controllable ? posePreset : nil, motion: motion),
+                      controllable: controllable, posePreset: controllable ? posePreset : nil,
+                      motion: kind == .animated ? motion : nil),
                 idempotencyKey: UUID().uuidString
             )
             let detail = try await api.sticker(id: response.stickerId)

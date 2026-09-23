@@ -163,7 +163,8 @@ export const CreateStickerRequestSchema = z.object({
   if (request.posePreset && !request.controllable) {
     ctx.addIssue({ code: "custom", path: ["posePreset"], message: "Pose presets require a controllable animation" });
   }
-  if (request.motion !== undefined && request.kind !== "animated") {
+  // Older iOS builds send false even for static stickers. Only enabling motion is invalid.
+  if (request.motion === true && request.kind !== "animated") {
     ctx.addIssue({ code: "custom", path: ["motion"], message: "Motion requires an animated sticker" });
   }
   if (!request.controllable) return;

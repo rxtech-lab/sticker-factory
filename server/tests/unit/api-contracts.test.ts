@@ -3,6 +3,7 @@ import fixture from "@/fixtures/api-responses-v1.json";
 import {
   AssetDownloadResponseV1Schema,
   ChatMessagesResponseV1Schema,
+  CreateStickerRequestSchema,
   CreatePackRequestSchema,
   CreateUploadRequestSchema,
   MessengerRenditionsRequestSchema,
@@ -15,6 +16,14 @@ import {
 } from "@/lib/contracts/api";
 
 describe("shared API fixtures", () => {
+  it("accepts a static sticker with false motion from existing iOS clients", () => {
+    const request = { title: "Cat", kind: "static", prompt: "A round orange cat", referenceAssetIds: [] };
+    expect(CreateStickerRequestSchema.parse(request).motion).toBeUndefined();
+    expect(CreateStickerRequestSchema.parse({ ...request, motion: false }).motion).toBe(false);
+    expect(CreateStickerRequestSchema.safeParse({ ...request, motion: true }).success).toBe(false);
+    expect(CreateStickerRequestSchema.parse({ ...request, kind: "animated", motion: true }).motion).toBe(true);
+  });
+
   it("validates the Messages library and download envelopes", () => {
     expect(StickerListResponseV1Schema.parse(fixture.stickerList).data[0].systemSticker?.byteSize).toBe(482_100);
     expect(AssetDownloadResponseV1Schema.parse(fixture.assetDownload).url).toContain("downloads.example.test");

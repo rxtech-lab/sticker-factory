@@ -84,6 +84,27 @@ actor SectionedStickerTransport: StickerHTTPTransport {
     func requestedLanguages() -> [String?] { languages }
 }
 
+actor PlaybackContractTransport: StickerHTTPTransport {
+    private var contractVersion: String?
+
+    func data(for request: URLRequest) async throws -> StickerHTTPResult {
+        contractVersion = request.value(forHTTPHeaderField: "X-Sticker-Contract")
+        let url = try #require(request.url)
+        let response = try #require(HTTPURLResponse(
+            url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        ))
+        let body = Data("""
+        {"stickerId":"sticker-1","revisionId":"revision-1","version":1,
+         "document":{"version":7,"kind":"animated","layers":[],"configuration":{"controls":[],"variants":[]}},
+         "assets":[]}
+        """.utf8)
+        return .init(data: body, response: response)
+    }
+
+    func requestedContractVersion() -> String? { contractVersion }
+}
+
 /// One section covering every shape `previewAsset` arrives in, so the gating rules are exercised
 /// against real JSON rather than hand-built descriptors.
 actor PreviewAssetTransport: StickerHTTPTransport {

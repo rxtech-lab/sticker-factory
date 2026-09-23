@@ -66,6 +66,11 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
         if ProcessInfo.processInfo.arguments.contains("--ui-configurable-sticker") {
             for i in detail.revisions.indices { detail.revisions[i].document = PreviewFixtures.configurableDocument }
         }
+        if ProcessInfo.processInfo.arguments.contains("--ui-chat-reference-image") {
+            messages[0].attachments = [
+                .init(assetId: PreviewFixtures.borrowedAssetID, kind: .reference, targetLayerId: nil)
+            ]
+        }
         if ProcessInfo.processInfo.arguments.contains("--ui-plan-versions")
             || ProcessInfo.processInfo.arguments.contains("--ui-sprite-plan") {
             // Only the latest card is loaded; the older version comes from the history endpoint.

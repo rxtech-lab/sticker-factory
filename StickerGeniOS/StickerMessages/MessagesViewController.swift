@@ -41,6 +41,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     private let hintLabel = UILabel()
 
     private let logger = Logger(subsystem: "app.rxlab.stickerfactory.message", category: "insert")
+    private let playbackLogger = Logger(subsystem: "app.rxlab.stickerfactory.message", category: "playback")
 
     /// Escape hatch for on-device A/B against the stock browser without a rebuild:
     /// `defaults write group.app.rxlab.stickerfactory StickerFactoryUseLegacyBrowser -bool YES`
@@ -99,7 +100,11 @@ final class MessagesViewController: MSMessagesAppViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
-        playbackService = try? MessagesPlaybackService()
+        do {
+            playbackService = try MessagesPlaybackService()
+        } catch {
+            playbackLogger.error("playback service init failed error=\(String(describing: error), privacy: .private)")
+        }
         configureModeControl()
         configureSurfaceContainer()
         configureStatusView()
@@ -635,7 +640,11 @@ final class MessagesViewController: MSMessagesAppViewController {
     }
 
     private func openControls(itemID: StickerGridViewController.StickerItemID, item: CachedSticker, revisionID: String) {
-        guard controlsController == nil, controlsLoadTask == nil, let service = playbackService else { return }
+        guard controlsController == nil, controlsLoadTask == nil, let service = playbackService else {
+            playbackLogger.error("controls unavailable sticker=\(item.stickerID, privacy: .private) serviceReady=\(self.playbackService != nil) sheetOpen=\(self.controlsController != nil) loading=\(self.controlsLoadTask != nil)")
+            return
+        }
+        playbackLogger.info("controls opening sticker=\(item.stickerID, privacy: .private) revision=\(revisionID, privacy: .private)")
         gridViewController.setBusy(true, for: itemID)
         // A compact drawer is a single row of thumbnails: a mood picker, a pose picker, a speed
         // slider and a preview cannot be operated in it, and the sheet would open somewhere the user
@@ -721,7 +730,12 @@ final class MessagesViewController: MSMessagesAppViewController {
                 self.controlsController = controller
                 self.refreshCreateButton()
                 self.install(controller)
-            } catch is CancellationError {} catch { self?.showHint(error.localizedDescription) }
+            } catch is CancellationError {} catch {
+                self?.playbackLogger.error(
+                    "controls open failed sticker=\(item.stickerID, privacy: .private) revision=\(revisionID, privacy: .private) error=\(String(describing: error), privacy: .private)"
+                )
+                self?.showHint(error.localizedDescription)
+            }
         }
     }
 

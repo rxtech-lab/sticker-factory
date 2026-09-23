@@ -124,6 +124,16 @@ nonisolated enum SubscriptionBalance {
     }
 }
 
+nonisolated enum SubscriptionAllowance {
+    static let stickerGenerationKey = "daily_sticker_generation"
+
+    static func freeStickerGenerationsRemaining(in usage: [UsageStatus]) -> Int? {
+        guard let remaining = usage.first(where: { $0.key == stickerGenerationKey })?.remaining,
+              remaining > 0 else { return nil }
+        return remaining
+    }
+}
+
 nonisolated enum SubscriptionPaywallContent: Equatable {
     case plans
     case credits
@@ -208,6 +218,11 @@ final class SubscriptionStore {
         // Free users may not have a balance row until their first grant. Once entitlements have
         // loaded, absence means zero rather than an indefinitely loading balance.
         return SubscriptionBalance.credits(in: entitlements.balances)
+    }
+
+    var freeStickerGenerationsRemaining: Int? {
+        guard let entitlements else { return nil }
+        return SubscriptionAllowance.freeStickerGenerationsRemaining(in: entitlements.usage)
     }
 
     /// The plan to show in Account. Nil means the free tier, which has no subscription row.

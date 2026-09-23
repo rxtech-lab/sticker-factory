@@ -8,6 +8,7 @@ struct CreateStickerView: View {
     /// Generation always continues in the project's chat; the caller owns that navigation.
     var onCreated: (Sticker) -> Void
     var tutorialMode: TutorialAction?
+    var subscription: SubscriptionStore = .init()
     @State private var appliedTutorialMode = false
     @State private var flow = CreationWizardState()
     @State private var loadingCatalog = false
@@ -404,32 +405,40 @@ struct CreateStickerView: View {
     }
 
     private var navigation: some View {
-        HStack(spacing: 12) {
-            if flow.step != .idea || flow.editingOverview {
-                Button {
-                    flow.back(kind: kind); dismissKeyboard()
-                } label: {
-                    Label("Back", systemImage: "chevron.left")
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                if flow.step != .idea || flow.editingOverview {
+                    Button {
+                        flow.back(kind: kind); dismissKeyboard()
+                    } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.posterSecondaryCompact).disabled(isGenerating)
+                    .accessibilityIdentifier("creation-back")
                 }
-                .buttonStyle(.posterSecondaryCompact).disabled(isGenerating)
-                .accessibilityIdentifier("creation-back")
+                Button {
+                    dismissKeyboard()
+                    if flow.step == .overview { Task { await generate() } } else { flow.advance(kind: kind); Haptics.selection() }
+                } label: {
+                    HStack {
+                        if isGenerating { PosterSpinner(color: AppColors.ink, size: 16) }
+                        Text(
+                            flow.step == .overview
+                                ? (isGenerating
+                                    ? String(localized: "Starting securely…") : String(localized: "Generate one candidate"))
+                                : (flow.editingOverview ? String(localized: "Done") : String(localized: "Next")))
+                        Image(systemName: flow.step == .overview ? "wand.and.stars" : "arrow.right")
+                    }.frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.poster).disabled(isGenerating || !canContinue)
+                .accessibilityIdentifier(flow.step == .overview ? "generate-sticker-button" : "creation-next")
             }
-            Button {
-                dismissKeyboard()
-                if flow.step == .overview { Task { await generate() } } else { flow.advance(kind: kind); Haptics.selection() }
-            } label: {
-                HStack {
-                    if isGenerating { PosterSpinner(color: AppColors.ink, size: 16) }
-                    Text(
-                        flow.step == .overview
-                            ? (isGenerating
-                                ? String(localized: "Starting securely…") : String(localized: "Generate one candidate"))
-                            : (flow.editingOverview ? String(localized: "Done") : String(localized: "Next")))
-                    Image(systemName: flow.step == .overview ? "wand.and.stars" : "arrow.right")
-                }.frame(maxWidth: .infinity)
+            if flow.step == .overview, let remaining = subscription.freeStickerGenerationsRemaining {
+                Label("Free sticker generations left today: \(remaining)", systemImage: "sparkles")
+                    .font(.posterLabel(12))
+                    .posterChip(fill: AppColors.mint)
+                    .accessibilityIdentifier("free-sticker-generations-chip")
             }
-            .buttonStyle(.poster).disabled(isGenerating || !canContinue)
-            .accessibilityIdentifier(flow.step == .overview ? "generate-sticker-button" : "creation-next")
         }
         .padding().frame(maxWidth: 760).frame(maxWidth: .infinity).background(AppColors.paper)
     }
@@ -495,10 +504,10 @@ struct CreateStickerView: View {
 
     /// The switch only means anything on an animated sticker, and it stays on screen across a
     /// change of type — so a user who turns it on, switches to Static and generates sends a request
-    /// the server would refuse rather than one it silently ignores.
+    /// the request would carry an animation-only option rather than omit it.
     private var wantsControls: Bool { kind == .animated && controllable }
 
-    /// Same reasoning as `wantsControls`: the server refuses `motion` on a static sticker, and the
+    /// Same reasoning as `wantsControls`: motion only applies to animated stickers, and the
     /// switch stays on screen across a change of type.
     private var wantsMotion: Bool { kind == .animated && motion }
 
