@@ -72,6 +72,9 @@ const characterReference = (name: string) =>
 
 const animationSummaryInstruction = "Reference 1 is the approved resting composition; reference 2 is this character's separated still. Reference 3 is the approved illustrated animation summary: follow the labelled poses and facial expressions for the requested motion or mood while preserving the character design from references 1 and 2. Use the written plan for exact frame order, count and timing. Do not copy the summary's panels, captions, arrows, extra characters or background into the generated artwork.";
 
+/** Matches the inspector's rule 2: only the character's own face moves to the opening. */
+const accessoryFaces = "A face printed or drawn on a separate small accessory the character wears or carries, such as a charm, keychain, badge, plush, or bag print, is part of the design: keep it exactly as in the reference.";
+
 export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, clip: SpriteSource["clips"][number], hasAnimationSummary = false, feedback?: string[]): string {
   const count = clip.frames.length;
   return [
@@ -84,8 +87,8 @@ export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, 
     `Character: ${source.prompt}`,
     "Perform the motion in place around a fixed body anchor, with a locked camera and no zoom. Reserve room for the entire motion, including leaning, bouncing, extended parts, and any requested effects. Keep the complete silhouette inside the cell's transparent safety margins in every frame. Do not add ground, scenery, speed lines, smoke, or skid marks unless explicitly requested; requested effects must also fit inside the same safe area.",
     clip.faceCompositing === "masked"
-      ? `Keep the complete outer silhouette of the head or front — ears, hair, fur, shell, casing, windshield frame — on this body layer. The face region is ${faceRegion(source)}. Paint a flat solid magenta face opening behind any hand, cup, instrument, or other foreground object that crosses the face. Those foreground objects stay fully drawn in front of the magenta opening; never turn them magenta. Remove every facial feature from the visible opening and everywhere else on the body. Preserve the reference's pixel grid and hard pixel edges when it is pixel art.`
-      : `Keep the complete outer silhouette of the head or front — ears, hair, fur, shell, casing, windshield frame — on this body layer. The face region is ${faceRegion(source)}. Replace every facial feature the character has with the single magenta face opening there; no eye, brow, nose, or mouth may remain anywhere on the body outside it, whether on a grille, bumper, chest, screen, or panel. Preserve the reference's pixel grid and hard pixel edges when it is pixel art.`,
+      ? `Keep the complete outer silhouette of the head or front — ears, hair, fur, shell, casing, windshield frame — on this body layer. The face region is ${faceRegion(source)}. Paint a flat solid magenta face opening behind any hand, cup, instrument, or other foreground object that crosses the face. Those foreground objects stay fully drawn in front of the magenta opening; never turn them magenta. Remove every facial feature from the visible opening and everywhere else on the body. ${accessoryFaces} Preserve the reference's pixel grid and hard pixel edges when it is pixel art.`
+      : `Keep the complete outer silhouette of the head or front — ears, hair, fur, shell, casing, windshield frame — on this body layer. The face region is ${faceRegion(source)}. Replace every facial feature the character has with the single magenta face opening there; no eye, brow, nose, or mouth may remain anywhere on the body outside it, whether on a grille, bumper, chest, screen, or panel. ${accessoryFaces} Preserve the reference's pixel grid and hard pixel edges when it is pixel art.`,
     feedbackInstruction(feedback),
   ].filter(Boolean).join(" ");
 }
