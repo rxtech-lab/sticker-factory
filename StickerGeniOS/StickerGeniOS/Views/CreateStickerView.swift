@@ -29,7 +29,22 @@ struct CreateStickerView: View {
     @State private var localError: String?
     /// The photo waiting for the user to choose a subject in it, when the lift flow is on.
     @State private var pendingLift: PendingLift?
+    /// Set once a generate attempt has failed, so closing the sheet afterwards keeps what was
+    /// typed and picked — including anything changed after the error.
+    @State private var hasFailedAttempt = false
+    @State private var didCreate = false
+    @State private var restoredDraft = false
+    /// Set while a restore changes `kind`, so the `onChange` that resets the animation review for a
+    /// user's own type switch leaves the restored review alone.
+    @State private var restoringKind = false
     private let liftTip = LiftSubjectTip()
+    private let draftStore = CreationDraftStore(accountID: (try? SharedKeychainTokenVault().load()?.subject) ?? "local")
+
+    /// A tutorial or a UI test arrives with its own starting state, which a restored draft would
+    /// overwrite.
+    private var restoresDrafts: Bool {
+        tutorialMode == nil && !ProcessInfo.processInfo.arguments.contains("--ui-testing")
+    }
 
     /// Only one thumbnail may carry the tip: a popover on each of eight references at once would
     /// stack them on the same spot. The first photo that has not been lifted yet is the one the tip
@@ -45,6 +60,7 @@ struct CreateStickerView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Step \(stepNumber) of \(flow.steps(kind: kind).count)")
                         .font(.posterLabel(11)).foregroundStyle(AppColors.muted)
+                    if restoredDraft { restoredDraftNotice }
                     page
                     if let error = localError ?? store.errorMessage { ErrorBanner(message: error) }
                 }
@@ -55,7 +71,13 @@ struct CreateStickerView: View {
         }
         .safeAreaInset(edge: .bottom) { navigation }
         .navigationTitle("Create")
-        .task { await loadCatalog() }
+        .task {
+            await loadCatalog()
+            restoreDraft()
+        }
+        .onDisappear {
+            if hasFailedAttempt && !didCreate { saveDraft() }
+        }
         .onAppear {
             guard !appliedTutorialMode else { return }
             appliedTutorialMode = true
@@ -67,10 +89,85 @@ struct CreateStickerView: View {
                 references = [.init(data: data, filename: "mascot.png", mimeType: "image/png")]
             }
         }
-        .onChange(of: kind) { _, _ in flow.animationReviewed = false }
+        .onChange(of: kind) { _, _ in
+            if restoringKind { restoringKind = false; return }
+            flow.animationReviewed = false
+        }
         .onChange(of: pickerItems) { _, items in Task { await loadReferences(items) } }
         .subjectLiftSheet(pending: $pendingLift, references: $references, basename: "capture")
         .telemetryScreen("create_sticker")
+    }
+
+    private var restoredDraftNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            NoticeBanner(message: String(localized: "Restored your last attempt. Pick up where you left off."))
+            Button("Start over") {
+                Haptics.selection()
+                draftStore.clear()
+                restoredDraft = false
+                hasFailedAttempt = false
+                prompt = ""
+                kind = .static
+                controllable = false
+                motion = false
+                posePreset = .medium
+                references = []
+                localError = nil
+                flow.selections = flow.selections.mapValues { _ in [] }
+                flow.animationReviewed = false
+                flow.editingOverview = false
+                flow.step = .idea
+            }
+            .buttonStyle(.posterSecondaryCompact)
+            .accessibilityIdentifier("creation-discard-draft")
+        }
+        .accessibilityIdentifier("creation-restored-draft")
+    }
+
+    // MARK: - Draft
+
+    private func saveDraft() {
+        guard restoresDrafts else { return }
+        try? draftStore.save(
+            prompt: prompt, kind: kind, controllable: controllable, motion: motion, posePreset: posePreset,
+            selections: flow.selections, animationReviewed: flow.animationReviewed, references: references
+        )
+    }
+
+    /// Runs after the catalog has loaded, so the saved choices can be checked against what the
+    /// server offers now. Options that have since gone are dropped, and the form lands on the
+    /// overview when everything still holds, or on the first choice that needs another look.
+    private func restoreDraft() {
+        guard restoresDrafts, !restoredDraft, prompt.isEmpty, references.isEmpty,
+              let (draft, restored) = draftStore.load() else { return }
+        prompt = draft.prompt
+        restoringKind = draft.kind != kind
+        kind = draft.kind
+        controllable = draft.controllable
+        motion = draft.motion
+        posePreset = draft.posePreset
+        references = restored
+        flow.animationReviewed = draft.animationReviewed
+        if let catalog = flow.catalog {
+            for group in catalog.groups {
+                let valid = Set(group.options.map(\.id))
+                flow.selections[group.id] = Set(draft.selections[group.id] ?? []).intersection(valid)
+            }
+            // Never land on an overview whose Generate button cannot be pressed: send the reader to
+            // whatever it is still waiting on instead.
+            if let invalid = flow.firstInvalidGroup {
+                flow.editingOverview = true
+                flow.step = .preset(invalid.id)
+            } else if kind == .animated && !flow.animationReviewed {
+                flow.editingOverview = true
+                flow.step = .animation
+            } else {
+                flow.editingOverview = false
+                flow.step = .overview
+            }
+        }
+        restoredDraft = true
+        hasFailedAttempt = true
     }
 
     private var stepNumber: Int { (flow.steps(kind: kind).firstIndex(of: flow.step) ?? 0) + 1 }
@@ -306,6 +403,12 @@ struct CreateStickerView: View {
     private var overviewPage: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Ready to create?").font(.posterDisplay(26, weight: .heavy))
+            if let remaining = subscription.freeStickerGenerationsRemaining {
+                Label("Free sticker generations left today: \(remaining)", systemImage: "sparkles")
+                    .font(.posterLabel(12))
+                    .posterChip(fill: AppColors.mint)
+                    .accessibilityIdentifier("free-sticker-generations-chip")
+            }
             Text("Review your choices. Tap any section to change it.").foregroundStyle(AppColors.muted)
             overviewRow(String(localized: "Your idea"), value: prompt, step: .idea)
             overviewRow(String(localized: "Sticker type"), value: kind.label, step: .kind)
@@ -405,40 +508,32 @@ struct CreateStickerView: View {
     }
 
     private var navigation: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                if flow.step != .idea || flow.editingOverview {
-                    Button {
-                        flow.back(kind: kind); dismissKeyboard()
-                    } label: {
-                        Label("Back", systemImage: "chevron.left")
-                    }
-                    .buttonStyle(.posterSecondaryCompact).disabled(isGenerating)
-                    .accessibilityIdentifier("creation-back")
-                }
+        HStack(spacing: 12) {
+            if flow.step != .idea || flow.editingOverview {
                 Button {
-                    dismissKeyboard()
-                    if flow.step == .overview { Task { await generate() } } else { flow.advance(kind: kind); Haptics.selection() }
+                    flow.back(kind: kind); dismissKeyboard()
                 } label: {
-                    HStack {
-                        if isGenerating { PosterSpinner(color: AppColors.ink, size: 16) }
-                        Text(
-                            flow.step == .overview
-                                ? (isGenerating
-                                    ? String(localized: "Starting securely…") : String(localized: "Generate one candidate"))
-                                : (flow.editingOverview ? String(localized: "Done") : String(localized: "Next")))
-                        Image(systemName: flow.step == .overview ? "wand.and.stars" : "arrow.right")
-                    }.frame(maxWidth: .infinity)
+                    Label("Back", systemImage: "chevron.left")
                 }
-                .buttonStyle(.poster).disabled(isGenerating || !canContinue)
-                .accessibilityIdentifier(flow.step == .overview ? "generate-sticker-button" : "creation-next")
+                .buttonStyle(.posterSecondaryCompact).disabled(isGenerating)
+                .accessibilityIdentifier("creation-back")
             }
-            if flow.step == .overview, let remaining = subscription.freeStickerGenerationsRemaining {
-                Label("Free sticker generations left today: \(remaining)", systemImage: "sparkles")
-                    .font(.posterLabel(12))
-                    .posterChip(fill: AppColors.mint)
-                    .accessibilityIdentifier("free-sticker-generations-chip")
+            Button {
+                dismissKeyboard()
+                if flow.step == .overview { Task { await generate() } } else { flow.advance(kind: kind); Haptics.selection() }
+            } label: {
+                HStack {
+                    if isGenerating { PosterSpinner(color: AppColors.ink, size: 16) }
+                    Text(
+                        flow.step == .overview
+                            ? (isGenerating
+                                ? String(localized: "Starting securely…") : String(localized: "Generate one candidate"))
+                            : (flow.editingOverview ? String(localized: "Done") : String(localized: "Next")))
+                    Image(systemName: flow.step == .overview ? "wand.and.stars" : "arrow.right")
+                }.frame(maxWidth: .infinity)
             }
+            .buttonStyle(.poster).disabled(isGenerating || !canContinue)
+            .accessibilityIdentifier(flow.step == .overview ? "generate-sticker-button" : "creation-next")
         }
         .padding().frame(maxWidth: 760).frame(maxWidth: .infinity).background(AppColors.paper)
     }
@@ -526,9 +621,13 @@ struct CreateStickerView: View {
                 presets: presets
             )
             Haptics.success()
+            didCreate = true
+            draftStore.clear()
             onCreated(sticker)
             localError = nil
         } catch {
+            hasFailedAttempt = true
+            saveDraft()
             if let envelope = error as? APIErrorEnvelope, envelope.error.code == "CREATION_PRESETS_CHANGED" {
                 flow.requiresCatalogRefresh = true
                 localError = String(localized: "Sticker options changed. Review your choices before generating.")

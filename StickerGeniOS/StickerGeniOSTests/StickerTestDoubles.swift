@@ -662,6 +662,11 @@ actor BrokenStreamAPI: StickerAPIClientProtocol {
 actor LiveTurnStreamAPI: StickerAPIClientProtocol {
     nonisolated let stickerID = "live-turn-sticker"
     nonisolated let streams = StreamCounter()
+    private nonisolated let timesOutDuringReconciliation: Bool
+
+    init(timesOutDuringReconciliation: Bool = false) {
+        self.timesOutDuringReconciliation = timesOutDuringReconciliation
+    }
 
     func confirmPlan(stickerID: String, planID: String, idempotencyKey: String) async throws -> ConfirmPlanResponse {
         .init(
@@ -670,10 +675,14 @@ actor LiveTurnStreamAPI: StickerAPIClientProtocol {
         )
     }
 
-    func sticker(id: String) async throws -> StickerDetail { PreviewFixtures.detail }
+    func sticker(id: String) async throws -> StickerDetail {
+        if timesOutDuringReconciliation { throw URLError(.timedOut) }
+        return PreviewFixtures.detail
+    }
 
     func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage {
-        .init(data: [
+        if timesOutDuringReconciliation { throw URLError(.timedOut) }
+        return .init(data: [
             .init(
                 id: "live-source", role: .user, kind: .text,
                 content: "Build this plan: 8 layers, 4 to generate.",
@@ -695,7 +704,7 @@ actor LiveTurnStreamAPI: StickerAPIClientProtocol {
                 id: 1, jobId: jobID, type: .progress, createdAt: Date(),
                 data: .init(message: "Composing", progress: 0.2)
             ))
-            continuation.finish(throwing: URLError(.cancelled))
+            continuation.finish(throwing: URLError(timesOutDuringReconciliation ? .timedOut : .cancelled))
         }
     }
 }

@@ -124,8 +124,17 @@ public final class AnimatedDocumentEditor {
         selectedLayerID.flatMap { displayDocument.layer(id: $0) }
     }
 
+    /// The document as the canvas draws it: the authored one with the previewed control values
+    /// applied.
+    ///
+    /// When those values no longer resolve — an option was removed, or its artwork is still being
+    /// planned — this falls back to the defaults before falling back to the raw document. A sprite
+    /// drawn from the raw document ignores every variant patch, which is not what the sticker
+    /// looks like anywhere else.
     public var displayDocument: AnimatedDocument {
-        (try? document.resolvingConfiguration(previewControlValues)) ?? document
+        (try? document.resolvingConfiguration(previewControlValues))
+            ?? (try? document.resolvingConfiguration())
+            ?? document
     }
 
     public var canUndo: Bool { undoStack.canUndo }

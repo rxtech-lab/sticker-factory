@@ -70,6 +70,9 @@ struct StickerChatView: View {
     /// when the round trip lands. The banner and the sheet are a decision waiting to be made;
     /// leaving either up after it has been made reads as the tap not registering.
     @State var rejectedRevisionIDs: Set<String> = []
+    /// The revision whose publish reminder was dismissed. Keyed by revision so a new edit, which
+    /// puts the sticker back to draft, asks again.
+    @State private var dismissedPublishRevisionID: String?
 
     var detail: StickerDetail? { store.details[stickerID] }
     /// Derived from the notice rather than tracked beside it, so the pill and the disabled menu item
@@ -86,6 +89,13 @@ struct StickerChatView: View {
     private var activeRevision: StickerRevision? { detail?.activeRevision }
     var messages: [ChatMessage] { store.messages[stickerID] ?? [] }
     private var isComputing: Bool { store.computingStickerIDs.contains(stickerID) }
+    /// A finished sticker that Messages cannot see yet. Only shown once there is nothing else to
+    /// decide first — a candidate or a running turn would change what gets published.
+    private var needsPublishing: Bool {
+        guard let detail, detail.status == .draft, let activeRevision, activeRevision.canPublishExports,
+              candidate == nil, !isComputing else { return false }
+        return dismissedPublishRevisionID != activeRevision.id
+    }
     /// Only for a transcript with nothing in it yet. Every accept, save and stop reloads the
     /// messages too, and flashing a skeleton over a transcript the reader is already reading
     /// would be worse than the moment of stale content it replaces.
@@ -658,16 +668,56 @@ struct StickerChatView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+            if needsPublishing {
+                publishBanner
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             composer
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .animation(.easeInOut(duration: 0.25), value: candidate?.id)
+        .animation(.easeInOut(duration: 0.25), value: needsPublishing)
         .onGeometryChange(for: CGFloat.self) { geometry in
             geometry.size.height
         } action: { height in
             bottomBarHeight = height
         }
+    }
+
+    private var publishBanner: some View {
+        HStack(spacing: 10) {
+            PosterSymbol("paperplane.fill")
+                .foregroundStyle(AppColors.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Not published yet")
+                    .font(.posterDisplay(14, weight: .bold))
+                    .foregroundStyle(AppColors.ink)
+                Text("Publish to use it in Messages.")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(AppColors.muted)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            Button("Publish") {
+                Haptics.tap(.light)
+                showingExport = true
+            }
+            .buttonStyle(.posterCompact)
+            .accessibilityIdentifier("chat-publish-banner-action")
+            Button {
+                dismissedPublishRevisionID = activeRevision?.id
+            } label: {
+                PosterSymbol("xmark")
+            }
+            .buttonStyle(.posterPlain)
+            .foregroundStyle(AppColors.muted)
+            .accessibilityLabel("Dismiss publish reminder")
+        }
+        .padding(12)
+        .posterSurface(cornerRadius: Poster.tileRadius, offset: Poster.smallShadow)
+        .accessibilityIdentifier("chat-publish-banner")
     }
 
     @ViewBuilder

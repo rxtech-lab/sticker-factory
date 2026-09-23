@@ -548,6 +548,15 @@ export const StickerSummaryV1Schema = z.object({
   telegramAsset: AssetV1Schema.nullable(),
   /** The single emoji both messengers file this sticker under, as the creator chose it. */
   messengerEmoji: z.string().nullable(),
+  /**
+   * The job still working on this sticker — generating, or publishing — or null when idle.
+   * Stage and progress are not here: a client subscribes to the job's events for those.
+   */
+  generation: z.object({
+    jobId: z.string(),
+    kind: z.enum(["image", "edit", "animation", "chat", "plan", "compose", "export", "cleanup"]),
+    state: z.enum(["queued", "running", "waiting"]),
+  }).strict().nullable().optional(),
 }).strict();
 
 export const StickerListResponseV1Schema = z.object({

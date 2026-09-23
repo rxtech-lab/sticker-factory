@@ -59,6 +59,8 @@ struct PlanImageViewer: View {
                     }
                 }
         }
+        .foregroundStyle(.white)
+        .tint(.white)
         .preferredColorScheme(.dark)
         .accessibilityIdentifier("\(accessibilityPrefix)-viewer")
     }

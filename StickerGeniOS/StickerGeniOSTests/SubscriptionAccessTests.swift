@@ -62,6 +62,24 @@ final class SubscriptionAccessTests: XCTestCase {
         XCTAssertEqual(SubscriptionBalance.credits(in: []), 0)
     }
 
+    func testFreeGenerationChipUsesOnlyPositiveStickerGenerationAllowance() throws {
+        func usage(_ remaining: String) throws -> [UsageStatus] {
+            try JSONDecoder().decode([UsageStatus].self, from: Data(
+                """
+                [
+                  {"key":"daily_sticker_refinement","name":"Messages","used":0,"limit":12,"remaining":12,"resetPolicy":"daily"},
+                  {"key":"daily_sticker_generation","name":"Stickers","used":1,"limit":5,"remaining":\(remaining),"resetPolicy":"daily"}
+                ]
+                """.utf8
+            ))
+        }
+
+        XCTAssertEqual(SubscriptionAllowance.freeStickerGenerationsRemaining(in: try usage("4")), 4)
+        XCTAssertNil(SubscriptionAllowance.freeStickerGenerationsRemaining(in: try usage("0")))
+        XCTAssertNil(SubscriptionAllowance.freeStickerGenerationsRemaining(in: try usage("null")))
+        XCTAssertNil(SubscriptionAllowance.freeStickerGenerationsRemaining(in: []))
+    }
+
     func testActiveSubscriberDoesNotSeePurchaseWallForSubscriptionRefusal() {
         XCTAssertEqual(
             SubscriptionPaywallContent.resolve(

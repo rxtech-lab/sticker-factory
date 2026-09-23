@@ -38,6 +38,10 @@ nonisolated struct Sticker: Codable, Identifiable, Hashable, Sendable {
     /// The emoji the creator filed this sticker under, when they chose one. A device-local choice
     /// in `MessengerEmojiStore` still overrides it.
     var messengerEmoji: String?
+    /// The job still working on this sticker, when the listing was taken. Only enough to attach to
+    /// its event stream — the stage and progress come from there. Nil when idle, and on a server
+    /// that predates it.
+    var generation: StickerGenerationSummary?
 
     init(
         id: String,
@@ -77,6 +81,13 @@ nonisolated struct Sticker: Codable, Identifiable, Hashable, Sendable {
 }
 
 nonisolated enum StickerStatus: String, Codable, CaseIterable, Hashable, Sendable { case draft, published, deleting }
+
+nonisolated struct StickerGenerationSummary: Codable, Hashable, Sendable {
+    var jobId: String
+    /// Kept as a string: a job kind added on the server must not fail the whole library decode.
+    var kind: String
+    var state: String
+}
 
 nonisolated struct StickerDetail: Codable, Identifiable, Hashable, Sendable {
     var id: String

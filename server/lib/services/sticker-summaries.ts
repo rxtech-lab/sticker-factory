@@ -2,10 +2,10 @@
 // pages with, and the shape of a summary. The ceilings on what may be handed to a model live
 // here too, because they are properties of an asset row rather than of any one operation.
 
-import { and, desc, eq, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { firstRow, type Database } from "@/lib/db/client";
 import { attachmentMediumAssets, attachmentSmallAssets, planConceptAssetIdSql, planConceptAssets, previewAssetIdSql, previewAssets, telegramAssets, webpAssets, whatsappAssets, systemAssets } from "@/lib/db/columns";
-import { assets, stickerRevisions, stickers } from "@/lib/db/schema";
+import { assets, generationJobs, stickerRevisions, stickers } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 
 export const MAX_AI_INPUT_BYTES = 32 * 1024 * 1024;
@@ -229,6 +229,7 @@ export function selectStickerSummaries(db: Database) {
     webpAsset: webpSummaryColumns,
     whatsappAsset: whatsappSummaryColumns,
     telegramAsset: telegramSummaryColumns,
+    activeJob: { id: generationJobs.id, kind: generationJobs.kind, state: generationJobs.state },
   }).from(stickers)
     .leftJoin(stickerRevisions, and(
       eq(stickerRevisions.id, stickers.activeRevisionId),
@@ -241,7 +242,13 @@ export function selectStickerSummaries(db: Database) {
     .leftJoin(attachmentSmallAssets, eq(attachmentSmallAssets.id, stickerRevisions.attachmentSmallAssetId))
     .leftJoin(webpAssets, eq(webpAssets.id, stickerRevisions.webpAssetId))
     .leftJoin(whatsappAssets, eq(whatsappAssets.id, stickerRevisions.whatsappAssetId))
-    .leftJoin(telegramAssets, eq(telegramAssets.id, stickerRevisions.telegramAssetId));
+    .leftJoin(telegramAssets, eq(telegramAssets.id, stickerRevisions.telegramAssetId))
+    // At most one row: `generation_jobs_one_active_per_sticker` is a partial unique index on
+    // exactly these states, so the join cannot multiply a sticker.
+    .leftJoin(generationJobs, and(
+      eq(generationJobs.stickerId, stickers.id),
+      inArray(generationJobs.state, ["queued", "running", "waiting"]),
+    ));
 }
 
 export type AssetSummary = Pick<typeof assets.$inferSelect,
@@ -273,6 +280,11 @@ export type StickerSummaryRow = {
    */
   whatsappAsset: AssetSummary | null;
   telegramAsset: AssetSummary | null;
+  /**
+   * The job still working on this sticker, if any. Only its id and state: the grid attaches to
+   * the job's event stream for the live stage and progress, which keeps this listing one query.
+   */
+  activeJob?: Pick<typeof generationJobs.$inferSelect, "id" | "kind" | "state"> | null;
 };
 
 export interface ListStickersOptions {
@@ -303,6 +315,7 @@ export function serializeStickerSummary({
   webpAsset,
   whatsappAsset,
   telegramAsset,
+  activeJob,
 }: StickerSummaryRow) {
   return {
     id: sticker.id,
@@ -337,6 +350,7 @@ export function serializeStickerSummary({
     whatsappAsset: serializeAttachment(whatsappAsset),
     telegramAsset: serializeAttachment(telegramAsset),
     messengerEmoji: sticker.messengerEmoji ?? null,
+    generation: activeJob?.id ? { jobId: activeJob.id, kind: activeJob.kind, state: activeJob.state } : null,
   };
 }
 

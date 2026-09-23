@@ -203,7 +203,13 @@ struct LibraryView: View {
                                         LazyVGrid(columns: libraryColumns, spacing: 16) {
                                             ForEach(filtered) { sticker in
                                                 NavigationLink(value: sticker.id) {
-                                                    StickerLibraryCard(sticker: sticker, api: store.api)
+                                                    StickerLibraryCard(
+                                                        sticker: sticker, api: store.api,
+                                                        progress: StickerLibraryProgress(
+                                                            job: store.jobs[sticker.id],
+                                                            generation: sticker.generation
+                                                        )
+                                                    )
                                                 }
                                                 .buttonStyle(.posterPlain)
                                                 .accessibilityIdentifier("library-sticker-\(sticker.id)")
@@ -334,9 +340,35 @@ struct LibraryView: View {
                     Haptics.tap(.light)
                     showingCreation = true
                 } label: {
-                    PosterToolbarIcon(glyph: .create)
+                    if let remaining = subscription.freeStickerGenerationsRemaining {
+                        ZStack {
+                            PosterToolbarIcon(glyph: .create, size: 23)
+                                .offset(x: -10)
+                            Text(remaining, format: .number)
+                                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                .foregroundStyle(AppColors.ink)
+                                .frame(width: 15, height: 15)
+                                .background(AppColors.lime, in: Circle())
+                                .overlay(Circle().stroke(AppColors.ink, lineWidth: 1))
+                                .offset(x: 13, y: -9)
+                            Text("FREE")
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                                .foregroundStyle(AppColors.ink)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(AppColors.mint, in: Capsule())
+                                .overlay(Capsule().stroke(AppColors.ink, lineWidth: 1))
+                                .offset(x: 13, y: 9)
+                        }
+                        .frame(width: 44, height: 44)
+                    } else {
+                        PosterToolbarIcon(glyph: .create)
+                    }
                 }
                 .accessibilityLabel("Create")
+                .accessibilityValue(subscription.freeStickerGenerationsRemaining.map {
+                    String(localized: "\($0) free sticker generations remaining today")
+                } ?? "")
                 .popoverTip(generateTip, arrowEdge: .top)
                 .accessibilityIdentifier("create-sticker-button")
 
@@ -456,6 +488,11 @@ struct LibraryView: View {
         }
         .task(id: searchText) {
             await store.searchLibrary(query: searchText)
+        }
+        // Every listing may name jobs this process has never seen — started on another device, or
+        // before a relaunch — and the tile's progress comes from streaming them.
+        .onChange(of: store.stickers.compactMap(\.generation?.jobId), initial: true) {
+            store.attachActiveLibraryJobs()
         }
         // The filter lives in a UIKit menu, which the app's button styles never reach. Watching the
         // value here catches it wherever it is changed from, and only when it actually changes.

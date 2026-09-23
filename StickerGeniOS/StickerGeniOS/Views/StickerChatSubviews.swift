@@ -536,6 +536,7 @@ private struct ChatAttachmentThumbnail: View {
                 PosterSymbol(attachment.kind == .mask ? "circle.lefthalf.filled" : "photo")
                     .font(.title2)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(attachment.kind == .mask ? "Mask attachment" : "Reference image attachment")
             }
         }
         .frame(width: 82, height: 82)

@@ -12,6 +12,8 @@ struct StickerLibraryCard: View {
     var showsStatus = true
     /// Passed through to the thumbnail; a card is a grid tile everywhere it is used.
     var detail: StickerAnimationDetail = .thumbnail
+    /// Work still running on this sticker. Nil for pack members and anything idle.
+    var progress: StickerLibraryProgress?
 
     var body: some View {
         PosterCard(padding: 10) {
@@ -39,17 +41,10 @@ struct StickerLibraryCard: View {
                     .font(.posterDisplay(16, weight: .bold))
                     .foregroundStyle(AppColors.ink)
                     .lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(sticker.kind.label)
-                        .posterLabelStyle(9, color: AppColors.muted)
-                    Spacer(minLength: 0)
-                    if showsStatus && sticker.status == .draft {
-                        Text("Draft")
-                            .posterLabelStyle(9)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .posterCapsule(fill: AppColors.peach, lineWidth: 1, offset: Poster.noShadow)
-                    }
+                if let progress {
+                    StickerLibraryProgressView(progress: progress)
+                } else {
+                    statusRow
                 }
             }
         }
@@ -57,6 +52,74 @@ struct StickerLibraryCard: View {
         // a plain navigation link can derive its tappable area from the text below and leave the
         // artwork out. Make the entire visible card one interaction surface.
         .contentShape(.rect(cornerRadius: Poster.cardRadius))
+    }
+
+    private var statusRow: some View {
+        HStack(spacing: 6) {
+            Text(sticker.kind.label)
+                .posterLabelStyle(9, color: AppColors.muted)
+            Spacer(minLength: 0)
+            if showsStatus && sticker.status == .draft {
+                Text("Draft")
+                    .posterLabelStyle(9)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .posterCapsule(fill: AppColors.peach, lineWidth: 1, offset: Poster.noShadow)
+            }
+        }
+    }
+}
+
+/// What a library tile shows about work still running on its sticker.
+///
+/// Built from the live job when this app is streaming it, and from the listing's snapshot
+/// otherwise — the listing is what knows about a job after a relaunch, before the stream attaches.
+struct StickerLibraryProgress: Equatable {
+    var fraction: Double?
+    var status: String
+
+    init?(job: StickerJobState?, generation: StickerGenerationSummary?) {
+        if let job, !job.isTerminal {
+            // Counted units are the one measure that moves steadily; the overall figure sits at
+            // zero through most of a turn, so zero is drawn as indeterminate rather than empty.
+            fraction = job.unitProgress ?? (job.progress > 0 ? min(job.progress, 1) : nil)
+            status = job.note ?? job.statusDetail ?? job.message
+        } else if job == nil, let generation {
+            fraction = nil
+            status = switch generation.state {
+            case "queued": String(localized: "Waiting to start…")
+            case "waiting": String(localized: "Waiting for your input")
+            default: generation.kind == "export"
+                ? String(localized: "Publishing…")
+                : String(localized: "Creating your sticker…")
+            }
+        } else {
+            return nil
+        }
+    }
+}
+
+private struct StickerLibraryProgressView: View {
+    let progress: StickerLibraryProgress
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Group {
+                if let fraction = progress.fraction {
+                    ProgressView(value: fraction)
+                } else {
+                    ProgressView(value: nil as Double?)
+                }
+            }
+            .progressViewStyle(.linear)
+            .tint(AppColors.ink)
+            Text(progress.status)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(AppColors.muted)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("library-sticker-progress")
     }
 }
 

@@ -29,7 +29,20 @@ struct AnimatedEditorSelectionOverlay: View {
         )
     }
 
+    /// Whether the outline has a well-defined place to be drawn. A zero or non-finite scale or
+    /// position makes SwiftUI's transform invalid, and the handles' inverse scale would then
+    /// divide by it — so such a layer is simply left unoutlined.
+    private var isDrawable: Bool {
+        let values = [scale.x, scale.y, state.position.x, state.position.y, state.rotationDegrees]
+        return values.allSatisfy(\.isFinite) && abs(scale.x) > 0.001 && abs(scale.y) > 0.001
+            && canvasSize.width > 0 && canvasSize.height > 0
+    }
+
     var body: some View {
+        if isDrawable { outline }
+    }
+
+    private var outline: some View {
         Rectangle()
             .strokeBorder(.tint, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
             .overlay(alignment: .topLeading) { handle }

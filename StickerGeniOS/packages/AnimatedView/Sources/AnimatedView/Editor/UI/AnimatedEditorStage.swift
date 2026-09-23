@@ -65,7 +65,11 @@ struct AnimatedEditorStage: View {
                 backdrop.view
 
                 artwork
-
+            }
+            // An overlay rather than a sibling in the stack: the outline carries the selected
+            // layer's own transforms, and as a sibling its size fed back into the stack's layout —
+            // so selecting a layer could move or drop the artwork it was meant to outline.
+            .overlay {
                 if let layer = editor.selectedLayer {
                     AnimatedEditorSelectionOverlay(
                         layer: layer,
