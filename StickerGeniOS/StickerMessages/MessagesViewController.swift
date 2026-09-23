@@ -641,7 +641,10 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     private func openControls(itemID: StickerGridViewController.StickerItemID, item: CachedSticker, revisionID: String) {
         guard controlsController == nil, controlsLoadTask == nil, let service = playbackService else {
-            playbackLogger.error("controls unavailable sticker=\(item.stickerID, privacy: .private) serviceReady=\(self.playbackService != nil) sheetOpen=\(self.controlsController != nil) loading=\(self.controlsLoadTask != nil)")
+            playbackLogger.error("""
+                controls unavailable sticker=\(item.stickerID, privacy: .private) serviceReady=\(self.playbackService != nil) \
+                sheetOpen=\(self.controlsController != nil) loading=\(self.controlsLoadTask != nil)
+                """)
             return
         }
         playbackLogger.info("controls opening sticker=\(item.stickerID, privacy: .private) revision=\(revisionID, privacy: .private)")
@@ -732,7 +735,10 @@ final class MessagesViewController: MSMessagesAppViewController {
                 self.install(controller)
             } catch is CancellationError {} catch {
                 self?.playbackLogger.error(
-                    "controls open failed sticker=\(item.stickerID, privacy: .private) revision=\(revisionID, privacy: .private) error=\(String(describing: error), privacy: .private)"
+                    """
+                    controls open failed sticker=\(item.stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                    error=\(String(describing: error), privacy: .private)
+                    """
                 )
                 self?.showHint(error.localizedDescription)
             }

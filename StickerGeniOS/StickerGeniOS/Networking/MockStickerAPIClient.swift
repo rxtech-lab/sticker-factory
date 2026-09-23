@@ -38,10 +38,8 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             var samples: [Sticker] = []
             for index in 0..<3 {
                 var sticker = PreviewFixtures.borrowedSticker
-                sticker.id = "tutorial-\(index)"
-                sticker.title = ["Winky wave", "Little sparkle", "Happy hello"][index]
-                sticker.playbackRevisionId = nil
-                sticker.whatsappAsset?.id = "tutorial-webp"
+                sticker.id = "tutorial-\(index)"; sticker.title = ["Winky wave", "Little sparkle", "Happy hello"][index]
+                sticker.playbackRevisionId = nil; sticker.whatsappAsset?.id = "tutorial-webp"
                 sticker.telegramAsset?.id = PreviewFixtures.borrowedAssetID
                 samples.append(sticker)
             }
@@ -67,9 +65,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
             for i in detail.revisions.indices { detail.revisions[i].document = PreviewFixtures.configurableDocument }
         }
         if ProcessInfo.processInfo.arguments.contains("--ui-chat-reference-image") {
-            messages[0].attachments = [
-                .init(assetId: PreviewFixtures.borrowedAssetID, kind: .reference, targetLayerId: nil)
-            ]
+            messages[0].attachments = [.init(assetId: PreviewFixtures.borrowedAssetID, kind: .reference, targetLayerId: nil)]
         }
         if ProcessInfo.processInfo.arguments.contains("--ui-plan-versions")
             || ProcessInfo.processInfo.arguments.contains("--ui-sprite-plan") {

@@ -199,7 +199,10 @@ struct StickerLibraryClient: Sendable {
                   let signedURL = URL(string: envelope.url),
                   signedURL.scheme == "https" else {
                 Self.playbackLogger.error(
-                    "asset download envelope rejected asset=\(assetID, privacy: .private) status=\(result.response.statusCode) bytes=\(result.data.count) contentType=\(contentType ?? "missing", privacy: .public)"
+                    """
+                    asset download envelope rejected asset=\(assetID, privacy: .private) status=\(result.response.statusCode) \
+                    bytes=\(result.data.count) contentType=\(contentType ?? "missing", privacy: .public)
+                    """
                 )
                 throw StickerLibraryError.invalidResponse
             }
@@ -229,14 +232,21 @@ struct StickerLibraryClient: Sendable {
         addClientHeaders(to: &request)
         let result = try await transport.data(for: request)
         Self.playbackLogger.info(
-            "playback response sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) status=\(result.response.statusCode) bytes=\(result.data.count) contentType=\(result.response.value(forHTTPHeaderField: "Content-Type") ?? "missing", privacy: .public)"
+            """
+            playback response sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+            status=\(result.response.statusCode) bytes=\(result.data.count) \
+            contentType=\(result.response.value(forHTTPHeaderField: "Content-Type") ?? "missing", privacy: .public)
+            """
         )
         try Self.validate(result)
         do {
             return try JSONDecoder().decode(StickerPlaybackBundle.self, from: result.data)
         } catch {
             Self.playbackLogger.error(
-                "playback decode failed sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) reason=\(Self.decodingFailure(error), privacy: .public)"
+                """
+                playback decode failed sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                reason=\(Self.decodingFailure(error), privacy: .public)
+                """
             )
             throw error
         }

@@ -787,7 +787,7 @@ nonisolated struct CreateStickerRequest: Codable, Sendable {
     /// has to hold still on every later revision too. Animated only. Absent means still, which is
     /// also the column's default, so an older build that never sends it gets a sticker that stays
     /// where it was put.
-    var motion: Bool? = nil
+    var motion: Bool?
 }
 
 /// Turns an image the app already holds into a static sticker project, with nothing generated.

@@ -57,7 +57,12 @@ actor MessagesPlaybackService {
             guard accountMatches, bundle.stickerId == stickerID, bundle.revisionId == revisionID,
                   bundle.version == 1, bundle.document.configuration != nil else {
                 logger.error(
-                    "playback metadata rejected sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) accountMatches=\(accountMatches) stickerMatches=\(bundle.stickerId == stickerID) revisionMatches=\(bundle.revisionId == revisionID) version=\(bundle.version) hasConfiguration=\(bundle.document.configuration != nil)"
+                    """
+                    playback metadata rejected sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                    accountMatches=\(accountMatches) stickerMatches=\(bundle.stickerId == stickerID) \
+                    revisionMatches=\(bundle.revisionId == revisionID) version=\(bundle.version) \
+                    hasConfiguration=\(bundle.document.configuration != nil)
+                    """
                 )
                 throw StickerLibraryError.invalidResponse
             }
@@ -65,12 +70,18 @@ actor MessagesPlaybackService {
                 _ = try bundle.document.validated()
             } catch {
                 logger.error(
-                    "playback document rejected sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) error=\(String(describing: error), privacy: .private)"
+                    """
+                    playback document rejected sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                    error=\(String(describing: error), privacy: .private)
+                    """
                 )
                 throw error
             }
             logger.info(
-                "playback bundle accepted sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) assets=\(bundle.assets.count) layers=\(bundle.document.layers.count)"
+                """
+                playback bundle accepted sticker=\(stickerID, privacy: .private) revision=\(revisionID, privacy: .private) \
+                assets=\(bundle.assets.count) layers=\(bundle.document.layers.count)
+                """
             )
             try JSONEncoder().encode(bundle).write(to: path, options: .atomic)
             return (account, bundle)
@@ -96,7 +107,11 @@ actor MessagesPlaybackService {
         let totalBytes = descriptors.reduce(0) { $0 + $1.byteSize }
         guard descriptors.count == required.count, totalBytes <= 128 * 1024 * 1024, sized else {
             logger.error(
-                "playback assets rejected sticker=\(bundle.stickerId, privacy: .private) revision=\(bundle.revisionId, privacy: .private) required=\(required.count) described=\(descriptors.count) totalBytes=\(totalBytes) dimensionsValid=\(sized)"
+                """
+                playback assets rejected sticker=\(bundle.stickerId, privacy: .private) \
+                revision=\(bundle.revisionId, privacy: .private) required=\(required.count) described=\(descriptors.count) \
+                totalBytes=\(totalBytes) dimensionsValid=\(sized)
+                """
             )
             throw StickerLibraryError.invalidResponse
         }
@@ -123,7 +138,10 @@ actor MessagesPlaybackService {
                     kCGImageSourceThumbnailMaxPixelSize: max(64, Int(Double(max(asset.width, asset.height)) * scale)),
                     kCGImageSourceShouldCacheImmediately: true
                   ] as CFDictionary) else {
-                logger.error("playback image decode failed asset=\(asset.id, privacy: .private) bytes=\(data.count) width=\(asset.width) height=\(asset.height)")
+                logger.error("""
+                    playback image decode failed asset=\(asset.id, privacy: .private) bytes=\(data.count) width=\(asset.width) \
+                    height=\(asset.height)
+                    """)
                 throw StickerLibraryError.invalidResponse
             }
             images[asset.id] = UIImage(cgImage: image)
