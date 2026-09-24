@@ -121,6 +121,8 @@ struct AccountView: View {
                 PosterListHeader("About")
             }
 
+            DiskCacheSection()
+
             DeleteAccountSection(environment: environment)
 
             Section {
@@ -160,6 +162,93 @@ struct AccountView: View {
             Text("Shared credentials and cached iMessage stickers will be removed from this device.")
         }
         .telemetryScreen("account")
+    }
+}
+
+private struct DiskCacheSection: View {
+    @State private var byteCount: Int64?
+    @State private var isClearing = false
+    @State private var confirmingClear = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Section {
+            HStack {
+                Label("Cached files", systemImage: "internaldrive")
+                Spacer()
+                if let byteCount {
+                    Text(ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file))
+                        .foregroundStyle(AppColors.muted)
+                        .accessibilityIdentifier("cache-storage-used")
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            Button(role: .destructive) {
+                Haptics.tap(.medium)
+                confirmingClear = true
+            } label: {
+                HStack {
+                    Label("Clear Cache", systemImage: "trash")
+                    if isClearing {
+                        Spacer()
+                        ProgressView().controlSize(.small)
+                    }
+                }
+            }
+            .disabled(isClearing || byteCount == nil || byteCount == 0)
+            .accessibilityIdentifier("clear-cache-button")
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 13, design: .rounded))
+                    .foregroundStyle(AppColors.coral)
+                    .accessibilityIdentifier("cache-storage-error")
+            }
+        } header: {
+            PosterListHeader("Storage")
+        } footer: {
+            Text("Downloaded artwork and iMessage stickers will download again when needed.")
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(AppColors.faint)
+        }
+        .task { await refreshSize() }
+        .confirmationDialog("Clear cached files?", isPresented: $confirmingClear) {
+            Button("Clear Cache", role: .destructive) {
+                Haptics.tap(.heavy)
+                Task { await clearCache() }
+            }
+            Button("Cancel", role: .cancel) { Haptics.tap(.light) }
+        } message: {
+            Text("Downloaded artwork and iMessage stickers will be removed from this device and downloaded again when needed.")
+        }
+    }
+
+    private func refreshSize() async {
+        do {
+            let paths = AppDiskCache.directories()
+            byteCount = try await Task.detached(priority: .utility) {
+                try AppDiskCache.byteCount(in: paths)
+            }.value
+            errorMessage = nil
+        } catch {
+            errorMessage = String(localized: "Could not measure cache storage: \(error.localizedDescription)")
+        }
+    }
+
+    private func clearCache() async {
+        isClearing = true
+        defer { isClearing = false }
+        do {
+            byteCount = try await AppDiskCache.clear()
+            errorMessage = nil
+        } catch {
+            let clearError = String(localized: "Could not clear cached files: \(error.localizedDescription)")
+            await refreshSize()
+            errorMessage = clearError
+        }
     }
 }
 

@@ -50,6 +50,12 @@ nonisolated enum StickerImageCache {
     private static let cache = ImageCache(name: "sticker-assets-v1")
     private static let manager = KingfisherManager(downloader: .default, cache: cache)
 
+    static var diskDirectory: URL { cache.diskStorage.directoryURL }
+
+    static func clear() async {
+        await cache.clearCache()
+    }
+
     /// - Parameter posterFrame: for callers that render one still frame. See
     ///   `PosterFrameStickerImageProcessor`. The processor's identifier keys the cache, so a poster
     ///   and a plain decode of the same asset never overwrite each other.

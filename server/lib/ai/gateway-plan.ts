@@ -3,7 +3,7 @@
 import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { POSE_COUNTS } from "@/lib/contracts/pose-preset";
 import { gateway } from "@ai-sdk/gateway";
-import { generateText, hasToolCall, stepCountIs, tool } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
@@ -136,7 +136,10 @@ export async function refineStickerLayout(
     ], input.presetReferences),
     tools,
     toolChoice: "required",
-    stopWhen: [hasToolCall("finalize_layout"), stepCountIs(Math.max(hasPlanImage ? 9 : 8, configurationCount * 2 + 8)), () => fatal !== undefined],
+    // Stop on a finalize that landed, not on the call: `finalizeLayout` rejects a premature one
+    // ("Review all N configurations…"), and stopping there hid that answer from the model, so
+    // every configured sticker failed after viewing a single configuration.
+    stopWhen: [() => state?.finalized === true, stepCountIs(Math.max(hasPlanImage ? 9 : 8, configurationCount * 2 + 8)), () => fatal !== undefined],
     maxRetries: 2,
     abortSignal: AbortSignal.timeout(Math.max(120_000, configurationCount * 20_000)),
   });
@@ -609,7 +612,7 @@ export async function planSticker(
     prepareStep: compactingPrepareStep({ loop: "plan" }),
     // The model ends the turn by calling finalize_plan. The step cap is the backstop for a model
     // that keeps polishing forever; the caller finalizes whatever draft exists when it trips.
-    stopWhen: [hasToolCall("finalize_plan"), stepCountIs(12)],
+    stopWhen: [() => state?.finalized === true, stepCountIs(12)],
     maxRetries: 2,
     abortSignal: AbortSignal.timeout(180_000),
   });
