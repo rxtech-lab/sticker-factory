@@ -7,7 +7,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import sharp, { type Metadata, type Stats } from "sharp";
+import sharp, { type Metadata, type Sharp, type Stats } from "sharp";
 import { MAX_RENDITION_SECONDS, RENDITION_TIMING_EPSILON_SECONDS } from "@/lib/contracts/sticker";
 import { ApiError } from "@/lib/http/errors";
 import { cropPngToSubject, type SubjectBounds } from "@/lib/images/subject-bounds";
@@ -596,15 +596,30 @@ export async function inspectImage(bytes: Uint8Array): Promise<ImageInspection> 
  */
 export async function normalizeTransparentPng(
   bytes: Uint8Array,
-  options: { subjectCrop?: boolean } = {},
+  options: { subjectCrop?: boolean; pixelArt?: boolean } = {},
 ): Promise<{ bytes: Uint8Array; inspection: ImageInspection; subject?: SubjectBounds }> {
   const cropped = options.subjectCrop ? await cropPngToSubject(bytes) : { bytes };
-  const png = await sharp(cropped.bytes, { limitInputPixels: 4096 * 4096 })
-    .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .ensureAlpha()
+  const resized = sharp(cropped.bytes, { limitInputPixels: 4096 * 4096 })
+    .resize(1024, 1024, {
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      // Lanczos blends neighbouring blocks into a soft ramp, which is exactly what pixel art is not.
+      ...(options.pixelArt ? { kernel: "nearest" as const } : {}),
+    })
+    .ensureAlpha();
+  const png = options.pixelArt
+    ? await hardenAlphaEdges(resized)
+    : await resized.png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer();
+  return { bytes: png, inspection: await inspectImage(png), subject: cropped.subject };
+}
+
+/** Snaps every pixel to fully opaque or fully transparent, so a pixel-art silhouette keeps square edges. */
+async function hardenAlphaEdges(image: Sharp): Promise<Buffer> {
+  const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
+  for (let index = 3; index < data.length; index += 4) data[index] = data[index] >= 128 ? 255 : 0;
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
     .png({ compressionLevel: 9, adaptiveFiltering: true })
     .toBuffer();
-  return { bytes: png, inspection: await inspectImage(png), subject: cropped.subject };
 }
 
 /**

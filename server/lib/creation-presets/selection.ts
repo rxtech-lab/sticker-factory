@@ -1,6 +1,6 @@
 import type { CreationPresetCatalog, CreationPresetDisplay, CreationPresetSnapshot, CreationPresetSubmission } from "@/lib/contracts/creation-presets";
 import { ApiError } from "@/lib/http/errors";
-import { creationPresetCatalog, SHARED_PRESET_PROMPT } from "./catalog";
+import { creationPresetCatalog, PIXEL_ART_STYLE_IDS, SHARED_PRESET_PROMPT } from "./catalog";
 
 export function resolveCreationPresets(submission: CreationPresetSubmission | undefined, catalog: CreationPresetCatalog = creationPresetCatalog): CreationPresetSnapshot | null {
   // Omitted by older apps, quick creation, and imports. New guided clients always submit a catalog.
@@ -38,4 +38,9 @@ export function creationPresetGuidance(snapshot: CreationPresetSnapshot | null |
   return ["Saved project presets (creative guidance):", snapshot.sharedPrompt,
     ...snapshot.selections.flatMap((group) => group.options.map((option) => `${group.title.en}: ${option.title.en}. ${option.prompt}`)),
   ].join("\n");
+}
+
+/** A pixel style's output is resampled with nearest-neighbour and a hard alpha edge, never smoothed. */
+export function presetUsesPixelArt(snapshot: CreationPresetSnapshot | null | undefined): boolean {
+  return Boolean(snapshot?.selections.some((group) => group.groupId === "style" && group.options.some((option) => PIXEL_ART_STYLE_IDS.has(option.id))));
 }

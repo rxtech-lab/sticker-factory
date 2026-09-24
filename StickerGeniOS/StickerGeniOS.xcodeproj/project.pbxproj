@@ -39,6 +39,10 @@
 		B47713E8475CA3990E4C3394 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3FB6529023D0F790FA2F9963 /* Assets.xcassets */; };
 		BEDA92EBF02EFB0893E0B42D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7FE3E61FCB0BE974B72CE94A /* Foundation.framework */; };
 		C119B001A001A001A001A001 /* ClipLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B001A001A001A001A002 /* ClipLibraryView.swift */; };
+		C119B002A002A002A002A001 /* ClipStickerViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B002A002A002A002A002 /* ClipStickerViewer.swift */; };
+		C119B003A003A003A003A001 /* ClipPlaybackLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B003A003A003A003A002 /* ClipPlaybackLoader.swift */; };
+		C119B004A004A004A004A001 /* AnimatedView in Frameworks */ = {isa = PBXBuildFile; productRef = DF2A4293303DD070006910C8 /* AnimatedView */; };
+		C119B005A005A005A005A001 /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = C00000000000000000000002 /* libwebp */; };
 		C11A00000000000000000001 /* RxAuthSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000019 /* RxAuthSwift */; };
 		C11A00000000000000000002 /* RxAuthSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000020 /* RxAuthSwiftUI */; };
 		C11F00000000000000000001 /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11F00000000000000000003 /* AppColors.swift */; };
@@ -172,6 +176,8 @@
 		ACAB735450F28ED42A568EF9 /* StickerGenerationActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StickerGenerationActivity.swift; sourceTree = "<group>"; };
 		BD46604BC03322FA69C32012 /* QuickModeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickModeView.swift; sourceTree = "<group>"; };
 		C119B001A001A001A001A002 /* ClipLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipLibraryView.swift; sourceTree = "<group>"; };
+		C119B002A002A002A002A002 /* ClipStickerViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipStickerViewer.swift; sourceTree = "<group>"; };
+		C119B003A003A003A003A002 /* ClipPlaybackLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipPlaybackLoader.swift; sourceTree = "<group>"; };
 		C11F00000000000000000003 /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppColors.swift; path = StickerGeniOS/AppColors.swift; sourceTree = SOURCE_ROOT; };
 		C11F00000000000000000004 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DesignSystem.swift; path = StickerGeniOS/Views/DesignSystem.swift; sourceTree = SOURCE_ROOT; };
 		C11F00000000000000000006 /* PosterIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PosterIcons.swift; path = StickerGeniOS/Views/PosterIcons.swift; sourceTree = SOURCE_ROOT; };
@@ -271,6 +277,8 @@
 				BEDA92EBF02EFB0893E0B42D /* Foundation.framework in Frameworks */,
 				C11A00000000000000000001 /* RxAuthSwift in Frameworks */,
 				C11A00000000000000000002 /* RxAuthSwiftUI in Frameworks */,
+				C119B004A004A004A004A001 /* AnimatedView in Frameworks */,
+				C119B005A005A005A005A001 /* libwebp in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -380,6 +388,8 @@
 				213B6045E1ABC6942D35394F /* ClipAuthentication.swift */,
 				9B62E59B3EABE253D1AAE1BB /* ClipPackView.swift */,
 				C119B001A001A001A001A002 /* ClipLibraryView.swift */,
+				C119B002A002A002A002A002 /* ClipStickerViewer.swift */,
+				C119B003A003A003A003A002 /* ClipPlaybackLoader.swift */,
 				6BF3DC6F804404647D42EF30 /* StickerAppClipApp.swift */,
 				FEF29EE6F59D14F73629A498 /* Info.plist */,
 				4A193B35C7606F08AB609F18 /* StickerAppClip.entitlements */,
@@ -497,10 +507,15 @@
 			);
 			dependencies = (
 			);
+			fileSystemSynchronizedGroups = (
+				F50000000000000000000003 /* StickerPlaybackShared */,
+			);
 			name = StickerAppClip;
 			packageProductDependencies = (
 				A00000000000000000000019 /* RxAuthSwift */,
 				A00000000000000000000020 /* RxAuthSwiftUI */,
+				DF2A4293303DD070006910C8 /* AnimatedView */,
+				C00000000000000000000002 /* libwebp */,
 			);
 			productName = StickerAppClip;
 			productReference = 10CFC4A0F2BED0360644588B /* StickerAppClip.app */;
@@ -877,6 +892,8 @@
 				5FE76DDF53FEB4DF8EBD0E4F /* ClipAuthentication.swift in Sources */,
 				774C636DE38F90E3EC687310 /* ClipPackView.swift in Sources */,
 				C119B001A001A001A001A001 /* ClipLibraryView.swift in Sources */,
+				C119B002A002A002A002A001 /* ClipStickerViewer.swift in Sources */,
+				C119B003A003A003A003A001 /* ClipPlaybackLoader.swift in Sources */,
 				2488732A18C574F087BBB592 /* StickerAppClipApp.swift in Sources */,
 				C11F00000000000000000001 /* AppColors.swift in Sources */,
 				C11F00000000000000000002 /* DesignSystem.swift in Sources */,
@@ -1370,8 +1387,12 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = T7GYB573Y6;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = StickerGeniOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Winky;
@@ -1388,9 +1409,11 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.rxlab.stickerfactory;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1433,6 +1456,7 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;

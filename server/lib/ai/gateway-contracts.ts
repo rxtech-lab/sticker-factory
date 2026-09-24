@@ -14,11 +14,13 @@ import type { SubjectBounds } from "@/lib/images/subject-bounds";
 export interface AiReferenceImage {
   bytes: Uint8Array;
   mimeType: string;
+  /** What this image is to the drawing, e.g. "original or carried reference 1". Named to the image model in order. */
+  label?: string;
 }
 
 export interface AiImageInput {
   prompt: string;
-  references: Array<{ bytes: Uint8Array; mimeType: string }>;
+  references: AiReferenceImage[];
   mask?: { bytes: Uint8Array; mimeType: string };
   conversationContext?: string;
   mode: "generate" | "conversation_edit";
@@ -55,6 +57,11 @@ export interface AiImageInput {
   sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean; faceRegion?: string };
   /** The image model's quality tier. Sheets ask for more than the default, since a cell is a third of the canvas. */
   quality?: "low" | "medium" | "high";
+  /**
+   * The project's style is pixel art: keep hard, grid-aligned pixels through normalization
+   * (nearest-neighbour resampling and a binary alpha edge) instead of smoothing them.
+   */
+  pixelArt?: boolean;
 }
 
 export interface AiImageReferenceCandidate {

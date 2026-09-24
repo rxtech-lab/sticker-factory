@@ -38,6 +38,8 @@ export async function presetReferenceBoard(visuals: AiPlanVisual[]): Promise<AiR
   return {bytes:new Uint8Array(await sharp({create:{width,height,channels:4,background:'#fff8e9'}}).composite(composite).png().toBuffer()),mimeType:'image/png'};
 }
 
+export const PRESET_BOARD_LABEL='labelled preset style example board (style guidance only; never copy its mascot)';
+
 /** Preserve the eight-image provider limit and all user/approved references. The rare full input
  * combines its last photo with the example board; the first/source image and mask stay untouched. */
 export async function withPresetArtworkReferences(references: AiReferenceImage[], visuals: AiPlanVisual[]): Promise<{references: AiReferenceImage[]; note: string}> {
@@ -45,11 +47,11 @@ export async function withPresetArtworkReferences(references: AiReferenceImage[]
   if (!visuals.length) return {references,note:''};
   const board=await presetReferenceBoard(visuals);
   const instruction='The labelled preset examples are visual guidance only: use their style/theme, never copy their mascot, subject, lettering, panel layout, or background. Preserve the requested subject, user photo identity, and approved artwork. ';
-  if (references.length < 8) return {references:[...references,board],note:instruction+`Reference ${references.length+1} is the preset example board.`};
+  if (references.length < 8) return {references:[...references,{...board,label:PRESET_BOARD_LABEL}],note:instruction+`Reference ${references.length+1} is the preset example board.`};
   const last=await sharp(references[7].bytes).resize(1024,1024,{fit:'contain',background:'#ffffff'}).png().toBuffer();
   const lower=await sharp(board.bytes).resize({width:1024}).png().toBuffer();
   const height=(await sharp(lower).metadata()).height!;
   const combined=await sharp({create:{width:1024,height:1024+height,channels:4,background:'#ffffff'}})
     .composite([{input:last,top:0,left:0},{input:lower,top:1024,left:0}]).png().toBuffer();
-  return {references:[...references.slice(0,7),{bytes:new Uint8Array(combined),mimeType:'image/png'}],note:instruction+'Reference 8 contains the original eighth reference in its upper panel, followed by the labelled preset example board below. The other seven references are unchanged.'};
+  return {references:[...references.slice(0,7),{bytes:new Uint8Array(combined),mimeType:'image/png',label:`upper panel: ${references[7].label ?? 'additional reference'}; lower panel: ${PRESET_BOARD_LABEL}`}],note:instruction+'Reference 8 contains the original eighth reference in its upper panel, followed by the labelled preset example board below. The other seven references are unchanged.'};
 }

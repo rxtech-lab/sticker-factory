@@ -37,6 +37,7 @@ describe('preset visual references',()=>{
   const prepared=await withPresetArtworkReferences([],await creationPresetReferences(snapshot));
   expect(prepared.references).toHaveLength(1);
   expect(prepared.note).toContain('never copy their mascot');
+  expect(prepared.references[0].label).toContain('preset style example board');
   snapshot.selections[0].options[0].cover='/../../etc/passwd';
   await expect(creationPresetReferences(snapshot)).rejects.toThrow('Unsupported');
  });

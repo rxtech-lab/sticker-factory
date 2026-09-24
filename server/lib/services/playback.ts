@@ -33,13 +33,22 @@ export async function readablePlayback(db: Database, requesterId: string, sticke
 
 export async function getStickerPlayback(db: Database, requesterId: string, stickerId: string, revisionId?: string) {
   const { revision } = await readablePlayback(db, requesterId, stickerId, revisionId);
+  const { rows, ...payload } = await loadPlaybackPayload(db, stickerId, revision);
+  return { ...payload, assets: rows.map(describePlaybackAsset) };
+}
+
+/** Shared by the authenticated and public-pack readers once each has checked access. */
+export async function loadPlaybackPayload(db: Database, stickerId: string, revision: typeof stickerRevisions.$inferSelect) {
   const bundle = revision.playbackJson!;
   const rows = bundle.assetIds.length ? await db.select().from(assets)
     .where(and(inArray(assets.id, bundle.assetIds), eq(assets.kind, "playback"), eq(assets.state, "ready"))) : [];
   if (rows.length !== bundle.assetIds.length) throw new ApiError(409, "PLAYBACK_INCOMPLETE", "Some playback artwork is unavailable");
-  return { stickerId, revisionId: revision.id, version: 1, document: StickerDocumentSchema.parse(bundle.document),
-    assets: rows.map((asset) => ({ id: asset.id, mimeType: asset.mimeType, byteSize: asset.byteSize,
-      sha256: asset.sha256, width: asset.width, height: asset.height })) };
+  return { stickerId, revisionId: revision.id, version: 1 as const, document: StickerDocumentSchema.parse(bundle.document), rows };
+}
+
+export function describePlaybackAsset(asset: typeof assets.$inferSelect) {
+  return { id: asset.id, mimeType: asset.mimeType, byteSize: asset.byteSize,
+    sha256: asset.sha256, width: asset.width, height: asset.height };
 }
 
 /** Publication creates new raster derivatives. Original source IDs never enter the runtime bundle. */

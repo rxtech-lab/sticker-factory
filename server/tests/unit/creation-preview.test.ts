@@ -25,7 +25,7 @@ describe("generated creation previews", () => {
       expect(source.source.generator).toBe("editable-svg-mascot-v3");
       const document = StickerDocumentSchema.parse(JSON.parse(await readFile(resolve(root, "document.json"), "utf8")));
       expect(document.layers.some(layer => layer.type === "sprite")).toBe(true);
-      const firstFrames = new Set<string>();
+      const animations = new Set<string>();
       for (const variant of option.preview!.variants) {
         const file = resolve(`public${variant.url}`);
         const metadata = await sharp(file, { animated: true }).metadata();
@@ -42,11 +42,13 @@ describe("generated creation previews", () => {
         }
         expect(pixels.size).toBeGreaterThan(1);
         expect(source.examples.find((example: { file: string }) => example.file === `${variant.pose}-${variant.mood}.gif`).distinctFrames).toBeGreaterThan(1);
-        firstFrames.add((await sharp(file).resize(32, 32).png().toBuffer()).toString("base64"));
+        // Every pose starts from rest, so on a coarse pixel grid first frames can coincide; the
+        // animations themselves must still all differ.
+        animations.add(createHash("sha256").update(decoded).digest("hex"));
       }
-      expect(firstFrames.size).toBeGreaterThan(3);
+      expect(animations.size).toBe(option.preview!.variants.length);
       styles.add((await sharp(resolve(`public${option.preview!.url}`)).resize(32, 32).png().toBuffer()).toString("base64"));
     }
-    expect(styles.size).toBe(12);
+    expect(styles.size).toBe(13);
   }, 60000);
 });

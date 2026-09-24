@@ -6,6 +6,7 @@ nonisolated private struct ClipLibrarySticker: Decodable, Identifiable {
     let id: String
     let title: String
     let previewAsset: Asset?
+    let playbackRevisionId: String?
 }
 
 @MainActor @Observable
@@ -35,7 +36,7 @@ private final class ClipLibraryModel {
             } else { stickers = page.data }
             nextCursor = page.nextCursor
             loaded = true
-        } catch { self.error = error.localizedDescription }
+        } catch where !QuickModeModel.isCancellation(error) { self.error = error.localizedDescription } catch {}
     }
 
     func thumbnail(assetID: String, using client: QuickModeModel) async throws -> UIImage {
@@ -61,12 +62,14 @@ struct ClipLibraryView: View {
     @State private var showingComposer = false
     @State private var destination: Detail?
     @State private var completedDestination: Detail?
+    @State private var viewing: ClipStickerViewer.Item?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private struct Detail: Identifiable, Hashable {
         let id: String
         let model: QuickModeModel
+        var playbackRevisionID: String?
         static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
@@ -134,7 +137,8 @@ struct ClipLibraryView: View {
                         ) {
                             ForEach(library.stickers) { sticker in
                                 Button {
-                                    destination = Detail(id: sticker.id, model: makeModel())
+                                    destination = Detail(id: sticker.id, model: makeModel(),
+                                                         playbackRevisionID: sticker.playbackRevisionId)
                                 } label: {
                                     ClipStickerTile(sticker: sticker, library: library, client: generation)
                                 }
@@ -213,7 +217,11 @@ struct ClipLibraryView: View {
             .presentationDragIndicator(.visible)
         })
         .navigationDestination(item: $destination) { detail in
-            QuickModeView(model: detail.model, presentation: .detail)
+            QuickModeView(model: detail.model, presentation: .detail) { image in
+                Haptics.tap(.light)
+                viewing = .init(id: detail.id, title: detail.model.title, artwork: .image(image),
+                                source: detail.playbackRevisionID.map { .owned(revisionID: $0, client: detail.model) })
+            }
                 .task {
                     if detail.model.image == nil { await detail.model.openSticker(detail.id) }
                 }
@@ -222,6 +230,7 @@ struct ClipLibraryView: View {
                 }
                 .accessibilityIdentifier("clip-sticker-detail")
         }
+        .fullScreenCover(item: $viewing) { ClipStickerViewer(item: $0) }
         .task { await library.load(using: generation) }
         .task { await generation.resume() }
         .onChange(of: scenePhase) { _, phase in
@@ -303,7 +312,11 @@ nonisolated final class ClipLibraryFixtureProtocol: URLProtocol, @unchecked Send
             headers["x-job-state"] = "succeeded"
             headers["Content-Type"] = "text/event-stream"
         } else if path.hasSuffix("/download") {
-            payload = ["url": "https://clip-fixtures.invalid/fixture.png"]
+            let asset = url.deletingLastPathComponent().lastPathComponent
+            payload = ["url": ClipPlaybackFixtures.assetIDs.contains(asset)
+                ? "https://clip-fixtures.invalid/fixture-playback/\(asset)" : "https://clip-fixtures.invalid/fixture.png"]
+        } else if path.hasSuffix("/playback") {
+            payload = ClipPlaybackFixtures.bundle(stickerID: url.deletingLastPathComponent().lastPathComponent) { _ in nil }
         } else if path == "/api/v1/stickers", request.httpMethod == "POST" {
             UserDefaults.standard.set(true, forKey: "clip-library-fixture-created")
             payload = ["stickerId": "new-sticker", "job": ["id": "fixture-job", "state": "queued"]]
@@ -319,7 +332,8 @@ nonisolated final class ClipLibraryFixtureProtocol: URLProtocol, @unchecked Send
                 payload = ["data": empty ? [] : more ? [
                     ["id": "older-sticker", "title": "Sleepy moon", "previewAsset": ["id": "moon-preview"]]
                 ] : [
-                    ["id": "past-sticker", "title": "Happy cat", "previewAsset": ["id": "cat-preview"]],
+                    ["id": "past-sticker", "title": "Happy cat", "previewAsset": ["id": "cat-preview"],
+                     "playbackRevisionId": "fixture-revision"],
                     ["id": "second-sticker", "title": "Party cat", "previewAsset": ["id": "party-preview"]]
                 ], "nextCursor": empty || more ? NSNull() : "older-page"]
                 if !more, UserDefaults.standard.bool(forKey: "clip-library-fixture-created") {

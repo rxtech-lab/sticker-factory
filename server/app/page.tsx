@@ -13,7 +13,17 @@ const FAQ = [
 ];
 
 function Art({ name, alt = "", className = "", preload = false }: { name: string; alt?: string; className?: string; preload?: boolean }) {
-  return <Image className={`winky-art ${className}`} src={`/images/home/${name}.webp`} alt={alt} width={512} height={512} preload={preload} unoptimized />;
+  const extension = name.startsWith("winky") ? "svg" : "webp";
+  return <Image className={`winky-art ${className}`} src={`/images/home/${name}.${extension}`} alt={alt} width={512} height={512} preload={preload} unoptimized />;
+}
+
+function AnimatedWinky({ alt, className = "", preload = false }: { alt: string; className?: string; preload?: boolean }) {
+  return (
+    <div className={`winky-animated ${className}`} role="img" aria-label={alt}>
+      <Art name="winky" preload={preload} />
+      <Art name="winky-wink" className="winky-wink-frame" preload={preload} />
+    </div>
+  );
 }
 
 export default async function Home() {
@@ -30,7 +40,7 @@ export default async function Home() {
           <div className="winky-hero-copy">
             <div className="eyebrow plain">Winky - The sticker factory</div>
             <h1>Big feelings.<br />Tiny <span className="hl">stickers.</span></h1>
-            <p className="hero-copy">That inside joke. Your cat’s attitude. Your very specific mood. Turn it into a sticker with Winky, then <strong>make it move.</strong></p>
+            <p className="hero-copy">That inside joke. Your pet’s attitude. Your very specific mood. Turn it into a sticker with Winky, then <strong>make it move.</strong></p>
             <div className="hero-actions">
               <Link className="pill-button" href={primaryHref}>{primaryLabel}</Link>
               <a className="secondary-button" href="#how-it-works">Meet your sticker maker <span aria-hidden="true">↗</span></a>
@@ -43,10 +53,10 @@ export default async function Home() {
             <p className="winky-device-note">Made on iPhone &amp; iPad. Shared everywhere you chat.</p>
             <div className="platform-pills" aria-label="Supported messaging apps"><span>WhatsApp</span><span>Telegram</span><span>iMessage</span></div>
           </div>
-          <div className="winky-studio" aria-label="Illustrated example of turning a cat into a sticker">
+          <div className="winky-studio" aria-label="Illustrated example of making a Winky sticker">
             <div className="studio-top"><span>A LITTLE IDEA, A LOT OF PERSONALITY</span><span aria-hidden="true">↗</span></div>
-            <div className="studio-prompt">“My cat, but with main character energy.”</div>
-            <div className="studio-art"><Art name="cool-cat" alt="Winking orange cartoon cat wearing sunglasses" preload /><span className="studio-stamp">100%<br />your vibe</span><Art name="cat" className="studio-sidekick" /></div>
+            <div className="studio-prompt">“Winky, but with main character energy.”</div>
+            <div className="studio-art"><AnimatedWinky alt="Winky blinking and winking with little stars" preload /><span className="studio-stamp">100%<br />your vibe</span><Art name="winky" className="studio-sidekick" /></div>
             <div className="studio-caption"><span className="state state-accepted">Made with Winky</span><span>Still. Silly. Or in motion.</span></div>
           </div>
         </div>
@@ -82,16 +92,16 @@ export default async function Home() {
       <section className="band band-indigo rounded" aria-label="Animated stickers and video">
         <div className="shell two">
           <div className="scroll-reveal"><div className="eyebrow lime">A little motion. A lot of mood.</div><h2>Why just smile<br />when you can <em>wink?</em></h2><p className="lede">Give your character a signature move. Preview the loop, fine-tune the feeling, and take it from animated sticker to shareable video.</p><div className="motion-formats"><span>Animated stickers</span><span>GIF</span><span>MP4 video</span></div></div>
-          <div className="motion-stage"><span className="motion-stage-label">YOUR NEXT REACTION</span><div className="motion-loop"><Art name="cool-cat" className="scroll-wiggle" alt="A cheeky cartoon cat ready to become an animated reaction" /></div><span className="motion-stage-foot">Small sticker. Big main-character energy.</span></div>
+          <div className="motion-stage"><span className="motion-stage-label">YOUR NEXT REACTION</span><div className="motion-loop"><AnimatedWinky className="scroll-wiggle" alt="Winky blinking and winking as an animated reaction" /></div><span className="motion-stage-foot">Small sticker. Big main-character energy.</span></div>
         </div>
       </section>
 
       <section className="band band-peach" id="revisions" aria-label="Creative revisions">
-        <div className="shell two"><div className="revision-art scroll-reveal"><Art name="cat" alt="Original cheerful orange cat sticker" /><span aria-hidden="true">↗</span><Art name="cool-cat" alt="Refined cat sticker with sunglasses" /></div><div className="scroll-reveal"><div className="eyebrow">Room to change your mind</div><h2>A little more this.<br />A little less that.</h2><p className="lede">Every edit gets its own version. Compare your ideas, keep the one you love, or go back to an earlier favorite. Experiment freely.</p></div></div>
+        <div className="shell two"><div className="revision-art scroll-reveal"><Art name="winky" alt="Original Winky sticker" /><span aria-hidden="true">↗</span><Art name="winky-wink" alt="Winky sticker revised with a wink and stars" /></div><div className="scroll-reveal"><div className="eyebrow">Room to change your mind</div><h2>A little more this.<br />A little less that.</h2><p className="lede">Every edit gets its own version. Compare your ideas, keep the one you love, or go back to an earlier favorite. Experiment freely.</p></div></div>
       </section>
 
       <section className="band band-lime" id="packs" aria-label="Sticker packs">
-        <div className="shell two"><div className="scroll-reveal"><div className="eyebrow">Better together</div><h2>Your own little<br />cast of characters.</h2><p className="lede">Build a pack around a mood, a friend, or an inside joke. Keep it just for you, or publish it for others to discover.</p><div className="hero-actions"><Link className="secondary-button" href="/marketplace">Explore sticker packs <span aria-hidden="true">↗</span></Link></div></div><div className="pack-sample card scroll-reveal"><div className="pack-sample-cover"><Art name="cat" /><Art name="cool-cat" /><Art name="croissant" /><Art name="movie" /></div><div className="pack-sample-copy"><strong>The personality pack</strong><span>A little collection of big moods</span></div></div></div>
+        <div className="shell two"><div className="scroll-reveal"><div className="eyebrow">Better together</div><h2>Your own little<br />cast of characters.</h2><p className="lede">Build a pack around a mood, a friend, or an inside joke. Keep it just for you, or publish it for others to discover.</p><div className="hero-actions"><Link className="secondary-button" href="/marketplace">Explore sticker packs <span aria-hidden="true">↗</span></Link></div></div><div className="pack-sample card scroll-reveal"><div className="pack-sample-cover"><Image className="pack-sample-collage" src="/images/home/winky-sticker-collage.webp" alt="A collection of Winky stickers with hearts, stars, and sweets" width={900} height={600} /></div><div className="pack-sample-copy"><strong>The personality pack</strong><span>A little collection of big moods</span></div></div></div>
       </section>
 
       <section className="band band-paper" id="faq" aria-label="Frequently asked questions">

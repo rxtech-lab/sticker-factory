@@ -3,7 +3,12 @@ import WebKit
 
 private struct PublicClipPack: Decodable {
     struct Creator: Decodable { let displayName: String }
-    struct Sticker: Decodable, Identifiable { let id: String; let title: String; let previewURL: URL? }
+    struct Sticker: Decodable, Identifiable {
+        let id: String
+        let title: String
+        let previewURL: URL?
+        let playbackRevisionId: String?
+    }
     let title: String
     let summary: String?
     let creator: Creator
@@ -14,6 +19,7 @@ struct ClipPackView: View {
     let slug: String
     @State private var pack: PublicClipPack?
     @State private var error: String?
+    @State private var viewing: ClipStickerViewer.Item?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -36,7 +42,13 @@ struct ClipPackView: View {
                             spacing: 18
                         ) {
                             ForEach(Array(pack.stickers.enumerated()), id: \.element.id) { index, sticker in
-                                stickerTile(sticker, index: index)
+                                Button { open(sticker) } label: { stickerTile(sticker, index: index) }
+                                    .buttonStyle(.posterPlain)
+                                    .accessibilityLabel(sticker.title)
+                                    .accessibilityHint(sticker.playbackRevisionId == nil
+                                        ? String(localized: "Opens full screen")
+                                        : String(localized: "Opens full screen with poses"))
+                                    .accessibilityIdentifier("clip-pack-sticker-\(sticker.id)")
                             }
                         }
                         if pack.stickers.isEmpty {
@@ -87,6 +99,13 @@ struct ClipPackView: View {
         }
         .toolbar { ShareLink(item: StickerShareRoute.packURL(slug)) { Label("Share pack", systemImage: "square.and.arrow.up") } }
         .task(id: slug) { await load() }
+        .fullScreenCover(item: $viewing) { ClipStickerViewer(item: $0) }
+    }
+
+    private func open(_ sticker: PublicClipPack.Sticker) {
+        Haptics.tap(.light)
+        viewing = .init(id: sticker.id, title: sticker.title, artwork: sticker.previewURL.map { .url($0) },
+                        source: sticker.playbackRevisionId == nil ? nil : .publicPack(slug: slug))
     }
 
     private func packHeader(_ pack: PublicClipPack) -> some View {
@@ -131,6 +150,16 @@ struct ClipPackView: View {
                 }
                 .frame(height: 140)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(alignment: .topTrailing) {
+                    if sticker.playbackRevisionId != nil {
+                        Image(systemName: "switch.2")
+                            .font(.caption.weight(.bold))
+                            .padding(6)
+                            .posterSurface(cornerRadius: 10, fill: AppColors.lime, offset: .zero)
+                            .padding(6)
+                            .accessibilityHidden(true)
+                    }
+                }
                 Text(sticker.title)
                     .font(.subheadline.weight(.bold))
                     .fixedSize(horizontal: false, vertical: true)
@@ -160,12 +189,12 @@ struct ClipPackView: View {
                 throw MessagesStickerCreationError.notPublished("This pack is no longer available.")
             }
             pack = try JSONDecoder().decode(PublicClipPack.self, from: data)
-        } catch { self.error = error.localizedDescription }
+        } catch where !QuickModeModel.isCancellation(error) { self.error = error.localizedDescription } catch {}
     }
 }
 
 /// WebKit renders APNG/WebP animation without bundling a full-app image/rendering dependency.
-private struct AnimatedClipPreview: UIViewRepresentable {
+struct AnimatedClipPreview: UIViewRepresentable {
     let url: URL
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -203,12 +232,14 @@ private nonisolated final class ClipPackFixtureProtocol: URLProtocol, @unchecked
     override func startLoading() {
         guard let url = request.url else { return }
         let packs = ["happy-cats": ("Happy Cats", "Waving cat"), "space-dogs": ("Space Dogs", "Moon dog")]
-        let fixture = url.path.hasPrefix("/api/v1/public/packs/") ? packs[url.lastPathComponent] : nil
+        let fixture = url.path.hasPrefix("/api/v1/public/packs/") && url.pathComponents.count == 6
+            ? packs[url.lastPathComponent] : nil
         let body: [String: Any]
         if let fixture {
             body = ["title": fixture.0, "summary": "A pack to share with friends.",
                     "creator": ["displayName": "Clip Creator"],
-                    "stickers": [["id": "preview-1", "title": fixture.1]]]
+                    "stickers": [["id": "preview-1", "title": fixture.1],
+                                 ["id": "posable-1", "title": "Posable pet", "playbackRevisionId": "fixture-revision"]]]
         } else { body = ["error": "Not found"] }
         let response = HTTPURLResponse(url: url, statusCode: fixture == nil ? 404 : 200,
                                        httpVersion: nil, headerFields: ["Content-Type": "application/json"])!

@@ -1,6 +1,8 @@
 # Homepage artwork
 
-Generated with the built-in image generation tool. The six cells were extracted from the generated 1536 × 1024 sheet and encoded as 512 × 512 WebP files with Sharp (quality 88).
+The original six illustrations were generated with the built-in image generation tool, extracted from a 1536 × 1024 sheet, and encoded as 512 × 512 WebP files with Sharp (quality 88). The two cat files were removed when the homepage switched to Winky.
+
+The homepage now uses `winky.svg` and `winky-wink.svg` for its mascot. They combine the body and eyes from the supplied Winkie icon artwork; the wink variant adds a closed eye and stars. `winky-sticker-collage.webp` is an optimized copy of the supplied collage.
 
 ## Generation prompt
 

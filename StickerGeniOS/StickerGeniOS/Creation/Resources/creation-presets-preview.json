@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-17.1",
+  "version": "2026-09-24.1",
   "groups": [
     {
       "id": "style",
@@ -925,6 +925,234 @@
                 "pose": "dance",
                 "mood": "surprised",
                 "url": "/images/creation/v3/pixel/dance-surprised.gif"
+              }
+            ]
+          }
+        },
+        {
+          "id": "blocky-pixel",
+          "title": {
+            "en": "Blocky Pixel",
+            "zh-Hans": "方块像素",
+            "zh-Hant": "方塊像素"
+          },
+          "cover": "/images/creation/v3/blocky-pixel/cover.webp",
+          "preview": {
+            "url": "/images/creation/v3/blocky-pixel/wave-happy.gif",
+            "defaultPose": "wave",
+            "defaultMood": "happy",
+            "poses": [
+              {
+                "id": "idle",
+                "title": {
+                  "en": "Idle",
+                  "zh-Hans": "待机",
+                  "zh-Hant": "待機"
+                }
+              },
+              {
+                "id": "wave",
+                "title": {
+                  "en": "Wave",
+                  "zh-Hans": "挥手",
+                  "zh-Hant": "揮手"
+                }
+              },
+              {
+                "id": "bounce",
+                "title": {
+                  "en": "Bounce",
+                  "zh-Hans": "弹跳",
+                  "zh-Hant": "彈跳"
+                }
+              },
+              {
+                "id": "sway",
+                "title": {
+                  "en": "Sway",
+                  "zh-Hans": "摇摆",
+                  "zh-Hant": "搖擺"
+                }
+              },
+              {
+                "id": "wiggle",
+                "title": {
+                  "en": "Wiggle",
+                  "zh-Hans": "扭动",
+                  "zh-Hant": "扭動"
+                }
+              },
+              {
+                "id": "hop",
+                "title": {
+                  "en": "Hop",
+                  "zh-Hans": "跳跃",
+                  "zh-Hant": "跳躍"
+                }
+              },
+              {
+                "id": "spin",
+                "title": {
+                  "en": "Partial Turn",
+                  "zh-Hans": "半转身",
+                  "zh-Hant": "半轉身"
+                }
+              },
+              {
+                "id": "dance",
+                "title": {
+                  "en": "Dance",
+                  "zh-Hans": "跳舞",
+                  "zh-Hant": "跳舞"
+                }
+              }
+            ],
+            "moods": [
+              {
+                "id": "neutral",
+                "title": {
+                  "en": "Neutral",
+                  "zh-Hans": "平静",
+                  "zh-Hant": "平靜"
+                }
+              },
+              {
+                "id": "happy",
+                "title": {
+                  "en": "Happy",
+                  "zh-Hans": "开心",
+                  "zh-Hant": "開心"
+                }
+              },
+              {
+                "id": "surprised",
+                "title": {
+                  "en": "Surprised",
+                  "zh-Hans": "惊讶",
+                  "zh-Hant": "驚訝"
+                }
+              }
+            ],
+            "variants": [
+              {
+                "pose": "idle",
+                "mood": "neutral",
+                "url": "/images/creation/v3/blocky-pixel/idle-neutral.gif"
+              },
+              {
+                "pose": "idle",
+                "mood": "happy",
+                "url": "/images/creation/v3/blocky-pixel/idle-happy.gif"
+              },
+              {
+                "pose": "idle",
+                "mood": "surprised",
+                "url": "/images/creation/v3/blocky-pixel/idle-surprised.gif"
+              },
+              {
+                "pose": "wave",
+                "mood": "neutral",
+                "url": "/images/creation/v3/blocky-pixel/wave-neutral.gif"
+              },
+              {
+                "pose": "wave",
+                "mood": "happy",
+                "url": "/images/creation/v3/blocky-pixel/wave-happy.gif"
+              },
+              {
+                "pose": "wave",
+                "mood": "surprised",
+                "url": "/images/creation/v3/blocky-pixel/wave-surprised.gif"
+              },
+              {
+                "pose": "bounce",
+                "mood": "neutral",
+                "url": "/images/creation/v3/blocky-pixel/bounce-neutral.gif"
+              },
+              {
+                "pose": "bounce",
+                "mood": "happy",
+                "url": "/images/creation/v3/blocky-pixel/bounce-happy.gif"
+              },
+              {
+                "pose": "bounce",
+                "mood": "surprised",
+                "url": "/images/creation/v3/blocky-pixel/bounce-surprised.gif"
+              },
+              {
+                "pose": "sway",
+                "mood": "neutral",
+                "url": "/images/creation/v3/blocky-pixel/sway-neutral.gif"
+              },
+              {
+                "pose": "sway",
+                "mood": "happy",
+                "url": "/images/creation/v3/blocky-pixel/sway-happy.gif"
+              },
+              {
+                "pose": "sway",
+                "mood": "surprised",
+                "url": "/images/creation/v3/blocky-pixel/sway-surprised.gif"
+              },
+              {
+                "pose": "wiggle",
+                "mood": "neutral",
+                "url": "/images/creation/v3/blocky-pixel/wiggle-neutral.gif"
+              },
+              {
+                "pose": "wiggle",
+                "mood": "happy",
+                "url": "/images/creation/v3/blocky-pixel/wiggle-happy.gif"
+              },
+              {
+                "pose": "wiggle",
+                "mood": "surprised",
+                "url": "/images/creation/v3/blocky-pixel/wiggle-surprised.gif"
+              },
+              {
+                "pose": "hop",
+                "mood": "neutral",
+                "url": "/images/creation/v3/blocky-pixel/hop-neutral.gif"
+              },
+              {
+                "pose": "hop",
+                "mood": "happy",
+                "url": "/images/creation/v3/blocky-pixel/hop-happy.gif"
+              },
+              {
+                "pose": "hop",
+                "mood": "surprised",
+                "url": "/images/creation/v3/blocky-pixel/hop-surprised.gif"
+              },
+              {
+                "pose": "spin",
+                "mood": "neutral",
+                "url": "/images/creation/v3/blocky-pixel/spin-neutral.gif"
+              },
+              {
+                "pose": "spin",
+                "mood": "happy",
+                "url": "/images/creation/v3/blocky-pixel/spin-happy.gif"
+              },
+              {
+                "pose": "spin",
+                "mood": "surprised",
+                "url": "/images/creation/v3/blocky-pixel/spin-surprised.gif"
+              },
+              {
+                "pose": "dance",
+                "mood": "neutral",
+                "url": "/images/creation/v3/blocky-pixel/dance-neutral.gif"
+              },
+              {
+                "pose": "dance",
+                "mood": "happy",
+                "url": "/images/creation/v3/blocky-pixel/dance-happy.gif"
+              },
+              {
+                "pose": "dance",
+                "mood": "surprised",
+                "url": "/images/creation/v3/blocky-pixel/dance-surprised.gif"
               }
             ]
           }

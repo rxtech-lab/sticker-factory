@@ -239,10 +239,13 @@ export async function generateStickerImage(input: AiImageInput): Promise<AiImage
   let normalized = await traceSpan(
     "gateway.normalize",
     { bytes: first.byteLength, subjectCrop },
-    () => normalizeTransparentPng(first, { subjectCrop }),
+    () => normalizeTransparentPng(first, { subjectCrop, pixelArt: input.pixelArt }),
   );
 
   if (!normalized.inspection.hasTransparentPixels) {
+    const edges = input.pixelArt
+      ? "hard, pixel-aligned transparent edges and no antialiasing, keeping the original pixel grid"
+      : "clean antialiased transparent edges";
     // A second full generation, unbudgeted by the caller: the turn now costs two images and up
     // to twice the wall clock, which is worth knowing when one looks stuck.
     traceEvent("gateway.image:opaque", { retrying: true });
@@ -253,10 +256,10 @@ export async function generateStickerImage(input: AiImageInput): Promise<AiImage
         generateThroughImageModel({
           prompt:
             input.isolatedLayer
-              ? `Remove the background and any unrelated illustration. Keep only the isolated element described here: ${input.prompt}. Preserve its exact lettering and styling with clean antialiased transparent edges; do not add a checkerboard or a preview of the full sticker.`
+              ? `Remove the background and any unrelated illustration. Keep only the isolated element described here: ${input.prompt}. Preserve its exact lettering and styling with ${edges}; do not add a checkerboard or a preview of the full sticker.`
               : input.sheet
               ? "Remove only the background from the supplied sprite sheet, including the gaps inside and between cells. Preserve the exact grid, frame order, character scale, positions, and all artwork in each cell. Keep any magenta face placeholders intact. Do not merge, rearrange, crop, or enlarge the drawings; do not add a checkerboard."
-              : "Remove the entire background. Keep only the sticker subject with clean antialiased transparent edges; do not add a checkerboard.",
+              : `Remove the entire background. Keep only the sticker subject with ${edges}; do not add a checkerboard.`,
           references: [{ bytes: normalized.bytes, mimeType: "image/png" }],
           mode: "conversation_edit",
           isolatedLayer: input.isolatedLayer,
@@ -266,7 +269,7 @@ export async function generateStickerImage(input: AiImageInput): Promise<AiImage
     normalized = await traceSpan(
       "gateway.normalize",
       { bytes: retry.byteLength, retry: true, subjectCrop },
-      () => normalizeTransparentPng(retry, { subjectCrop }),
+      () => normalizeTransparentPng(retry, { subjectCrop, pixelArt: input.pixelArt }),
     );
   }
   if (!normalized.inspection.hasTransparentPixels) {
