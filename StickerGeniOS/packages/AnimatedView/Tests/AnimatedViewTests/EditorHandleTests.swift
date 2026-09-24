@@ -151,22 +151,41 @@ struct EditorHandleTests {
     /// than grow. Getting this sign wrong is the classic corner-handle bug.
     @Test func theLeadingCornersRespondInTheOppositeDirection() {
         let trailing = drag(.bottomTrailing, by: CGSize(width: half, height: 0))
-        #expect(abs(trailing.x - 2) < 1e-6)
+        #expect(trailing.x > 1)
 
-        // The same rightward drag brings the leading corner all the way to the centre — a scale of
-        // zero, which the range floor catches.
+        // The same rightward drag pulls the leading corner inward instead, so the layer shrinks.
         let leading = drag(.bottomLeading, by: CGSize(width: half, height: 0))
-        #expect(leading.x == AnimatedCanvasGeometry.scaleRange.lowerBound)
+        #expect(leading.x < 1)
 
-        // Half as far is half the width, with no clamping involved.
-        let halfway = drag(.bottomLeading, by: CGSize(width: half / 2, height: 0))
+        // A diagonal drag all the way to the centre is a scale of zero, which the range floor catches.
+        let collapsed = drag(.bottomLeading, by: CGSize(width: half, height: -half))
+        #expect(collapsed.x == AnimatedCanvasGeometry.scaleRange.lowerBound)
+
+        // Half as far along the diagonal is half the size, with no clamping involved.
+        let halfway = drag(.bottomLeading, by: CGSize(width: half / 2, height: -half / 2))
         #expect(abs(halfway.x - 0.5) < 1e-6)
     }
 
-    @Test func draggingOneCornerCanScaleTheAxesIndependently() {
+    /// A corner drag resizes without stretching: a purely horizontal pull still scales both axes,
+    /// by the drag projected onto the corner's diagonal.
+    @Test func draggingOneCornerPreservesTheAspectRatio() {
         let result = drag(.bottomTrailing, by: CGSize(width: half, height: 0))
-        #expect(abs(result.x - 2) < 1e-6)
-        #expect(abs(result.y - 1) < 1e-6)
+        #expect(abs(result.x - 1.5) < 1e-6)
+        #expect(abs(result.y - 1.5) < 1e-6)
+    }
+
+    /// A layer that is already non-square keeps its own ratio rather than being squared up.
+    @Test func aCornerDragKeepsANonSquareRatio() {
+        let result = drag(.bottomTrailing, by: CGSize(width: half, height: half), from: AnimatedPoint(x: 2, y: 1))
+        #expect(result.x > 2)
+        #expect(abs(result.x / result.y - 2) < 1e-3)
+    }
+
+    /// Hitting the range on one axis stops the whole drag, so the ratio does not bend at the limit.
+    @Test func clampingOneAxisKeepsTheRatio() {
+        let result = drag(.bottomTrailing, by: CGSize(width: half * 40, height: half * 40), from: AnimatedPoint(x: 2, y: 1))
+        #expect(result.x == AnimatedCanvasGeometry.scaleRange.upperBound)
+        #expect(abs(result.y - AnimatedCanvasGeometry.scaleRange.upperBound / 2) < 1e-6)
     }
 
     /// Text must stay uniform: the renderer collapses its scale to `min(x, y)`, so storing unequal
@@ -188,11 +207,15 @@ struct EditorHandleTests {
     /// has to be resolved in the layer's own frame, or dragging a corner of a 45° layer would scale
     /// along the wrong axis.
     @Test func aDragOnARotatedLayerFollowsTheLayersOwnAxes() {
-        // At 90°, the layer's +x axis points down the screen. A purely downward drag is therefore a
-        // pure +x scale.
-        let result = drag(.bottomTrailing, by: CGSize(width: 0, height: half), rotationDegrees: 90)
+        // At 90°, the layer's +x axis points down the screen and its +y axis points left. Dragging
+        // the bottom-trailing corner outward along its own diagonal — down and to the left on
+        // screen — therefore doubles it, exactly as an unrotated outward drag does.
+        let result = drag(.bottomTrailing, by: CGSize(width: -half, height: half), rotationDegrees: 90)
         #expect(abs(result.x - 2) < 1e-6)
-        #expect(abs(result.y - 1) < 1e-6)
+        #expect(abs(result.y - 2) < 1e-6)
+        // The same screen drag on an unrotated layer only moves along the other diagonal.
+        let unrotated = drag(.bottomTrailing, by: CGSize(width: -half, height: half))
+        #expect(abs(unrotated.x - 1) < 1e-6)
     }
 
     /// A drag that starts on a handle and never moves must leave the layer exactly where it was,

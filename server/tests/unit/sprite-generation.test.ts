@@ -13,7 +13,7 @@ import { MemoryObjectStore, inspectImage, objectKey, setObjectStoreForTests } fr
 import { createTestDatabase } from "@/tests/helpers/database";
 import { seedPublishedSticker, seedUser } from "@/tests/helpers/packs";
 import { documentFromPlan } from "@/workflows/sticker-generation/asset-generation";
-import { generateSpriteArtwork, spriteClipAssetIds } from "@/workflows/sticker-generation/sprite-artwork";
+import { generateSpriteArtwork, spriteClipAssetIds, spriteClipPrompt } from "@/workflows/sticker-generation/sprite-artwork";
 
 afterEach(() => { setDatabaseForTests(undefined); setAiProviderForTests(undefined); setObjectStoreForTests(undefined); });
 
@@ -172,4 +172,14 @@ it.each(["missing face", "clipped frame", "drifted grid", "saved drift"])("recov
     expect(render.times).toHaveLength(6);
     expect(render.bytes.byteLength).toBeGreaterThan(1000);
   } finally { await close(); }
+});
+
+it("asks a sticker that stays put to keep every clip frame on one ground line", () => {
+  const source = { kind: "sprite" as const, prompt: "A round orange cat", clips: [], expressions: [] };
+  const clip = { id: "idle", label: "Idle", prompt: "breathes and blinks", faceCompositing: "overlay" as const, frames: [{ duration: 1 }, { duration: 0.2 }] };
+  const still = { ...clip, frames: [{ duration: 1 }] };
+  expect(spriteClipPrompt({ name: "Cat" }, source, clip, false, undefined, true)).toContain("feet or base sit on the same line");
+  expect(spriteClipPrompt({ name: "Cat" }, source, clip)).not.toContain("feet or base sit on the same line");
+  // A single held pose has no frames to bob between.
+  expect(spriteClipPrompt({ name: "Cat" }, source, still, false, undefined, true)).not.toContain("feet or base sit on the same line");
 });

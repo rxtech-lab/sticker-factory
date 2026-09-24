@@ -132,13 +132,22 @@ final class StickerPublisher {
         try Task.checkCancellation()
         guard let system = rendered.system else { throw StickerPublishError.systemRenditionUnavailable }
         progress?.report(String(localized: "Sending the sticker files"), for: .upload)
+        let files: [(AssetKind, RenderedStickerExport?)] = [
+            (.master, rendered.png), (.apng, rendered.apng), (.mp4, rendered.mp4), (.system, system), (.webp, rendered.webp)
+        ]
+        let tally = UploadTally(
+            sizes: files.reduce(into: [:]) { sizes, file in
+                if let export = file.1 { sizes[file.0] = Self.fileSize(export.url) }
+            },
+            progress: progress
+        )
         // Each rendition has its own upload/verification transaction. Overlap the network waits;
         // registration still waits for every required rendition to be verified.
-        async let pngUpload = uploadIfPresent(rendered.png, stickerID: stickerID, kind: .master)
-        async let apngUpload = uploadIfPresent(rendered.apng, stickerID: stickerID, kind: .apng)
-        async let mp4Upload = uploadIfPresent(rendered.mp4, stickerID: stickerID, kind: .mp4)
-        async let systemUpload = upload(system, stickerID: stickerID, kind: .system)
-        async let webpUpload = optionalWebPUpload(rendered.webp, stickerID: stickerID)
+        async let pngUpload = uploadIfPresent(rendered.png, stickerID: stickerID, kind: .master, tally: tally)
+        async let apngUpload = uploadIfPresent(rendered.apng, stickerID: stickerID, kind: .apng, tally: tally)
+        async let mp4Upload = uploadIfPresent(rendered.mp4, stickerID: stickerID, kind: .mp4, tally: tally)
+        async let systemUpload = upload(system, stickerID: stickerID, kind: .system, tally: tally)
+        async let webpUpload = optionalWebPUpload(rendered.webp, stickerID: stickerID, tally: tally)
         let (pngAssetID, apngAssetID, mp4AssetID, systemAssetID, webpAssetID) = try await (
             pngUpload, apngUpload, mp4Upload, systemUpload, webpUpload
         )
@@ -324,17 +333,44 @@ final class StickerPublisher {
         return document
     }
 
-    private func uploadIfPresent(_ export: RenderedStickerExport?, stickerID: String, kind: AssetKind) async throws -> String? {
+    private func uploadIfPresent(
+        _ export: RenderedStickerExport?,
+        stickerID: String,
+        kind: AssetKind,
+        tally: UploadTally? = nil
+    ) async throws -> String? {
         guard let export else { return nil }
-        return try await upload(export, stickerID: stickerID, kind: kind)
+        return try await upload(export, stickerID: stickerID, kind: kind, tally: tally)
     }
 
-    private func optionalWebPUpload(_ export: RenderedStickerExport?, stickerID: String) async -> String? {
-        try? await uploadIfPresent(export, stickerID: stickerID, kind: .webp)
+    private func optionalWebPUpload(_ export: RenderedStickerExport?, stickerID: String, tally: UploadTally?) async -> String? {
+        do {
+            return try await uploadIfPresent(export, stickerID: stickerID, kind: .webp, tally: tally)
+        } catch {
+            // Not a reason to fail the publish, and not a reason for the bar to stop short of full.
+            tally?.drop(.webp)
+            return nil
+        }
     }
 
-    private func upload(_ export: RenderedStickerExport, stickerID: String, kind: AssetKind) async throws -> String {
+    private nonisolated static func fileSize(_ url: URL) -> Int64 {
+        Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+    }
+
+    private func upload(
+        _ export: RenderedStickerExport,
+        stickerID: String,
+        kind: AssetKind,
+        tally: UploadTally? = nil
+    ) async throws -> String {
         let data = try Data(contentsOf: export.url)
+        tally?.resize(kind, to: Int64(data.count))
+        var onProgress: UploadProgressHandler?
+        if let tally {
+            onProgress = { sent, _ in
+                Task { @MainActor in tally.update(kind, sent: sent) }
+            }
+        }
         let mimeType: String = switch export.metadata.format {
         case .png, .apng: "image/png"
         case .gif: "image/gif"
@@ -348,8 +384,62 @@ final class StickerPublisher {
             filename: export.url.lastPathComponent,
             mimeType: mimeType,
             sequence: nil,
-            idempotencyKey: UUID().uuidString
+            idempotencyKey: UUID().uuidString,
+            onProgress: onProgress
         )
+    }
+}
+
+/// The bytes of a publish's concurrent uploads, summed into the one upload step.
+///
+/// Every socket reports on its own schedule, so the sum is recomputed from the latest figure for
+/// each file rather than accumulated, and the timeline hears about it only when it has moved
+/// enough to show — five sockets at full speed would otherwise redraw the sheet hundreds of times
+/// a second.
+@MainActor
+final class UploadTally {
+    private var sizes: [AssetKind: Int64]
+    private var sent: [AssetKind: Int64] = [:]
+    private weak var progress: StickerExportProgress?
+    private var lastReported: Int64 = -1
+
+    init(sizes: [AssetKind: Int64], progress: StickerExportProgress?) {
+        self.sizes = sizes
+        self.progress = progress
+        report(force: true)
+    }
+
+    var totalBytes: Int64 { sizes.values.reduce(0, +) }
+    var sentBytes: Int64 { sizes.keys.reduce(0) { $0 + min(sent[$1] ?? 0, sizes[$1] ?? 0) } }
+
+    func update(_ kind: AssetKind, sent bytes: Int64) {
+        guard sizes[kind] != nil else { return }
+        sent[kind] = max(sent[kind] ?? 0, bytes)
+        report(force: false)
+    }
+
+    /// The size read off disk, when it disagrees with the estimate taken before the upload began.
+    func resize(_ kind: AssetKind, to bytes: Int64) {
+        guard sizes[kind] != bytes else { return }
+        sizes[kind] = bytes
+        report(force: true)
+    }
+
+    /// A file that will not be sent after all.
+    func drop(_ kind: AssetKind) {
+        sizes[kind] = nil
+        sent[kind] = nil
+        report(force: true)
+    }
+
+    private func report(force: Bool) {
+        let total = totalBytes
+        let current = sentBytes
+        // One percent, or the end: fine enough that the bar glides, coarse enough to be cheap.
+        let step = max(total / 100, 1)
+        guard force || current == total || current - lastReported >= step else { return }
+        lastReported = current
+        progress?.reportBytes(sent: current, total: total, for: .upload)
     }
 }
 

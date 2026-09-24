@@ -39,6 +39,18 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func bindMessengerRenditions(stickerID: String, request: MessengerRenditionsRequest, idempotencyKey: String) async throws -> Sticker
     func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String
+    /// The same upload, reporting bytes handed to storage as they go. `onProgress` is called off
+    /// the main actor, often, with `(sent, total)`.
+    func upload(
+        data: Data,
+        stickerID: String?,
+        kind: AssetKind,
+        filename: String,
+        mimeType: String,
+        sequence: SequenceMetadata?,
+        idempotencyKey: String,
+        onProgress: UploadProgressHandler?
+    ) async throws -> String
     func assetDownload(assetID: String) async throws -> AssetDownload
     func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error>
 
@@ -75,6 +87,56 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
 extension StickerAPIClientProtocol {
     func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog { throw StickerAPIError.invalidResponse }
     func configurationLimits() async throws -> ConfigurationLimits { throw StickerAPIError.invalidResponse }
+
+    /// Clients that cannot observe the transfer still upload; they just never report partway.
+    func upload(
+        data: Data,
+        stickerID: String?,
+        kind: AssetKind,
+        filename: String,
+        mimeType: String,
+        sequence: SequenceMetadata?,
+        idempotencyKey: String,
+        onProgress: UploadProgressHandler?
+    ) async throws -> String {
+        let assetID = try await upload(
+            data: data,
+            stickerID: stickerID,
+            kind: kind,
+            filename: filename,
+            mimeType: mimeType,
+            sequence: sequence,
+            idempotencyKey: idempotencyKey
+        )
+        onProgress?(Int64(data.count), Int64(data.count))
+        return assetID
+    }
+}
+
+/// `(sent, total)` bytes of one upload's body.
+typealias UploadProgressHandler = @Sendable (_ sent: Int64, _ total: Int64) -> Void
+
+/// Forwards one upload task's body progress. A task-specific delegate, so the shared session and
+/// every other request on it are untouched.
+nonisolated final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    private let fallbackTotal: Int64
+    private let onProgress: UploadProgressHandler
+
+    init(total: Int64, onProgress: @escaping UploadProgressHandler) {
+        self.fallbackTotal = total
+        self.onProgress = onProgress
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        let total = totalBytesExpectedToSend > 0 ? totalBytesExpectedToSend : fallbackTotal
+        onProgress(min(totalBytesSent, total), total)
+    }
 }
 
 nonisolated enum PackSort: String, Sendable, CaseIterable { case recent, popular }
@@ -494,6 +556,28 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     // MARK: - Uploads
 
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String {
+        try await upload(
+            data: data,
+            stickerID: stickerID,
+            kind: kind,
+            filename: filename,
+            mimeType: mimeType,
+            sequence: sequence,
+            idempotencyKey: idempotencyKey,
+            onProgress: nil
+        )
+    }
+
+    func upload(
+        data: Data,
+        stickerID: String?,
+        kind: AssetKind,
+        filename: String,
+        mimeType: String,
+        sequence: SequenceMetadata?,
+        idempotencyKey: String,
+        onProgress: UploadProgressHandler?
+    ) async throws -> String {
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let intent: UploadIntentResponse = try await send(
             path: "api/v1/uploads",
@@ -519,7 +603,8 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         upload.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         for (name, value) in intent.upload.headers { upload.setValue(value, forHTTPHeaderField: name) }
         do {
-            let (uploadBody, uploadResponse) = try await session.upload(for: upload, from: data)
+            let delegate = onProgress.map { UploadProgressDelegate(total: Int64(data.count), onProgress: $0) }
+            let (uploadBody, uploadResponse) = try await session.upload(for: upload, from: data, delegate: delegate)
             guard let http = uploadResponse as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
             guard (200...299).contains(http.statusCode) else {
                 // Storage rejects for reasons the app can do something about — an expired presign,
@@ -549,10 +634,14 @@ actor StickerAPIClient: StickerAPIClientProtocol {
                 """
             )
             try await completeUpload(assetID: intent.asset.id, digest: digest, idempotencyKey: idempotencyKey)
+            onProgress?(Int64(data.count), Int64(data.count))
             return intent.asset.id
         }
 
         try await completeUpload(assetID: intent.asset.id, digest: digest, idempotencyKey: idempotencyKey)
+        // The last delegate callback can land before the body is fully acknowledged; say so once
+        // more so a bar never finishes a hair short of full.
+        onProgress?(Int64(data.count), Int64(data.count))
         return intent.asset.id
     }
 

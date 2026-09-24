@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { planSpriteLayers, spriteSheetGrid, type PlanV1 } from "@/lib/contracts/plan";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, generationJobs } from "@/lib/db/schema";
+import { anchorSpriteFrames } from "@/lib/render/sprite-atlas";
 import { registerExpressionTiles, registerFaceSlots } from "@/lib/render/sprite-registration";
 import { derivedAssetId, ensureSpritePoster, getReadyOwnedAssets } from "@/lib/services/assets";
 import { appendGenerationEvent } from "@/lib/services/events";
@@ -75,7 +76,10 @@ const animationSummaryInstruction = "Reference 1 is the approved resting composi
 /** Matches the inspector's rule 2: only the character's own face moves to the opening. */
 const accessoryFaces = "A face printed or drawn on a separate small accessory the character wears or carries, such as a charm, keychain, badge, plush, or bag print, is part of the design: keep it exactly as in the reference.";
 
-export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, clip: SpriteSource["clips"][number], hasAnimationSummary = false, feedback?: string[]): string {
+/** Said to a sticker that was asked to stay put; `anchorSpriteFrames` enforces it afterwards. */
+const stayPutInstruction = "The character stays in one spot: its feet or base sit on the same line in every frame. Do not hop, bounce, float or bob the whole body up or down between frames.";
+
+export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, clip: SpriteSource["clips"][number], hasAnimationSummary = false, feedback?: string[], stayPut = false): string {
   const count = clip.frames.length;
   return [
     characterReference(layer.name),
@@ -85,6 +89,7 @@ export function spriteClipPrompt(layer: { name: string }, source: SpriteSource, 
       ? "Frame 1 is the resting pose. The frames read in order and loop back to frame 1, so the last frame leads naturally into the first. Change only what the motion moves; the body keeps the same size and position in every cell."
       : "This is a single held pose.",
     `Character: ${source.prompt}`,
+    stayPut && count > 1 ? stayPutInstruction : undefined,
     "Perform the motion in place around a fixed body anchor, with a locked camera and no zoom. Reserve room for the entire motion, including leaning, bouncing, extended parts, and any requested effects. Keep the complete silhouette inside the cell's transparent safety margins in every frame. Do not add ground, scenery, speed lines, smoke, or skid marks unless explicitly requested; requested effects must also fit inside the same safe area.",
     clip.faceCompositing === "masked"
       ? `Keep the complete outer silhouette of the head or front — ears, hair, fur, shell, casing, windshield frame — on this body layer. The face region is ${faceRegion(source)}. Paint a flat solid magenta face opening behind any hand, cup, instrument, or other foreground object that crosses the face. Those foreground objects stay fully drawn in front of the magenta opening; never turn them magenta. Remove every facial feature from the visible opening and everywhere else on the body. ${accessoryFaces} Preserve the reference's pixel grid and hard pixel edges when it is pixel art.`
@@ -130,7 +135,7 @@ async function storeSheetAsset(
 
 async function buildClip(
   job: Job, stickerId: string, assetJobId: string, layer: PlanV1["layers"][number], source: SpriteSource,
-  clip: SpriteSource["clips"][number], references: Reference[],
+  clip: SpriteSource["clips"][number], references: Reference[], stayPut: boolean,
 ): Promise<SpriteBuild["clips"][number]> {
   const grid = spriteSheetGrid(clip.frames.length);
   const frameCount = clip.frames.length;
@@ -149,7 +154,7 @@ async function buildClip(
         faceCompositing: clip.faceCompositing,
         registeredFrames: verdict.faceFrames,
       });
-    });
+    }, stayPut ? anchorSpriteFrames : undefined);
   };
   // Layout and visual inspection share a single retry budget for this sheet.
   const { prepared, recoveredSavedSheet } = await drawSheet({
@@ -158,7 +163,7 @@ async function buildClip(
       assetId: ids.raw, references, mode: "conversation_edit", keepFrame: true, quality: "medium",
       sheet: { ...grid, count: frameCount, facePlaceholder: true, faceRegion: source.face },
       sequence: { ...grid, frameCount, frameRate: frameCount / durationSeconds },
-      prompt: spriteClipPrompt(layer, source, clip, references.length > 2, feedback),
+      prompt: spriteClipPrompt(layer, source, clip, references.length > 2, feedback, stayPut),
     }),
     note: (error) => error instanceof SheetRejected
       ? "Redrawing the sheet with the reviewer's notes"
@@ -241,6 +246,8 @@ async function buildExpressions(
 export async function generateSpriteArtwork(
   job: Job, stickerId: string, plan: PlanV1, assetJobId: string, reference: Reference | undefined,
   animationSummary?: Reference,
+  /** The sticker was asked not to move around: every clip's frames stand on frame 1's ground line. */
+  options: { stayPut?: boolean } = {},
 ): Promise<Map<string, SpriteBuild>> {
   const builds = new Map<string, SpriteBuild>();
   const sprites = planSpriteLayers(plan);
@@ -306,7 +313,7 @@ export async function generateSpriteArtwork(
       const reused = reusedKeys.has(key);
       const call = reused ? undefined : await beginToolCall(job, "build-plan", undefined, label);
       try {
-        const built = await buildClip(job, stickerId, assetJobId, layer, source, clip, references);
+        const built = await buildClip(job, stickerId, assetJobId, layer, source, clip, references, options.stayPut ?? false);
         await saveBuildCheckpoint(job, assetJobId, key, built);
         clips.push(built);
       } catch (error) {

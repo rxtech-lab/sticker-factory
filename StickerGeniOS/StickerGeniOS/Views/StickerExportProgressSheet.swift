@@ -212,8 +212,14 @@ struct StickerExportProgressSheet: View {
                 }
                 if let detail = step.detail {
                     Text(detail)
-                        .font(.caption)
+                        .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                }
+                if let bytes = step.bytes, step.state == .running {
+                    ProgressView(value: bytes.fraction)
+                        .tint(AppColors.accent)
+                        .padding(.top, 4)
+                        .accessibilityIdentifier("export-step-\(step.id)-bytes")
                 }
             }
             .padding(.bottom, isLast ? 0 : 14)

@@ -270,3 +270,72 @@ export async function padGeneratedAtlas(bytes: Uint8Array, grid: Grid): Promise<
   return sharp({ create: { width: info.width, height: info.height, channels: 4, background: "#00000000" } })
     .composite(tiles).png().toBuffer();
 }
+
+/**
+ * Stands every frame of a clip on the same ground line as frame 1.
+ *
+ * For a sticker that was asked to stay put. The prompt asks the model to keep the body anchored,
+ * but it routinely draws each cell a little higher or lower — a hop or a breath it was not asked
+ * for — and the inspector deliberately tolerates small offsets, so played back the character bobs
+ * up and down in place. This is the deterministic floor under that prompt, the way
+ * `withoutLayerTravel` is for layer motion.
+ *
+ * The anchor is the lowest row of each frame's real artwork (specks ignored): the feet or base.
+ * Aligning it rather than the centre keeps squash, stretch, raised arms and perked ears intact,
+ * because those move the top of the silhouette while the feet stay where they are. Only vertical
+ * offsets are removed, and each shift is clamped so the drawing keeps its cell's safe margin — a
+ * frame that cannot move all the way moves as far as it can rather than failing the sheet.
+ *
+ * Expects a sheet that already passed `validateGeneratedAtlas`, so every drawing sits inside its
+ * own cell. Returns the input unchanged when every frame is already on frame 1's line.
+ */
+export async function anchorSpriteFrames(bytes: Uint8Array, grid: Grid): Promise<Uint8Array> {
+  const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const width = Math.floor(info.width / grid.columns), height = Math.floor(info.height / grid.rows);
+  const { blobs } = labelBlobs(data, info, { width, height, columns: grid.columns, rows: grid.rows });
+  const marginY = Math.max(1, Math.round(height * CELL_SAFE_MARGIN));
+
+  // Per frame: the ground line from real artwork, and the full visible extent that has to stay
+  // inside the margin once shifted.
+  const frames = Array.from({ length: grid.frameCount }, () => ({ ground: -1, top: Infinity, bottom: -1 }));
+  for (const blob of blobs) {
+    let owner = -1, ownerArea = 0;
+    for (const [cell, area] of blob.cellArea) {
+      if (area > ownerArea) { owner = cell; ownerArea = area; }
+    }
+    if (owner < 0 || owner >= grid.frameCount) continue;
+    const oy = Math.floor(owner / grid.columns) * height;
+    const frame = frames[owner];
+    frame.top = Math.min(frame.top, blob.top - oy);
+    frame.bottom = Math.max(frame.bottom, blob.bottom - oy);
+    if (blob.area > width * height * SPECK_CELL_AREA) frame.ground = Math.max(frame.ground, blob.bottom - oy);
+  }
+  const target = frames[0]?.ground ?? -1;
+  if (target < 0) return bytes;
+
+  const shifts = frames.map((frame) => {
+    if (frame.ground < 0) return 0;
+    const wanted = target - frame.ground;
+    const lowest = marginY - frame.top, highest = height - marginY - 1 - frame.bottom;
+    return Math.min(Math.max(wanted, Math.min(0, lowest)), Math.max(0, highest));
+  });
+  if (shifts.every((shift) => shift === 0)) return bytes;
+
+  const output = Buffer.from(data);
+  for (let frame = 0; frame < grid.frameCount; frame++) {
+    const shift = shifts[frame];
+    if (shift === 0) continue;
+    const ox = (frame % grid.columns) * width, oy = Math.floor(frame / grid.columns) * height;
+    const rowBytes = width * info.channels;
+    // Cleared first, then every source row written to its shifted row, so the move cannot read a
+    // row it has already overwritten.
+    for (let y = 0; y < height; y++) output.fill(0, ((oy + y) * info.width + ox) * info.channels, ((oy + y) * info.width + ox) * info.channels + rowBytes);
+    for (let y = 0; y < height; y++) {
+      const to = y + shift;
+      if (to < 0 || to >= height) continue;
+      const from = ((oy + y) * info.width + ox) * info.channels;
+      data.copy(output, ((oy + to) * info.width + ox) * info.channels, from, from + rowBytes);
+    }
+  }
+  return sharp(output, { raw: { width: info.width, height: info.height, channels: info.channels } }).png().toBuffer();
+}

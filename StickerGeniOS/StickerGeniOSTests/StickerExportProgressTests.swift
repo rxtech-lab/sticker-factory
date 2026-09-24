@@ -255,4 +255,46 @@ struct StickerExportProgressTests {
 
         #expect(progress.outcome == .running)
     }
+
+    @Test("Upload bytes show on the running upload step and clear when it ends")
+    func uploadBytes() {
+        let progress = StickerExportProgress(stages: [.upload, .publish], isPublish: true)
+        progress.begin(.upload)
+        progress.reportBytes(sent: 1_500_000, total: 3_000_000, for: .upload)
+        let upload = progress.steps.first { $0.stage == .upload }
+        #expect(upload?.bytes == .init(sent: 1_500_000, total: 3_000_000))
+        #expect(upload?.bytes?.fraction == 0.5)
+        #expect(upload?.detail == UploadByteText.text(sent: 1_500_000, total: 3_000_000))
+
+        // A late callback for a step that has moved on must not reappear on it.
+        progress.begin(.publish)
+        progress.reportBytes(sent: 3_000_000, total: 3_000_000, for: .upload)
+        let finished = progress.steps.first { $0.stage == .upload }
+        #expect(finished?.bytes == nil)
+        #expect(finished?.detail == nil)
+    }
+
+    @Test("Upload tally sums concurrent files and forgives a dropped one")
+    func uploadTally() {
+        let progress = StickerExportProgress(stages: [.upload], isPublish: true)
+        progress.begin(.upload)
+        let tally = UploadTally(sizes: [.apng: 600, .webp: 400], progress: progress)
+        #expect(progress.steps[0].bytes == .init(sent: 0, total: 1_000))
+        tally.update(.apng, sent: 600)
+        tally.update(.webp, sent: 100)
+        #expect(progress.steps[0].bytes == .init(sent: 700, total: 1_000))
+        // A progress figure arriving out of order never moves the bar backwards.
+        tally.update(.apng, sent: 300)
+        #expect(tally.sentBytes == 700)
+        tally.drop(.webp)
+        #expect(progress.steps[0].bytes == .init(sent: 600, total: 600))
+    }
+
+    @Test("Byte text uses KB for small files and never overshoots")
+    func byteText() {
+        #expect(UploadByteText.text(sent: 0, total: 0) == UploadByteText.text(sent: 5, total: 0))
+        #expect(UploadByteText.format(240_000).contains("KB"))
+        #expect(UploadByteText.format(8_400_000).contains("MB"))
+        #expect(UploadByteText.text(sent: 9_000, total: 4_000) == UploadByteText.text(sent: 4_000, total: 4_000))
+    }
 }

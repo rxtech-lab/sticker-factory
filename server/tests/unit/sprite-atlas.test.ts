@@ -1,6 +1,6 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import sharp from "sharp";
-import { padGeneratedAtlas, validateGeneratedAtlas } from "@/lib/render/sprite-atlas";
+import { anchorSpriteFrames, padGeneratedAtlas, validateGeneratedAtlas } from "@/lib/render/sprite-atlas";
 import { registerFaceSlots } from "@/lib/render/sprite-registration";
 
 const grid = { columns: 3, rows: 2, frameCount: 6 };
@@ -99,4 +99,59 @@ it("erases a speck left in a cell nothing was asked for", async () => {
 it("does not manufacture a missing frame", async () => {
   const empty = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#00000000" } }).png().toBuffer();
   await expect(padGeneratedAtlas(empty, grid)).rejects.toThrow("empty sprite frame");
+});
+
+describe("anchorSpriteFrames", () => {
+  const steadyGrid = { columns: 2, rows: 2, frameCount: 4 };
+  // 512px cells. Each frame is a body standing on `ground`, with a face placeholder on it.
+  const body = (cell: number, ground: number, height = 200) => {
+    const x = (cell % 2) * 512 + 156, y = Math.floor(cell / 2) * 512 + ground - height;
+    return `<rect x="${x}" y="${y}" width="200" height="${height}" fill="blue"/><ellipse cx="${x + 100}" cy="${y + 60}" rx="40" ry="30" fill="#ff00ff"/>`;
+  };
+  const render = (frames: string) => sharp(Buffer.from(`<svg width="1024" height="1024">${frames}</svg>`)).png().toBuffer();
+  const groundOf = async (bytes: Uint8Array, cell: number) => {
+    const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const ox = (cell % 2) * 512, oy = Math.floor(cell / 2) * 512;
+    let ground = -1;
+    for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
+      if (data[((oy + y) * info.width + ox + x) * 4 + 3] > 24) ground = y;
+    }
+    return ground;
+  };
+
+  it("stands every frame on frame 1's ground line", async () => {
+    // A bob the model drew but nobody asked for: frames 2-4 sit higher than frame 1.
+    const bytes = await render([body(0, 420), body(1, 380), body(2, 350), body(3, 400)].join(""));
+    const anchored = await anchorSpriteFrames(bytes, steadyGrid);
+    await expect(validateGeneratedAtlas(anchored, steadyGrid)).resolves.toBeUndefined();
+    const grounds = await Promise.all([0, 1, 2, 3].map((cell) => groundOf(anchored, cell)));
+    expect(new Set(grounds).size).toBe(1);
+    expect(grounds[0]).toBe(await groundOf(bytes, 0));
+    // The face moved with the body, so it still registers in every frame.
+    expect((await registerFaceSlots(anchored, steadyGrid)).frames).toHaveLength(4);
+  });
+
+  it("keeps a stretch that only moves the top of the silhouette", async () => {
+    // Same feet, taller body: nothing to correct.
+    const bytes = await render([body(0, 420), body(1, 420, 260), body(2, 420, 170), body(3, 420)].join(""));
+    expect(await anchorSpriteFrames(bytes, steadyGrid)).toBe(bytes);
+  });
+
+  it("moves a frame only as far as its cell's safe margin allows", async () => {
+    // Frame 2 stands lower than frame 1 and is nearly as tall as its cell: lifting it all the way
+    // to frame 1's line would push its head past the top margin, so it rises only to the margin.
+    const bytes = await render([body(0, 400), body(1, 470, 440), body(2, 400), body(3, 400)].join(""));
+    const anchored = await anchorSpriteFrames(bytes, steadyGrid);
+    await expect(validateGeneratedAtlas(anchored, steadyGrid)).resolves.toBeUndefined();
+    const before = await groundOf(bytes, 1), after = await groundOf(anchored, 1);
+    expect(after).toBeLessThan(before);
+    expect(after).toBeGreaterThan(await groundOf(anchored, 0));
+  });
+
+  it("ignores specks when finding the ground line", async () => {
+    // A stray dot under frame 1's feet: counted as ground, it would drag every other frame down.
+    const speck = '<rect x="250" y="455" width="2" height="2" fill="blue"/>';
+    const bytes = await render([body(0, 420), body(1, 420), body(2, 420), body(3, 420), speck].join(""));
+    expect(await anchorSpriteFrames(bytes, steadyGrid)).toBe(bytes);
+  });
 });
