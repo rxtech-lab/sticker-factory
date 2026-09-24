@@ -60,6 +60,7 @@ export class MockAiProvider implements AiProvider {
       .toBuffer();
     const normalized = await normalizeTransparentPng(bytes, {
       subjectCrop: !input.mask && !input.keepFrame,
+      pixelArt: input.pixelArt,
     });
     return { bytes: normalized.bytes, mimeType: "image/png", subject: normalized.subject };
   }

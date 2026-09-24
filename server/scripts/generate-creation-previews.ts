@@ -13,7 +13,7 @@ import { createSticker, createChatTurn, retryFailedChatTurn } from '@/lib/servic
 import { confirmPlan } from '@/lib/services/plans';
 import { MemoryObjectStore, setObjectStoreForTests, inspectImage, type StoredObject } from '@/lib/storage/r2';
 import { stickerGenerationWorkflow } from '@/workflows/sticker-generation';
-import { creationPresetCatalog } from '@/lib/creation-presets/catalog';
+import { creationPresetCatalog, PIXEL_ART_STYLE_IDS } from '@/lib/creation-presets/catalog';
 import { StickerDocumentSchema, resolveStickerConfiguration } from '@/lib/contracts/sticker';
 import { prepareRenditionAssets, animatedRenditionTiming } from '@/lib/render/renditions';
 import { referencedAssetIds } from '@/lib/render/sticker-render';
@@ -166,7 +166,7 @@ try {
         const fitted = [];
         for (const pixels of frames) {
           fitted.push(await sharp(pixels, { raw: { width: size, height: size, channels: 4 } })
-            .extract(crop).resize(previewSize, previewSize, { fit: 'contain', background: '#00000000', kernel: optionID === 'pixel' ? 'nearest' : 'lanczos3' })
+            .extract(crop).resize(previewSize, previewSize, { fit: 'contain', background: '#00000000', kernel: PIXEL_ART_STYLE_IDS.has(optionID) ? 'nearest' : 'lanczos3' })
             .raw().toBuffer());
         }
         const distinct = new Set(fitted.map(frame => createHash('sha256').update(frame).digest('hex')));

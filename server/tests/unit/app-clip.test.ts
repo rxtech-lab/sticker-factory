@@ -49,6 +49,10 @@ it("gates Clip operations from verified identity and blocks ordinary export/retr
     expect(() => assertAppClipRoute(new Request(`https://sticker.rxlab.app${path}`, { method: "POST" }), clip)).toThrow();
   }
   expect(() => assertAppClipRoute(new Request("https://sticker.rxlab.app/api/v1/stickers", { method: "POST" }), clip)).not.toThrow();
+  for (const path of ["/api/v1/stickers", "/api/v1/stickers/a/playback"]) {
+    expect(() => assertAppClipRoute(new Request(`https://sticker.rxlab.app${path}`), clip)).not.toThrow();
+  }
+  expect(() => assertAppClipRoute(new Request("https://sticker.rxlab.app/api/v1/stickers/a/exports"), clip)).toThrow();
 });
 
 function billing(planKey = "free") {

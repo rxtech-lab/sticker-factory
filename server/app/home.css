@@ -13,11 +13,13 @@
 .platform-pills span:nth-child(2) { background: #c2e9ff; }
 .platform-pills span:nth-child(3) { background: #e5ddff; }
 .winky-art { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; border-radius: 24px; }
+.winky-animated { position: relative; display: block; width: 100%; aspect-ratio: 1; }
+.winky-animated .winky-art { position: absolute; inset: 0; height: 100%; }
 .winky-studio { background: #dcd4fb; border: 2px solid var(--ink); border-radius: 28px; padding: 20px; box-shadow: 10px 12px 0 var(--ink); transform: rotate(2deg); }
 .studio-top { display: flex; justify-content: space-between; gap: 10px; font: 700 10px var(--font-mono); letter-spacing: .08em; padding: 2px 0 18px; }
 .studio-prompt { background: var(--card); border: 2px solid var(--ink); border-radius: 16px 16px 4px 16px; padding: 14px 16px; font-size: 15px; font-weight: 600; transform: rotate(-3deg); }
 .studio-art { position: relative; padding: 20px; }
-.studio-art > .winky-art:first-child { width: 100%; }
+.studio-art > .winky-animated:first-child { width: 100%; }
 .studio-art .studio-sidekick { position: absolute; width: 35%; bottom: 0; left: -20px; transform: rotate(-12deg); }
 .studio-stamp { position: absolute; right: -8px; top: 30px; background: var(--lime); border: 2px solid var(--ink); border-radius: 50%; width: 90px; height: 90px; display: grid; place-content: center; text-align: center; font: 700 17px/1.1 var(--font-display); transform: rotate(12deg); box-shadow: var(--shadow-sm); }
 .studio-caption { display: flex; gap: 12px; justify-content: space-between; align-items: center; border-top: 1px solid var(--ink); padding-top: 16px; font-size: 11px; }
@@ -36,7 +38,8 @@
 .export-note { display: flex; gap: 24px; margin-top: 38px; border-block: 1px solid var(--ink); padding-block: 22px; font-size: 15px; }
 .export-note strong { flex: none; }
 .motion-stage { background: #e3dcff; color: var(--ink); border: 2px solid var(--ink); border-radius: 50% 50% 24px 24px; padding: 40px 24px 24px; text-align: center; box-shadow: 8px 9px 0 var(--ink); }
-.motion-stage .winky-art { max-width: 360px; margin: 24px auto; }
+.motion-stage .winky-animated { max-width: 360px; margin: 24px auto; }
+.motion-stage .winky-animated .winky-art { max-width: none; margin: 0; }
 .motion-stage-label, .motion-stage-foot { font: 700 11px/1.5 var(--font-mono); }
 .winky-home em { color: var(--lime); }
 .revision-art { display: grid; grid-template-columns: 1fr 1fr; align-items: center; position: relative; }
@@ -44,7 +47,8 @@
 .revision-art .winky-art:last-child { transform: rotate(12deg); margin-top: 100px; }
 .revision-art > span { position: absolute; left: 44%; top: 22%; font-size: 60px; }
 .winky-home .pack-sample { width: 100%; max-width: 440px; }
-.winky-home .pack-sample-cover { padding: 0; }
+.winky-home .pack-sample-cover { display: block; aspect-ratio: 3 / 2; padding: 0; overflow: hidden; }
+.pack-sample-collage { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 14px; }
 /* Reserve answer room in both states. Long answers scroll within the card,
    including with enlarged text, so toggling never changes the section height. */
 .winky-home #faq { padding-block: 120px; }
@@ -97,7 +101,9 @@
 
 /* Idle motion runs independently of the page's scroll-driven reveals. */
 @media (prefers-reduced-motion: no-preference) {
-  .winky-home .studio-art > .winky-art:first-child {
+  .winky-home .winky-wink-frame { animation: winky-eye-cycle 3.8s ease-in-out infinite; }
+  .winky-home .motion-stage .winky-wink-frame { animation-duration: 2.8s; }
+  .winky-home .studio-art > .winky-animated:first-child {
     transform-origin: 50% 85%;
     animation: winky-bob 3.4s ease-in-out infinite;
   }
@@ -113,8 +119,10 @@
   .winky-home .feature-card:nth-child(2) .winky-art { animation-delay: -1.3s; }
   .winky-home .feature-card:nth-child(3) .winky-art { animation-delay: -2.6s; }
   .winky-home .motion-loop { animation: winky-bob 2.6s ease-in-out infinite; }
-  .winky-home .pack-sample-cover .winky-art { animation: winky-nod 3.6s ease-in-out infinite; }
-  .winky-home .pack-sample-cover .winky-art:nth-child(2n) { animation-delay: -1.8s; animation-direction: reverse; }
+}
+@keyframes winky-eye-cycle {
+  0%, 46%, 62%, 100% { opacity: 0; }
+  49%, 59% { opacity: 1; }
 }
 @keyframes winky-bob {
   0%, 100% { translate: 0 0; rotate: -2deg; }

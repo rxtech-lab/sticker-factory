@@ -7,6 +7,7 @@ import { type Database } from "@/lib/db/client";
 import { assets, stickerRevisions, stickers, stickerPacks, stickerPackItems, packInstalls } from "@/lib/db/schema";
 import { preparePlaybackBundle, getStickerPlayback } from "@/lib/services/playback";
 import { getReadableAsset } from "@/lib/services/assets";
+import { getPublicPack, getPublicPackPlayback } from "@/lib/services/public-packs";
 import { saveEditedRevision } from "@/lib/services/sticker-revisions";
 import { listLibrarySections } from "@/lib/services/packs";
 import { MemoryObjectStore, setObjectStoreForTests, objectKey, inspectImage } from "@/lib/storage/r2";
@@ -65,6 +66,32 @@ describe("published configurable playback", () => {
     await expect(getStickerPlayback(db, "installer", sticker.stickerId)).rejects.toMatchObject({ status: 404 });
     await expect(getReadableAsset(db, "installer", bundle.assetIds[0])).rejects.toMatchObject({ status: 404 });
     expect((await getStickerPlayback(db, "owner", sticker.stickerId)).revisionId).toBe(revisionId);
+  });
+  it("serves shared-pack viewers the bundle with signed artwork while the pack link is live", async () => {
+    const { sticker, revisionId, bundle, packId } = await published();
+    expect((await getPublicPack(db, "controls")).stickers[0].playbackRevisionId).toBe(revisionId);
+    const shared = await getPublicPackPlayback(db, "controls", sticker.stickerId);
+    const owner = await getStickerPlayback(db, "owner", sticker.stickerId);
+    expect(shared.revisionId).toBe(revisionId);
+    expect(shared.document).toEqual(owner.document);
+    expect(shared.assets.map(({ id }) => id)).toEqual(owner.assets.map(({ id }) => id));
+    expect(shared.assets.every((asset) => asset.url.length > 0)).toBe(true);
+    expect(JSON.stringify(shared)).not.toContain("private-reference");
+    expect(bundle.assetIds).toHaveLength(2);
+    await expect(getPublicPackPlayback(db, "controls", crypto.randomUUID())).rejects.toMatchObject({ status: 404 });
+    await expect(getPublicPackPlayback(db, "missing", sticker.stickerId)).rejects.toMatchObject({ status: 404 });
+    await db.update(stickerPacks).set({ state: "unlisted" }).where(eq(stickerPacks.id, packId));
+    expect((await getPublicPackPlayback(db, "controls", sticker.stickerId)).revisionId).toBe(revisionId);
+    await db.update(stickerPacks).set({ state: "draft" }).where(eq(stickerPacks.id, packId));
+    await expect(getPublicPackPlayback(db, "controls", sticker.stickerId)).rejects.toMatchObject({ code: "PLAYBACK_NOT_FOUND" });
+  });
+  it("does not expose poses for stickers without a published bundle", async () => {
+    const plain = await seedPublishedSticker(db, "owner");
+    const packId = crypto.randomUUID();
+    await db.insert(stickerPacks).values({ id: packId, creatorId: "owner", slug: "plain", title: "Plain", state: "published" });
+    await db.insert(stickerPackItems).values({ packId, stickerId: plain.stickerId });
+    expect((await getPublicPack(db, "plain")).stickers[0].playbackRevisionId).toBeNull();
+    await expect(getPublicPackPlayback(db, "plain", plain.stickerId)).rejects.toMatchObject({ code: "PLAYBACK_NOT_FOUND" });
   });
   it("rejects incomplete bundles, unapproved source changes, and legacy destructive edits", async () => {
     const { sticker, revisionId, bundle, document } = await published();

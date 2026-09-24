@@ -5,7 +5,7 @@ import { CreateStickerRequestSchema } from "@/lib/contracts/api";
 import { GET } from "@/app/api/v1/creation-presets/route";
 import { creationPresetCatalog } from "@/lib/creation-presets/catalog";
 import { CreationPresetCatalogSchema, CreationPresetSubmissionSchema } from "@/lib/contracts/creation-presets";
-import { creationPresetDisplay, creationPresetGuidance, resolveCreationPresets } from "@/lib/creation-presets/selection";
+import { creationPresetDisplay, creationPresetGuidance, presetUsesPixelArt, resolveCreationPresets } from "@/lib/creation-presets/selection";
 
 const selection = (themes: string[] = []) => ({ catalogVersion: creationPresetCatalog.version,
   selections: [{ groupId: "style", optionIds: ["clay"] }, { groupId: "theme", optionIds: themes }] });
@@ -23,12 +23,21 @@ describe("creation presets", () => {
     expect(CreateStickerRequestSchema.parse(legacy).presets).toBeUndefined();
     expect(CreateStickerRequestSchema.parse({ ...legacy, presets: selection(["space"]) }).presets).toEqual(selection(["space"]));
   });
-  it("serves six styles and six themes without agent prompts", async () => {
+  it("serves seven styles and six themes without agent prompts", async () => {
     const response = GET();
     const catalog = await response.json();
-    expect(catalog.groups.map((g: { options: unknown[] }) => g.options.length)).toEqual([6, 6]);
+    expect(catalog.groups.map((g: { options: unknown[] }) => g.options.length)).toEqual([7, 6]);
+    expect(catalog.groups[0].options.map((o: { id: string }) => o.id)).toContain("blocky-pixel");
     expect(JSON.stringify(catalog)).not.toContain('"prompt"');
     expect(response.headers.get("cache-control")).toContain("must-revalidate");
+  });
+  it("marks only pixel styles as pixel art", () => {
+    const pick = (style: string) => resolveCreationPresets({ ...selection(), selections: [{ groupId: "style", optionIds: [style] }] });
+    expect(presetUsesPixelArt(pick("blocky-pixel"))).toBe(true);
+    expect(presetUsesPixelArt(pick("pixel"))).toBe(true);
+    expect(presetUsesPixelArt(pick("clay"))).toBe(false);
+    expect(presetUsesPixelArt(null)).toBe(false);
+    expect(creationPresetGuidance(pick("blocky-pixel"))).toContain("very coarse square grid");
   });
   it("accepts one style, optional themes and two themes", () => {
     expect(resolveCreationPresets(selection())?.selections).toHaveLength(1);

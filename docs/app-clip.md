@@ -4,6 +4,7 @@
 
 - `https://sticker.rxlab.app/share/ios`: RxLab sign-in, static quick generation from text and an optional photo, revision, and PNG sharing.
 - `https://sticker.rxlab.app/share/ios/packs/{slug}`: public published/unlisted pack preview. Install opens `https://apps.apple.com/app/id6805825708`.
+- Tapping a sticker (pack tile or library detail artwork) opens `ClipStickerViewer` full screen. Controllable stickers play live with the pose/mood controls; pack viewers read `GET /api/v1/public/packs/{slug}/stickers/{id}/playback` (no auth, signed asset URLs), signed-in owners read `/api/v1/stickers/{id}/playback`. This links `AnimatedView`, `StickerPlaybackShared` and `libwebp` into the Clip, so check the App Thinning size report stays under the App Clip limit.
 - Installed full apps handle the same URLs: normal point-billed quick mode, or the matching marketplace pack.
 - Library toolbar and marketplace pack detail share these canonical URLs.
 - The App Clip uses iOS 26, bundle ID `app.rxlab.stickerfactory.Clip`, and the existing distribution team `T7GYB573Y6`.

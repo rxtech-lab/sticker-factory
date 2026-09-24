@@ -6,6 +6,9 @@
  *   # inspect public/images/creation/v3/review/references.png
  *   bun scripts/generate-mascot-creation-v3.ts build
  *
+ * Pass an option id after the phase (e.g. `references blocky-pixel`, `build blocky-pixel`) to
+ * regenerate just that option; a filtered build refreshes the bundled catalog but not app assets.
+ *
  * The second stage refuses to run until all twelve static references exist. It uses the normal
  * sprite compositor and document renderer to export every pose/mood preview.
  */
@@ -46,6 +49,7 @@ const options = [
   { id: "kawaii", kind: "style", title: "Kawaii" },
   { id: "clay", kind: "style", title: "3D Clay" },
   { id: "pixel", kind: "style", title: "Pixel Art" },
+  { id: "blocky-pixel", kind: "style", title: "Blocky Pixel" },
   { id: "watercolor", kind: "style", title: "Watercolor" },
   { id: "paper-cut", kind: "style", title: "Paper Cut" },
   { id: "everyday", kind: "theme", title: "Everyday Reactions" },
@@ -56,6 +60,25 @@ const options = [
   { id: "fantasy", kind: "theme", title: "Fantasy" },
 ] as const;
 type Option = typeof options[number];
+const only = process.argv[3];
+if (only && !options.some(option => option.id === only)) throw new Error(`Unknown option ${only}`);
+const selected = options.filter(option => !only || option.id === only);
+
+/** Blocks across the whole canvas for Blocky Pixel: 64px blocks at 1024, 32px at 512, 20px in a 320 preview. */
+const BLOCKY_GRID = 16;
+const isBlocky = (option: Option) => option.id === "blocky-pixel";
+
+/**
+ * Rasterizes the mascot, and for Blocky Pixel snaps it onto a coarse grid: sample one colour per
+ * block, make each block fully opaque or fully transparent, and scale back up with hard edges.
+ */
+async function rasterize(option: Option, svg: string, size: number, grid = BLOCKY_GRID): Promise<Buffer> {
+  const png = await sharp(Buffer.from(svg)).png().toBuffer();
+  if (!isBlocky(option)) return png;
+  const { data } = await sharp(png).resize(grid, grid, { kernel: "nearest" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let index = 3; index < data.length; index += 4) data[index] = data[index] >= 128 ? 255 : 0;
+  return sharp(data, { raw: { width: grid, height: grid, channels: 4 } }).resize(size, size, { kernel: "nearest" }).png().toBuffer();
+}
 
 function uuid(label: string): string {
   const hex = createHash("sha256").update(`mascot-v3:${label}`).digest("hex").slice(0, 32).split("");
@@ -81,6 +104,9 @@ function optionLook(option: Option): { defs: string; body: string; outline: stri
   };
   if (option.id === "pixel") return {
     defs: common, body: "#ffc2cb", outline: "#bd6b82", extras: `<g fill="#fff" opacity=".5" shape-rendering="crispEdges"><rect x="270" y="245" width="34" height="34"/><rect x="304" y="211" width="34" height="34"/><rect x="760" y="570" width="34" height="34"/></g>`, pixel: true,
+  };
+  if (isBlocky(option)) return {
+    defs: common, body: "#e8836b", outline: "none", extras: "", pixel: true,
   };
   if (option.id === "kawaii") return {
     defs: common, body: "#ffcbd4", outline: "#f09aae", extras: `<g fill="#f58ca8" opacity=".36"><ellipse cx="420" cy="520" rx="46" ry="23"/><ellipse cx="765" cy="455" rx="35" ry="19"/></g>`, pixel: false,
@@ -138,11 +164,16 @@ function mascotSvg(option: Option, pose: Pose, mood: Mood, frame: number, size =
   const group = `translate(${m.x} ${m.y}) rotate(${m.rotate} 512 512) skewX(${m.skew}) translate(${512 * (1 - m.sx)} ${790 * (1 - m.sy)}) scale(${m.sx} ${m.sy})`;
   const extraMouth = special === "body" ? "" : concerned ? `<path d="M585 585Q622 545 662 580" fill="none" stroke="#743b4c" stroke-width="14" stroke-linecap="round"/>` : special === "stale" ? `<path d="M590 558Q620 535 650 555" fill="none" stroke="#743b4c" stroke-width="14" stroke-linecap="round"/>` : mouth(mood);
   const pixels = look.pixel ? ` shape-rendering="crispEdges"` : "";
+  if (isBlocky(option)) {
+    // Flat colour, no outline, highlight or eye shine: the grid in `rasterize` supplies the look.
+    const legs = [192, 320, 448, 576].map(x => `<rect x="${x}" y="780" width="64" height="150" fill="${look.body}"/>`).join("");
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"${pixels}><g transform="${group}"><g id="body">${legs}<path d="${bodyPath}" fill="${look.body}"/></g><g id="eyes" transform="translate(${gx} ${gy})"><rect x="440" y="${330 - 64 * eyeScale}" width="112" height="${Math.max(24, 128 * eyeScale)}" fill="#231f20"/><rect x="640" y="${330 - 64 * eyeScale}" width="104" height="${Math.max(24, 128 * eyeScale)}" fill="#231f20"/></g><g id="mouth">${extraMouth}</g></g></svg>`;
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"${pixels}><defs>${look.defs}<radialGradient id="eye" cx="36%" cy="28%" r="70%"><stop stop-color="#50515a"/><stop offset=".38" stop-color="#17181d"/><stop offset="1" stop-color="#050507"/></radialGradient></defs>${themeExtras(option)}<g transform="${group}"><g id="body" filter="${["clay", "watercolor", "paper-cut"].includes(option.id) ? "url(#bodyFx)" : "none"}">${look.extras}<path d="${bodyPath}" fill="${look.body}" stroke="${look.outline}" stroke-width="${look.pixel ? 20 : 12}" stroke-linejoin="round"/><path d="M260 250Q390 135 545 150" fill="none" stroke="#fff" stroke-width="23" stroke-linecap="round" opacity=".72"/></g><g id="eyes" transform="translate(${gx} ${gy})"><g transform="translate(496 382) scale(1 ${eyeScale}) translate(-496 -382)"><ellipse cx="496" cy="382" rx="${leftEye[0]}" ry="${leftEye[1]}" fill="url(#eye)" stroke="#23242a" stroke-width="7"/><circle cx="468" cy="353" r="24" fill="#fff"/></g><g transform="translate(758 305) scale(1 ${eyeScale}) translate(-758 -305)"><ellipse cx="758" cy="305" rx="${rightEye[0]}" ry="${rightEye[1]}" fill="url(#eye)" stroke="#23242a" stroke-width="6"/><circle cx="738" cy="284" r="18" fill="#fff"/></g></g><g id="mouth">${extraMouth}</g></g></svg>`;
 }
 
 async function reference(option: Option): Promise<Buffer> {
-  return sharp(Buffer.from(mascotSvg(option, "idle", "happy", 0, 512))).png().toBuffer();
+  return rasterize(option, mascotSvg(option, "idle", "happy", 0, 512), 512);
 }
 
 async function contactSheet(items: Array<{ title: string; bytes: Buffer }>, columns: number, tile = 240): Promise<Buffer> {
@@ -159,10 +190,10 @@ async function contactSheet(items: Array<{ title: string; bytes: Buffer }>, colu
 async function buildReferences() {
   await mkdir(root, { recursive: true }); await mkdir(resolve(root, "review"), { recursive: true });
   const items: Array<{ title: string; bytes: Buffer }> = [];
-  for (const option of options) {
+  for (const option of selected) {
     const directory = resolve(root, option.id); await mkdir(directory, { recursive: true });
     const svg = mascotSvg(option, "idle", "neutral", 0, 1024);
-    const bytes = await sharp(Buffer.from(svg)).png().toBuffer();
+    const bytes = await rasterize(option, svg, 1024);
     await writeFile(resolve(directory, "reference.svg"), svg); await writeFile(resolve(directory, "reference.png"), bytes);
     items.push({ title: option.title, bytes });
   }
@@ -171,14 +202,21 @@ async function buildReferences() {
 }
 
 async function frameSheet(option: Option, pose: Pose): Promise<Buffer> {
-  const frames = await Promise.all(Array.from({ length: 6 }, (_, frame) => sharp(Buffer.from(mascotSvg(option, pose, "neutral", frame, 512, "body"))).png().toBuffer()));
+  const frames = await Promise.all(Array.from({ length: 6 }, (_, frame) => rasterize(option, mascotSvg(option, pose, "neutral", frame, 512, "body"), 512)));
   return sharp({ create: { width: 1536, height: 1024, channels: 4, background: "#00000000" } })
     .composite(frames.map((input, index) => ({ input, left: (index % 3) * 512, top: Math.floor(index / 3) * 512 }))).png().toBuffer();
 }
 
-async function expressionSheet(): Promise<Buffer> {
+async function expressionSheet(option: Option): Promise<Buffer> {
   const tile = (mood: Mood) => `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><g transform="translate(-366 -220)">${mouth(mood)}</g></svg>`;
-  const images = await Promise.all(moods.map(({ id }) => sharp(Buffer.from(tile(id))).png().toBuffer()));
+  // A face tile is drawn at about 0.38 of a 512 frame, so a 6-block tile lands near the body's block
+  // size. The smooth mouths are too thin to survive that grid, so Blocky Pixel draws its own blocks.
+  const cell = 512 / 6;
+  const blocks = (cells: Array<[number, number]>) => `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" shape-rendering="crispEdges">${cells.map(([x, y]) => `<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}" fill="#5a2a33"/>`).join("")}</svg>`;
+  const blockyMouth: Record<Mood, Array<[number, number]>> = { neutral: [], happy: [[2, 3], [3, 3]], surprised: [[2, 3], [2, 4]] };
+  const images = await Promise.all(moods.map(({ id }) => isBlocky(option)
+    ? sharp(Buffer.from(blocks(blockyMouth[id]))).png().toBuffer()
+    : rasterize(option, tile(id), 512)));
   return sharp({ create: { width: 1024, height: 1024, channels: 4, background: "#00000000" } }).composite([
     { input: images[0], left: 0, top: 0 }, { input: images[1], left: 512, top: 0 },
     { input: images[2], left: 0, top: 512 },
@@ -215,7 +253,7 @@ function documentFromTemplate(template: StickerDocument, option: Option, assetId
   return StickerDocumentSchema.parse(document);
 }
 
-async function renderPreview(document: StickerDocument, assets: RenderAssets, pose: Pose, mood: Mood): Promise<{ bytes: Buffer; distinct: number }> {
+async function renderPreview(option: Option, document: StickerDocument, assets: RenderAssets, pose: Pose, mood: Mood): Promise<{ bytes: Buffer; distinct: number }> {
   const resolvedDocument = resolveStickerConfiguration(document, { pose, mood });
   if (resolvedDocument.kind !== "animated") throw new Error("Expected an animated configured document");
   const timing = animatedRenditionTiming(resolvedDocument, 12); const size = 512; const preview = 320;
@@ -224,7 +262,7 @@ async function renderPreview(document: StickerDocument, assets: RenderAssets, po
   for (const time of timing.times) {
     const fragment = frameFragment(resolvedDocument, time, size, prepared, new IdFactory());
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><defs>${fragment.defs.join("")}</defs>${fragment.body}</svg>`;
-    frames.push(await sharp(Buffer.from(svg)).resize(preview, preview).ensureAlpha().raw().toBuffer());
+    frames.push(await sharp(Buffer.from(svg)).resize(preview, preview, isBlocky(option) ? { kernel: "nearest" } : {}).ensureAlpha().raw().toBuffer());
   }
   const hashes = new Set(frames.map(frame => createHash("sha256").update(frame).digest("hex")));
   if (hashes.size < 2) throw new Error(`${pose}/${mood} is not animated`);
@@ -241,7 +279,7 @@ async function buildOption(template: StickerDocument, option: Option) {
   const ids = new Map<string, string>(); const renderAssets: RenderAssets = new Map(); const files: Record<string, string> = {};
   const add = async (id: string, bytes: Buffer) => { renderAssets.set(id, { bytes: new Uint8Array(bytes), mimeType: "image/png" }); files[id] = `${id}.png`; await writeFile(resolve(assetsDirectory, files[id]), bytes); };
   await add(posterId, referenceBytes);
-  await add(expressionId, await expressionSheet());
+  await add(expressionId, await expressionSheet(option));
   for (const pose of poses) {
     const id = uuid(`${option.id}:${pose.id}`); ids.set(pose.id, id); await add(id, await frameSheet(option, pose.id));
   }
@@ -251,7 +289,7 @@ async function buildOption(template: StickerDocument, option: Option) {
   const examples: Array<{ pose: Pose; mood: Mood; file: string; frames: number; distinctFrames: number }> = [];
   const review: Array<{ title: string; bytes: Buffer }> = [];
   for (const pose of poses) for (const mood of moods) {
-    const rendered = await renderPreview(document, renderAssets, pose.id, mood.id);
+    const rendered = await renderPreview(option, document, renderAssets, pose.id, mood.id);
     const file = `${pose.id}-${mood.id}.gif`; await writeFile(resolve(directory, file), rendered.bytes);
     examples.push({ pose: pose.id, mood: mood.id, file, frames: 24, distinctFrames: rendered.distinct });
     review.push({ title: `${pose.label} · ${mood.label}`, bytes: await sharp(rendered.bytes).png().toBuffer() });
@@ -282,6 +320,10 @@ async function packageBundledDemo() {
   await writeFile(resolve(bundled, "creation-presets-preview.json"), JSON.stringify(publicCreationPresetCatalog(), null, 2) + "\n");
 }
 
+/** Poses like the bounce peak rise above the 1024 canvas (to y≈-41); widen it equally for every pose so none clips. */
+const activityPoseSvg = (...args: Parameters<typeof mascotSvg>) =>
+  mascotSvg(...args).replace('viewBox="0 0 1024 1024"', 'viewBox="-40 -60 1104 1104"');
+
 async function buildLiveActivityAssets() {
   const base = options[0];
   const states = [
@@ -292,11 +334,11 @@ async function buildLiveActivityAssets() {
   ] as const;
   for (const [name, pose, mood, frame, special] of states) {
     const imageset = resolve(activityAssets, `ActivityMascot${name}.imageset`); await mkdir(imageset, { recursive: true });
-    const bytes = await sharp(Buffer.from(mascotSvg(base, pose, mood, frame, 132, special))).resize(132, 132).png().toBuffer();
+    const bytes = await sharp(Buffer.from(activityPoseSvg(base, pose, mood, frame, 132, special))).resize(132, 132).png().toBuffer();
     await writeFile(resolve(imageset, `activity-mascot-${name.toLowerCase()}.png`), bytes);
     await writeFile(resolve(imageset, "Contents.json"), JSON.stringify({ images: [{ filename: `activity-mascot-${name.toLowerCase()}.png`, idiom: "universal", scale: "3x" }], info: { author: "xcode", version: 1 } }, null, 2));
   }
-  await writeFile(resolve(root, "review/live-activity-poses.png"), await contactSheet(await Promise.all(states.map(async ([name, pose, mood, frame, special]) => ({ title: name, bytes: await sharp(Buffer.from(mascotSvg(base, pose, mood, frame, 264, special))).resize(264, 264).png().toBuffer() }))), 4, 220));
+  await writeFile(resolve(root, "review/live-activity-poses.png"), await contactSheet(await Promise.all(states.map(async ([name, pose, mood, frame, special]) => ({ title: name, bytes: await sharp(Buffer.from(activityPoseSvg(base, pose, mood, frame, 264, special))).resize(264, 264).png().toBuffer() }))), 4, 220));
 }
 
 async function buildMessageIcons() {
@@ -317,13 +359,15 @@ async function buildMessageIcons() {
 }
 
 async function build() {
-  for (const option of options) {
+  for (const option of selected) {
     const metadata = await sharp(resolve(root, option.id, "reference.png")).metadata();
     if (metadata.width !== 1024 || metadata.height !== 1024) throw new Error(`Inspect and regenerate ${option.id} reference before build`);
   }
   const template = StickerDocumentSchema.parse(JSON.parse(await readFile(resolve("public/images/creation/v2/bold-cartoon/document.json"), "utf8")));
-  for (const option of options) await buildOption(template, option);
-  await packageBundledDemo(); await buildLiveActivityAssets(); await buildMessageIcons();
+  for (const option of selected) await buildOption(template, option);
+  await packageBundledDemo();
+  if (only) return console.log(`Built ${only} and refreshed the bundled catalog.`);
+  await buildLiveActivityAssets(); await buildMessageIcons();
   console.log("Built 288 looping previews, bundled demo assets, Live Activity poses, and 12 opaque Messages icons.");
 }
 

@@ -63,14 +63,14 @@ final class QuickModeModel {
         guard appClip else { return }
         do {
             allowance = try JSONDecoder().decode(QuickAllowance.self, from: await get("api/v1/app-clip/allowance"))
-        } catch { self.error = error.localizedDescription }
+        } catch { fail(error) }
     }
 
     func addPhoto(_ data: Data) {
         do {
             references = [try MessagesReferenceImageNormalizer.normalize(data, index: 0)]
         } catch {
-            self.error = error.localizedDescription
+            fail(error)
         }
     }
 
@@ -107,13 +107,13 @@ final class QuickModeModel {
                 }
                 persist()
                 try await finish()
-            } catch { self.error = error.localizedDescription }
+            } catch { fail(error) }
             await refreshAllowance()
         }
     }
 
     func resume() async {
-        do { try selectStorage(try await token(false)) } catch { self.error = error.localizedDescription; return }
+        do { try selectStorage(try await token(false)) } catch { fail(error); return }
         await refreshAllowance()
         guard !busy else { return }
         let pending = UserDefaults.standard.stringArray(forKey: defaultsKey)
@@ -128,7 +128,7 @@ final class QuickModeModel {
                 stickerID = pending[0]; jobID = pending[1]
             }
             try await finish()
-        } catch { self.error = error.localizedDescription }
+        } catch { fail(error) }
         await refreshAllowance()
     }
 
@@ -205,7 +205,7 @@ final class QuickModeModel {
         do {
             let snapshot = try await client.fetchSticker(stickerID: id, accessToken: token(false))
             try await loadResult(snapshot)
-        } catch { self.error = error.localizedDescription }
+        } catch { fail(error) }
         await refreshAllowance()
     }
 
@@ -250,13 +250,27 @@ final class QuickModeModel {
         shareURL = file
     }
 
-    func get(_ path: String, queryItems: [URLQueryItem] = []) async throws -> Data {
+    /// A request cut off because its view or scene went away is not a failure: the pending job is
+    /// still saved and the next `resume()` picks it up, so there is nothing to tell the reader.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+
+    private func fail(_ error: Error) {
+        guard !Self.isCancellation(error) else { return }
+        self.error = error.localizedDescription
+    }
+
+    func get(_ path: String, queryItems: [URLQueryItem] = [], headers: [String: String] = [:]) async throws -> Data {
         var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)!
         if !queryItems.isEmpty { components.queryItems = queryItems }
         guard let url = components.url else { throw MessagesStickerCreationError.invalidResponse }
         for attempt in 0...1 {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
+            for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
             request.setValue("Bearer \(try await token(attempt == 1))", forHTTPHeaderField: "Authorization")
             // The allowance endpoint reads the plan through the billing service, which selects its
             // key from this proof. Without it the App Clip cannot even ask what it is allowed.
@@ -282,6 +296,8 @@ struct QuickModeView: View {
     enum Presentation { case standalone, composer, detail }
     @State var model: QuickModeModel
     var presentation: Presentation = .standalone
+    /// Makes the result artwork tappable. The App Clip opens its full-screen viewer here.
+    var onOpenImage: ((UIImage) -> Void)?
     @State private var photo: PhotosPickerItem?
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
@@ -451,12 +467,7 @@ struct QuickModeView: View {
                 Text(presentation == .detail ? model.title : "Your sticker, fresh off the press")
                     .font(.title3.weight(.heavy))
                     .accessibilityAddTraits(.isHeader)
-                Image(uiImage: image)
-                    .resizable().scaledToFit().frame(maxHeight: 280)
-                    .padding(20)
-                    .frame(maxWidth: .infinity)
-                    .posterSurface(cornerRadius: 18, fill: AppColors.sky.opacity(0.25), offset: .zero)
-                    .accessibilityLabel("Generated sticker")
+                resultImage(image)
                 if let url = model.shareURL {
                     ShareLink(item: url) {
                         Label("Share sticker", systemImage: "square.and.arrow.up")
@@ -476,6 +487,30 @@ struct QuickModeView: View {
                 .buttonStyle(.posterSecondary)
                 .disabled(model.busy || model.revision.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || exhausted)
             }
+        }
+    }
+
+    @ViewBuilder private func resultImage(_ image: UIImage) -> some View {
+        let artwork = Image(uiImage: image)
+            .resizable().scaledToFit().frame(maxHeight: 280)
+            .padding(20)
+            .frame(maxWidth: .infinity)
+            .posterSurface(cornerRadius: 18, fill: AppColors.sky.opacity(0.25), offset: .zero)
+        if let onOpenImage {
+            Button { onOpenImage(image) } label: {
+                artwork.overlay(alignment: .topTrailing) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.footnote.weight(.bold))
+                        .padding(10)
+                        .accessibilityHidden(true)
+                }
+            }
+            .buttonStyle(.posterPlain)
+            .accessibilityLabel("Generated sticker")
+            .accessibilityHint("Opens full screen")
+            .accessibilityIdentifier("quick-result-image")
+        } else {
+            artwork.accessibilityLabel("Generated sticker")
         }
     }
 

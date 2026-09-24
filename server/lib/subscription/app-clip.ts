@@ -17,8 +17,8 @@ export function assertAppClipRoute(request: Request, principal: ApiPrincipal) {
   if (!isAppClipClient(principal)) return;
   const path = new URL(request.url).pathname;
   const read = request.method === "GET" && (
-    path === "/api/v1/app-clip/allowance" ||
-    /^\/api\/v1\/stickers\/[^/]+$/.test(path) ||
+    path === "/api/v1/app-clip/allowance" || path === "/api/v1/stickers" ||
+    /^\/api\/v1\/stickers\/[^/]+(?:\/playback)?$/.test(path) ||
     /^\/api\/v1\/jobs\/[^/]+(?:\/events)?$/.test(path) ||
     /^\/api\/v1\/assets\/[^/]+\/(download|preview)$/.test(path));
   const write = request.method === "POST" && (

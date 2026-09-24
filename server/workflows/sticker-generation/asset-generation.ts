@@ -2,7 +2,7 @@
 // measurement kept beside them, and the document a plan's layers assemble into.
 
 import { withPresetArtworkReferences } from "@/lib/creation-presets/references";
-import { loadCreationPresetGuidance, loadCreationPresetReferences } from "@/lib/creation-presets/guidance";
+import { loadCreationPresetGuidance, loadCreationPresetImageContext } from "@/lib/creation-presets/guidance";
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
 import sharp from "sharp";
@@ -13,7 +13,7 @@ import { applyStickerOperationsV1, CURRENT_DOCUMENT_VERSION, DOCUMENT_DURATION_S
 import { DEFAULT_ANCHOR } from "@/lib/contracts/animation";
 import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, generationJobs, stickers } from "@/lib/db/schema";
-import { getAiProvider, type AiImageReferenceCandidate } from "@/lib/ai/gateway";
+import { getAiProvider, type AiImageReferenceCandidate, type AiReferenceImage } from "@/lib/ai/gateway";
 import { clampLayoutOnCanvas } from "@/lib/layout/composition";
 import { suggestFreePlacement } from "@/lib/layout/placement";
 import { SubjectBoundsSchema, type SubjectBounds } from "@/lib/images/subject-bounds";
@@ -43,7 +43,7 @@ export async function generateAndStoreAsset(
   params: {
     assetId: string;
     prompt: string;
-    references: Array<{ bytes: Uint8Array; mimeType: string }>;
+    references: AiReferenceImage[];
     mask?: { bytes: Uint8Array; mimeType: string };
     conversationContext?: string;
     mode: "generate" | "conversation_edit";
@@ -87,10 +87,10 @@ export async function generateAndStoreAsset(
     // is the crop. It was written next to the object for exactly this replay.
     return stored;
   }
-  const presetGuidance = await loadCreationPresetGuidance(stickerId);
-  const visualReferences = await withPresetArtworkReferences(params.references, await loadCreationPresetReferences(stickerId));
+  const presets = await loadCreationPresetImageContext(stickerId);
+  const visualReferences = await withPresetArtworkReferences(params.references, presets.references);
   params = { ...params, references: visualReferences.references,
-    prompt: [params.prompt, presetGuidance, visualReferences.note].filter(Boolean).join("\n\n") };
+    prompt: [params.prompt, presets.guidance, visualReferences.note].filter(Boolean).join("\n\n") };
   await reportTurnNote(job, imageNote(params));
   const generated = await traceSpan("generateImage", trace, () => params.concept
     ? provider.generateConceptImage({ prompt: params.prompt, references: params.references, purpose: params.conceptPurpose })
@@ -104,6 +104,7 @@ export async function generateAndStoreAsset(
       keepFrame: params.keepFrame,
       sheet: params.sheet,
       quality: params.quality,
+      pixelArt: presets.pixelArt,
       // Read off the job rather than passed down through every call site, because it is a property
       // of the turn: whatever a quick turn ends up drawing — one sticker, or each separated part of
       // a composed one — is drawn by the same model. The concept branch above is deliberately left
@@ -243,7 +244,10 @@ export async function selectImageReferences(
   history: string,
   candidates: AiImageReferenceCandidate[],
   quick = false,
-): Promise<Array<{ bytes: Uint8Array; mimeType: string }>> {
+): Promise<AiReferenceImage[]> {
+  // The label travels with the pixels so the image model is told which picture is the subject to
+  // preserve and which is only style guidance, rather than guessing from unlabelled bytes.
+  const labelled = (candidate: AiImageReferenceCandidate): AiReferenceImage => ({ ...candidate.image, label: candidate.label });
   const bounded = candidates.slice(0, 8);
   if (bounded.length === 0) return [];
   if (bounded.every((candidate) => candidate.required)) {
@@ -253,7 +257,7 @@ export async function selectImageReferences(
     // 2-3s) to be told what was already decided. This is the common shape of an ordinary edit: the
     // artwork being changed is required, and the user attached nothing to it.
     traceEvent("selectImageReferences:decided", { candidates: bounded.length });
-    return bounded.map((candidate) => candidate.image);
+    return bounded.map(labelled);
   }
   if (quick) {
     // The selector is a vision call on the orchestrator model, and it exists to protect a very
@@ -262,7 +266,7 @@ export async function selectImageReferences(
     // path takes every candidate, which is the answer the selector almost always gives anyway once
     // the list is already capped at eight.
     traceEvent("selectImageReferences:quick", { candidates: bounded.length });
-    return bounded.map((candidate) => candidate.image);
+    return bounded.map(labelled);
   }
   const selected = await getAiProvider().selectImageReferences({
     instruction,
@@ -274,8 +278,9 @@ export async function selectImageReferences(
     .map((candidate, index) => (candidate.required ? index : -1))
     .filter((index) => index >= 0);
   return [...new Set([...required, ...selected])]
-    .map((index) => bounded[index]?.image)
-    .filter((image): image is { bytes: Uint8Array; mimeType: string } => Boolean(image))
+    .map((index) => bounded[index])
+    .filter((candidate): candidate is AiImageReferenceCandidate => Boolean(candidate))
+    .map(labelled)
     .slice(0, 8);
 }
 

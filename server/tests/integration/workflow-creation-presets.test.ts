@@ -52,6 +52,8 @@ describe("saved creation presets", () => {
         override async generateStickerImage(input: AiImageInput) {
           expect(input.references.length).toBeGreaterThan(0);
           expect(input.prompt).toContain("preset example board");
+          expect(input.references.at(-1)?.label).toContain("preset style example board");
+          expect(input.pixelArt).toBe(false);
           calls.push(["image", input.prompt]); return super.generateStickerImage(input);
         }
         override async refineStickerLayout(input: AiLayoutContext, session: LayoutDraftingSession) {

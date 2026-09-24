@@ -17,6 +17,22 @@ final class ClipLibraryUITests: ClipUITestCase {
         XCTAssertTrue(app.buttons["clip-sticker-older-sticker"].waitForExistence(timeout: 15))
     }
 
+    func testDetailOpensFullScreenWithPoses() {
+        launchLibrary()
+        let past = app.buttons["clip-sticker-past-sticker"]
+        XCTAssertTrue(past.waitForExistence(timeout: 15))
+        past.tap()
+        let image = app.buttons["quick-result-image"]
+        XCTAssertTrue(image.waitForExistence(timeout: 15))
+        image.tap()
+        XCTAssertTrue(app.navigationBars["Poses"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.descendants(matching: .any)["clip-viewer-live"].waitForExistence(timeout: 15))
+        capture("App Clip library sticker poses")
+        app.buttons["Done"].tap()
+        app.buttons["clip-viewer-close"].tap()
+        XCTAssertTrue(app.buttons["Share sticker"].waitForExistence(timeout: 15))
+    }
+
     func testLibraryWithLargeText() {
         launchLibrary("-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL")
         XCTAssertTrue(app.buttons["clip-sticker-past-sticker"].waitForExistence(timeout: 15))

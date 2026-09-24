@@ -290,6 +290,23 @@ function chromaBackdropInstruction(color: ChromaKeyColor): string {
   ].join(" ");
 }
 
+/** Pictures the user supplied of the subject itself, as labelled by the turn that gathered them. */
+const isSubjectReference = (reference: AiReferenceImage) => /^original or carried reference\b/.test(reference.label ?? "");
+
+/**
+ * Without this the model treats an uploaded photo or character as loose inspiration and invents a
+ * lookalike. The style preset says how to draw; the reference says what to draw.
+ */
+const SUBJECT_FIDELITY_INSTRUCTION = "The user's original or carried references show the subject itself. Keep it recognisably the same subject: match its silhouette, body shape and proportions, color palette, distinctive markings and features, and the number of limbs, ears, eyes, and other parts. Change only what the latest instruction or the chosen style requires; when a style is chosen, redraw this same subject in that style rather than inventing a different character. Do not add props, clothing, or features that are neither in the reference nor requested.";
+
+/** Names each attached image in order, so the image model knows which is subject, edit target, or style guidance. */
+function referenceListInstruction(references: AiReferenceImage[]): string {
+  if (!references.some((reference) => reference.label)) return "";
+  return ["Reference images, in the order attached:",
+    ...references.map((reference, index) => `${index + 1}. ${reference.label ?? "additional reference"}`),
+  ].join("\n");
+}
+
 /**
  * Everything the drawing model is told, on either path.
  *
@@ -297,7 +314,7 @@ function chromaBackdropInstruction(color: ChromaKeyColor): string {
  * the background is supposed to arrive. Anything else that drifts between them shows up as quick
  * mode quietly drawing a different kind of sticker.
  */
-function stickerInstruction(input: AiImageInput, keyColor?: ChromaKeyColor): string {
+export function stickerInstruction(input: AiImageInput, keyColor?: ChromaKeyColor): string {
   return [
     input.isolatedLayer
       ? "Draw only the isolated overlay element described by the latest instruction. The app composites it onto an existing sticker."
@@ -308,6 +325,10 @@ function stickerInstruction(input: AiImageInput, keyColor?: ChromaKeyColor): str
       ? `Recoverable project context:\n${input.conversationContext}`
       : "",
     `Latest instruction: ${input.prompt}`,
+    referenceListInstruction(input.references),
+    !input.isolatedLayer && input.references.some(isSubjectReference)
+      ? SUBJECT_FIDELITY_INSTRUCTION
+      : "",
     input.isolatedLayer
       ? "References provide style or likeness only. Do not reproduce their complete composition, existing subjects, scenery, sticker frame, or background unless that is the requested new element. Do not show the element placed on the sticker or draw a preview of the finished sticker. For lettering, draw only the exact requested words and their lettering decoration; no characters, vehicles, landscape, or other illustration. Centre the isolated element at a readable size with transparent padding; the app handles placement."
       : "",
@@ -494,7 +515,7 @@ export async function generateKeyedStickerImage(input: AiImageInput): Promise<Ai
     const normalized = await traceSpan(
       "gateway.normalize",
       { bytes: keyed.bytes.byteLength, key: keyColor.name },
-      () => normalizeTransparentPng(keyed.bytes),
+      () => normalizeTransparentPng(keyed.bytes, { pixelArt: input.pixelArt }),
     );
     if (
       normalized.inspection.hasTransparentPixels
