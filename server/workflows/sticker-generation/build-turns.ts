@@ -531,7 +531,9 @@ export async function executePlanBuildTurn(
 
   // Sprites after the stills and clips, for the same reason clips follow stills: each sheet is drawn
   // from the layer's separated still, and a sprite is the most generations any one layer can cost.
-  const spriteBuilds = await generateSpriteArtwork(job, sticker.id, plan, assetJobId, visualReference, animationSummary);
+  // A sticker that was not asked to move keeps its sprite frames on one ground line too, not just
+  // its layer motion: otherwise the drawn frames bob the character up and down in place.
+  const spriteBuilds = await generateSpriteArtwork(job, sticker.id, plan, assetJobId, visualReference, animationSummary, { stayPut: !sticker.motion });
   await generatePlannedVariants(job, sticker.id, plan, assetJobId, visualReference, pinnedBase?.document);
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
     stage: "assembling", message: "Assembling your sticker…", clearProgress: true,

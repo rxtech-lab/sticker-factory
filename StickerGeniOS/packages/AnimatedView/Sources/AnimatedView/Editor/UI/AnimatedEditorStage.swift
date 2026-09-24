@@ -279,8 +279,8 @@ struct AnimatedEditorStage: View {
                             translation: value.translation,
                             rotationDegrees: rotationDegrees,
                             box: box,
-                            // Text renders at `min(x, y)` on both axes, so a corner drag that
-                            // stretched one axis would show a change the artwork never makes.
+                            // Text renders at `min(x, y)` on both axes, so its drag starts from
+                            // that collapsed scale rather than the stored pair.
                             uniform: editor.selectedLayer?.isText ?? false
                         ),
                         forLayer: id

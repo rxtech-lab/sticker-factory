@@ -3,78 +3,30 @@ import CryptoKit
 import Foundation
 import os
 
-nonisolated protocol StickerAPIClientProtocol: Sendable {
-    func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog
-    func configurationLimits() async throws -> ConfigurationLimits
-    func listStickers(cursor: String?) async throws -> Page<Sticker>
-    func searchStickers(query: String, cursor: String?) async throws -> Page<Sticker>
-    /// The owner's published stickers, paged, and optionally narrowed by a title query.
-    ///
-    /// Filtered server-side rather than by sieving `listStickers`: a page of thirty may contain no
-    /// published sticker at all, and a client-side filter turns that into an empty picker.
-    func publishedStickers(query: String?, cursor: String?) async throws -> Page<Sticker>
-    func createSticker(_ request: CreateStickerRequest, idempotencyKey: String) async throws -> CreateStickerResponse
-    func importSticker(_ request: ImportStickerRequest, idempotencyKey: String) async throws -> ImportStickerResponse
-    func sticker(id: String) async throws -> StickerDetail
-    /// The document and artwork a controllable sticker is posed from.
-    ///
-    /// Readable for a sticker this account owns and for a member of a pack it has installed — the
-    /// same audience the Messages extension fetches under. A pack that has only been *browsed* is
-    /// not one of them, so a marketplace screen must not ask on behalf of a pack the reader has
-    /// not added.
-    func stickerPlayback(stickerID: String, revisionID: String?) async throws -> StickerPlaybackBundle
-    func updateSticker(id: String, request: UpdateStickerRequest, idempotencyKey: String) async throws -> StickerDetail
-    func deleteSticker(id: String, idempotencyKey: String) async throws -> DeleteStickerResponse
-    func chatMessages(stickerID: String, beforeSequence: Int?) async throws -> ChatMessagePage
-    func planVersions(stickerID: String) async throws -> Page<PlanRecord>
-    func selectPlanVersion(stickerID: String, versionID: String, request: SelectPlanVersionRequest, idempotencyKey: String) async throws -> SelectPlanVersionResponse
-    func editPlan(stickerID: String, planID: String, request: PlanEditRequest, idempotencyKey: String) async throws -> EditPlanResponse
-    func sendChatMessage(stickerID: String, request: SendChatMessageRequest, idempotencyKey: String) async throws -> SendChatMessageResponse
-    func retryChatMessage(stickerID: String, messageID: String, idempotencyKey: String) async throws -> RetryChatMessageResponse
-    func confirmPlan(stickerID: String, planID: String, idempotencyKey: String) async throws -> ConfirmPlanResponse
-    func cancelPlan(stickerID: String, planID: String, reason: String?, idempotencyKey: String) async throws -> CancelPlanResponse
-    func cancelGeneration(jobID: String, idempotencyKey: String) async throws -> CancelGenerationResponse
-    func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse
-    func registerExport(stickerID: String, request: PublishExportsRequest, idempotencyKey: String) async throws -> PublishExportsResponse
-    func bindMessengerRenditions(stickerID: String, request: MessengerRenditionsRequest, idempotencyKey: String) async throws -> Sticker
-    func saveEditedDocument(stickerID: String, request: SaveEditedDocumentRequest, idempotencyKey: String) async throws -> SaveEditedDocumentResponse
-    func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String
-    func assetDownload(assetID: String) async throws -> AssetDownload
-    func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error>
+/// `(sent, total)` bytes of one upload's body.
+typealias UploadProgressHandler = @Sendable (_ sent: Int64, _ total: Int64) -> Void
 
-    // Push
-    func registerDevice(token: String, environment: PushEnvironment, bundleID: String?, appVersion: String?) async throws
-    func unregisterDevice(token: String) async throws
+/// Forwards one upload task's body progress. A task-specific delegate, so the shared session and
+/// every other request on it are untouched.
+nonisolated final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    private let fallbackTotal: Int64
+    private let onProgress: UploadProgressHandler
 
-    // Account
-    /// Whether this account is counting down to deletion.
-    func accountDeletionState() async throws -> AccountDeletionState
-    /// Starts the grace period, here and at the identity provider. Idempotent: re-requesting keeps
-    /// the original deadline rather than pushing it a week further out.
-    func requestAccountDeletion() async throws -> AccountDeletionState
-    /// Stops a pending deletion. Available for the whole grace period.
-    func cancelAccountDeletion() async throws -> AccountDeletionState
+    init(total: Int64, onProgress: @escaping UploadProgressHandler) {
+        self.fallbackTotal = total
+        self.onProgress = onProgress
+    }
 
-    // Marketplace
-    func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
-    func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack>
-    func packsByCreator(handle: String, cursor: String?) async throws -> CreatorPacksResponse
-    func pack(id: String) async throws -> StickerPackDetail
-    func createPack(_ request: CreatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail
-    func updatePack(id: String, request: UpdatePackRequest, idempotencyKey: String) async throws -> StickerPackDetail
-    func setPackItems(id: String, stickerIDs: [String], idempotencyKey: String) async throws -> StickerPackDetail
-    func publishPack(id: String, idempotencyKey: String) async throws -> StickerPackDetail
-    func unpublishPack(id: String, state: PackState, idempotencyKey: String) async throws -> StickerPackDetail
-    func deletePack(id: String, idempotencyKey: String) async throws -> DeletePackResponse
-    func installPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse
-    func uninstallPack(id: String, idempotencyKey: String) async throws -> InstallPackResponse
-    func librarySections(status: LibrarySectionStatus) async throws -> LibrarySectionsResponse
-    func searchLibrarySections(query: String, status: LibrarySectionStatus) async throws -> LibrarySectionsResponse
-}
-
-extension StickerAPIClientProtocol {
-    func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog { throw StickerAPIError.invalidResponse }
-    func configurationLimits() async throws -> ConfigurationLimits { throw StickerAPIError.invalidResponse }
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        let total = totalBytesExpectedToSend > 0 ? totalBytesExpectedToSend : fallbackTotal
+        onProgress(min(totalBytesSent, total), total)
+    }
 }
 
 nonisolated enum PackSort: String, Sendable, CaseIterable { case recent, popular }
@@ -494,6 +446,28 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     // MARK: - Uploads
 
     func upload(data: Data, stickerID: String?, kind: AssetKind, filename: String, mimeType: String, sequence: SequenceMetadata?, idempotencyKey: String) async throws -> String {
+        try await upload(
+            data: data,
+            stickerID: stickerID,
+            kind: kind,
+            filename: filename,
+            mimeType: mimeType,
+            sequence: sequence,
+            idempotencyKey: idempotencyKey,
+            onProgress: nil
+        )
+    }
+
+    func upload(
+        data: Data,
+        stickerID: String?,
+        kind: AssetKind,
+        filename: String,
+        mimeType: String,
+        sequence: SequenceMetadata?,
+        idempotencyKey: String,
+        onProgress: UploadProgressHandler?
+    ) async throws -> String {
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let intent: UploadIntentResponse = try await send(
             path: "api/v1/uploads",
@@ -519,7 +493,8 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         upload.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         for (name, value) in intent.upload.headers { upload.setValue(value, forHTTPHeaderField: name) }
         do {
-            let (uploadBody, uploadResponse) = try await session.upload(for: upload, from: data)
+            let delegate = onProgress.map { UploadProgressDelegate(total: Int64(data.count), onProgress: $0) }
+            let (uploadBody, uploadResponse) = try await session.upload(for: upload, from: data, delegate: delegate)
             guard let http = uploadResponse as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
             guard (200...299).contains(http.statusCode) else {
                 // Storage rejects for reasons the app can do something about — an expired presign,
@@ -549,10 +524,14 @@ actor StickerAPIClient: StickerAPIClientProtocol {
                 """
             )
             try await completeUpload(assetID: intent.asset.id, digest: digest, idempotencyKey: idempotencyKey)
+            onProgress?(Int64(data.count), Int64(data.count))
             return intent.asset.id
         }
 
         try await completeUpload(assetID: intent.asset.id, digest: digest, idempotencyKey: idempotencyKey)
+        // The last delegate callback can land before the body is fully acknowledged; say so once
+        // more so a bar never finishes a hair short of full.
+        onProgress?(Int64(data.count), Int64(data.count))
         return intent.asset.id
     }
 

@@ -215,6 +215,10 @@ public enum AnimatedCanvasGeometry {
     /// frame of a scale gesture — silently editing motion the user did not touch, and on a layer
     /// with position keyframes, writing to whichever one the playhead happens to sit near.
     ///
+    /// The layer's aspect ratio is preserved: both axes scale by one factor, so dragging a corner
+    /// never stretches the artwork. `uniform` only collapses a text layer's start to the `min(x, y)`
+    /// it renders at.
+    ///
     /// `box` is the layer's *untransformed* layout box, so the caller and ``handlePosition(_:layer:state:in:)``
     /// share one definition of where the corner started.
     public static func handleScale(
@@ -239,21 +243,25 @@ public enum AnimatedCanvasGeometry {
         let moved = CGPoint(x: began.x + translation.width, y: began.y + translation.height)
         let local = rotate(moved, byDegrees: -rotationDegrees)
 
-        var x = Double(local.x / corner.x)
-        var y = Double(local.y / corner.y)
-        if uniform {
-            // One factor from how far the corner is from the centre, relative to where it started.
-            let value = Double(hypot(local.x, local.y) / hypot(corner.x, corner.y))
-            x = value
-            y = value
-        }
+        // One factor for both axes, so a corner drag resizes the artwork without stretching it. The
+        // finger's corner is projected onto the diagonal the corner started on: a drag along either
+        // axis alone still resizes smoothly, and whatever ratio the layer already had is kept.
+        let startCorner = CGPoint(x: corner.x * CGFloat(start.x), y: corner.y * CGFloat(start.y))
+        let length = startCorner.x * startCorner.x + startCorner.y * startCorner.y
+        guard length > 1e-12, start.x > 0, start.y > 0 else { return start }
+        var factor = Double((local.x * startCorner.x + local.y * startCorner.y) / length)
         if snapping {
-            if abs(x - 1) < scaleSnapTolerance { x = 1 }
-            if abs(y - 1) < scaleSnapTolerance { y = 1 }
+            // Whichever axis lands near 1× snaps there, and the other follows at the same ratio.
+            let nearest = [start.x, start.y].min { abs($0 * factor - 1) < abs($1 * factor - 1) }!
+            if abs(nearest * factor - 1) < scaleSnapTolerance { factor = 1 / nearest }
         }
+        // Clamped as a factor, not per axis, so hitting the range on one axis cannot bend the ratio.
+        let lower = max(scaleRange.lowerBound / start.x, scaleRange.lowerBound / start.y)
+        let upper = min(scaleRange.upperBound / start.x, scaleRange.upperBound / start.y)
+        if lower <= upper { factor = clamp(factor, to: lower...upper) }
         return AnimatedPoint(
-            x: AnimationCompiler.roundValue(clamp(x, to: scaleRange)),
-            y: AnimationCompiler.roundValue(clamp(y, to: scaleRange))
+            x: AnimationCompiler.roundValue(clamp(start.x * factor, to: scaleRange)),
+            y: AnimationCompiler.roundValue(clamp(start.y * factor, to: scaleRange))
         )
     }
 

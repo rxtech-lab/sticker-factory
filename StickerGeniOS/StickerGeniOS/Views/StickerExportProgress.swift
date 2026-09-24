@@ -70,6 +70,26 @@ nonisolated enum StickerExportDuration {
     }
 }
 
+/// How much of an upload has gone, as "3.2 MB of 8.4 MB".
+///
+/// KB are allowed alongside MB: a Telegram rendition is a couple of hundred kilobytes, and
+/// "0.2 MB of 0.2 MB" would sit still for the whole of its upload.
+nonisolated enum UploadByteText {
+    static func text(sent: Int64, total: Int64) -> String {
+        let total = max(0, total)
+        let sent = min(max(0, sent), total)
+        return String(localized: "\(format(sent)) of \(format(total))")
+    }
+
+    static func format(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.includesActualByteCount = false
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
 /// The live timeline of one export or publish.
 ///
 /// Owned by `StickerExportModel` rather than by the sheet that draws it, so dismissing the sheet
@@ -88,9 +108,18 @@ final class StickerExportProgress {
         var detail: String?
         var startedAt: Date?
         var duration: TimeInterval?
+        /// Bytes sent so far, for a step that moves files. Cleared with `detail`.
+        var bytes: ByteProgress?
 
         var id: String { stage.id }
         var title: String { stage.title }
+    }
+
+    struct ByteProgress: Equatable, Sendable {
+        var sent: Int64
+        var total: Int64
+
+        var fraction: Double { total <= 0 ? 0 : min(1, max(0, Double(sent) / Double(total))) }
     }
 
     enum Outcome: Sendable { case running, succeeded, failed, cancelled }
@@ -193,12 +222,21 @@ final class StickerExportProgress {
         steps[index].state = .running
         steps[index].startedAt = now
         steps[index].detail = detail
+        steps[index].bytes = nil
     }
 
     /// Replaces the running step's detail line — the rung, the frame, the file being sent.
     func report(_ detail: String, for stage: StickerExportStage) {
         guard let index = steps.firstIndex(where: { $0.stage == stage && $0.state == .running }) else { return }
         steps[index].detail = detail
+    }
+
+    /// How much of the running step's files have gone, said as "x MB of y MB" in its detail line.
+    func reportBytes(sent: Int64, total: Int64, for stage: StickerExportStage) {
+        guard let index = steps.firstIndex(where: { $0.stage == stage && $0.state == .running }) else { return }
+        let bytes = ByteProgress(sent: min(max(0, sent), max(0, total)), total: max(0, total))
+        steps[index].bytes = bytes
+        steps[index].detail = UploadByteText.text(sent: bytes.sent, total: bytes.total)
     }
 
     func succeed(at now: Date = .now) {
@@ -217,6 +255,7 @@ final class StickerExportProgress {
             steps[index].state = .cancelled
             steps[index].duration = elapsed(of: steps[index], at: now)
             steps[index].detail = nil
+            steps[index].bytes = nil
         }
         steps.removeAll { $0.state == .pending }
         outcome = .cancelled
@@ -279,5 +318,6 @@ final class StickerExportProgress {
         steps[index].state = .done
         steps[index].duration = elapsed(of: steps[index], at: now)
         steps[index].detail = nil
+        steps[index].bytes = nil
     }
 }

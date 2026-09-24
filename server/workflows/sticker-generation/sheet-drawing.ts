@@ -49,24 +49,37 @@ export function redrawFeedback(error: unknown, attempt = 0): string[] | undefine
   return [error.message, correction];
 }
 
-/** Repair intact drawings before spending on a redraw, and register only the repaired pixels. */
+/**
+ * Repair intact drawings before spending on a redraw, and register only the repaired pixels.
+ *
+ * `normalize` runs on a sheet that already validates — `anchorSpriteFrames` for a sticker that
+ * stays put — and before `register`, so the inspector and the face registration both measure the
+ * pixels that get stored. A sheet it changes counts as repaired, so the caller stores those pixels
+ * as the raw sheet too and a later face repair starts from the same frames.
+ */
 export async function prepareSheet<T>(
   original: Uint8Array, grid: Grid,
   register: (bytes: Uint8Array, grid: Grid) => Promise<T>,
+  normalize?: (bytes: Uint8Array, grid: Grid) => Promise<Uint8Array>,
 ): Promise<{ bytes: Uint8Array; repaired: boolean; registered: T }> {
-  const validate = async (bytes: Uint8Array) => {
-    await validateGeneratedAtlas(bytes, grid);
-    return register(bytes, grid);
+  const validate = async (valid: Uint8Array) => {
+    await validateGeneratedAtlas(valid, grid);
+    const bytes = normalize ? await normalize(valid, grid) : valid;
+    if (bytes !== valid) await validateGeneratedAtlas(bytes, grid);
+    return { bytes, normalized: bytes !== valid, registered: await register(bytes, grid) };
   };
-  try { return { bytes: original, repaired: false, registered: await validate(original) }; }
-  catch (error) {
+  try {
+    const { bytes, normalized, registered } = await validate(original);
+    return { bytes, repaired: normalized, registered };
+  } catch (error) {
     if (!(error instanceof SpriteSheetValidationError) || error.reason !== "clipped") throw error;
     // Re-cutting the grid preserves complete artwork. Padding already-cut cells would hide
     // missing pixels.
-    let bytes: Uint8Array;
-    try { bytes = await padGeneratedAtlas(original, grid); }
+    let padded: Uint8Array;
+    try { padded = await padGeneratedAtlas(original, grid); }
     catch { throw error; }
-    return { bytes, repaired: true, registered: await validate(bytes) };
+    const { bytes, registered } = await validate(padded);
+    return { bytes, repaired: true, registered };
   }
 }
 

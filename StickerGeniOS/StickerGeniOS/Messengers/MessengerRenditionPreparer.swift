@@ -17,6 +17,9 @@ nonisolated struct MessengerPreparationProgress: Equatable, Sendable {
     var stepFraction: Double = 0
     /// What the encoder is doing right now — "Encoding frame 12 of 48" — when it says.
     var detail: String?
+    /// Bytes of the current rendition sent to storage, while it is uploading.
+    var uploadedBytes: Int64?
+    var uploadTotalBytes: Int64?
 
     var fraction: Double { total == 0 ? 0 : (Double(completed) + min(max(stepFraction, 0), 1)) / Double(total) }
 }
@@ -191,11 +194,19 @@ final class MessengerRenditionPreparer {
                 stickerID: sticker.id,
                 stickerTitle: sticker.title,
                 destination: destination,
+                // The encode fills the first half of this messenger's step, the upload the second
+                // — see `setUpload`.
                 stepFraction: Double(step + 1) / steps,
                 detail: nil
             )
             do {
-                let assetID = try await encodeAndUpload(sticker: sticker, artwork: artwork, destination: destination)
+                let assetID = try await encodeAndUpload(
+                    sticker: sticker,
+                    artwork: artwork,
+                    destination: destination,
+                    step: step + 1,
+                    steps: steps
+                )
                 switch destination {
                 case .whatsapp: whatsappAssetID = assetID
                 case .telegram: telegramAssetID = assetID
@@ -250,16 +261,25 @@ final class MessengerRenditionPreparer {
         outcomes[sticker.id] = outcome
     }
 
+    /// How much of one messenger's step the encode is worth; the upload is the rest.
+    private static let encodeShare = 0.5
+
+    /// - Parameters:
+    ///   - step: this messenger's index among the sticker's steps, counting the download as 0.
+    ///   - steps: the sticker's step count, so the upload can move the bar within its own slice.
     private func encodeAndUpload(
         sticker: Sticker,
         artwork: Data,
-        destination: MessengerDestination
+        destination: MessengerDestination,
+        step: Int,
+        steps: Double
     ) async throws -> String {
         let rendered = try await Self.renderOffMain(sticker: sticker, artwork: artwork, destination: destination) { [weak self] detail in
             Task { @MainActor [weak self] in self?.setDetail(detail, for: sticker.id, destination: destination) }
         }
         try Task.checkCancellation()
-        progress?.detail = String(localized: "Uploading…")
+        let total = Int64(rendered.data.count)
+        setUpload(sent: 0, total: total, for: sticker.id, destination: destination, step: step, steps: steps)
         // The digest is in the key on purpose. `executeIdempotent` hashes the request body against
         // it, and VP9 rate control is not guaranteed to produce identical bytes twice — so a key
         // fixed to the sticker alone would turn an honest retry into a 409.
@@ -271,8 +291,32 @@ final class MessengerRenditionPreparer {
             filename: "\(sticker.id)-\(destination.rawValue).\(rendered.format.rawValue)",
             mimeType: rendered.format.mimeType,
             sequence: nil,
-            idempotencyKey: "messenger-\(destination.rawValue)-\(sticker.id)-\(digest.prefix(16))"
+            idempotencyKey: "messenger-\(destination.rawValue)-\(sticker.id)-\(digest.prefix(16))",
+            onProgress: { [weak self] sent, total in
+                Task { @MainActor [weak self] in
+                    self?.setUpload(sent: sent, total: total, for: sticker.id, destination: destination, step: step, steps: steps)
+                }
+            }
         )
+    }
+
+    /// "Uploading 120 KB of 240 KB", and the bar moved through the upload's half of the step.
+    /// Dropped, like `setDetail`, if the run has moved on to another sticker or messenger.
+    private func setUpload(
+        sent: Int64,
+        total: Int64,
+        for stickerID: String,
+        destination: MessengerDestination,
+        step: Int,
+        steps: Double
+    ) {
+        guard progress?.stickerID == stickerID, progress?.destination == destination else { return }
+        let sent = max(progress?.uploadedBytes ?? 0, min(sent, total))
+        let uploaded = total > 0 ? Double(sent) / Double(total) : 0
+        progress?.uploadedBytes = sent
+        progress?.uploadTotalBytes = total
+        progress?.stepFraction = (Double(step) + Self.encodeShare + (1 - Self.encodeShare) * uploaded) / steps
+        progress?.detail = String(localized: "Uploading \(UploadByteText.text(sent: sent, total: total))")
     }
 
     /// The encode, off the main actor.
