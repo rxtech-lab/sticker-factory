@@ -413,7 +413,7 @@ extension StickerStore {
     private func resume(jobID: String, stickerID: String, sourceMessageID: String) {
         if jobs[stickerID]?.jobID == jobID, observations[stickerID] != nil { return }
         let attempts = reattachAttempts[stickerID, default: 0]
-        guard attempts < 3 else { return }
+        guard attempts < 10 else { return }
         reattachAttempts[stickerID] = attempts + 1
         observe(jobID: jobID, stickerID: stickerID, sourceMessageID: sourceMessageID)
     }
