@@ -152,4 +152,40 @@ describe("published sprite playback", () => {
     const derived = await db.select().from(assets).where(eq(assets.id, hero.clips[0].assetId));
     expect(derived[0]).toMatchObject({ kind: "playback", state: "ready", sequenceColumns: 3, sequenceRows: 2, frameCount: 6 });
   });
+
+  // Production: every masked-face sprite failed to publish with "Playback still references private
+  // source artwork", because the face mask was checked for but never rastered.
+  it("rasters a masked clip's face mask and drops its raw source sheet", async () => {
+    const spriteFixture = (await import("@/fixtures/sticker-document-v5-sprite.json")).default;
+    const sticker = await seedPublishedSticker(db, "owner", { kind: "animated" });
+    const document = StickerDocumentSchema.parse(spriteFixture);
+    const layer = document.layers[0];
+    if (layer.type !== "sprite") throw new Error("hero should be a sprite");
+    const maskId = "35555555-5555-4555-8555-555555555555", rawId = "36666666-6666-4666-8666-666666666666";
+    Object.assign(layer.clips[0], { faceCompositing: "masked", faceMaskAssetId: maskId, faceSourceAssetId: rawId });
+    const sheets = [
+      { id: "31111111-1111-4111-8111-111111111111", kind: "sequence" as const, columns: 3, rows: 2, frameCount: 6 },
+      { id: "32222222-2222-4222-8222-222222222222", kind: "sequence" as const, columns: 3, rows: 2, frameCount: 6 },
+      { id: "33333333-3333-4333-8333-333333333333", kind: "sequence" as const, columns: 3, rows: 3, frameCount: 3 },
+      { id: "34444444-4444-4444-8444-444444444444", kind: "master" as const },
+      { id: maskId, kind: "sequence" as const, columns: 3, rows: 2, frameCount: 6 },
+      { id: rawId, kind: "sequence" as const, columns: 3, rows: 2, frameCount: 6 },
+    ];
+    for (const sheet of sheets) {
+      const bytes = await sharp({ create: { width: 96, height: 96, channels: 4, background: "#00FF0088" } }).png().toBuffer();
+      const inspection = await inspectImage(bytes), r2Key = objectKey("owner", sheet.id, "image/png");
+      await store.put(r2Key, { bytes, contentType: "image/png" });
+      await db.insert(assets).values({ id: sheet.id, ownerId: "owner", stickerId: sticker.stickerId, kind: sheet.kind, state: "ready", r2Key,
+        mimeType: "image/png", width: 96, height: 96, byteSize: bytes.length, sha256: inspection.sha256, hasAlpha: true,
+        ...(sheet.kind === "sequence" ? { sequenceColumns: sheet.columns, sequenceRows: sheet.rows, frameCount: sheet.frameCount, fps: 1, durationSeconds: sheet.frameCount } : {}) });
+    }
+    const bundle = (await preparePlaybackBundle(db, "owner", sticker.stickerId, sticker.revisionId, document))!;
+    const hero = bundle.document.layers[0];
+    if (hero.type !== "sprite") throw new Error("hero should stay a sprite");
+    expect(hero.clips[0].faceMaskAssetId).toBeDefined();
+    expect(bundle.assetIds).toContain(hero.clips[0].faceMaskAssetId);
+    expect(hero.clips[0].faceSourceAssetId).toBeUndefined();
+    expect(JSON.stringify(bundle)).not.toContain(maskId);
+    expect(JSON.stringify(bundle)).not.toContain(rawId);
+  });
 });

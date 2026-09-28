@@ -1,5 +1,31 @@
-.next
-.swc
-node_modules
-StickerGeniOS
-docs/tutorial/source
+# The Vercel project is linked at the repo root (rootDirectory = server),
+# so the CLI uploads from here. Only upload the server app.
+/*
+!/server
+
+# Local build output and caches
+server/node_modules
+server/.next
+server/.next-e2e
+server/.next-tutorial
+server/.swc
+server/out
+server/build
+server/*.tsbuildinfo
+
+# Testing artifacts
+server/coverage
+server/test-results
+server/playwright-report
+
+# Env files (use `vercel env` instead)
+server/.env
+server/.env.*
+
+# Local data dumps
+server/sticker_revisions-backup*.json
+
+# Misc
+.DS_Store
+*.pem
+*.log

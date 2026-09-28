@@ -134,7 +134,12 @@ export async function preparePlaybackBundle(
     // clip and face the viewer picks, so all of them have to be in the bundle.
     if (layer.type === "sprite") {
       for (const clip of layer.clips) {
-        clip.assetId = await raster(clip.assetId, undefined, { columns: clip.columns, rows: clip.rows, frameCount: clip.frames.length });
+        const grid = { columns: clip.columns, rows: clip.rows, frameCount: clip.frames.length };
+        clip.assetId = await raster(clip.assetId, undefined, grid);
+        // A masked clip draws its face through this aperture, so it ships like the body sheet.
+        if (clip.faceMaskAssetId) clip.faceMaskAssetId = await raster(clip.faceMaskAssetId, undefined, grid);
+        // The raw generated sheet exists only to re-register faces; it never plays back.
+        delete clip.faceSourceAssetId;
       }
       layer.expressions.assetId = await raster(layer.expressions.assetId, undefined, {
         columns: layer.expressions.columns, rows: layer.expressions.rows, frameCount: layer.expressions.tiles.length,

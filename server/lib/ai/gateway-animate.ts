@@ -2,7 +2,7 @@
 
 import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { gateway } from "@ai-sdk/gateway";
-import { generateText, hasToolCall, stepCountIs, tool } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
@@ -38,6 +38,21 @@ export async function animateSticker(
     }
   };
 
+  // The SDK runs every tool call of a step concurrently, and the model often sends a fix and
+  // finalize_animation together. Finalize used to read the state before the fix settled: it
+  // succeeded on the old revision, ended the loop, and the fix's rejection was never answered.
+  // So finalize waits for its siblings and refuses while the latest change is a rejected one.
+  const pendingEdits = new Set<Promise<unknown>>();
+  let rejectedEdit: string | undefined;
+  const edit = <Input, Output>(execute: (input: Input) => Promise<Output>) => (input: Input) => {
+    const run = execute(input).then(
+      (output) => { rejectedEdit = undefined; return output; },
+      (error: unknown) => { rejectedEdit = error instanceof Error ? error.message : String(error); throw error; },
+    );
+    pendingEdits.add(run);
+    return run.finally(() => pendingEdits.delete(run));
+  };
+
   const requireAnimation = (animationId: string) => {
     if (!state)
       throw new Error(
@@ -60,7 +75,7 @@ export async function animateSticker(
       inputSchema: z
         .object({ operations: AnimationOperationsSchema })
         .strict(),
-      execute: async ({ operations }) => {
+      execute: edit(async ({ operations }) => {
         // Only reachable after a *successful* create, so a rejected one may simply be retried.
         if (state)
           throw new Error(
@@ -76,7 +91,7 @@ export async function animateSticker(
           ...state,
           sticker: summarizeDocument(landed.document),
         };
-      },
+      }),
     }),
     update_animation: tool({
       description: [
@@ -92,7 +107,7 @@ export async function animateSticker(
           operations: AnimationOperationsSchema,
         })
         .strict(),
-      execute: async ({ animationId, operations }) => {
+      execute: edit(async ({ animationId, operations }) => {
         const current = requireAnimation(animationId);
         const landed = await guard(() =>
           session.updateAnimation(current.animationId, operations),
@@ -106,7 +121,7 @@ export async function animateSticker(
           ...state,
           sticker: summarizeDocument(landed.document),
         };
-      },
+      }),
     }),
     edit_layer_animation: tool({
       description: [
@@ -128,7 +143,7 @@ export async function animateSticker(
           operations: AnimationOperationsSchema,
         })
         .strict(),
-      execute: async ({ animationId, layerId, operations }) => {
+      execute: edit(async ({ animationId, layerId, operations }) => {
         const current = requireAnimation(animationId);
         const landed = await guard(() =>
           session.editLayerAnimation(current.animationId, layerId, operations),
@@ -142,7 +157,7 @@ export async function animateSticker(
           ...state,
           sticker: summarizeDocument(landed.document),
         };
-      },
+      }),
     }),
     finalize_animation: tool({
       description: [
@@ -151,6 +166,12 @@ export async function animateSticker(
       ].join(" "),
       inputSchema: z.object({ animationId: z.string().min(1) }).strict(),
       execute: async ({ animationId }) => {
+        // Let the step's other calls start, then settle, before judging what there is to finalize.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await Promise.allSettled([...pendingEdits]);
+        if (rejectedEdit) {
+          throw new Error(`Not finalized: your last animation change was rejected (${rejectedEdit}). Fix it with update_animation or edit_layer_animation, then call finalize_animation on its own.`);
+        }
         const current = requireAnimation(animationId);
         const landed = await guard(() =>
           session.finalizeAnimation(current.animationId),
@@ -336,7 +357,8 @@ export async function animateSticker(
     // The model ends the turn by calling finalize_animation. The step cap is the backstop for a
     // model that keeps polishing forever; the caller ships whatever landed when it trips.
     stopWhen: [
-      hasToolCall("finalize_animation"),
+      // A finalize that landed, not merely the call: a rejected one must reach the model to fix.
+      () => state?.finalized === true,
       // Raised from 10 when `view_sticker` landed: a loop that looks, fixes what it saw and looks
       // again spends three steps doing it, and the old budget left no room to act on the second
       // look before the loop was cut off.
