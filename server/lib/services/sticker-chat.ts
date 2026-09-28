@@ -4,7 +4,7 @@ import { currentBillingEnvironment } from "@/lib/subscription/client";
 import { quickGenerationPolicy, recordAppClipUsage } from "@/lib/subscription/app-clip";
 import { DAILY_STICKER_GENERATION_ITEM, DAILY_STICKER_REFINEMENT_ITEM } from "@/lib/subscription/client";
 import { consumeDailyUsage } from "@/lib/subscription/daily-usage";
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, max, sql } from "drizzle-orm";
 import type { PostChatMessageRequest } from "@/lib/contracts/api";
 import { StickerDocumentSchema } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
@@ -278,9 +278,6 @@ export async function retryFailedChatTurn(
   if (!original || (original.state !== "failed" && original.state !== "cancelled")) {
     throw new ApiError(409, "JOB_NOT_RETRYABLE", "Only failed or cancelled AI turns can be retried");
   }
-  const attempts = await db.select({ value: count() }).from(generationJobs)
-    .where(and(eq(generationJobs.sourceMessageId, sourceMessageId), eq(generationJobs.ownerId, ownerId))).then(firstRow);
-  if ((attempts?.value ?? 0) >= 4) throw new ApiError(429, "RETRY_LIMIT_REACHED", "This AI turn has reached its retry limit");
   const jobId = crypto.randomUUID();
   // A retry is a fresh attempt at the provider, so it gets the same estimated
   // hold. The original's own hold was released when it failed.
