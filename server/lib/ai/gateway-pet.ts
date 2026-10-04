@@ -5,14 +5,31 @@ import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
-import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_CLASSES, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
+import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_ANIMATE_EVERY_MAX, PET_ANIMATE_EVERY_MIN, PET_CLASSES, PET_MUSING_AFTER_MAX, PET_MUSING_AFTER_MIN, PET_MUSINGS_MAX, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
 import type { AiOwnerMoment, AiPetActionsContext, AiPetEvolutionChoice, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, PetAction } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
 
 const PetStatusInputSchema = z.object({
   values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
   caption: z.string().trim().min(1).max(60),
+  /** How often the app plays the pet's animation through once, between stretches of holding still. */
+  animateEverySeconds: z.number().int().min(PET_ANIMATE_EVERY_MIN).max(PET_ANIMATE_EVERY_MAX),
+  /** What the pet says next, on its own, while nothing else happens. */
+  musings: z.array(z.object({
+    text: z.string().trim().min(1).max(60),
+    afterMinutes: z.number().int().min(PET_MUSING_AFTER_MIN).max(PET_MUSING_AFTER_MAX),
+  }).strict()).min(1).max(PET_MUSINGS_MAX),
 }).strict();
+
+/** Every status tool asks for `animateEverySeconds`; this is how the agent should pick it. */
+const ANIMATION_GUIDANCE = [
+  `Set animateEverySeconds (${PET_ANIMATE_EVERY_MIN}-${PET_ANIMATE_EVERY_MAX}) for how often you play your animation`,
+  "through once, holding the pose in between: often when excited or playful, now and then when calm,",
+  "rarely when sleepy, tired or sad.",
+  `Then queue 1-${PET_MUSINGS_MAX} musings: short things you say next on your own, in character and in the language`,
+  "of your caption, at most 60 characters each, following on from it as time passes. Give each afterMinutes",
+  `(${PET_MUSING_AFTER_MIN}-${PET_MUSING_AFTER_MAX}) since the line before: chatty when lively, longer pauses when calm or sleepy.`,
+].join(" ");
 
 /** A send's reading: the pose and caption, plus how the sticker's mood moves the stats. */
 const PetSendStatusInputSchema = PetStatusInputSchema.extend({
@@ -32,7 +49,10 @@ const PetPersonaInputSchema = z.object({
 }).strict();
 
 /** What the pet asks the planner for when it decides to grow. */
-const PetEvolveInputSchema = z.object({ brief: z.string().trim().min(1).max(400) }).strict();
+const PetEvolveInputSchema = z.object({
+  brief: z.string().trim().min(1).max(400),
+  redrawWeather: z.boolean().optional(),
+}).strict();
 
 /**
  * The extra instruction a pet that may grow is given. Growing redraws its sticker in the
@@ -43,10 +63,12 @@ function evolutionGuidance(input: AiPetEvolutionChoice): string {
   return [
     "You may also decide to grow from this moment. Only when it truly matters — a feeling or a moment none of",
     "your current controls can show, a milestone, something new you just learned — set evolve.brief: one or two",
-    "sentences in English for the artist who draws you, asking for exactly one new thing on your own sticker:",
-    "a new mood (a new option on your mood or expression control), a new pose or property (a new choice option",
-    "or a toggle), or a small accessory. Ask to keep everything you already are unchanged. Most moments are not",
-    "a reason to grow: leave evolve out unless this one clearly is.",
+    "sentences in English for the artist who draws you, naming exactly one new item for your own sticker (a",
+    "toy, a treat, a small accessory or prop), where it sits beside you, and the new pose and movement you do",
+    "with it. Ask to keep everything you already are unchanged. Set evolve.redrawWeather to true only when",
+    "growing changes your whole art style or palette, so the weather drawn in your old style would no longer",
+    "match you; a new item, pose or mood never needs it. Most moments are not a reason to grow: leave evolve",
+    "out unless this one clearly is.",
   ].join(" ");
 }
 
@@ -195,6 +217,7 @@ export async function choosePetStatus(input: AiPetStatusContext): Promise<AiPetS
       "the weather, its owner's steps, a headline, or the event that just happened when it fits.",
       "Let the owner's local time and place colour it too: sleepy late at night, bright in the morning.",
       "Set effects from -8 to 8 for how the sticker's mood moves happiness, HP and energy; mostly small.",
+      ANIMATION_GUIDANCE,
     ].join(" "),
     messages: userTurn([
       `Pet: ${input.petTitle}`,
@@ -232,6 +255,7 @@ export async function respondToPetInteraction(input: AiPetInteractionContext): P
       "Answer only through respond-as-pet, exactly once. Use only listed control and option ids.",
       "Omit a control to keep its current value. Never claim an action happened if it did not.",
       "Fit the reply to the owner's local time and place when they are given.",
+      ANIMATION_GUIDANCE,
       evolutionGuidance(input),
     ].filter(Boolean).join(" "),
     messages: userTurn([
@@ -273,6 +297,7 @@ export async function reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetSt
       "upsets you, food may make you hungry. Mostly small. Answer only through react-to-photo, exactly once. Use only",
       "listed control and option ids, and omit a control to keep its current value. The owner's local time and",
       "place, when given, may colour your reaction.",
+      ANIMATION_GUIDANCE,
       evolutionGuidance(input),
     ].filter(Boolean).join(" "),
     messages: userTurn([
@@ -389,6 +414,7 @@ export async function narratePetEvent(input: AiPetEventContext): Promise<AiPetSt
       "sentence (at most 60 characters), in character and in the language of your name. Pose yourself to match",
       "by setting your controls. Answer only through respond-as-pet, exactly once. Use only listed control and",
       "option ids, and omit a control to keep its current value. Fit it to the owner's local time and place when given.",
+      ANIMATION_GUIDANCE,
     ].join(" "),
     messages: userTurn([
       `Pet: ${input.petTitle}`,
@@ -437,6 +463,7 @@ export async function noticePetSticker(input: AiPetStickerContext): Promise<AiPe
       "in the language of your name; pose yourself to match by setting your controls; and set effects from -8 to 8",
       "for how it moves your happiness, HP and energy, mostly small. Use only listed control and option ids, and",
       "omit a control to keep its current value. Answer only through notice-sticker, exactly once.",
+      `When you react: ${ANIMATION_GUIDANCE}`,
     ].join(" "),
     messages: userTurn([
       `Pet: ${input.petTitle}`,

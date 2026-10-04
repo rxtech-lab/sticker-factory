@@ -63,7 +63,9 @@ describe("pets", () => {
       seen.push(`${petTitle}:${controls.length}`);
       return [{ title: `Wave to ${petTitle}`, description: `Wave at ${petTitle}'s ears.`,
         effects: { happiness: 3, hp: 0, energy: -1, gold: 0 } }];
-    }, respondToPetInteraction: async ({ action }) => ({ values: {}, caption: action.description }) });
+    }, respondToPetInteraction: async ({ action }) => ({
+      values: {}, caption: action.description, musings: [{ text: "Again?", afterMinutes: 10 }],
+    }) });
     try {
       const first = await setPet(db, "owner", { stickerId: controllable.stickerId });
       // Too light an energy cost for anything but a rest is raised to the least an action costs.
@@ -72,7 +74,7 @@ describe("pets", () => {
       expect(again.pet?.actions).toEqual(first.pet?.actions);
       expect(seen).toEqual(["Loaf:0"]);
       const waved = await interactWithPet(db, "owner", { actionId: first.pet!.actions[0].id }, async () => {});
-      expect(waved.pet).toMatchObject({ stats: { happiness: 83, hp: 100, energy: 77 }, status: { caption: "Wave at Loaf's ears." } });
+      expect(waved.pet).toMatchObject({ stats: { happiness: 83, hp: 100, energy: 77 }, status: { caption: "Wave at Loaf's ears.", musings: [{ text: "Again?", afterMinutes: 10 }] } });
       await expect(interactWithPet(db, "owner", { actionId: crypto.randomUUID() }, async () => {}))
         .rejects.toMatchObject({ code: "PET_ACTION_NOT_AVAILABLE" });
     } finally {

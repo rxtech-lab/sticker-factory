@@ -169,6 +169,13 @@
       "when": 1789531200014,
       "tag": "0023_pet_weather_art",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789531200015,
+      "tag": "0024_pet_weather_art_sticker",
+      "breakpoints": true
     }
   ]
 }

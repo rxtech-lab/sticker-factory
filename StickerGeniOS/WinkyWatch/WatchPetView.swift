@@ -48,10 +48,15 @@ struct WatchPetView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 120)
                         .accessibilityLabel(snapshot.title)
-                    if let caption = snapshot.caption {
-                        Text("“\(caption)”")
-                            .font(.system(.body, design: .rounded))
-                            .multilineTextAlignment(.center)
+                    if snapshot.caption != nil {
+                        // Moves on to each line the pet's agent queued, when it chose to say it.
+                        TimelineView(.explicit([.now] + snapshot.musingDates)) { context in
+                            Text("“\(snapshot.caption(at: context.date) ?? "")”")
+                                .font(.system(.body, design: .rounded))
+                                .multilineTextAlignment(.center)
+                                .contentTransition(.opacity)
+                                .animation(.easeInOut, value: snapshot.caption(at: context.date))
+                        }
                     } else {
                         Text("Send a sticker from Messages to see how I feel.")
                             .font(.footnote)

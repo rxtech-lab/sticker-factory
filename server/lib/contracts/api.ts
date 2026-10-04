@@ -812,6 +812,16 @@ export const PET_ACTIONS_MAX = 12;
 export const PET_ACTION_GOLD_MAX = 50;
 /** Gold comes mostly from walking: the most a freshly offered action may earn, and only one may. */
 export const PET_ACTION_GOLD_EARN_MAX = 3;
+/** The bounds on how often, in seconds, the pet's agent may have the app play its animation. */
+export const PET_ANIMATE_EVERY_MIN = 8;
+export const PET_ANIMATE_EVERY_MAX = 600;
+/**
+ * The lines the pet's agent queues up to say after its caption, so the widget, watch and app keep
+ * talking between moods without asking the server: at most this many, each this many minutes apart.
+ */
+export const PET_MUSINGS_MAX = 3;
+export const PET_MUSING_AFTER_MIN = 5;
+export const PET_MUSING_AFTER_MAX = 30;
 
 export const PetActionV1Schema = z.object({
   id: z.string().uuid(),
@@ -847,6 +857,16 @@ export const PetResponseV1Schema = z.object({
     status: z.object({
       values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
       caption: z.string(),
+      /**
+       * How often the app plays the pet's animation through once, holding the pose in between —
+       * chosen by the pet's agent with each pose. Absent from statuses written before it existed.
+       */
+      animateEverySeconds: z.number().int().positive().optional(),
+      /**
+       * What the pet says next, in order: each line replaces the one before `afterMinutes` after it,
+       * the first counting from `updatedAt`. Absent from statuses written before it existed.
+       */
+      musings: z.array(z.object({ text: z.string(), afterMinutes: z.number().int().positive() }).strict()).optional(),
       updatedAt: z.string().datetime(),
     }).strict().nullable(),
     stats: PetStatsV1Schema,

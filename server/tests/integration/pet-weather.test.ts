@@ -3,9 +3,9 @@ import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import { setAiProviderForTests } from "@/lib/ai/gateway";
 import { PetResponseV1Schema } from "@/lib/contracts/api";
-import { petWeatherArt, userPets } from "@/lib/db/schema";
+import { petWeatherArt, stickerRevisions, stickers, userPets } from "@/lib/db/schema";
 import { setPetRandomForTests } from "@/lib/pets/log";
-import { drawPetWeatherArt, getPetWeatherArt } from "@/lib/services/pet-weather";
+import { drawPetWeatherArt, forgetPetWeatherArt, getPetWeatherArt } from "@/lib/services/pet-weather";
 import { getPet, setPet } from "@/lib/services/pets";
 import { MemoryObjectStore, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
@@ -93,6 +93,39 @@ describe("pet weather art", () => {
       await drawPetWeatherArt(db, "owner", new Date(Date.now() + 7 * 60 * 60 * 1000));
       expect(prompts).toHaveLength(2);
       expect((await getPet(db, "owner")).pet?.weatherArt).toMatchObject({ kind: "rainy" });
+    } finally {
+      await close();
+    }
+  });
+
+  it("keeps the weather through a new revision, and draws it again only once forgotten", async () => {
+    const { db, close, pet } = await setup();
+    try {
+      const prompts: string[] = [];
+      setAiProviderForTests(drawer(prompts));
+      await drawPetWeatherArt(db, "owner");
+      const drawn = (await getPet(db, "owner")).pet?.weatherArt;
+      expect(drawn).toMatchObject({ kind: "rainy" });
+
+      // The pet grows: a new published revision becomes the active one.
+      const [sticker] = await db.select().from(stickers).where(eq(stickers.id, pet.stickerId));
+      const [revision] = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, sticker.activeRevisionId!));
+      const grownId = crypto.randomUUID();
+      await db.insert(stickerRevisions).values({ ...revision, id: grownId, parentRevisionId: revision.id, createdAt: new Date() });
+      await db.update(stickers).set({ activeRevisionId: grownId }).where(eq(stickers.id, pet.stickerId));
+
+      await drawPetWeatherArt(db, "owner");
+      expect(prompts).toHaveLength(1);
+      expect((await getPet(db, "owner")).pet?.weatherArt).toEqual(drawn);
+      expect((await getPetWeatherArt(db, "owner", 128)).bytes).not.toBeNull();
+
+      // A restyle forgets it; the next read draws it from the grown revision.
+      await forgetPetWeatherArt(db, pet.stickerId);
+      expect((await getPet(db, "owner")).pet?.weatherArt).toBeNull();
+      await drawPetWeatherArt(db, "owner");
+      expect(prompts).toHaveLength(2);
+      expect((await db.select().from(petWeatherArt))[0]).toMatchObject({ stickerId: pet.stickerId, revisionId: grownId, state: "ready" });
+      expect((await getPet(db, "owner")).pet?.weatherArt?.key).not.toBe(drawn?.key);
     } finally {
       await close();
     }

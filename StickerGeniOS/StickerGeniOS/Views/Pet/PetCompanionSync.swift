@@ -147,7 +147,8 @@ extension PetSnapshot {
                     // Only a drawing of the weather it is in now; a stale one would show the wrong sky.
                     artKey: pet.weatherArt.flatMap { $0.kind == weather.kind && $0.isDay == weather.isDay ? $0.key : nil }
                 )
-            }
+            },
+            musings: pet.status?.musings
         )
     }
 }

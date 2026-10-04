@@ -407,6 +407,20 @@ nonisolated struct PetStatus: Codable, Equatable, Sendable {
     var values: [String: AnimatedControlValue]
     var caption: String
     var updatedAt: Date
+    /// How often the pet plays its animation through once, chosen by its agent with the pose. Nil
+    /// from statuses written before the agent chose it; the tab uses `PetBrain.defaultAnimationInterval`.
+    var animateEverySeconds: Int?
+    /// What the pet says next on its own, each `afterMinutes` after the line before, the first
+    /// counted from `updatedAt`. Nil from statuses written before the agent queued any.
+    var musings: [PetMusing]?
+
+    /// What the pet is saying at `date`: its caption, or the last of its musings due by then.
+    func caption(at date: Date) -> String {
+        PetMusing.line(caption: caption, musings: musings ?? [], since: updatedAt, at: date)
+    }
+
+    /// The moments the pet's line changes, for a `TimelineView` to redraw at.
+    var captionDates: [Date] { [updatedAt] + PetMusing.dates(of: musings ?? [], since: updatedAt) }
 }
 
 /// `pet` is nil when none is chosen, or when the chosen one stopped being posable — unpublished,

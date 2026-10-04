@@ -649,7 +649,8 @@ export const userPets = pgTable("user_pets", {
   index("user_pets_sticker_idx").on(table.stickerId),
 ]);
 
-export type PetStatus = { values: StickerControlValues; caption: string };
+export type PetMusing = { text: string; afterMinutes: number };
+export type PetStatus = { values: StickerControlValues; caption: string; animateEverySeconds?: number; musings?: PetMusing[] };
 export type PetEvolution = {
   id: string;
   state: "planning" | "building" | "publishing" | "ready" | "failed";
@@ -661,6 +662,8 @@ export type PetEvolution = {
   finishedAt?: string;
   planJobId?: string;
   composeJobId?: string;
+  /** The pet asked for its weather to be drawn again in its new look once it has grown. */
+  redrawWeather?: boolean;
   error?: string;
 };
 export type PetStoredContext = {
@@ -710,6 +713,9 @@ export type PetEventRow = typeof petEvents.$inferSelect;
  */
 export const petWeatherArt = pgTable("pet_weather_art", {
   id: text("id").primaryKey(),
+  /** The sticker the weather belongs to. A new revision keeps it; only a restyle draws it again. */
+  stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
+  /** The revision whose art style it was drawn from. */
   revisionId: text("revision_id").notNull().references(() => stickerRevisions.id, { onDelete: "cascade" }),
   kind: text("kind", { enum: PET_WEATHER_KINDS }).notNull(),
   isDay: boolean("is_day").notNull(),
@@ -718,7 +724,7 @@ export const petWeatherArt = pgTable("pet_weather_art", {
   claimedAt: timestampColumn("claimed_at").notNull(),
   readyAt: timestampColumn("ready_at"),
 }, (table) => [
-  uniqueIndex("pet_weather_art_look_idx").on(table.revisionId, table.kind, table.isDay),
+  uniqueIndex("pet_weather_art_look_idx").on(table.stickerId, table.kind, table.isDay),
   check("pet_weather_art_kind_check", sql`${table.kind} IN (${oneOf(PET_WEATHER_KINDS)})`),
   check("pet_weather_art_state_check", sql`${table.state} IN ('drawing', 'ready', 'failed')`),
 ]);

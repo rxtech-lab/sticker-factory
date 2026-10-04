@@ -98,6 +98,8 @@ export async function visitPet(
       status = {
         values: configuration ? normalizedControlValues(configuration, { ...row.statusJson?.values, ...answer.values }) : {},
         caption: answer.caption.trim(),
+        animateEverySeconds: answer.animateEverySeconds,
+        musings: answer.musings,
       };
     } catch (error) {
       narrated = false;

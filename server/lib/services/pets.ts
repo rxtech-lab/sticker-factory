@@ -33,7 +33,9 @@ export type PetResponse = {
   pet: {
     sticker: ReturnType<typeof serializeStickerSummary>;
     selectedAt: string;
-    status: { values: Record<string, string | number | boolean>; caption: string; updatedAt: string } | null;
+    status: {
+      values: Record<string, string | number | boolean>; caption: string; animateEverySeconds?: number; updatedAt: string;
+    } | null;
     stats: PetStats;
     actions: PetAction[];
     identity: PetIdentityV1 | null;
@@ -121,7 +123,7 @@ async function serializePet(
     stats: currentStats(row), actions: (actions ?? []).map((action) => ({ ...action, effects: { ...action.effects, gold: action.effects.gold ?? 0 } })),
     identity: row.identityJson, signals: row.signalsJson,
     nextEventAt: row.nextEventAt?.toISOString() ?? null, evolution: serializePetEvolution(row.evolutionJson),
-    weatherArt: await serializePetWeatherArt(db, playback.revision.id, row.signalsJson) } };
+    weatherArt: await serializePetWeatherArt(db, row.stickerId, row.signalsJson) } };
 }
 
 /**
@@ -268,7 +270,7 @@ export async function interactWithPet(
     const committed = await commitPetChange(db, userId, {
       lifeId: pet.lifeId!,
       where: eq(userPets.interactionId, interactionId),
-      set: { statusJson: { values, caption }, statusUpdatedAt: new Date(), interactionId: null,
+      set: { statusJson: { values, caption, animateEverySeconds: answer.animateEverySeconds, musings: answer.musings }, statusUpdatedAt: new Date(), interactionId: null,
         ...(actions ? { actionsJson: actions } : {}) },
       changes: [{
         kind: "interaction",
@@ -282,7 +284,8 @@ export async function interactWithPet(
     });
     if (!committed) throw new ApiError(409, "PET_CHANGED", "Your pet changed. Please try again.");
     if (mayGrow && answer.evolve) {
-      await startPetEvolution(db, userId, { stickerId: pet.stickerId, brief: answer.evolve.brief, trigger: `action: ${action.title}` });
+      await startPetEvolution(db, userId, { stickerId: pet.stickerId, brief: answer.evolve.brief,
+        redrawWeather: answer.evolve.redrawWeather, trigger: `action: ${action.title}` });
     }
     await notify(db, userId).catch((error) => traceEvent("pet.interaction:notify:failed", { userId, error: describeError(error) }));
     return getPet(db, userId);
@@ -435,7 +438,7 @@ export async function readPetSend(
     const committed = await commitPetChange(db, userId, {
       lifeId: pet.lifeId!,
       where: and(eq(userPets.stickerId, pet.stickerId), eq(userPets.lastSentAt, sentAt)),
-      set: { statusJson: { values, caption }, statusUpdatedAt: now, signalsJson: signals,
+      set: { statusJson: { values, caption, animateEverySeconds: status.animateEverySeconds, musings: status.musings }, statusUpdatedAt: now, signalsJson: signals,
         ...(headlinesRefreshed ? { signalsUpdatedAt: now } : {}), ...(actions ? { actionsJson: actions } : {}) },
       changes,
     });
@@ -517,7 +520,7 @@ export async function noticeNewSticker(
     const committed = await commitPetChange(db, userId, {
       lifeId: found.lifeId,
       where: eq(userPets.stickerId, found.stickerId),
-      set: { statusJson: { values, caption }, statusUpdatedAt: now, ...(actions ? { actionsJson: actions } : {}) },
+      set: { statusJson: { values, caption, animateEverySeconds: answer.animateEverySeconds, musings: answer.musings }, statusUpdatedAt: now, ...(actions ? { actionsJson: actions } : {}) },
       changes: [{
         kind: "sticker",
         title: `Saw “${made.sticker.title}”`,
@@ -592,7 +595,7 @@ export async function sendPetPhoto(
     const committed = await commitPetChange(db, userId, {
       lifeId: pet.lifeId!,
       where: eq(userPets.interactionId, interactionId),
-      set: { statusJson: { values, caption }, statusUpdatedAt: new Date(), interactionId: null,
+      set: { statusJson: { values, caption, animateEverySeconds: answer.animateEverySeconds, musings: answer.musings }, statusUpdatedAt: new Date(), interactionId: null,
         ...(actions ? { actionsJson: actions } : {}) },
       changes: [{
         kind: "photo",
@@ -606,7 +609,8 @@ export async function sendPetPhoto(
     });
     if (!committed) throw new ApiError(409, "PET_CHANGED", "Your pet changed. Please try again.");
     if (mayGrow && answer.evolve) {
-      await startPetEvolution(db, userId, { stickerId: pet.stickerId, brief: answer.evolve.brief, trigger: "photo" });
+      await startPetEvolution(db, userId, { stickerId: pet.stickerId, brief: answer.evolve.brief,
+        redrawWeather: answer.evolve.redrawWeather, trigger: "photo" });
     }
     await notify(db, userId).catch((error) => traceEvent("pet.photo:notify:failed", { userId, error: describeError(error) }));
     return getPet(db, userId);

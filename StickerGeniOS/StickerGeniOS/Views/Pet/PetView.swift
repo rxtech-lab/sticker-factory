@@ -12,6 +12,10 @@ struct PetView: View {
     @State private var showingDiary = false
     @State private var showingIdentity = false
     @State private var photoItem: PhotosPickerItem?
+    /// The owner opened the app and the pet has not said hello yet.
+    @State private var owesGreeting = true
+    /// Whether the tab is on screen, so the pet only greets someone who can see it.
+    @State private var isShown = false
     @Environment(\.scenePhase) private var scenePhase
 
     init(api: any StickerAPIClientProtocol) {
@@ -20,7 +24,6 @@ struct PetView: View {
 
     var body: some View {
         content
-            .navigationTitle("Pet")
             .background { PosterPaper() }
             .safeAreaInset(edge: .top) {
                 // The picker shows its own errors while it is up; this is for the tab's.
@@ -45,7 +48,7 @@ struct PetView: View {
                             Label {
                                 Text(pet.identity?.petClass.displayName ?? String(localized: "About"))
                             } icon: {
-                                Image(systemName: pet.identity?.petClass.symbol ?? "info.circle")
+                                Image(systemName: "info.circle")
                             }
                         }
                         .accessibilityHint(Text("Shows who your pet is and what it knows of the world"))
@@ -87,11 +90,29 @@ struct PetView: View {
             .task {
                 await model.loadPet()
                 model.syncWorldInBackground()
+                greetIfOwed()
             }
             .refreshable { await model.loadPet() }
+            .onAppear {
+                isShown = true
+                greetIfOwed()
+            }
+            .onDisappear { isShown = false }
             // Back from a "your pet grew" banner, or anything else that changed it while away.
+            // Coming back from the background, the pet says hello once it is current.
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active, model.hasLoadedPet { Task { await model.loadPet() } }
+                switch phase {
+                case .background:
+                    model.ownerLeft()
+                    owesGreeting = true
+                case .active where model.hasLoadedPet:
+                    Task {
+                        await model.loadPet()
+                        greetIfOwed()
+                    }
+                default:
+                    break
+                }
             }
             // Growing finishes in the background; its banner is swallowed while the app is open, so
             // the tab looks again now and then until the new look is in.
@@ -127,6 +148,8 @@ struct PetView: View {
             }
             .sheet(isPresented: $showingActions) {
                 PetActionsSheet(model: model)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showingDiary) {
                 PetDiarySheet(api: model.api, maxHp: model.pet?.maxHp ?? 100)
@@ -147,6 +170,17 @@ struct PetView: View {
         model.showPhoto(image)
     }
 
+    /// Has the pet greet its owner once per visit, when the tab is up and the pet is loaded. Waits a
+    /// beat so the pet is on screen to hop rather than mid-fade.
+    private func greetIfOwed() {
+        guard owesGreeting, isShown, scenePhase == .active, model.pet != nil else { return }
+        owesGreeting = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            model.greetOwner()
+        }
+    }
+
     /// A sheet shows its own errors and progress; the tab's would sit behind it, unseen.
     private var isPresentingSheet: Bool { showingPicker || showingActions || showingDiary || showingIdentity }
 
@@ -159,6 +193,18 @@ struct PetView: View {
             let motion = PetMotionProfile(pet: pet)
             ScrollView {
                 VStack(spacing: 20) {
+                    // The weather where you are, drawn in the pet's style, sits above the dialogue
+                    // box with its temperature beside it, clear of the pet and the picture it is shown.
+                    if let weather = pet.signals?.weather {
+                        HStack(spacing: 8) {
+                            PetWeatherSticker(weather: weather, art: model.weatherArt)
+                                .frame(width: 72, height: 72)
+                            PetWeatherChip(weather: weather)
+                            Spacer(minLength: 0)
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
+                    }
+
                     // The pet stands on the page itself; only its stats sit in a card.
                     // Negative spacing: sticker art carries a transparent margin, so the bubble's
                     // tail reaches down into it to sit right over the pet.
@@ -168,11 +214,17 @@ struct PetView: View {
                                 PetThinkingBubble()
                             } else {
                                 // The pet growing something new in the background is said in the
-                                // dialogue box, under its line.
-                                PetSpeechBubble(
-                                    text: pet.status?.caption ?? String(localized: "I'm here with you. What shall we do?"),
-                                    isGrowing: pet.evolution?.isGrowing == true
-                                )
+                                // dialogue box, under its line. Between moods it moves on to each
+                                // line its agent queued, at the pause the agent chose.
+                                // A touch the on-device model answered shows its reply for a while.
+                                TimelineView(.explicit(pet.status?.captionDates ?? [.now])) { context in
+                                    PetSpeechBubble(
+                                        text: model.brain.localLine?.text
+                                            ?? pet.status?.caption(at: context.date)
+                                            ?? String(localized: "I'm here with you. What shall we do?"),
+                                        isGrowing: pet.evolution?.isGrowing == true
+                                    )
+                                }
                             }
                         }
                         .animation(.snappy(duration: 0.3), value: pet.evolution?.isGrowing)
@@ -180,21 +232,28 @@ struct PetView: View {
                         // Drawn over the sticker's margin rather than under it.
                         .zIndex(1)
                         // The pose the pet struck for its last interaction, or its sticker until
-                        // it has struck one. A new pose fades in over the old one.
-                        ZStack {
-                            if let pose = model.pose {
-                                Image(uiImage: pose)
-                                    .resizable()
-                                    .interpolation(.high)
-                                    .scaledToFit()
-                                    .id(model.poseKey)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottom)))
-                            } else {
-                                StickerThumbnail(sticker: pet.sticker, api: model.api, detail: .preview)
-                                    .transition(.opacity)
+                        // it has struck one. A new pose fades in over the old one. Every so often,
+                        // as often as its agent chose, the pet plays its own animation in that pose.
+                        PetAnimatedPose(
+                            animation: model.animation,
+                            interval: model.animationInterval,
+                            playRequest: model.brain.playRequest
+                        ) {
+                            ZStack {
+                                if let pose = model.pose {
+                                    Image(uiImage: pose)
+                                        .resizable()
+                                        .interpolation(.high)
+                                        .scaledToFit()
+                                        .id(model.poseKey)
+                                        .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottom)))
+                                } else {
+                                    StickerThumbnail(sticker: pet.sticker, api: model.api, detail: .preview)
+                                        .transition(.opacity)
+                                }
                             }
-                        }
                             .animation(.snappy(duration: 0.35), value: model.poseKey)
+                        }
                             .aspectRatio(1, contentMode: .fit)
                             // As big as the page allows, but narrow enough that a picture held up
                             // at its side still fits on screen.
@@ -223,35 +282,22 @@ struct PetView: View {
                         .accessibilityIdentifier("current-pet")
                         // Taps, holds, swipes and too many taps each get their own reaction, shaped
                         // by the pet's mood and nature; nothing is sent. Striking a new pose replays
-                        // a hop, so the change reads as the pet moving.
-                        .modifier(PetTouchReactions(profile: motion, replayKey: model.poseKey) {
-                            // Touching the pet is a new interaction, so the picture is put away.
-                            if !model.isAnswering { model.dismissPhoto() }
-                        })
+                        // a hop, so the change reads as the pet moving. With Apple Intelligence the pet
+                        // also says something back, and may play its animation, thought of on the phone.
+                        .modifier(PetTouchReactions(
+                            profile: motion,
+                            replayKey: model.poseKey,
+                            greetKey: model.greetCount,
+                            onTouch: {
+                                // Touching the pet is a new interaction, so the picture is put away.
+                                if !model.isAnswering { model.dismissPhoto() }
+                            },
+                            onReaction: { model.touched($0) }
+                        ))
                         // Takes whatever height the stats card leaves over.
                         .frame(maxHeight: .infinity)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // The weather where you are, drawn in the pet's style, standing behind the pet's
-                    // shoulder on the side the picture it is shown never goes. Pinned to the stage,
-                    // not the pet, so it keeps its own motion while the pet breathes and hops.
-                    .background(alignment: .leading) {
-                        if let weather = pet.signals?.weather {
-                            PetWeatherSticker(weather: weather, art: model.weatherArt)
-                                .frame(width: 116, height: 116)
-                                .offset(y: -60)
-                                .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .bottom)))
-                        }
-                    }
-                    // The temperature sits in front, under the drawing, so the pet never covers it.
-                    .overlay(alignment: .leading) {
-                        if let weather = pet.signals?.weather {
-                            PetWeatherChip(weather: weather)
-                                .offset(y: 12)
-                                .transition(.opacity)
-                        }
-                    }
-                    .animation(.snappy(duration: 0.4), value: pet.signals?.weather)
 
                     PosterCard(padding: 16) {
                         VStack(alignment: .leading, spacing: 10) {
@@ -269,6 +315,7 @@ struct PetView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .animation(.snappy(duration: 0.4), value: pet.signals?.weather)
                 .padding()
                 // Exactly one screen tall, so the pet grows into the room left over; the scroll
                 // view stays for pull to refresh.
@@ -327,6 +374,9 @@ private struct PetSpeechBubble: View {
                     .multilineTextAlignment(.leading)
                     // Hugs the line rather than spanning the screen; long lines still wrap.
                     .fixedSize(horizontal: false, vertical: true)
+                    // A line the pet moves on to by itself fades in over the last.
+                    .contentTransition(.opacity)
+                    .animation(.snappy(duration: 0.4), value: text)
                 if isGrowing {
                     PetGrowingLine()
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -358,7 +408,7 @@ private struct PetSpeechBubble: View {
     }
 }
 
-/// Stands in for the pet's reply while it is on its way: a predefined line and a typing cursor.
+/// Stands in for the pet's reply while it is on its way: a predefined line.
 private struct PetThinkingBubble: View {
     private static let lines: [LocalizedStringResource] = [
         "Hmm, let me think…",
@@ -369,11 +419,8 @@ private struct PetThinkingBubble: View {
     @State private var line = PetThinkingBubble.lines.randomElement()!
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.4)) { context in
-            let dots = Int(context.date.timeIntervalSinceReferenceDate / 0.4) % 3 + 1
-            PetSpeechBubble(text: String(localized: line) + String(repeating: "·", count: dots))
-        }
-        .accessibilityLabel(Text(line))
+        PetSpeechBubble(text: String(localized: line))
+            .accessibilityLabel(Text(line))
         // A slow pulse while the pet thinks, so the wait is felt and not just watched. Spaced well
         // apart so a long reply reads as patience, not a buzz; it stops when the bubble goes.
         .task {

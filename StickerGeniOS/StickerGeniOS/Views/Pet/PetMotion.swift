@@ -330,6 +330,19 @@ struct PetMotionProfile: Equatable {
         }
     }
 
+    /// How the pet welcomes its owner back when the app opens: its happiest pat move and what a pat
+    /// sends up. A tired or hurt pet still stirs, just less.
+    var greeting: PetReaction {
+        switch mood {
+        case .sick, .sleepy, .grumpy:
+            return PetReaction(move: move(forPat: 0), particle: particle, haptic: tapHaptic)
+        case .content, .joyful:
+            // The biggest of its moves: someone it loves just walked in.
+            let move = natureMoves.max { $0.hop < $1.hop } ?? move(forPat: 0)
+            return reacting(move.amplified(by: mood == .joyful ? 1.4 : 1.15), particle, tapHaptic)
+        }
+    }
+
     private func reacting(_ move: PetMove, _ particle: PetParticle?, _ haptic: PetHaptic) -> PetReaction {
         PetReaction(move: move.scaled(by: tempo), particle: particle, haptic: haptic)
     }
@@ -597,8 +610,12 @@ struct PetTouchReactions: ViewModifier {
     /// Replays the pet's tap reaction whenever it changes, without a haptic or particles: a new
     /// pose reads as the pet moving.
     let replayKey: String?
+    /// Plays the pet's greeting each time it changes, as when its owner opens the app.
+    var greetKey = 0
     /// Called on every reaction to a touch.
     let onTouch: () -> Void
+    /// Called with each touch the pet reacted to, once the touch is over.
+    var onReaction: (PetTouch) -> Void = { _ in }
 
     /// How far a finger moves before the touch is a swipe rather than a tap or a hold.
     private static let swipeDistance: CGFloat = 30
@@ -649,6 +666,7 @@ struct PetTouchReactions: ViewModifier {
                 move = profile.reaction(to: .tap, variant: variant).move
                 trigger += 1
             }
+            .onChange(of: greetKey) { greet() }
             .contentShape(.rect)
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -746,6 +764,17 @@ struct PetTouchReactions: ViewModifier {
         reaction.haptic.play()
         if let particle = reaction.particle { burst(particle, at: location) }
         onTouch()
+        onReaction(touch)
+    }
+
+    /// Welcomes the owner back. Not a touch: nothing is reported, so the photo stays up.
+    private func greet() {
+        guard !isTouching else { return }
+        let reaction = profile.greeting
+        move = reaction.move
+        trigger += 1
+        reaction.haptic.play()
+        if let particle = reaction.particle { burst(particle, at: CGPoint(x: width / 2, y: width / 3)) }
     }
 
     /// Floats particles up from a touch, and clears them once they have faded.

@@ -17,6 +17,49 @@ nonisolated struct PetSnapshot: Codable, Equatable, Sendable {
     /// The weather where the owner is, as the pet last read it. Nil without location, and in
     /// snapshots written before the widget showed weather.
     var weather: PetSnapshotWeather? = nil
+    /// What the pet says next on its own, counted from `statusUpdatedAt`. Nil in older snapshots.
+    var musings: [PetMusing]? = nil
+
+    /// What the pet is saying at `date`: its caption, or the last of its musings due by then.
+    func caption(at date: Date) -> String? {
+        guard let caption, let statusUpdatedAt else { return caption }
+        return PetMusing.line(caption: caption, musings: musings ?? [], since: statusUpdatedAt, at: date)
+    }
+
+    /// When each musing takes over from the line before it.
+    var musingDates: [Date] {
+        guard caption != nil, let statusUpdatedAt else { return [] }
+        return PetMusing.dates(of: musings ?? [], since: statusUpdatedAt)
+    }
+
+    /// This snapshot as it reads at `date`, for a surface that only shows `caption`.
+    func speaking(at date: Date) -> PetSnapshot {
+        var snapshot = self
+        snapshot.caption = caption(at: date)
+        return snapshot
+    }
+}
+
+/// A line the pet's agent queued to say on its own after its caption, `afterMinutes` after the line
+/// before it. The agent picks the pauses (5 to 30 minutes), so every surface can keep the pet talking
+/// on schedule without asking the server.
+nonisolated struct PetMusing: Codable, Equatable, Sendable {
+    var text: String
+    var afterMinutes: Int
+
+    /// When each of `musings` takes over, counting from `start`, the moment the caption was said.
+    static func dates(of musings: [PetMusing], since start: Date) -> [Date] {
+        var date = start
+        return musings.map { musing in
+            date = date.addingTimeInterval(Double(max(musing.afterMinutes, 1)) * 60)
+            return date
+        }
+    }
+
+    /// The line due at `date`: `caption` until the first musing, then each in turn; the last one stays.
+    static func line(caption: String, musings: [PetMusing], since start: Date, at date: Date) -> String {
+        Array(zip(musings, dates(of: musings, since: start))).last { $0.1 <= date }?.0.text ?? caption
+    }
 }
 
 /// The weather beside the pet on the widget: what it is, and the server's drawing of it, if any.

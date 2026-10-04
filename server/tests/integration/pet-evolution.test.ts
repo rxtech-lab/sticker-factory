@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setAiProviderForTests } from "@/lib/ai/gateway";
 import type { StickerConfiguration } from "@/lib/contracts/configuration";
-import { chatMessages, chatThreads, generationJobs, stickers, userPets, type UserPetRow } from "@/lib/db/schema";
+import { chatMessages, chatThreads, generationJobs, petWeatherArt, stickerRevisions, stickers, userPets, type UserPetRow } from "@/lib/db/schema";
 import { setPetRandomForTests } from "@/lib/pets/log";
-import { canEvolve, beginPetEvolutionPlan, failPetEvolution, finishPetEvolution, setPetEvolutionStarterForTests, startPetEvolution } from "@/lib/services/pet-evolution";
+import { canEvolve, beginPetEvolutionPlan, failPetEvolution, finishPetEvolution, publishPetEvolution, setPetEvolutionStarterForTests, startPetEvolution } from "@/lib/services/pet-evolution";
 import { listPetEvents } from "@/lib/services/pet-state";
 import { getPet, interactWithPet, noticeNewSticker, setPet } from "@/lib/services/pets";
 import { MemoryObjectStore, setObjectStoreForTests } from "@/lib/storage/r2";
@@ -145,6 +145,10 @@ describe("pet growth and noticing", () => {
       expect(job).toMatchObject({ kind: "plan", origin: "pet", reservationId: null, reservationAmount: 0, state: "queued" });
       const message = await db.select().from(chatMessages).where(eq(chatMessages.jobId, jobId!)).then((rows) => rows[0]);
       expect(message.content).toContain("Add a sleepy yawn.");
+      // The item is built to be switched and to stay out of the pet's way.
+      expect(message.content).toContain("its own separate accessory layer");
+      expect(message.content).toContain("toggle control");
+      expect(message.content).toContain("new pose clip");
       // A replayed step reuses the job it queued.
       expect(await beginPetEvolutionPlan(db, "owner", evolutionId)).toBe(jobId);
 
@@ -154,7 +158,13 @@ describe("pet growth and noticing", () => {
           expect(event.title).toBe("Grew something new");
           return { values: { mood: "sleepy" }, caption: "I can yawn now!" };
         } });
+      // Its weather belongs to the sticker: growing an item keeps it.
+      const [{ activeRevisionId }] = await db.select({ activeRevisionId: stickers.activeRevisionId }).from(stickers)
+        .where(eq(stickers.id, pet.stickerId));
+      await db.insert(petWeatherArt).values({ id: crypto.randomUUID(), stickerId: pet.stickerId, revisionId: activeRevisionId!,
+        kind: "sunny", isDay: true, state: "ready", r2Key: "private/pet-weather/sun.png", claimedAt: new Date(), readyAt: new Date() });
       expect(await finishPetEvolution(db, "owner", evolutionId, async (_db, _userId, alert) => { alerts.push(alert); })).toBe(true);
+      expect(await db.select().from(petWeatherArt)).toHaveLength(1);
       const grown = (await getPet(db, "owner")).pet!;
       expect(grown.status).toMatchObject({ values: { mood: "sleepy" }, caption: "I can yawn now!" });
       expect(grown.evolution).toMatchObject({ state: "ready" });
@@ -165,6 +175,51 @@ describe("pet growth and noticing", () => {
       await failPetEvolution(db, "owner", evolutionId, "late");
       expect(await finishPetEvolution(db, "owner", evolutionId, async () => { throw new Error("no second push"); })).toBe(false);
       expect((await getPet(db, "owner")).pet!.evolution?.state).toBe("ready");
+    } finally {
+      await close();
+    }
+  });
+
+  it("draws its weather again after growing only when the pet asked for it", async () => {
+    const { db, close, pet } = await setup();
+    try {
+      let evolutionId = "";
+      setPetEvolutionStarterForTests(async (_userId, id) => { evolutionId = id; return "run"; });
+      expect(await startPetEvolution(db, "owner", { stickerId: pet.stickerId, brief: "Repaint me in pastel watercolour.",
+        redrawWeather: true, trigger: "photo" })).toBe(true);
+      const [{ activeRevisionId }] = await db.select({ activeRevisionId: stickers.activeRevisionId }).from(stickers)
+        .where(eq(stickers.id, pet.stickerId));
+      await db.insert(petWeatherArt).values({ id: crypto.randomUUID(), stickerId: pet.stickerId, revisionId: activeRevisionId!,
+        kind: "sunny", isDay: true, state: "ready", r2Key: "private/pet-weather/sun.png", claimedAt: new Date(), readyAt: new Date() });
+      setAiProviderForTests({ ...unusedAiProvider, generatePetActions: actions,
+        narratePetEvent: async () => ({ values: {}, caption: "Look at my new colours!" }) });
+      expect(await finishPetEvolution(db, "owner", evolutionId, async () => {})).toBe(true);
+      expect(await db.select().from(petWeatherArt)).toHaveLength(0);
+    } finally {
+      await close();
+    }
+  });
+
+  it("keeps the pet's published look when the grown sticker cannot be published", async () => {
+    const { db, close, pet } = await setup();
+    try {
+      let evolutionId = "";
+      setPetEvolutionStarterForTests(async (_userId, id) => { evolutionId = id; return "run"; });
+      expect(await startPetEvolution(db, "owner", { stickerId: pet.stickerId, brief: "Add a tuna treat.", trigger: "photo" })).toBe(true);
+      const [sticker] = await db.select().from(stickers).where(eq(stickers.id, pet.stickerId));
+      const [revision] = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, sticker.activeRevisionId!));
+      // A built candidate whose artwork is gone, so the quick publish refuses it.
+      const composeJobId = crypto.randomUUID();
+      await db.insert(stickerRevisions).values({ ...revision, id: composeJobId, parentRevisionId: revision.id,
+        candidateState: "candidate", playbackJson: null, pngAssetId: null, systemAssetId: null, apngAssetId: null,
+        attachmentMediumAssetId: null, attachmentSmallAssetId: null, webpAssetId: null, decidedAt: null, createdAt: new Date() });
+      const row = (await db.select().from(userPets).where(eq(userPets.userId, "owner")))[0];
+      await db.update(userPets).set({ evolutionJson: { ...row.evolutionJson!, state: "building", composeJobId } })
+        .where(eq(userPets.userId, "owner"));
+
+      await expect(publishPetEvolution(db, "owner", evolutionId)).rejects.toThrow();
+      const after = (await db.select().from(stickers).where(eq(stickers.id, pet.stickerId)))[0];
+      expect(after).toMatchObject({ activeRevisionId: revision.id, status: "published" });
     } finally {
       await close();
     }

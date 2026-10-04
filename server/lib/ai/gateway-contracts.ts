@@ -697,13 +697,19 @@ export interface AiPetStatusContext extends AiOwnerMoment {
 export interface AiPetStatus {
   values: StickerControlValues;
   caption: string;
+  /** How often the app plays the pet's animation through once. Omitted keeps the app's default. */
+  animateEverySeconds?: number;
+  /** Lines to say after the caption, each `afterMinutes` after the one before. Omitted says nothing more. */
+  musings?: { text: string; afterMinutes: number }[];
   /** How the sent sticker's mood moves the stats, each -8 to 8. Omitted means no change. */
   effects?: { happiness: number; hp: number; energy: number };
   /**
    * The pet decided this moment is worth growing from: a brief for the planner, asking for one new
-   * mood, property or look on its own sticker. Only ever set when the context allowed it.
+   * item, with a pose and movement to go with it, on its own sticker. `redrawWeather` asks for its
+   * weather to be drawn again once it has grown, for a growth that changes its whole look. Only ever
+   * set when the context allowed it.
    */
-  evolve?: { brief: string };
+  evolve?: { brief: string; redrawWeather?: boolean };
 }
 
 /** Whether the pet may decide to grow from this moment; see `AiPetStatus.evolve`. */

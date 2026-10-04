@@ -447,7 +447,7 @@ export class MockAiProvider implements AiProvider {
         title.includes(option.id.toLowerCase()) || title.includes(option.label.toLowerCase()));
       if (match) values[control.id] = match.id;
     }
-    return { values, caption: `Feeling ${input.sent.title}` };
+    return { values, caption: `Feeling ${input.sent.title}`, musings: [{ text: "Still thinking about it", afterMinutes: 20 }] };
   }
   async generatePetActions(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]> {
     return [
@@ -469,7 +469,7 @@ export class MockAiProvider implements AiProvider {
     return ["Local park opens a new dog run"];
   }
   async narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus> {
-    return { values: {}, caption: `${input.petTitle}: ${input.event.title}` };
+    return { values: {}, caption: `${input.petTitle}: ${input.event.title}`, musings: [{ text: "What next?", afterMinutes: 15 }] };
   }
   async noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction> {
     return { react: true, values: {}, caption: `${input.petTitle} likes ${input.made.title}`, effects: { happiness: 2, hp: 0, energy: 0 } };

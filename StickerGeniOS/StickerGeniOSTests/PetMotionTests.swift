@@ -77,4 +77,22 @@ final class PetMotionTests: XCTestCase {
         XCTAssertLessThan(tireless.move(forPat: 0).duration, weary.move(forPat: 0).duration)
         XCTAssertLessThan(tireless.breathPeriod, weary.breathPeriod)
     }
+
+    func testGreetingSpeaksOnlyWhenNeededOrAfterAWhile() {
+        // Back from a quick look elsewhere, a happy pet just hops.
+        XCTAssertNil(PetBrain.greetingLine(for: .joyful, away: 60))
+        XCTAssertNotNil(PetBrain.greetingLine(for: .content, away: PetBrain.quietReturn))
+        XCTAssertNotNil(PetBrain.greetingLine(for: .content, away: nil))
+        // A pet that needs something always says so.
+        for mood in [PetMood.sick, .sleepy, .grumpy] {
+            XCTAssertNotNil(PetBrain.greetingLine(for: mood, away: 10))
+        }
+    }
+
+    func testGreetingHopsHigherWhenJoyful() {
+        let joyful = PetMotionProfile(mood: .joyful, petClass: nil).greeting.move
+        let content = PetMotionProfile(mood: .content, petClass: nil).greeting.move
+        XCTAssertGreaterThan(joyful.hop, content.hop)
+        XCTAssertGreaterThan(content.hop, 0)
+    }
 }

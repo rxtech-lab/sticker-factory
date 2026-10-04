@@ -1,4 +1,6 @@
+import AnimatedView
 import Observation
+import os
 import SwiftUI
 import UIKit
 
@@ -42,6 +44,9 @@ final class PetModel {
     private(set) var weatherArt: UIImage?
     /// Names exactly what `weatherArt` shows: `PetWeatherArt.key`.
     private(set) var weatherArtKey: String?
+    /// The pet's sticker in the pose it holds now, ready to play through. Nil until it has loaded,
+    /// and for a sticker with nothing that moves; the still pose stands in between plays either way.
+    private(set) var animation: PetAnimation?
     var errorMessage: String?
 
     let api: any StickerAPIClientProtocol
@@ -52,6 +57,13 @@ final class PetModel {
     @ObservationIgnored private var generation = 0
     /// The pet `pose` was drawn for.
     @ObservationIgnored private var poseStickerID: String?
+    private static let log = Logger(subsystem: "app.rxlab.sticker-factory", category: "pet")
+    /// The pet's playback document, kept across poses: a new pose resolves the same document again.
+    @ObservationIgnored private var playback: (key: String, document: AnimatedDocument)?
+    /// The pose `animation` is being loaded for, so a second refresh for it does not load it twice.
+    @ObservationIgnored private var loadingAnimationKey: String?
+    /// The artwork every pose of the pet draws from. Shared, so a new pose only fetches what is new.
+    @ObservationIgnored private let animationAssets = StickerAssetStore()
     /// Puts the shown picture away once it has been up for `photoLifetime`.
     @ObservationIgnored private var photoExpiry: Task<Void, Never>?
     /// How long the picture stays up after the pet's reaction lands.
@@ -61,9 +73,43 @@ final class PetModel {
     /// Edge of the weather drawing, in pixels: the tab shows it at about 120 points.
     static let weatherArtSize = 384
 
+    /// Decides what the pet says and does: its agent on the server, and the on-device model.
+    let brain: PetBrain
+
+    /// How long the pet holds still between plays of its animation, as its agent chose with the pose.
+    var animationInterval: Duration { brain.animationInterval(for: pet) }
+
     init(api: any StickerAPIClientProtocol, context: PetContextProvider = .shared) {
         self.api = api
         self.context = context
+        brain = PetBrain(api: api)
+    }
+
+    /// Lets the pet answer a touch with a few words of its own, thought of on the phone.
+    func touched(_ touch: PetTouch) {
+        guard let pet, activity == nil, !isAnswering else { return }
+        brain.react(to: touch, pet: pet)
+    }
+
+    /// Counts the times the pet greeted its owner; the pet hops hello each time it changes.
+    private(set) var greetCount = 0
+    /// When the owner last had the pet in front of them, kept across launches.
+    static let lastSeenKey = "pet.lastSeenAt"
+
+    /// Remembers that the owner is leaving, so the next greeting knows how long they were away.
+    func ownerLeft() {
+        UserDefaults.standard.set(Date.now, forKey: Self.lastSeenKey)
+    }
+
+    /// Has the pet react to its owner opening the app: a hop hello, and a few words when it needs
+    /// something or they were gone a while.
+    func greetOwner() {
+        guard let pet, activity == nil, !isAnswering else { return }
+        let lastSeen = UserDefaults.standard.object(forKey: Self.lastSeenKey) as? Date
+        // Stamped now too, so an app killed without going to the background still counts as a visit.
+        ownerLeft()
+        greetCount &+= 1
+        brain.greet(pet, awayFor: lastSeen.map { Date.now.timeIntervalSince($0) })
     }
 
     /// Every candidate, in section order, without the empty "My Stickers" a pack-only user gets.
@@ -76,6 +122,7 @@ final class PetModel {
             // The new look arrived while the tab was open: the banner is swallowed, so feel it.
             if wasGrowing, pet?.evolution?.state == .ready { Haptics.success() }
             hasLoadedPet = true
+            if pet != nil { brain.prepare() }
             // The pet is here and current, so whatever failed before no longer describes it.
             errorMessage = nil
             publishToCompanions()
@@ -118,6 +165,7 @@ final class PetModel {
             // read that gives up on a slow location fix rather than holding the overlay up.
             let birthWorld = await context.quickContext()
             pet = try await api.setPet(stickerID: sticker.id, context: birthWorld)
+            brain.forgetLocalLine()
             dismissPhoto()
             errorMessage = nil
             publishToCompanions()
@@ -225,6 +273,8 @@ final class PetModel {
     /// Fetches the drawing of the pet's current pose when it changed. A pet never posed keeps its
     /// sticker; a failed fetch keeps the last pose, since a pet that missed one still looks like itself.
     private func refreshPose() async {
+        // The moving pose loads alongside; the still one is what the tab waits on.
+        Task { await refreshAnimation() }
         guard let pet, pet.status != nil else {
             pose = nil
             poseKey = nil
@@ -247,6 +297,47 @@ final class PetModel {
                 pose = nil
                 poseKey = nil
             }
+        }
+    }
+
+    /// Loads the pet's sticker in its current pose when the pose changed, with every bitmap it draws.
+    /// A failed load keeps the last one when it is still this pet's: it moves in an older pose rather
+    /// than not at all. Another pet's never stands in.
+    private func refreshAnimation() async {
+        guard let pet, let revisionID = pet.sticker.playbackRevisionId else {
+            animation = nil
+            return
+        }
+        let key = PetSnapshot(pet: pet).poseKey
+        guard key != animation?.key, key != loadingAnimationKey else { return }
+        if animation?.stickerID != pet.sticker.id { animation = nil }
+        loadingAnimationKey = key
+        defer { if loadingAnimationKey == key { loadingAnimationKey = nil } }
+        do {
+            let playbackKey = "\(pet.sticker.id)|\(revisionID)"
+            let document: AnimatedDocument
+            if let playback, playback.key == playbackKey {
+                document = playback.document
+            } else {
+                document = try await api.stickerPlayback(stickerID: pet.sticker.id, revisionID: revisionID).document
+                playback = (playbackKey, document)
+            }
+            var settings = StickerControlSettings.defaults(for: document)
+            if let values = pet.status?.values { settings.values.merge(values) { _, posed in posed } }
+            let resolved = try settings.resolvedDocument(document)
+            await animationAssets.preload(document: resolved, api: api)
+            // Another pose replaced this one while it loaded; that one's refresh will land it.
+            guard let current = self.pet, PetSnapshot(pet: current).poseKey == key else { return }
+            // Drawn even with a frame missing, as the viewer does: a gap beats a pet that never moves.
+            if !animationAssets.renderAssets.containsArtwork(for: resolved) {
+                Self.log.error("pet animation is missing artwork for \(key, privacy: .public)")
+            }
+            animation = PetAnimation(key: key, stickerID: current.sticker.id, document: resolved, assets: animationAssets.renderAssets)
+            Self.log.info("pet animation ready: \(resolved.renderedCycleDuration)s cycle, every \(self.animationInterval)")
+        } catch {
+            guard !StickerStore.isCancellation(error) else { return }
+            Self.log.error("pet animation failed to load: \(error.localizedDescription, privacy: .public)")
+            if self.pet?.sticker.id != animation?.stickerID { animation = nil }
         }
     }
 
@@ -280,6 +371,7 @@ final class PetModel {
         do {
             try await api.clearPet()
             pet = nil
+            brain.forgetLocalLine()
             await refreshPose()
             await refreshWeatherArt()
             dismissPhoto()
@@ -317,7 +409,7 @@ final class PetModel {
                 expirePhoto(image)
             }
             do {
-                pet = try await api.sendPetPhoto(jpeg: jpeg)
+                pet = try await brain.look(atPhoto: jpeg)
                 errorMessage = nil
                 publishToCompanions()
                 // The thinking bubble stays up until the new pose is in, so line and pose land together.
@@ -374,7 +466,7 @@ final class PetModel {
         Task {
             defer { pendingAction = nil }
             do {
-                pet = try await api.interactWithPet(action)
+                pet = try await brain.answer(action)
                 errorMessage = nil
                 publishToCompanions()
                 // The thinking bubble stays up until the new pose is in, so line and pose land together.

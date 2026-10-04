@@ -185,4 +185,24 @@ final class PetContractsTests: XCTestCase {
         XCTAssertNil(diary.nextCursor)
         XCTAssertEqual(diary.events.last?.kind, .adopted)
     }
+
+    func testThePetMovesOnToEachQueuedLineAtTheChosenPause() throws {
+        let said = Date(timeIntervalSince1970: 1_000)
+        let status = PetStatus(values: [:], caption: "Hello!", updatedAt: said, musings: [
+            PetMusing(text: "Still here.", afterMinutes: 10),
+            PetMusing(text: "Getting sleepy…", afterMinutes: 25)
+        ])
+        XCTAssertEqual(status.caption(at: said.addingTimeInterval(9 * 60)), "Hello!")
+        XCTAssertEqual(status.caption(at: said.addingTimeInterval(10 * 60)), "Still here.")
+        XCTAssertEqual(status.caption(at: said.addingTimeInterval(34 * 60)), "Still here.")
+        // The last line stays until the next mood.
+        XCTAssertEqual(status.caption(at: said.addingTimeInterval(5 * 3_600)), "Getting sleepy…")
+        XCTAssertEqual(status.captionDates, [said, said.addingTimeInterval(600), said.addingTimeInterval(2_100)])
+
+        let snapshot = PetSnapshot(pet: Pet(sticker: PreviewFixtures.borrowedSticker, selectedAt: said, status: status))
+        XCTAssertEqual(snapshot.speaking(at: said.addingTimeInterval(11 * 60)).caption, "Still here.")
+        let decoded = try JSONDecoder.api.decode(PetStatus.self, from: Data(
+            #"{"values":{},"caption":"Hi","updatedAt":"2026-10-04T00:00:00Z","musings":[{"text":"Yo","afterMinutes":5}]}"#.utf8))
+        XCTAssertEqual(decoded.musings, [PetMusing(text: "Yo", afterMinutes: 5)])
+    }
 }

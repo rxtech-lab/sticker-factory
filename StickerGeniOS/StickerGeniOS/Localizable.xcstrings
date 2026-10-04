@@ -4649,6 +4649,9 @@
     "Has controls" : {
 
     },
+    "Hello again! I missed you." : {
+
+    },
     "Help" : {
       "localizations" : {
         "zh-CN" : {
@@ -4715,6 +4718,9 @@
           }
         }
       }
+    },
+    "Hmph. I've been bored. Play with me?" : {
+
     },
     "Hop" : {
       "extractionState" : "stale",
@@ -6640,6 +6646,9 @@
       }
     },
     "Off means the sticker stays in one place — it can still breathe, blink and react." : {
+
+    },
+    "Oh, it's you… I'm so sleepy." : {
 
     },
     "OK" : {
@@ -12324,6 +12333,9 @@
         }
       }
     },
+    "Welcome back! I missed you." : {
+
+    },
     "Welcome to %@" : {
       "localizations" : {
         "zh-CN" : {
@@ -12614,6 +12626,12 @@
           }
         }
       }
+    },
+    "You're back! It's been ages!" : {
+
+    },
+    "You're back… I don't feel so good. Look after me?" : {
+
     },
     "Your %@ plan is active. Top up whenever you need more credits." : {
       "localizations" : {

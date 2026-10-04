@@ -14,7 +14,7 @@ import { start } from "workflow/api";
 import { getAiProvider } from "@/lib/ai/gateway";
 import { normalizedControlValues } from "@/lib/contracts/configuration";
 import { firstRow, type Database } from "@/lib/db/client";
-import { chatMessages, generationJobs, plans, stickers, userPets, type PetEvolution, type UserPetRow } from "@/lib/db/schema";
+import { chatMessages, generationJobs, plans, stickers, userPets, type PetEvolution, type PetMusing, type UserPetRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { notifyPetEvolved } from "@/lib/notifications/pet";
 import { describeError } from "@/lib/observability/trace";
@@ -27,6 +27,7 @@ import { commitPetChange, currentStats, petRow } from "./pet-state";
 import { confirmPlan } from "./plans";
 import { readablePlayback } from "./playback";
 import { quickPublishSticker } from "./quick-publish";
+import { forgetPetWeatherArt } from "./pet-weather";
 import { createChatTurn } from "./sticker-chat";
 import { acceptRevision } from "./sticker-revisions";
 import { startGenerationWorkflow } from "./workflows";
@@ -79,7 +80,7 @@ export function setPetEvolutionStarterForTests(starter: EvolutionStarter | undef
 export async function startPetEvolution(
   db: Database,
   userId: string,
-  input: { stickerId: string; brief: string; trigger: string },
+  input: { stickerId: string; brief: string; trigger: string; redrawWeather?: boolean },
   now = new Date(),
 ): Promise<boolean> {
   const evolution: PetEvolution = {
@@ -89,6 +90,7 @@ export async function startPetEvolution(
     trigger: input.trigger,
     stickerId: input.stickerId,
     startedAt: now.toISOString(),
+    ...(input.redrawWeather ? { redrawWeather: true } : {}),
   };
   try {
     const claimed = await db.update(userPets).set({ evolutionJson: evolution, lastEvolvedAt: now })
@@ -130,12 +132,29 @@ async function updateEvolution(db: Database, userId: string, evolutionId: string
   await db.update(userPets).set({ evolutionJson: { ...pet.evolutionJson, ...patch } }).where(eq(userPets.userId, userId));
 }
 
-/** The brief as the planner reads it: the pet's own words, and what must not change. */
-function planningInstruction(brief: string): string {
+/**
+ * The brief as the planner reads it: the pet's own words, and how the addition must be built.
+ *
+ * Left to itself the planner paints the new item into the character's still and redraws it on top,
+ * which hides the pet behind its own prize and gives the owner nothing to switch. So the item is
+ * always its own layer beside the character, shown by a toggle, with a new pose to go with it.
+ */
+export function planningInstruction(brief: string): string {
   return [
     `My pet asked to grow: ${brief}`,
-    "Extend this sticker with exactly that one addition. Keep the character, its existing controls, options",
-    "and look exactly as they are, and add only what the addition needs.",
+    "Extend this sticker with exactly that one addition, built like this:",
+    "1. Draw the new item as its own separate accessory layer, never painted into or over the character.",
+    "Place it beside the character — at its side, by its paws or floating just off its shoulder — at about a",
+    "quarter of the character's size, so the two boxes do not overlap and the item never covers the",
+    "character's face or body. Keep both fully on the canvas, shrinking or shifting the character a little",
+    "if it needs the room.",
+    "2. Make the item controllable: add a toggle control that binds the item layer's visibility, on by",
+    "default, labelled with the item's name.",
+    "3. Give the item a gentle motion of its own (a bob, a sway or a slow float), and add one new pose clip to",
+    "the character's sprite in which it plays with, looks at or reaches toward the item, as a new option on",
+    "its existing pose control.",
+    "Keep the character, its existing clips, expressions, controls, option ids and look exactly as they are,",
+    "and add only what the addition needs.",
   ].join(" ");
 }
 
@@ -210,11 +229,25 @@ export async function confirmPetEvolutionPlan(db: Database, userId: string, evol
 export async function publishPetEvolution(db: Database, userId: string, evolutionId: string): Promise<boolean> {
   const current = await evolvingPet(db, userId, evolutionId);
   if (!current?.evolution.composeJobId) return false;
+  const { stickerId, composeJobId } = current.evolution;
   await updateEvolution(db, userId, evolutionId, { state: "publishing" });
-  // The build's candidate carries the build job's id. Accepting it by name rather than taking the
-  // newest candidate keeps a revision the owner happened to be drafting out of the pet.
-  await acceptRevision(db, userId, current.evolution.stickerId, current.evolution.composeJobId);
-  await quickPublishSticker(db, userId, current.evolution.stickerId);
+  const before = await db.select({ activeRevisionId: stickers.activeRevisionId, status: stickers.status })
+    .from(stickers).where(eq(stickers.id, stickerId)).then(firstRow);
+  try {
+    // The build's candidate carries the build job's id. Accepting it by name rather than taking the
+    // newest candidate keeps a revision the owner happened to be drafting out of the pet.
+    await acceptRevision(db, userId, stickerId, composeJobId);
+    await quickPublishSticker(db, userId, stickerId);
+  } catch (error) {
+    // Accepting made the unpublished build the active revision, which leaves the sticker a draft and
+    // the pet with nothing to play. Put the published look back; the build stays in the sticker's
+    // history for the owner to publish from the app.
+    if (before?.activeRevisionId && before.status === "published") {
+      await db.update(stickers).set({ activeRevisionId: before.activeRevisionId, status: "published", updatedAt: new Date() })
+        .where(and(eq(stickers.id, stickerId), eq(stickers.activeRevisionId, composeJobId), eq(stickers.status, "draft")));
+    }
+    throw error;
+  }
   return true;
 }
 
@@ -240,6 +273,9 @@ export async function finishPetEvolution(
   const now = new Date();
   let caption = `I learned something new!`;
   let values = pet.statusJson?.values ?? {};
+  let animateEverySeconds = pet.statusJson?.animateEverySeconds;
+  // The old lines followed the old caption; the event's narration brings its own or none.
+  let musings: PetMusing[] | undefined;
   try {
     const answer = await getAiProvider().narratePetEvent({
       petTitle: sticker.title,
@@ -253,6 +289,8 @@ export async function finishPetEvolution(
     });
     caption = answer.caption.trim() || caption;
     values = { ...values, ...answer.values };
+    animateEverySeconds = answer.animateEverySeconds ?? animateEverySeconds;
+    musings = answer.musings;
   } catch (error) {
     petLog("evolution:narrate-failed", { userId, evolutionId, error: describeError(error) });
   }
@@ -265,7 +303,7 @@ export async function finishPetEvolution(
   const committed = await commitPetChange(db, userId, {
     lifeId: pet.lifeId!,
     set: {
-      statusJson: { values, caption }, statusUpdatedAt: now,
+      statusJson: { values, caption, animateEverySeconds, musings }, statusUpdatedAt: now,
       evolutionJson: { ...evolution, state: "ready", finishedAt: now.toISOString() },
       ...(actions ? { actionsJson: actions } : {}),
     },
@@ -278,7 +316,13 @@ export async function finishPetEvolution(
         planJobId: evolution.planJobId, composeJobId: evolution.composeJobId, nextActions: actions?.map((next) => next.title) ?? null },
     }],
   });
-  petLog("evolution:finished", { userId, evolutionId, stored: !!committed });
+  petLog("evolution:finished", { userId, evolutionId, stored: !!committed, redrawWeather: !!evolution.redrawWeather });
+  // The weather belongs to the sticker and survives a growth; only a pet that changed its whole look
+  // asked for it to be drawn again.
+  if (committed && evolution.redrawWeather) {
+    await forgetPetWeatherArt(db, pet.stickerId)
+      .catch((error) => petLog("evolution:weather-forget-failed", { userId, evolutionId, error: describeError(error) }));
+  }
   if (committed) await notify(db, userId, { title: `${sticker.title} grew!`, body: caption });
   return !!committed;
 }
