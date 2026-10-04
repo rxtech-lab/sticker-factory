@@ -194,9 +194,14 @@ struct StickerFactoryTabView: View {
         .subscriptionPaywall(environment.subscription)
     }
 
-    /// `.prominent` arrived in iOS 27; on iOS 26 the pet stays an ordinary tab.
+    /// `.prominent` arrived in iOS 27; on iOS 26 the pet stays an ordinary tab. The compiler
+    /// check keeps the app building with the iOS 26 SDK (Xcode 26 / Swift 6.3), where the
+    /// member doesn't exist at all.
     private var petTabRole: TabRole? {
-        if #available(iOS 27.0, *) { .prominent } else { nil }
+        #if compiler(>=6.4)
+        if #available(iOS 27.0, *) { return .prominent }
+        #endif
+        return nil
     }
 
     /// Puts up whatever this launch owes: the welcome tour on a first launch, then any feature
