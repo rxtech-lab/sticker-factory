@@ -23,11 +23,12 @@ describe("creation presets", () => {
     expect(CreateStickerRequestSchema.parse(legacy).presets).toBeUndefined();
     expect(CreateStickerRequestSchema.parse({ ...legacy, presets: selection(["space"]) }).presets).toEqual(selection(["space"]));
   });
-  it("serves seven styles and six themes without agent prompts", async () => {
+  it("serves eight styles and six themes without agent prompts", async () => {
     const response = GET();
     const catalog = await response.json();
-    expect(catalog.groups.map((g: { options: unknown[] }) => g.options.length)).toEqual([7, 6]);
+    expect(catalog.groups.map((g: { options: unknown[] }) => g.options.length)).toEqual([8, 6]);
     expect(catalog.groups[0].options.map((o: { id: string }) => o.id)).toContain("blocky-pixel");
+    expect(catalog.groups[0].options.map((o: { id: string }) => o.id)).toContain("pet-companion");
     expect(JSON.stringify(catalog)).not.toContain('"prompt"');
     expect(response.headers.get("cache-control")).toContain("must-revalidate");
   });
@@ -38,6 +39,14 @@ describe("creation presets", () => {
     expect(presetUsesPixelArt(pick("clay"))).toBe(false);
     expect(presetUsesPixelArt(null)).toBe(false);
     expect(creationPresetGuidance(pick("blocky-pixel"))).toContain("very coarse square grid");
+  });
+  it("carries Pet Companion guidance into the saved creation snapshot", () => {
+    const snapshot = resolveCreationPresets({
+      catalogVersion: creationPresetCatalog.version,
+      selections: [{ groupId: "style", optionIds: ["pet-companion"] }],
+    });
+    expect(creationPresetGuidance(snapshot)).toContain("friendly sticker pet");
+    expect(presetUsesPixelArt(snapshot)).toBe(false);
   });
   it("accepts one style, optional themes and two themes", () => {
     expect(resolveCreationPresets(selection())?.selections).toHaveLength(1);

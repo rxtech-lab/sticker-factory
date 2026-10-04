@@ -65,6 +65,32 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     /// Stops a pending deletion. Available for the whole grace period.
     func cancelAccountDeletion() async throws -> AccountDeletionState
 
+    // Pet
+    /// The adopted pet, or nil.
+    func pet() async throws -> Pet?
+    /// Adopts a controllable sticker the account owns or has installed, replacing any previous pet.
+    /// Not idempotency-keyed: adopting the same sticker twice lands on the same state. `context`
+    /// is recorded as the world the pet was born into; nil adopts without one.
+    func setPet(stickerID: String, context: PetContextPayload?) async throws -> Pet?
+    /// Lets the pet go. Clearing an empty slot is not an error.
+    func clearPet() async throws
+    /// The library sections narrowed to stickers that can be posed — what a pet can be chosen from.
+    /// Sections with nothing controllable in them are left out, apart from "My Stickers".
+    func petCandidates(query: String?) async throws -> LibrarySectionsResponse
+    /// The pet drawn by the server in its current pose: a transparent PNG `size` pixels square. What
+    /// the widget and the watch show, since neither can run the animation engine.
+    func petPose(size: Int) async throws -> Data
+    /// Performs an action and returns the pet's updated stats, pose, and spoken response.
+    func interactWithPet(_ action: PetAction) async throws -> Pet?
+    /// Shows the pet a JPEG: uploads it, then asks the pet to look at it. Returns the pet with its
+    /// reaction, the stats the picture moved, and the actions its new mood brought.
+    func sendPetPhoto(jpeg: Data) async throws -> Pet?
+    /// Hands the server the phone's coarse context for the pet's life workflow to read on its next
+    /// visit. Returns whether it was kept — false when there is no pet to keep it for.
+    func updatePetContext(_ context: PetContextPayload) async throws -> Bool
+    /// One page of the pet's diary, newest first. Pass the previous page's `nextCursor` for more.
+    func petEvents(cursor: String?) async throws -> PetEventsResponse
+
     // Marketplace
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
     func myPacks(query: String?, cursor: String?) async throws -> Page<StickerPack>
@@ -85,6 +111,17 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
 extension StickerAPIClientProtocol {
     func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog { throw StickerAPIError.invalidResponse }
     func configurationLimits() async throws -> ConfigurationLimits { throw StickerAPIError.invalidResponse }
+    func pet() async throws -> Pet? { nil }
+    func setPet(stickerID: String, context: PetContextPayload?) async throws -> Pet? { throw StickerAPIError.invalidResponse }
+    /// Adopts without telling the server anything about the world the pet is born into.
+    func setPet(stickerID: String) async throws -> Pet? { try await setPet(stickerID: stickerID, context: nil) }
+    func updatePetContext(_ context: PetContextPayload) async throws -> Bool { false }
+    func petEvents(cursor: String?) async throws -> PetEventsResponse { PetEventsResponse(events: [], nextCursor: nil) }
+    func clearPet() async throws {}
+    func petCandidates(query: String?) async throws -> LibrarySectionsResponse { throw StickerAPIError.invalidResponse }
+    func petPose(size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
+    func interactWithPet(_ action: PetAction) async throws -> Pet? { throw StickerAPIError.invalidResponse }
+    func sendPetPhoto(jpeg: Data) async throws -> Pet? { throw StickerAPIError.invalidResponse }
 
     /// Clients that cannot observe the transfer still upload; they just never report partway.
     func upload(

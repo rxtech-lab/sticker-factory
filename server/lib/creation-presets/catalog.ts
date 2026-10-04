@@ -11,7 +11,7 @@ export const PIXEL_ART_STYLE_IDS: ReadonlySet<string> = new Set(["pixel", "block
 // Bump the version whenever titles, prompts, requirements, or options change. Existing projects
 // use their saved snapshot, so editing this catalog only affects future creations.
 export const creationPresetCatalog = CreationPresetCatalogSchema.parse({
-  version: "2026-09-24.1",
+  version: "2026-10-04.1",
   groups: [{
     id: "style", type: "single_choice", title: text("Style", "风格", "風格"),
     description: text("Choose how your sticker is drawn.", "选择贴纸的绘画风格。", "選擇貼圖的繪畫風格。"),
@@ -19,6 +19,7 @@ export const creationPresetCatalog = CreationPresetCatalogSchema.parse({
     options: [
       option("bold-cartoon", text("Bold Cartoon", "活力卡通", "活力卡通"), "Use expressive cartoon proportions, bold clean outlines, saturated colors, simple shading, and a crisp die-cut sticker edge."),
       option("kawaii", text("Kawaii", "可爱萌系", "可愛萌系"), "Use rounded shapes, cute simplified features, soft pastel colors, gentle expressions, and clean outlines."),
+      option("pet-companion", text("Pet Companion", "萌宠伙伴", "萌寵夥伴"), "Design the user's subject as a friendly sticker pet with a distinctive, recognizable silhouette, expressive eyes, soft tactile details, and clear body language. Give it pet-like details appropriate to that subject, such as ears, paws, or a tail, without replacing the user's requested identity or reference. Keep the face and limbs readable across different moods and poses."),
       option("clay", text("3D Clay", "立体黏土", "立體黏土"), "Render soft sculpted clay forms with rounded edges, subtle handmade texture, and gentle studio lighting."),
       option("pixel", text("Pixel Art", "像素艺术", "像素藝術"), "Use a consistent pixel grid, crisp stepped edges, a limited palette, and readable retro sprite shading."),
       option("blocky-pixel", text("Blocky Pixel", "方块像素", "方塊像素"), "Draw the subject as a tiny low-resolution 8-bit sprite on a very coarse square grid, roughly 12-24 blocks across the whole subject, so every block is large and clearly visible. Use one flat solid color per area (usually one main body color plus at most one or two accents): no gradients, no shading, no highlights, no antialiasing, no outline. Simplify features to single-block eyes or gaps and stubby block limbs, with a chunky, mostly symmetric silhouette like a classic arcade mascot. Every block is the same size and aligned to one grid, with perfectly hard square edges."),

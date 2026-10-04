@@ -108,7 +108,7 @@ final class TutorialCaptureTests: XCTestCase {
         capture("export")
 
         launch()
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         XCTAssertTrue(element("create-pack-button").waitForExistence(timeout: 15))
         capture("packs")
         element("create-pack-button").tap()
@@ -126,7 +126,7 @@ final class TutorialCaptureTests: XCTestCase {
         marker("new-pack", "end")
         element("pack-create-draft-button").tap()
         launch()
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         element("marketplace-pack-pack-demo").tap()
         XCTAssertTrue(element("pack-messenger-whatsapp").waitForExistence(timeout: 15))
         capture("pack-detail")

@@ -24,6 +24,7 @@ export async function GET(request: Request) {
       kind: kind === "static" || kind === "animated" ? kind : undefined,
       status: status === "draft" || status === "published" ? status : undefined,
       query: textQuery(url.searchParams.get("q"), { name: "q", maxLength: 100 }),
+      controllable: url.searchParams.get("controllable") === "1",
     });
     return noStoreJson(result);
   });

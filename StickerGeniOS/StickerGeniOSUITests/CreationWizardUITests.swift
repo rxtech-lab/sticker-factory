@@ -157,6 +157,19 @@ import XCTest
         XCTAssertTrue(element("sticker-controllable-toggle").exists)
         next(); XCTAssertTrue(element("creation-overview-animation").exists)
     }
+    func testPetCompanionStyleCreatesAPetReadySticker() {
+        launch(); idea("A friendly orange cat")
+        choices(style: "pet-companion")
+        let toggle = element("sticker-controllable-toggle").switches.firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 15))
+        XCTAssertEqual(toggle.value as? String, "1")
+        XCTAssertFalse(toggle.isEnabled)
+        XCTAssertTrue(element("creation-interactive-preview").exists)
+        next()
+        XCTAssertTrue(element("creation-overview-kind").label.contains("Animated"))
+        XCTAssertTrue(element("creation-overview-style").label.contains("Pet Companion"))
+        XCTAssertTrue(element("creation-overview-animation").label.contains("Switchable moods and poses"))
+    }
     func testAnimatedTypeActuallyPlaysAndReducedMotionHoldsStill() {
         launch(reduceMotion: false); idea()
         element("sticker-kind-picker").buttons.element(boundBy: 1).tap()

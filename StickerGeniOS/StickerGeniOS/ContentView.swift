@@ -68,43 +68,52 @@ struct StickerFactoryTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            // Library stays tag 0 and the default selection: launch lands on the user's own work,
-            // not on a store.
-            NavigationStack(path: $libraryPath) {
-                LibraryView(
-                    store: environment.store,
-                    marketplace: environment.marketplace,
-                    subscription: environment.subscription,
-                    defersErrors: defersLibraryErrors
-                )
-                .navigationDestination(for: SharedPackDestination.self) { route in
-                    SharedPackEntry(store: environment.marketplace, slug: route.slug)
+            // First in the bar, but valued 3: values are what deep links and tutorials route by,
+            // and renumbering them to match the order would move every one of those destinations.
+            // The pet is the app's companion, so on iOS 27 it gets the bar's prominent slot.
+            Tab("Pet", systemImage: "pawprint.fill", value: 3, role: petTabRole) {
+                NavigationStack {
+                    PetView(api: environment.store.api)
                 }
             }
-                .tabItem { Label("Library", systemImage: "square.grid.2x2") }
-                .tag(0)
+
+            // Library stays value 0 and the default selection: launch lands on the user's own
+            // work, not on a store.
+            Tab("Library", systemImage: "square.grid.2x2", value: 0) {
+                NavigationStack(path: $libraryPath) {
+                    LibraryView(
+                        store: environment.store,
+                        marketplace: environment.marketplace,
+                        subscription: environment.subscription,
+                        defersErrors: defersLibraryErrors
+                    )
+                    .navigationDestination(for: SharedPackDestination.self) { route in
+                        SharedPackEntry(store: environment.marketplace, slug: route.slug)
+                    }
+                }
+            }
 
             // Owns its own navigation stack: creating a pack lands on that pack, which the
             // composer can only ask for from inside the stack.
-            MarketplaceView(store: environment.marketplace)
-                .tabItem { Label("Sticker Packs", systemImage: "square.stack.3d.up") }
-                .tag(1)
-
-            NavigationStack {
-                AccountView(
-                    environment: environment,
-                    onShowWelcome: {
-                        defersLibraryErrors = true
-                        launchFlow = .init(steps: [.welcome])
-                    },
-                    onShowFeatures: {
-                        defersLibraryErrors = true
-                        launchFlow = .init(steps: [.featureCards(FeatureAnnouncement.all)])
-                    }
-                )
+            Tab("Sticker Packs", systemImage: "square.stack.3d.up", value: 1) {
+                MarketplaceView(store: environment.marketplace)
             }
-                .tabItem { Label("Account", systemImage: "person.crop.circle") }
-                .tag(2)
+
+            Tab("Account", systemImage: "person.crop.circle", value: 2) {
+                NavigationStack {
+                    AccountView(
+                        environment: environment,
+                        onShowWelcome: {
+                            defersLibraryErrors = true
+                            launchFlow = .init(steps: [.welcome])
+                        },
+                        onShowFeatures: {
+                            defersLibraryErrors = true
+                            launchFlow = .init(steps: [.featureCards(FeatureAnnouncement.all)])
+                        }
+                    )
+                }
+            }
         }
         .tint(AppColors.accent)
         .accessibilityIdentifier("sticker-factory-tabs")
@@ -112,7 +121,8 @@ struct StickerFactoryTabView: View {
             // The tab bar is UIKit's, so its buttons never reach the app's styles. Watching the
             // selection is what makes the most-pressed control in the app answer at all.
             Haptics.selection()
-            AppTelemetry.event("tab_selected", parameters: ["tab": ["library", "marketplace", "account"][tab]])
+            let names = [0: "library", 1: "marketplace", 2: "account", 3: "pet"]
+            AppTelemetry.event("tab_selected", parameters: ["tab": names[tab] ?? "unknown"])
         }
         .sheet(isPresented: $showingQuickMode) {
             NavigationStack {
@@ -180,6 +190,11 @@ struct StickerFactoryTabView: View {
         // all on different screens, some of them already inside their own sheet — and presenting
         // from each of them would mean a paywall that cannot open over whatever is in the way.
         .subscriptionPaywall(environment.subscription)
+    }
+
+    /// `.prominent` arrived in iOS 27; on iOS 26 the pet stays an ordinary tab.
+    private var petTabRole: TabRole? {
+        if #available(iOS 27.0, *) { .prominent } else { nil }
     }
 
     /// Puts up whatever this launch owes: the welcome tour on a first launch, then any feature

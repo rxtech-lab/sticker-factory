@@ -314,6 +314,74 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         try await send(path: "api/v1/account/deletion", method: "DELETE")
     }
 
+    func pet() async throws -> Pet? {
+        let response: PetResponse = try await send(path: "api/v1/pet")
+        return response.pet
+    }
+
+    func interactWithPet(_ action: PetAction) async throws -> Pet? {
+        let response: PetResponse = try await send(path: "api/v1/pet/interactions", method: "POST", body: PetInteractionRequest(actionId: action.id))
+        return response.pet
+    }
+
+    func sendPetPhoto(jpeg: Data) async throws -> Pet? {
+        // Unbound to any sticker, so the server's sweep of stale uploads clears it within a day.
+        let assetID = try await upload(
+            data: jpeg, stickerID: nil, kind: .reference, filename: "pet-photo.jpg", mimeType: "image/jpeg",
+            sequence: nil, idempotencyKey: UUID().uuidString
+        )
+        let response: PetResponse = try await send(path: "api/v1/pet/photos", method: "POST", body: SendPetPhotoRequest(assetId: assetID))
+        return response.pet
+    }
+
+    func setPet(stickerID: String, context: PetContextPayload?) async throws -> Pet? {
+        let response: PetResponse = try await send(
+            path: "api/v1/pet", method: "PUT",
+            // The server refuses an empty context object no more than a missing one, but there is
+            // nothing to record in one, so it is left out.
+            body: SetPetRequest(stickerId: stickerID, context: context?.isEmpty == false ? context : nil)
+        )
+        return response.pet
+    }
+
+    func updatePetContext(_ context: PetContextPayload) async throws -> Bool {
+        let response: PetContextStoredResponse = try await send(path: "api/v1/pet/context", method: "PUT", body: context)
+        return response.stored
+    }
+
+    func petEvents(cursor: String?) async throws -> PetEventsResponse {
+        var items = [URLQueryItem(name: "limit", value: "30")]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await send(path: "api/v1/pet/events", query: items)
+    }
+
+    func clearPet() async throws {
+        let _: PetResponse = try await send(path: "api/v1/pet", method: "DELETE")
+    }
+
+    func petCandidates(query: String?) async throws -> LibrarySectionsResponse {
+        var items = [URLQueryItem(name: "status", value: "published"), URLQueryItem(name: "controllable", value: "1")]
+        if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
+        return try await send(path: "api/v1/library/sections", query: items)
+    }
+
+    func petPose(size: Int) async throws -> Data {
+        var request = try await authorizedRequest(path: "api/v1/pet/pose", query: [URLQueryItem(name: "size", value: String(size))])
+        request.setValue("image/png", forHTTPHeaderField: "Accept")
+        var (data, response) = try await session.data(for: request)
+        if (response as? HTTPURLResponse)?.statusCode == 401 {
+            request.setValue("Bearer \(try await tokenBroker.validAccessToken(forceRefresh: true))", forHTTPHeaderField: "Authorization")
+            (data, response) = try await session.data(for: request)
+        }
+        guard let http = response as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
+        // A refusal is the usual JSON envelope; let `decode` turn it into the server's own words.
+        guard (200...299).contains(http.statusCode) else {
+            let _: PetResponse = try decode(data, response: response, context: "GET api/v1/pet/pose")
+            throw StickerAPIError.invalidResponse
+        }
+        return data
+    }
+
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse {
         try await send(
             path: "api/v1/stickers/\(stickerID)/revisions/\(revisionID)/\(action.rawValue)",

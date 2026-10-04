@@ -47,6 +47,7 @@ type Mood = typeof moods[number]["id"];
 const options = [
   { id: "bold-cartoon", kind: "style", title: "Bold Cartoon" },
   { id: "kawaii", kind: "style", title: "Kawaii" },
+  { id: "pet-companion", kind: "style", title: "Pet Companion" },
   { id: "clay", kind: "style", title: "3D Clay" },
   { id: "pixel", kind: "style", title: "Pixel Art" },
   { id: "blocky-pixel", kind: "style", title: "Blocky Pixel" },
@@ -90,6 +91,10 @@ const xml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&
 
 function optionLook(option: Option): { defs: string; body: string; outline: string; extras: string; pixel: boolean } {
   const common = `<linearGradient id="pink" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffd6dc"/><stop offset="1" stop-color="#ffb8c3"/></linearGradient>`;
+  if (option.id === "pet-companion") return {
+    defs: `${common}<linearGradient id="fur" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffe4b8"/><stop offset="1" stop-color="#f6b989"/></linearGradient>`,
+    body: "url(#fur)", outline: "#b66e5f", extras: "", pixel: false,
+  };
   if (option.id === "clay") return {
     defs: `${common}<filter id="bodyFx" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="22" stdDeviation="18" flood-color="#8d5268" flood-opacity=".28"/><feGaussianBlur in="SourceAlpha" stdDeviation="3" result="b"/><feSpecularLighting in="b" surfaceScale="5" specularConstant=".34" specularExponent="18" lighting-color="#fff"><feDistantLight azimuth="235" elevation="52"/></feSpecularLighting><feComposite in2="SourceAlpha" operator="in"/><feComposite in="SourceGraphic" operator="arithmetic" k1="1" k2="1" k3=".24" k4="0"/></filter>`,
     body: "url(#pink)", outline: "#e99bab", extras: "", pixel: false,
@@ -164,12 +169,18 @@ function mascotSvg(option: Option, pose: Pose, mood: Mood, frame: number, size =
   const group = `translate(${m.x} ${m.y}) rotate(${m.rotate} 512 512) skewX(${m.skew}) translate(${512 * (1 - m.sx)} ${790 * (1 - m.sy)}) scale(${m.sx} ${m.sy})`;
   const extraMouth = special === "body" ? "" : concerned ? `<path d="M585 585Q622 545 662 580" fill="none" stroke="#743b4c" stroke-width="14" stroke-linecap="round"/>` : special === "stale" ? `<path d="M590 558Q620 535 650 555" fill="none" stroke="#743b4c" stroke-width="14" stroke-linecap="round"/>` : mouth(mood);
   const pixels = look.pixel ? ` shape-rendering="crispEdges"` : "";
+  const petBehind = option.id === "pet-companion"
+    ? `<path d="M789 615Q963 531 894 333Q867 255 807 278" fill="none" stroke="#b66e5f" stroke-width="87" stroke-linecap="round"/><path d="M789 615Q963 531 894 333Q867 255 807 278" fill="none" stroke="#f8c795" stroke-width="69" stroke-linecap="round"/><path d="M303 196L294 55Q294 34 317 45L455 159Z" fill="#f8c795" stroke="#b66e5f" stroke-width="12" stroke-linejoin="round"/><path d="M613 147L738 42Q759 28 768 52L785 255Z" fill="#f8c795" stroke="#b66e5f" stroke-width="12" stroke-linejoin="round"/><path d="M323 96L328 163L411 149Z M718 94L660 150L748 190Z" fill="#e9959a"/>`
+    : "";
+  const petFront = option.id === "pet-companion"
+    ? `<ellipse cx="415" cy="799" rx="80" ry="46" fill="#ffe8c9" stroke="#b66e5f" stroke-width="10"/><ellipse cx="676" cy="775" rx="80" ry="46" fill="#ffe8c9" stroke="#b66e5f" stroke-width="10"/><path d="M348 691Q540 829 754 661" fill="none" stroke="#d77875" stroke-width="24" stroke-linecap="round"/><circle cx="542" cy="743" r="35" fill="#f1a95c" stroke="#b66e5f" stroke-width="9"/><path d="M528 743l10 12 20-24" fill="none" stroke="#fff8e8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`
+    : "";
   if (isBlocky(option)) {
     // Flat colour, no outline, highlight or eye shine: the grid in `rasterize` supplies the look.
     const legs = [192, 320, 448, 576].map(x => `<rect x="${x}" y="780" width="64" height="150" fill="${look.body}"/>`).join("");
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"${pixels}><g transform="${group}"><g id="body">${legs}<path d="${bodyPath}" fill="${look.body}"/></g><g id="eyes" transform="translate(${gx} ${gy})"><rect x="440" y="${330 - 64 * eyeScale}" width="112" height="${Math.max(24, 128 * eyeScale)}" fill="#231f20"/><rect x="640" y="${330 - 64 * eyeScale}" width="104" height="${Math.max(24, 128 * eyeScale)}" fill="#231f20"/></g><g id="mouth">${extraMouth}</g></g></svg>`;
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"${pixels}><defs>${look.defs}<radialGradient id="eye" cx="36%" cy="28%" r="70%"><stop stop-color="#50515a"/><stop offset=".38" stop-color="#17181d"/><stop offset="1" stop-color="#050507"/></radialGradient></defs>${themeExtras(option)}<g transform="${group}"><g id="body" filter="${["clay", "watercolor", "paper-cut"].includes(option.id) ? "url(#bodyFx)" : "none"}">${look.extras}<path d="${bodyPath}" fill="${look.body}" stroke="${look.outline}" stroke-width="${look.pixel ? 20 : 12}" stroke-linejoin="round"/><path d="M260 250Q390 135 545 150" fill="none" stroke="#fff" stroke-width="23" stroke-linecap="round" opacity=".72"/></g><g id="eyes" transform="translate(${gx} ${gy})"><g transform="translate(496 382) scale(1 ${eyeScale}) translate(-496 -382)"><ellipse cx="496" cy="382" rx="${leftEye[0]}" ry="${leftEye[1]}" fill="url(#eye)" stroke="#23242a" stroke-width="7"/><circle cx="468" cy="353" r="24" fill="#fff"/></g><g transform="translate(758 305) scale(1 ${eyeScale}) translate(-758 -305)"><ellipse cx="758" cy="305" rx="${rightEye[0]}" ry="${rightEye[1]}" fill="url(#eye)" stroke="#23242a" stroke-width="6"/><circle cx="738" cy="284" r="18" fill="#fff"/></g></g><g id="mouth">${extraMouth}</g></g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"${pixels}><defs>${look.defs}<radialGradient id="eye" cx="36%" cy="28%" r="70%"><stop stop-color="#50515a"/><stop offset=".38" stop-color="#17181d"/><stop offset="1" stop-color="#050507"/></radialGradient></defs>${themeExtras(option)}<g transform="${group}"><g id="body" filter="${["clay", "watercolor", "paper-cut"].includes(option.id) ? "url(#bodyFx)" : "none"}">${petBehind}${look.extras}<path d="${bodyPath}" fill="${look.body}" stroke="${look.outline}" stroke-width="${look.pixel ? 20 : 12}" stroke-linejoin="round"/><path d="M260 250Q390 135 545 150" fill="none" stroke="#fff" stroke-width="23" stroke-linecap="round" opacity=".72"/>${petFront}</g><g id="eyes" transform="translate(${gx} ${gy})"><g transform="translate(496 382) scale(1 ${eyeScale}) translate(-496 -382)"><ellipse cx="496" cy="382" rx="${leftEye[0]}" ry="${leftEye[1]}" fill="url(#eye)" stroke="#23242a" stroke-width="7"/><circle cx="468" cy="353" r="24" fill="#fff"/></g><g transform="translate(758 305) scale(1 ${eyeScale}) translate(-758 -305)"><ellipse cx="758" cy="305" rx="${rightEye[0]}" ry="${rightEye[1]}" fill="url(#eye)" stroke="#23242a" stroke-width="6"/><circle cx="738" cy="284" r="18" fill="#fff"/></g></g><g id="mouth">${extraMouth}</g></g></svg>`;
 }
 
 async function reference(option: Option): Promise<Buffer> {
@@ -298,8 +309,11 @@ async function buildOption(template: StickerDocument, option: Option) {
   const animated = sharp(wave, { animated: true }); const metadata = await animated.metadata();
   await animated.resize(512, 512).webp({ loop: 0, delay: metadata.delay, quality: 88 }).toFile(resolve(directory, "cover.webp"));
   await writeFile(resolve(directory, "review-sheet.png"), await contactSheet(review, 6, 180));
-  const prompt = `Animate the supplied pink limbless mascot while preserving its exact silhouette, pink palette, unequal glossy eyes, and editable body/eyes/mouth layers. ${option.title} is guidance only and never replaces a user's requested subject. Use Idle, Greeting Wave, Bounce, Sway, Wiggle, Hop, Partial Turn, and Dance with independent Neutral, Happy, and Surprised moods.`;
-  const approvedPlan = { version: 3, kind: "animated", title: `${option.title} pink mascot`, summary: "A reference-backed controllable mascot with 8 looping actions and 3 independent moods.", conceptPrompt: prompt, posePreset: "ultra", editableLayers: ["body", "eyes", "mouth"], configuration: document.configuration };
+  const subject = option.id === "pet-companion"
+    ? "warm-furred companion mascot with ears, paws, a tail, and a collar"
+    : "pink limbless mascot";
+  const prompt = `Animate the supplied ${subject} while preserving its exact silhouette, palette, unequal glossy eyes, and editable body/eyes/mouth layers. ${option.title} is guidance only and never replaces a user's requested subject. Use Idle, Greeting Wave, Bounce, Sway, Wiggle, Hop, Partial Turn, and Dance with independent Neutral, Happy, and Surprised moods.`;
+  const approvedPlan = { version: 3, kind: "animated", title: `${option.title} ${option.id === "pet-companion" ? "mascot" : "pink mascot"}`, summary: "A reference-backed controllable mascot with 8 looping actions and 3 independent moods.", conceptPrompt: prompt, posePreset: "ultra", editableLayers: ["body", "eyes", "mouth"], configuration: document.configuration };
   await writeFile(resolve(directory, "approved-plan.json"), JSON.stringify(approvedPlan, null, 2));
   await writeFile(resolve(directory, "manifest.json"), JSON.stringify({ version: 3, poses, moods, examples, source: { workflow: "stickerGenerationWorkflow", generator: "editable-svg-mascot-v3", inspectedReference: "reference.png", optionId: option.id, prompt } }, null, 2));
   console.log(`Built ${option.id}: 8 poses × 3 moods`);

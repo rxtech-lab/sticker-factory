@@ -47,7 +47,7 @@ final class TutorialUITests: XCTestCase {
         for _ in 0..<5 { element("welcome-next-button").tap() }
         XCTAssertFalse(element("welcome-read-tutorials").exists)
         element("welcome-next-button").tap()
-        for _ in 0..<3 {
+        for _ in 0..<4 {
             XCTAssertFalse(element("feature-read-tutorials").exists)
             element("feature-card-next-button").tap()
         }
@@ -59,7 +59,7 @@ final class TutorialUITests: XCTestCase {
     }
     func testAccountLanguageDropdownDoesNotReopenTutorial() {
         app.launch()
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 3).tap()
         let entry = element("tutorial-link-index")
         for _ in 0..<4 where !entry.isHittable { app.swipeUp() }
         entry.tap()
@@ -84,7 +84,7 @@ final class TutorialUITests: XCTestCase {
     func testAccountTutorialAndUnavailableRetry() {
         app.launchEnvironment["TUTORIAL_BASE_URL"] = "http://127.0.0.1:3199"
         app.launch()
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 3).tap()
         let entry = element("tutorial-link-index")
         for _ in 0..<4 where !entry.isHittable { app.swipeUp() }
         entry.tap()

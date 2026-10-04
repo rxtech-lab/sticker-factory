@@ -8,10 +8,13 @@ nonisolated enum SharedLogoutPurger {
         StickerAssetData.purge(fileManager: fileManager)
         try? fileManager.removeItem(at: StickerVideoFrameLoader.directory)
         Task { await StickerVideoFrameLoader.shared.removeAll() }
+        // Where the outgoing account was and how far it walked, kept for the Messages extension.
+        PetContextCache().clear()
 
         let group = AppConfiguration.appGroupIdentifier
         guard let container = fileManager.containerURL(forSecurityApplicationGroupIdentifier: group) else { return }
-        for directory in ["StickerCache", "Exports", "Uploads"] {
+        // "Pet" is `PetSnapshotStore`'s: the widget's picture of the outgoing account's pet.
+        for directory in ["StickerCache", "Exports", "Uploads", "Pet"] {
             let url = container.appending(path: directory, directoryHint: .isDirectory)
             try? fileManager.removeItem(at: url)
         }

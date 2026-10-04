@@ -17,6 +17,28 @@ const presets = { catalogVersion: creationPresetCatalog.version, selections: [
 ] };
 describe("saved creation presets", () => {
   afterEach(resetWorkflowTestState);
+  it("requires an animated controllable sticker for Pet Companion", async () => {
+    const { db, close } = await createTestDatabase();
+    try {
+      await db.insert(users).values({ id: "pet-style-owner" });
+      const petPresets = { catalogVersion: creationPresetCatalog.version, selections: [
+        { groupId: "style", optionIds: ["pet-companion"] },
+      ] };
+      const request = { title: "Cat", prompt: "A friendly cat", referenceAssetIds: [], presets: petPresets };
+      await expect(createSticker(db, "pet-style-owner", { ...request, kind: "static" }))
+        .rejects.toMatchObject({ code: "PET_STYLE_REQUIRES_CONTROLS" });
+      await expect(createSticker(db, "pet-style-owner", { ...request, kind: "animated" }))
+        .rejects.toMatchObject({ code: "PET_STYLE_REQUIRES_CONTROLS" });
+      expect(await db.select().from(stickers)).toHaveLength(0);
+      const created = await createSticker(db, "pet-style-owner", {
+        ...request, kind: "animated", controllable: true, posePreset: "medium",
+      });
+      const saved = (await db.select().from(stickers).where(eq(stickers.id, created.stickerId)))[0];
+      expect(saved.kind).toBe("animated");
+      expect(saved.controllable).toBe(true);
+      expect(saved.creationPresets?.selections[0].options[0].id).toBe("pet-companion");
+    } finally { await close(); }
+  });
   it("validates before creating a project and preserves the display snapshot on reopen", async () => {
     const { db, close } = await createTestDatabase();
     try {

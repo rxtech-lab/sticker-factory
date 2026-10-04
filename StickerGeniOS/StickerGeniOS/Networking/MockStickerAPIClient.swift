@@ -12,7 +12,11 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     /// Readable so a test can assert the app enrolled this device for push.
     private(set) var registeredDeviceTokens: [String] = []
     /// Survives across calls so a UI test can request deletion, see the pending state, and cancel.
-    private var accountDeletion: AccountDeletionState = .none
+    /// Both read and written by `MockStickerAPIClient+Account.swift`, which is why neither is private.
+    var accountDeletion: AccountDeletionState = .none
+    var adoptedPet: Pet?
+    /// How many times the pet's pose was drawn, so tests can see a picture was not fetched twice.
+    var petPoseRequests = 0
     /// Readable so a test can assert which renditions an export actually produced — a publish that
     /// was never going to share a video does not encode one.
     private(set) var uploadedKinds: [AssetKind] = []
@@ -60,6 +64,11 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
                     imagePlacement: .replace, sequence: source.sequence + index + 1,
                     jobId: source.jobId, status: .complete, createdAt: .now, attachments: []))
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--ui-installed-pack") {
+            // The demo pack's member is the mock's one controllable sticker: the pet picker's offer.
+            packs = packs.map { var pack = $0; pack.installed = true; return pack }
+            for id in packDetails.keys { packDetails[id]?.installed = true }
         }
         if ProcessInfo.processInfo.arguments.contains("--ui-configurable-sticker") {
             for i in detail.revisions.indices { detail.revisions[i].document = PreviewFixtures.configurableDocument }
@@ -491,29 +500,6 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
 
     func unregisterDevice(token: String) async throws {
         registeredDeviceTokens.removeAll { $0 == token }
-    }
-
-    /// Scheduling and cancelling move the same in-memory state a real account would, so a UI test
-    /// can walk the whole round trip — request, see the pending row, keep the account.
-    func accountDeletionState() async throws -> AccountDeletionState {
-        accountDeletion
-    }
-
-    func requestAccountDeletion() async throws -> AccountDeletionState {
-        if !accountDeletion.pendingDeletion {
-            let now = Date()
-            accountDeletion = AccountDeletionState(
-                pendingDeletion: true,
-                deletionScheduledAt: now.addingTimeInterval(7 * 24 * 60 * 60),
-                deletionRequestedAt: now
-            )
-        }
-        return accountDeletion
-    }
-
-    func cancelAccountDeletion() async throws -> AccountDeletionState {
-        accountDeletion = .none
-        return accountDeletion
     }
 
     func transitionRevision(stickerID: String, revisionID: String, action: RevisionAction, idempotencyKey: String) async throws -> RevisionTransitionResponse {

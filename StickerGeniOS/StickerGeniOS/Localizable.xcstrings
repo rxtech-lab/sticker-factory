@@ -246,6 +246,9 @@
     "%@ Share Sticker Factory" : {
 
     },
+    "%@ steps" : {
+
+    },
     "%@ stickers" : {
       "localizations" : {
         "zh-CN" : {
@@ -264,6 +267,16 @@
     },
     "%@ tokens" : {
 
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
     },
     "%@: %@" : {
       "localizations" : {
@@ -399,6 +412,9 @@
     "%lld generations remaining" : {
 
     },
+    "%lld gold" : {
+
+    },
     "%lld layers" : {
 
     },
@@ -531,6 +547,9 @@
           }
         }
       }
+    },
+    "+%lld" : {
+
     },
     "◦" : {
       "localizations" : {
@@ -958,6 +977,9 @@
         }
       }
     },
+    "About Your Pet" : {
+
+    },
     "Accept a candidate first, then export and publish it." : {
       "localizations" : {
         "zh-CN" : {
@@ -1283,6 +1305,15 @@
         }
       }
     },
+    "Adopt any controllable sticker you made or installed as your pet." : {
+
+    },
+    "Adopted" : {
+
+    },
+    "Adopting %@…" : {
+
+    },
     "All" : {
       "localizations" : {
         "zh-CN" : {
@@ -1314,6 +1345,9 @@
           }
         }
       }
+    },
+    "Allow" : {
+
     },
     "Allow photo-library access in Settings to save this image." : {
       "localizations" : {
@@ -1563,6 +1597,9 @@
           }
         }
       }
+    },
+    "Athlete" : {
+
     },
     "Back" : {
       "localizations" : {
@@ -1913,6 +1950,9 @@
         }
       }
     },
+    "Cached files" : {
+
+    },
     "Calm" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2064,7 +2104,13 @@
         }
       }
     },
+    "Change" : {
+
+    },
     "Change how long this animation runs" : {
+
+    },
+    "Change Pet" : {
 
     },
     "Change the animation after you make it. Try a new move, fine-tune the timing, or keep the version that feels just right." : {
@@ -2172,7 +2218,26 @@
         }
       }
     },
+    "Choose a controllable sticker in the Pet tab. See it on your Apple Watch and widgets, and send stickers in Messages to let its mood change." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在宠物标签页选择一张可操控贴纸。你可以在 Apple Watch 和小组件上看到它；在信息中发送贴纸，它的心情也会随之变化。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在寵物分頁選擇一張可操控貼圖。你可以在 Apple Watch 和小工具上看到牠；在訊息中傳送貼圖，牠的心情也會跟著變化。"
+          }
+        }
+      }
+    },
     "Choose a pack to try this feature." : {
+
+    },
+    "Choose a Pet" : {
 
     },
     "Choose a PNG mask with transparent and painted areas. Regular opaque photos cannot be used as masks." : {
@@ -2280,6 +2345,12 @@
     "Choose what can change in the preview and before sending." : {
 
     },
+    "Clear Cache" : {
+
+    },
+    "Clear cached files?" : {
+
+    },
     "Clip length %llds" : {
 
     },
@@ -2298,6 +2369,9 @@
           }
         }
       }
+    },
+    "Cloudy" : {
+
     },
     "Compare revisions" : {
       "localizations" : {
@@ -2420,6 +2494,12 @@
     "Connect to the internet and try again. Your reading progress is saved." : {
 
     },
+    "Connect weather & steps" : {
+
+    },
+    "Connected" : {
+
+    },
     "Connecting to the App Store…" : {
 
     },
@@ -2515,6 +2595,9 @@
     "Controls" : {
 
     },
+    "Copied" : {
+
+    },
     "Copy" : {
       "localizations" : {
         "zh-CN" : {
@@ -2547,6 +2630,12 @@
         }
       }
     },
+    "Copy Event as JSON" : {
+
+    },
+    "Costs %lld gold" : {
+
+    },
     "Could not append a frame" : {
       "localizations" : {
         "zh-CN" : {
@@ -2562,6 +2651,12 @@
           }
         }
       }
+    },
+    "Could not clear cached files: %@" : {
+
+    },
+    "Could not measure cache storage: %@" : {
+
     },
     "Could not read this photo. Close to keep it as it is." : {
       "localizations" : {
@@ -2712,6 +2807,9 @@
           }
         }
       }
+    },
+    "Create an animated sticker with controls, or install a pack that has one." : {
+
     },
     "Create and publish" : {
       "localizations" : {
@@ -2938,6 +3036,9 @@
           }
         }
       }
+    },
+    "Debug" : {
+
     },
     "Default" : {
 
@@ -3194,6 +3295,12 @@
         }
       }
     },
+    "Diary" : {
+
+    },
+    "Dislikes" : {
+
+    },
     "Dismiss connection warning" : {
       "localizations" : {
         "zh-CN" : {
@@ -3275,6 +3382,12 @@
       }
     },
     "Down" : {
+
+    },
+    "Downloaded artwork and iMessage stickers will be removed from this device and downloaded again when needed." : {
+
+    },
+    "Downloaded artwork and iMessage stickers will download again when needed." : {
 
     },
     "Downloading" : {
@@ -3386,6 +3499,9 @@
     "Dream it up. We'll sticker it." : {
 
     },
+    "Dreamer" : {
+
+    },
     "Duration" : {
 
     },
@@ -3406,6 +3522,9 @@
       }
     },
     "Each sticker is encoded once per messenger and saved with the pack, so nobody who adds it has to do this again. Keep the app open; stop now and the rest is prepared the next time you save this pack." : {
+
+    },
+    "Earns %lld gold" : {
 
     },
     "Edit" : {
@@ -3515,6 +3634,9 @@
           }
         }
       }
+    },
+    "Effects" : {
+
     },
     "Emoji" : {
 
@@ -3666,6 +3788,9 @@
         }
       }
     },
+    "Energy" : {
+
+    },
     "Even the smallest encoding is %@, over the %@ limit." : {
       "localizations" : {
         "en" : {
@@ -3730,6 +3855,9 @@
           }
         }
       }
+    },
+    "Everything that changes how your pet feels will be written here." : {
+
     },
     "Everything will be permanently deleted on %@." : {
       "localizations" : {
@@ -3812,6 +3940,9 @@
       }
     },
     "Existing layers and controls are kept. This plan adds or updates the items below." : {
+
+    },
+    "Explorer" : {
 
     },
     "Export" : {
@@ -4047,6 +4178,9 @@
         }
       }
     },
+    "Favorite weather: %@" : {
+
+    },
     "Filming a clip" : {
       "localizations" : {
         "zh-CN" : {
@@ -4078,6 +4212,9 @@
           }
         }
       }
+    },
+    "Finding your pet…" : {
+
     },
     "Finishing animation" : {
       "localizations" : {
@@ -4177,6 +4314,9 @@
           }
         }
       }
+    },
+    "Foggy" : {
+
     },
     "For %@s" : {
 
@@ -4444,6 +4584,9 @@
         }
       }
     },
+    "Guardian" : {
+
+    },
     "Handed to %@. Finish adding it there; send it again if %@ did not pick it up." : {
       "localizations" : {
         "en" : {
@@ -4470,6 +4613,9 @@
           }
         }
       }
+    },
+    "Happiness" : {
+
     },
     "Happy" : {
       "extractionState" : "stale",
@@ -4542,6 +4688,22 @@
     "Higher presets add poses and use more credits. Start with Medium." : {
 
     },
+    "Hmm, let me think…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "嗯，让我想想…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "嗯，讓我想想…"
+          }
+        }
+      }
+    },
     "Hop" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4575,6 +4737,9 @@
         }
       }
     },
+    "How I'm doing" : {
+
+    },
     "How it moves, e.g. a slow turntable spin" : {
 
     },
@@ -4588,6 +4753,12 @@
 
     },
     "How to make this sticker" : {
+
+    },
+    "HP" : {
+
+    },
+    "I'm here with you. What shall we do?" : {
 
     },
     "Idle" : {
@@ -5021,6 +5192,9 @@
           }
         }
       }
+    },
+    "Likes" : {
+
     },
     "Load earlier messages" : {
       "localizations" : {
@@ -5808,6 +5982,9 @@
         }
       }
     },
+    "Needs %lld gold" : {
+
+    },
     "New layer" : {
 
     },
@@ -5876,6 +6053,12 @@
         }
       }
     },
+    "Next visit %@" : {
+
+    },
+    "Next visit any moment now" : {
+
+    },
     "No %@ stickers match this filter." : {
       "localizations" : {
         "zh-CN" : {
@@ -5923,6 +6106,12 @@
           }
         }
       }
+    },
+    "No controllable sticker matches “%@”." : {
+
+    },
+    "No controllable stickers" : {
+
     },
     "No installs yet" : {
       "localizations" : {
@@ -6025,6 +6214,9 @@
           }
         }
       }
+    },
+    "No pet yet" : {
+
     },
     "No published sticker matches “%@”." : {
       "localizations" : {
@@ -6388,6 +6580,9 @@
         }
       }
     },
+    "Nothing written yet" : {
+
+    },
     "Ocean gradient" : {
       "localizations" : {
         "zh-CN" : {
@@ -6519,6 +6714,9 @@
         }
       }
     },
+    "Only today's step count is read from Health. Nothing is written." : {
+
+    },
     "Only you can see this pack until you publish it." : {
       "localizations" : {
         "zh-CN" : {
@@ -6531,6 +6729,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在發佈之前，只有你能看到此貼圖包。"
+          }
+        }
+      }
+    },
+    "Ooh, give me a second…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "哦，等我一下…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "哦，等我一下…"
           }
         }
       }
@@ -6598,6 +6812,9 @@
     "Open reference image" : {
 
     },
+    "Open Settings" : {
+
+    },
     "Open Sticker actions to compare versions, restore an earlier one, or publish the current version." : {
       "localizations" : {
         "zh-CN" : {
@@ -6615,6 +6832,9 @@
       }
     },
     "Open the main app and sign in before creating a sticker here." : {
+
+    },
+    "Opening the diary…" : {
 
     },
     "Opens full screen" : {
@@ -6773,6 +6993,25 @@
         }
       }
     },
+    "Pet" : {
+
+    },
+    "Pet Companion keeps moods and poses on so this sticker can become your pet after publishing." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "萌宠伙伴会保留可切换的心情和姿势。发布贴纸后，你就可以将它设为宠物。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "萌寵夥伴會保留可切換的心情與姿勢。發佈貼圖後，你就可以將它設為寵物。"
+          }
+        }
+      }
+    },
     "Photo Library" : {
       "localizations" : {
         "zh-CN" : {
@@ -6820,6 +7059,9 @@
           }
         }
       }
+    },
+    "Picture shown" : {
+
     },
     "Pinch to zoom. Drag to move around. Double tap to zoom or reset." : {
 
@@ -7554,6 +7796,9 @@
     "Quick generation uses your points." : {
 
     },
+    "Rainy" : {
+
+    },
     "Re-export" : {
       "localizations" : {
         "zh-CN" : {
@@ -7754,6 +7999,9 @@
         }
       }
     },
+    "Refresh" : {
+
+    },
     "Reject" : {
       "localizations" : {
         "zh-CN" : {
@@ -7817,6 +8065,12 @@
           }
         }
       }
+    },
+    "Release Pet" : {
+
+    },
+    "Releasing your pet…" : {
+
     },
     "Remove %@" : {
       "localizations" : {
@@ -8481,7 +8735,13 @@
         }
       }
     },
+    "Scholar" : {
+
+    },
     "Scroll down" : {
+
+    },
+    "Search controllable stickers" : {
 
     },
     "Search packs" : {
@@ -8793,6 +9053,9 @@
     "Share Sticker Factory" : {
 
     },
+    "Shared" : {
+
+    },
     "Shared credentials and cached iMessage stickers will be removed from this device." : {
       "localizations" : {
         "zh-CN" : {
@@ -8829,6 +9092,9 @@
       }
     },
     "Shine" : {
+
+    },
+    "Show a Picture" : {
 
     },
     "Show Error Details" : {
@@ -8894,6 +9160,9 @@
           }
         }
       }
+    },
+    "Shows who your pet is and what it knows of the world" : {
+
     },
     "Sign in with RxLab" : {
       "localizations" : {
@@ -9099,6 +9368,9 @@
         }
       }
     },
+    "Snowy" : {
+
+    },
     "Some stickers in this pack are not ready yet." : {
       "localizations" : {
         "zh-CN" : {
@@ -9115,6 +9387,9 @@
         }
       }
     },
+    "Something happened" : {
+
+    },
     "Sort" : {
       "localizations" : {
         "zh-CN" : {
@@ -9130,6 +9405,9 @@
           }
         }
       }
+    },
+    "Special visit" : {
+
     },
     "Specific plan required" : {
       "localizations" : {
@@ -9179,6 +9457,9 @@
           }
         }
       }
+    },
+    "Spend Time Together" : {
+
     },
     "Spin" : {
       "localizations" : {
@@ -9330,6 +9611,9 @@
         }
       }
     },
+    "Stats" : {
+
+    },
     "Status" : {
       "localizations" : {
         "zh-CN" : {
@@ -9347,6 +9631,9 @@
       }
     },
     "Stays in place" : {
+
+    },
+    "Steady ×%@" : {
 
     },
     "Step %lld of %lld" : {
@@ -9370,6 +9657,12 @@
           }
         }
       }
+    },
+    "Steps" : {
+
+    },
+    "Steps today" : {
+
     },
     "Sticker" : {
       "localizations" : {
@@ -9498,6 +9791,9 @@
           }
         }
       }
+    },
+    "Sticker sent" : {
+
     },
     "Sticker size" : {
       "extractionState" : "stale",
@@ -9716,6 +10012,12 @@
         }
       }
     },
+    "Storage" : {
+
+    },
+    "Stormy" : {
+
+    },
     "Subscription" : {
       "localizations" : {
         "zh-CN" : {
@@ -9752,6 +10054,9 @@
 
     },
     "Subscriptions unavailable" : {
+
+    },
+    "Sunny" : {
 
     },
     "Sunrise gradient" : {
@@ -9975,6 +10280,9 @@
           }
         }
       }
+    },
+    "Telling your pet about your world…" : {
+
     },
     "Terms of Service" : {
       "localizations" : {
@@ -10360,6 +10668,9 @@
         }
       }
     },
+    "The picture you showed your pet" : {
+
+    },
     "The plan needs a summary." : {
 
     },
@@ -10618,6 +10929,9 @@
         }
       }
     },
+    "The world at the time" : {
+
+    },
     "There is nothing to send." : {
       "localizations" : {
         "zh-CN" : {
@@ -10630,6 +10944,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有可傳送的內容。"
+          }
+        }
+      }
+    },
+    "Thinking about it…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在想呢…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在想呢…"
           }
         }
       }
@@ -10771,6 +11101,9 @@
           }
         }
       }
+    },
+    "This picture could not be read." : {
+
     },
     "This prepares %lld images for %lld combinations using the approved reference. You can choose an expression and motion locally before sending." : {
       "localizations" : {
@@ -11022,10 +11355,19 @@
     "Those reference images are too large together. Remove one and try again." : {
 
     },
+    "Time together" : {
+
+    },
     "Timing" : {
 
     },
     "Timing, %@" : {
+
+    },
+    "Tireless ×%@" : {
+
+    },
+    "Tires easily ×%@" : {
 
     },
     "Title" : {
@@ -11199,6 +11541,9 @@
           }
         }
       }
+    },
+    "Trickster" : {
+
     },
     "Try “a happy cat riding a skateboard”" : {
 
@@ -11908,6 +12253,12 @@
         }
       }
     },
+    "Weather" : {
+
+    },
+    "Weather & Steps" : {
+
+    },
     "WebP" : {
       "localizations" : {
         "zh-CN" : {
@@ -11971,6 +12322,9 @@
           }
         }
       }
+    },
+    "What the server recorded when this happened. Copy it to report something odd." : {
+
     },
     "What this layer shows" : {
 
@@ -12074,6 +12428,9 @@
         }
       }
     },
+    "Windy" : {
+
+    },
     "Wipe in" : {
 
     },
@@ -12111,6 +12468,9 @@
           }
         }
       }
+    },
+    "World" : {
+
     },
     "Writer did not complete" : {
       "localizations" : {
@@ -12161,6 +12521,9 @@
       }
     },
     "You can attach up to eight reference images." : {
+
+    },
+    "You can change either at any time in Settings." : {
 
     },
     "You can prepare this export now. Install %@, then come back to add the pack." : {
@@ -12267,6 +12630,9 @@
         }
       }
     },
+    "Your approximate location, to about a kilometre, is used to look up the weather. Only while you use the app." : {
+
+    },
     "YOUR CAPTURE" : {
       "localizations" : {
         "zh-CN" : {
@@ -12359,6 +12725,37 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "把貼圖包帶到 WhatsApp"
+          }
+        }
+      }
+    },
+    "Your Pet" : {
+
+    },
+    "Your pet can feel the weather where you are and notice how much you walk. It changes their mood and energy — a rainy day might delight one pet and sulk another." : {
+
+    },
+    "Your pet hasn't felt the outside world yet." : {
+
+    },
+    "Your pet is still thinking of something to do. Check back in a moment." : {
+
+    },
+    "Your pet picks these for how they feel right now. They change as their mood does." : {
+
+    },
+    "Your pet, on your wrist" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的宠物，跃上手腕"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的寵物，躍上手腕"
           }
         }
       }

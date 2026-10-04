@@ -10,7 +10,7 @@ import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -433,5 +433,42 @@ export class MockAiProvider implements AiProvider {
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");
     return named || input.currentTitle;
+  }
+  /**
+   * Picks the first option whose id or label appears in the sent sticker's title, so a test can
+   * steer the pose with a title like "Sleepy Monday" without a model in the loop.
+   */
+  async choosePetStatus(input: AiPetStatusContext): Promise<AiPetStatus> {
+    const title = input.sent.title.toLowerCase();
+    const values: AiPetStatus["values"] = {};
+    for (const control of input.controls) {
+      if (control.type !== "choice") continue;
+      const match = control.options.find((option) =>
+        title.includes(option.id.toLowerCase()) || title.includes(option.label.toLowerCase()));
+      if (match) values[control.id] = match.id;
+    }
+    return { values, caption: `Feeling ${input.sent.title}` };
+  }
+  async generatePetActions(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]> {
+    return [
+      { title: `Greet ${input.petTitle}`, description: `Say hello to ${input.petTitle}.`, effects: { happiness: 8, hp: 0, energy: 0, gold: 0 } },
+      { title: `Dance with ${input.petTitle}`, description: `Move together with ${input.petTitle}.`, effects: { happiness: 14, hp: 0, energy: -12, gold: -5 } },
+      { title: `Rest with ${input.petTitle}`, description: `Take a break beside ${input.petTitle}.`, effects: { happiness: 2, hp: 8, energy: 20, gold: 0 } },
+    ];
+  }
+  async respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus> {
+    return { values: {}, caption: `${input.petTitle}: ${input.action.description}` };
+  }
+  async reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus> {
+    return { values: {}, caption: `${input.petTitle} loves this picture`, effects: { happiness: 5, hp: 0, energy: -1 } };
+  }
+  async generatePetPersona(input: AiPetPersonaContext): Promise<AiPetPersona> {
+    return { class: "explorer", personality: `Curious ${input.petTitle}`, likes: ["walks"], dislikes: ["thunder"], favoriteWeather: "sunny" };
+  }
+  async searchPetHeadlines(_input: AiPetHeadlinesContext): Promise<string[]> {
+    return ["Local park opens a new dog run"];
+  }
+  async narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus> {
+    return { values: {}, caption: `${input.petTitle}: ${input.event.title}` };
   }
 }

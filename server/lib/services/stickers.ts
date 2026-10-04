@@ -12,6 +12,11 @@ import { AI_INPUT_ASSET_KINDS, AI_REFERENCE_MIME_TYPES, MAX_AI_INPUT_BYTES, asse
 
 export async function createSticker(db: Database, ownerId: string, request: CreateStickerRequest) {
   const creationPresets = resolveCreationPresets(request.presets);
+  if (creationPresets?.selections.some((group) => group.groupId === "style"
+    && group.options.some((option) => option.id === "pet-companion"))
+    && (request.kind !== "animated" || request.controllable !== true)) {
+    throw new ApiError(422, "PET_STYLE_REQUIRES_CONTROLS", "Pet Companion needs an animated sticker with switchable moods and poses.");
+  }
   const references = await getReadyOwnedAssets(db, ownerId, request.referenceAssetIds);
   if (references.some((asset) => !AI_INPUT_ASSET_KINDS.has(asset.kind))) {
     throw new ApiError(422, "INVALID_REFERENCE", "Initial references must be reference image assets");

@@ -113,6 +113,41 @@
       "when": 1789531200006,
       "tag": "0015_user_last_billing_environment",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789531200007,
+      "tag": "0016_user_pets",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789531200008,
+      "tag": "0017_pet_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789531200009,
+      "tag": "0018_pet_interactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789531200010,
+      "tag": "0019_pet_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789531200011,
+      "tag": "0020_pet_identity_events",
+      "breakpoints": true
     }
   ]
 }

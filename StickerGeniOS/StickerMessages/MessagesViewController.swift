@@ -39,6 +39,26 @@ final class MessagesViewController: MSMessagesAppViewController {
     private var wantsCreateButton = false
     private let offlineLabel = UILabel()
     private let hintLabel = UILabel()
+    private var hintBottom: NSLayoutConstraint?
+
+    /// Stickers | Pet, at the bottom-leading corner of the full-size surface.
+    ///
+    /// Bottom rather than top, beside the Create button, because the top row already belongs to the
+    /// *Stickers* page's own options — the Sticker/Image send mode on the left and the offline badge
+    /// on the right — and a phone is not wide enough for a third control there without truncating
+    /// one. Stacking a second segmented control under the first would read as two settings for the
+    /// same thing. So the bottom row is navigation and actions (where iOS puts tabs anyway), and the
+    /// top row is options for whichever page is showing: the send mode simply goes away on the Pet
+    /// page, where a tap never sends a sticker.
+    private let tabControl = UISegmentedControl(items: MessagesTab.allCases.map(\.label))
+    /// Holds the Pet page, beside `surfaceContainer` rather than inside it, so switching tabs never
+    /// uninstalls the grid — its scroll position and loaded thumbnails survive a look at the pet.
+    private let petContainer = UIView()
+    private var petController: UIViewController?
+    private lazy var petModel: MessagesPetModel = makePetModel()
+    private var receivedCardController: UIViewController?
+    /// A pet card selected in the transcript before the view was on screen, presented once it is.
+    private var pendingReceivedCard: PetCardPayload?
 
     private let logger = Logger(subsystem: "app.rxlab.stickerfactory.message", category: "insert")
     private let playbackLogger = Logger(subsystem: "app.rxlab.stickerfactory.message", category: "playback")
@@ -63,6 +83,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     private var sendTasks: [SendKey: Task<Void, Never>] = [:]
     private var hasConfigurableStickers = false
     private var playbackService: MessagesPlaybackService?
+    private let petSends = try? PetSendReporter()
     private var controlsController: UIViewController?
     private var controlsLoadTask: Task<Void, Never>?
     /// Set when opening the controls is what expanded the drawer, so closing them puts the host back
@@ -95,6 +116,20 @@ final class MessagesViewController: MSMessagesAppViewController {
     /// `activeConversation` can lag on the first activation in non-Messages hosts, while the
     /// conversation handed to `willBecomeActive(with:)` is guaranteed valid for that activation.
     private var lastKnownConversation: MSConversation?
+
+    /// Which page the full-size surface shows, restored from the app group like `sendMode`.
+    private var selectedTab = MessagesTab.preferred() {
+        didSet {
+            guard oldValue != selectedTab else { return }
+            selectedTab.remember()
+        }
+    }
+
+    /// True when the Pet page is what is on screen. Creation and the controls sheet each take the
+    /// whole surface, and the Stickers drawer has no pet at all, so any of those means "no".
+    private var showsPetPage: Bool {
+        surface == .fullSize && selectedTab == .pet && creationController == nil && controlsController == nil
+    }
     private var insertionTarget: MSConversation? { activeConversation ?? lastKnownConversation }
 
     override func viewDidLoad() {
@@ -108,9 +143,11 @@ final class MessagesViewController: MSMessagesAppViewController {
         configureModeControl()
         configureSurfaceContainer()
         configureStatusView()
+        configurePetContainer()
         configureCreateButton()
         configureOfflineBadge()
         configureHintLabel()
+        configureTabControl()
         applyPresentationContext()
     }
 
@@ -120,12 +157,31 @@ final class MessagesViewController: MSMessagesAppViewController {
         // Before the refresh, so the snapshot lands in whichever surface this activation is for.
         applyPresentationContext()
         if creationController == nil { refreshLibrary() }
+        if showsPetPage { petModel.reload() }
+        // Presented in `didBecomeActive`: a sheet raised before the view is in a window is dropped.
+        pendingReceivedCard = presentationContext == .messages
+            ? PetCardPayload(url: conversation.selectedMessage?.url)
+            : nil
+        if pendingReceivedCard != nil, presentationStyle == .compact { requestPresentationStyle(.expanded) }
     }
 
     override func didBecomeActive(with conversation: MSConversation) {
         super.didBecomeActive(with: conversation)
         lastKnownConversation = conversation
-        if creationController == nil { gridViewController.resumeAnimations() }
+        if creationController == nil, !showsPetPage { gridViewController.resumeAnimations() }
+        if let pending = pendingReceivedCard {
+            pendingReceivedCard = nil
+            presentReceivedCard(pending)
+        }
+    }
+
+    /// A message tapped in the transcript while the extension is already open.
+    override func didSelect(_ message: MSMessage, conversation: MSConversation) {
+        super.didSelect(message, conversation: conversation)
+        lastKnownConversation = conversation
+        guard presentationContext == .messages, let payload = PetCardPayload(url: message.url) else { return }
+        if presentationStyle == .compact { requestPresentationStyle(.expanded) }
+        presentReceivedCard(payload)
     }
 
     override func didResignActive(with conversation: MSConversation) {
@@ -140,6 +196,9 @@ final class MessagesViewController: MSMessagesAppViewController {
         controlsLoadTask?.cancel()
         controlSendSession.cancel()
         if controlsController != nil { closeControls() }
+        petModel.cancel()
+        pendingReceivedCard = nil
+        if receivedCardController != nil { dismissReceivedCard(animated: false) }
         lastKnownConversation = nil
     }
 
@@ -162,6 +221,8 @@ final class MessagesViewController: MSMessagesAppViewController {
         logger.log("surface=\(String(describing: resolved), privacy: .public) context=\(self.presentationContext.rawValue)")
         installChild(for: resolved)
         installLibrary(for: resolved)
+        refreshCreateButton()
+        hintBottom?.constant = resolved == .fullSize ? -60 : -8
     }
 
     private func installChild(for surface: Surface) {
@@ -190,7 +251,8 @@ final class MessagesViewController: MSMessagesAppViewController {
     }
 
     private func install(_ child: UIViewController) {
-        for existing in children where existing !== child {
+        // The Pet page is a sibling of the surface, not one of its occupants.
+        for existing in children where existing !== child && existing !== petController {
             existing.willMove(toParent: nil)
             existing.view.removeFromSuperview()
             existing.removeFromParent()
@@ -370,6 +432,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         createButton.isHidden = !(
             wantsCreateButton && surface == .fullSize && creationController == nil && controlsController == nil
         )
+        applyTab()
     }
 
     @objc
@@ -428,6 +491,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     private func closeCreation() {
         creationController?.cancelOutstandingWork()
         creationController = nil
+        refreshCreateButton()
         guard let surface else { return }
         installChild(for: surface)
         refreshLibrary()
@@ -470,8 +534,12 @@ final class MessagesViewController: MSMessagesAppViewController {
         hintLabel.isHidden = true
         hintLabel.accessibilityIdentifier = "sticker-factory-drag-hint"
         view.addSubview(hintLabel)
+        // Above the tab/Create row in the full-size surface, so a hint never covers the controls
+        // it might be telling someone to use; `applyPresentationContext` sets the constant.
+        let hintBottom = hintLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8)
+        self.hintBottom = hintBottom
         NSLayoutConstraint.activate([
-            hintLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            hintBottom,
             hintLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             hintLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 16),
             hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
@@ -499,6 +567,180 @@ final class MessagesViewController: MSMessagesAppViewController {
             surfaceTop=\(self.surfaceContainer.frame.minY)
             """
         )
+    }
+
+    // MARK: - Pet tab
+
+    /// The views that belong to the Stickers page. Hidden by alpha rather than `isHidden` when the
+    /// Pet page is up, because their `isHidden` already answers a different question — what state
+    /// the library is in — and the two must not overwrite each other: coming back to Stickers
+    /// should find the grid, the spinner or the empty state exactly as the library left it.
+    private var stickerPageViews: [UIView] {
+        [surfaceContainer, modeControl, statusContainer, offlineLabel, hintLabel, createButton]
+    }
+
+    private func configureTabControl() {
+        tabControl.translatesAutoresizingMaskIntoConstraints = false
+        tabControl.selectedSegmentIndex = MessagesTab.allCases.firstIndex(of: selectedTab) ?? 0
+        tabControl.accessibilityIdentifier = "sticker-factory-tab-picker"
+        // Same edge against the drawer's black backdrop as the send-mode control.
+        tabControl.backgroundColor = .secondarySystemBackground
+        tabControl.selectedSegmentTintColor = .systemBlue
+        tabControl.setTitleTextAttributes([.foregroundColor: UIColor.label], for: .normal)
+        tabControl.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
+        tabControl.addTarget(self, action: #selector(tabControlChanged), for: .valueChanged)
+        tabControl.addAction(UIAction { _ in Haptics.selection() }, for: .valueChanged)
+        tabControl.isHidden = true
+        view.addSubview(tabControl)
+        NSLayoutConstraint.activate([
+            tabControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            tabControl.centerYAnchor.constraint(equalTo: createButton.centerYAnchor),
+            tabControl.trailingAnchor.constraint(lessThanOrEqualTo: createButton.leadingAnchor, constant: -12),
+            tabControl.heightAnchor.constraint(equalToConstant: 36)
+        ])
+    }
+
+    private func configurePetContainer() {
+        petContainer.translatesAutoresizingMaskIntoConstraints = false
+        petContainer.backgroundColor = .clear
+        petContainer.isHidden = true
+        view.addSubview(petContainer)
+        NSLayoutConstraint.activate([
+            petContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            petContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            petContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
+            petContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+
+    @objc
+    private func tabControlChanged() {
+        let cases = MessagesTab.allCases
+        guard cases.indices.contains(tabControl.selectedSegmentIndex) else { return }
+        selectedTab = cases[tabControl.selectedSegmentIndex]
+        logger.log("tabControl selected=\(self.selectedTab.rawValue, privacy: .public)")
+        applyTab()
+        if showsPetPage {
+            petModel.reload()
+            gridViewController.suspendAnimations()
+        } else if creationController == nil {
+            gridViewController.resumeAnimations()
+        }
+    }
+
+    /// Shows whichever page the tab names, and the tab control wherever it applies.
+    private func applyTab() {
+        tabControl.isHidden = !(surface == .fullSize && creationController == nil && controlsController == nil)
+        let showsPet = showsPetPage
+        for page in stickerPageViews {
+            page.alpha = showsPet ? 0 : 1
+            page.isUserInteractionEnabled = !showsPet
+            page.accessibilityElementsHidden = showsPet
+        }
+        if showsPet { installPetPageIfNeeded() }
+        petContainer.isHidden = !showsPet
+        view.bringSubviewToFront(tabControl)
+    }
+
+    private func installPetPageIfNeeded() {
+        guard petController == nil else { return }
+        let controller = UIHostingController(rootView: MessagesPetView(model: petModel))
+        controller.view.backgroundColor = .clear
+        // Clears the bottom row, where the tab control sits, as the grid's own inset does.
+        controller.additionalSafeAreaInsets.bottom = 58
+        petController = controller
+        addChild(controller)
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        petContainer.addSubview(controller.view)
+        NSLayoutConstraint.activate([
+            controller.view.leadingAnchor.constraint(equalTo: petContainer.leadingAnchor),
+            controller.view.trailingAnchor.constraint(equalTo: petContainer.trailingAnchor),
+            controller.view.topAnchor.constraint(equalTo: petContainer.topAnchor),
+            controller.view.bottomAnchor.constraint(equalTo: petContainer.bottomAnchor)
+        ])
+        controller.didMove(toParent: self)
+    }
+
+    private func makePetModel() -> MessagesPetModel {
+        let model = MessagesPetModel(service: try? MessagesPetService())
+        model.insertCard = { [weak self] payload, pose in
+            guard let self else { throw CancellationError() }
+            try await self.insertPetCard(payload, pose: pose)
+        }
+        model.presentFailure = { [weak self] message in self?.presentAlert(message: message) }
+        model.openApp = { [weak self] in self?.openMainApplication(stickerID: nil) }
+        return model
+    }
+
+    /// Puts the pet card into the conversation as an interactive message.
+    ///
+    /// A message rather than an image attachment because only a message carries a URL to the
+    /// recipient's copy of this extension — which is what lets a tap on the bubble open the card
+    /// with its stats, instead of a picture of it. The template layout is what everyone else sees:
+    /// someone without the app still gets the pose, the name, the class and the stat line.
+    ///
+    /// Not reported to `/pet/sends`: that endpoint is the pet reading the stickers its owner sends,
+    /// and the card is not a sticker — the share it follows is its own record.
+    private func insertPetCard(_ payload: PetCardPayload, pose: UIImage?) async throws {
+        guard let conversation = insertionTarget else { throw MessagesPetError.noConversation }
+        let layout = MSMessageTemplateLayout()
+        layout.image = pose
+        layout.caption = payload.name
+        layout.subcaption = [payload.petClass.map(MessagesPet.displayName(forClass:)), payload.caption]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        layout.trailingSubcaption = payload.statLine
+        let message = MSMessage()
+        message.layout = layout
+        message.url = payload.url
+        message.summaryText = String(localized: "Sent a pet card: \(payload.name)")
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            conversation.insert(message) { error in
+                if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+            }
+        }
+        // The card is staged in the input field; collapsing puts it, and the Send arrow, in view.
+        requestPresentationStyle(.compact)
+    }
+
+    /// The card someone sent, as a sheet over whatever this drawer was showing — it is a detour
+    /// from the drawer's own pages, and closing it should land back on them untouched.
+    private func presentReceivedCard(_ payload: PetCardPayload) {
+        let rootView = ReceivedPetCardView(payload: payload) { [weak self] in
+            self?.dismissReceivedCard(animated: true)
+        }
+        // A second card tapped while the first is open replaces it in place. One swiped away is
+        // gone, even though nothing told this controller, so presence is checked, not remembered.
+        if let existing = receivedCardController as? UIHostingController<ReceivedPetCardView>,
+           existing.presentingViewController != nil {
+            existing.rootView = rootView
+            return
+        }
+        receivedCardController = nil
+        guard presentedViewController == nil else { return }
+        let controller = UIHostingController(rootView: rootView)
+        controller.modalPresentationStyle = .pageSheet
+        controller.sheetPresentationController?.detents = [.large()]
+        controller.sheetPresentationController?.prefersGrabberVisible = true
+        receivedCardController = controller
+        Haptics.tap()
+        present(controller, animated: true)
+    }
+
+    private func dismissReceivedCard(animated: Bool) {
+        guard let controller = receivedCardController else { return }
+        receivedCardController = nil
+        controller.dismiss(animated: animated)
+    }
+
+    private func presentAlert(message: String) {
+        let alert = UIAlertController(
+            title: String(localized: "Couldn’t Complete Action"),
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
+        if presentedViewController == nil { present(alert, animated: true) }
     }
 
     // MARK: - Library
@@ -559,7 +801,7 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     // MARK: - Insertion (sticker surface)
 
-    private func insertSticker(_ sticker: MSSticker) {
+    private func insertSticker(_ sticker: MSSticker, stickerID: String?) {
         guard let conversation = insertionTarget else {
             logger.error("insert skipped: no conversation (context=\(self.presentationContext.rawValue))")
             applyInsertOutcome(.noConversation)
@@ -590,15 +832,15 @@ final class MessagesViewController: MSMessagesAppViewController {
                 if outcome == .unavailableInContext {
                     // insertAttachment is permitted in the media context for image types
                     // supported by MSSticker, which every cached rendition is.
-                    self.insertAsAttachment(fileURL: fileURL, filename: filename)
+                    self.insertAsAttachment(fileURL: fileURL, filename: filename, stickerID: stickerID)
                 } else {
-                    self.applyInsertOutcome(outcome)
+                    self.applyInsertOutcome(outcome, stickerID: stickerID)
                 }
             }
         }
     }
 
-    private func insertAsAttachment(fileURL: URL, filename: String) {
+    private func insertAsAttachment(fileURL: URL, filename: String, stickerID: String?) {
         guard let conversation = insertionTarget else {
             applyInsertOutcome(.noConversation)
             return
@@ -614,7 +856,7 @@ final class MessagesViewController: MSMessagesAppViewController {
                 guard let self else { return }
                 let outcome = StickerInsertPolicy.outcome(domain: domain, code: code)
                 self.log(outcome: outcome, domain: domain, code: code, api: "insertAttachment")
-                self.applyInsertOutcome(outcome)
+                self.applyInsertOutcome(outcome, stickerID: stickerID)
             }
         }
     }
@@ -633,7 +875,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         }
         if surface == .sticker || sendMode == .sticker {
             guard let sticker = gridViewController.sticker(for: itemID) else { return }
-            insertSticker(sticker)
+            insertSticker(sticker, stickerID: itemID.stickerID)
             return
         }
         sendImage(itemID)
@@ -700,7 +942,7 @@ final class MessagesViewController: MSMessagesAppViewController {
                             insert: { file in
                                 let fileURL = file.url
                                 guard !image else {
-                                    try await self.insertRendered(fileURL, title: item.title, image: true)
+                                    try await self.insertRendered(fileURL, title: item.title, stickerID: item.stickerID, image: true)
                                     return
                                 }
                                 self.prepared = try .init(fileURL: fileURL, title: item.title, firstAnimationOnly: file.firstAnimationOnly)
@@ -722,7 +964,7 @@ final class MessagesViewController: MSMessagesAppViewController {
                         },
                         send: { [weak self] in
                             guard let self, let prepared = self.prepared else { throw CancellationError() }
-                            try await self.insertRendered(prepared.fileURL, title: prepared.title, image: false)
+                            try await self.insertRendered(prepared.fileURL, title: prepared.title, stickerID: item.stickerID, image: false)
                             // The errand is finished, so the drawer stops covering the conversation
                             // the sticker just landed in — the same courtesy `applyInsertOutcome`
                             // pays an ordinary send.
@@ -748,7 +990,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     /// Hands the rendered file to the conversation: an attachment in image mode, an `MSSticker`
     /// otherwise. The conversation is read again here rather than captured — the send session
     /// validated it a moment ago, but an extension can lose it between the two.
-    private func insertRendered(_ fileURL: URL, title: String, image: Bool) async throws {
+    private func insertRendered(_ fileURL: URL, title: String, stickerID: String, image: Bool) async throws {
         guard let conversation = insertionTarget else { throw CancellationError() }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let completion: (Error?) -> Void = { error in
@@ -765,6 +1007,7 @@ final class MessagesViewController: MSMessagesAppViewController {
                 continuation.resume(throwing: error)
             }
         }
+        reportPetSend(stickerID)
     }
 
     private func closeControls() {
@@ -831,7 +1074,7 @@ final class MessagesViewController: MSMessagesAppViewController {
                     logger.debug("insert skipped: duplicate tap")
                     return
                 }
-                insert(attachment)
+                insert(attachment, stickerID: itemID.stickerID)
             } catch is CancellationError {
                 return
             } catch {
@@ -841,7 +1084,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         }
     }
 
-    private func insert(_ attachment: ResolvedAttachment) {
+    private func insert(_ attachment: ResolvedAttachment, stickerID: String) {
         guard let conversation = insertionTarget else {
             logger.error("insert skipped: no conversation (context=\(self.presentationContext.rawValue))")
             applyInsertOutcome(.noConversation)
@@ -871,9 +1114,10 @@ final class MessagesViewController: MSMessagesAppViewController {
                 // A send that worked but from the ≤500 KB file is still a send, so it must not read
                 // as a failure — but it does need saying, or the image looks needlessly soft.
                 if outcome == .inserted, let notice = Self.substitutionNotice(for: attachment) {
+                    self.reportPetSend(stickerID)
                     self.showHint(notice)
                 } else {
-                    self.applyInsertOutcome(outcome)
+                    self.applyInsertOutcome(outcome, stickerID: stickerID)
                 }
             }
         }
@@ -927,7 +1171,15 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     // MARK: - Outcome reporting
 
-    private func applyInsertOutcome(_ outcome: StickerInsertOutcome) {
+    /// Every path that puts one of the user's stickers into the conversation ends here, so the pet
+    /// hears about it once per send. Fire-and-forget: see `PetSendReporter`.
+    private func reportPetSend(_ stickerID: String) {
+        guard let petSends else { return }
+        Task { await petSends.report(stickerID: stickerID) }
+    }
+
+    private func applyInsertOutcome(_ outcome: StickerInsertOutcome, stickerID: String? = nil) {
+        if outcome == .inserted, let stickerID { reportPetSend(stickerID) }
         // A sticker that landed is the end of the errand: collapse so the conversation — and the
         // sticker now staged in its input field — is what the user is looking at.
         //
@@ -1038,6 +1290,8 @@ final class MessagesViewController: MSMessagesAppViewController {
                 self.logger.error("extensionContext.open refused (context=\(self.presentationContext.rawValue))")
                 if let creationController = self.creationController {
                     creationController.showOpenAppFailure()
+                } else if self.showsPetPage {
+                    self.presentAlert(message: String(localized: "Open Winky from the Home Screen to adopt a pet."))
                 } else {
                     self.statusLabel.text = String(localized: "Open Sticker Factory from the Home Screen and sign in.")
                 }

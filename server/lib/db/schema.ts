@@ -18,6 +18,9 @@ import {
 import type { PlaybackBundle } from "@/lib/services/playback";
 import type { PlanV1 } from "@/lib/contracts/plan";
 import type { StickerDocument } from "@/lib/contracts/sticker";
+import type { StickerControlValues } from "@/lib/contracts/configuration";
+import type { PetAction } from "@/lib/ai/gateway-contracts";
+import type { PetIdentityV1, PetSignalsV1 } from "@/lib/contracts/api";
 
 /**
  * Every instant is a `timestamptz`, read back as a `Date`.
@@ -578,3 +581,91 @@ export const generationLiveActivities = pgTable("generation_live_activities", {
   index("generation_live_activities_job_idx").on(table.jobId),
   check("generation_live_activities_environment_check", sql`${table.environment} IN ('sandbox', 'production')`),
 ]);
+
+/**
+ * The controllable sticker a user has adopted as their pet — what the watch and widget show.
+ *
+ * One row per user, keyed by the user, so choosing another pet replaces the row instead of adding
+ * one. The sticker need not be the user's own: a member of an installed pack is just as posable,
+ * and `lib/services/pets.ts` holds the pet to the same access rule playback is read under.
+ * Deleting the sticker takes the choice with it rather than leaving a pet with no artwork.
+ */
+export const userPets = pgTable("user_pets", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
+  /**
+   * The pose the pet holds and the caption under it, as the agent last read the user's sends.
+   *
+   * Null until the first send is read, and cleared when another pet is adopted: the values are ids
+   * of *this* pet's controls, and meaningless against another sticker's.
+   */
+  statusJson: jsonb("status_json").$type<PetStatus>(),
+  statusUpdatedAt: timestampColumn("status_updated_at"),
+  statsJson: jsonb("stats_json").$type<PetStatsValues>(),
+  actionsJson: jsonb("actions_json").$type<PetAction[]>(),
+  interactionId: text("interaction_id"),
+  /** Who this pet is: class, personality, preferences, and the world it was adopted into. */
+  identityJson: jsonb("identity_json").$type<PetIdentityV1>(),
+  /** The phone's last coarse context — rounded location, steps today, time zone. */
+  contextJson: jsonb("context_json").$type<PetStoredContext>(),
+  /** The signals last resolved from that context, headlines included, so a send can reuse them. */
+  signalsJson: jsonb("signals_json").$type<PetSignalsV1>(),
+  signalsUpdatedAt: timestampColumn("signals_updated_at"),
+  /**
+   * Names this pet's life. A new pet gets a new one, and a life workflow that wakes to find a
+   * different id knows it is no longer this pet's and ends.
+   */
+  lifeId: text("life_id"),
+  lifeRunId: text("life_run_id"),
+  lifeTickAt: timestampColumn("life_tick_at"),
+  nextEventAt: timestampColumn("next_event_at"),
+  lastShareAt: timestampColumn("last_share_at"),
+  /**
+   * The most recent send, written before the agent runs. A reading only lands if this is still the
+   * send it was asked about, so a slow answer about an old sticker never overwrites a newer one.
+   */
+  lastSentStickerId: text("last_sent_sticker_id").references(() => stickers.id, { onDelete: "set null" }),
+  lastSentAt: timestampColumn("last_sent_at"),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("user_pets_sticker_idx").on(table.stickerId),
+]);
+
+export type PetStatus = { values: StickerControlValues; caption: string };
+export type PetStoredContext = {
+  latitude?: number;
+  longitude?: number;
+  stepsToday?: number;
+  /** The phone's local date the steps were counted on, so yesterday's walk is not today's. */
+  stepsDate?: string;
+  timeZone?: string;
+  updatedAt: string;
+};
+/** Stored stats and effects. `gold` came later: rows and diary lines from before it have none. */
+export type PetStatsValues = { happiness: number; hp: number; energy: number; gold?: number };
+
+/**
+ * The pet's diary. Every change to its stats lands here with what caused it, so "why is my pet
+ * sad?" has an answer. Kept per life: a new pet starts a fresh page, and the API reads only the
+ * current life's lines.
+ */
+export const petEvents = pgTable("pet_events", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  lifeId: text("life_id").notNull(),
+  stickerId: text("sticker_id"),
+  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo"] }).notNull(),
+  title: text("title").notNull(),
+  detail: text("detail").notNull(),
+  effectsJson: jsonb("effects_json").$type<PetStatsValues>().notNull(),
+  statsBeforeJson: jsonb("stats_before_json").$type<PetStatsValues>().notNull(),
+  statsAfterJson: jsonb("stats_after_json").$type<PetStatsValues>().notNull(),
+  signalsJson: jsonb("signals_json").$type<PetSignalsV1>(),
+  debugJson: jsonb("debug_json").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestampColumn("created_at").notNull(),
+}, (table) => [
+  index("pet_events_life_idx").on(table.userId, table.lifeId, table.createdAt),
+]);
+export type PetEventRow = typeof petEvents.$inferSelect;
+export type UserPetRow = typeof userPets.$inferSelect;

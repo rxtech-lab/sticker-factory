@@ -56,6 +56,10 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Your pet reacts to how much you walk today. Winky only reads your step count.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your pet feels the weather where you are. Only your approximate location is used.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Winky Sticker Factory uses the photos and Live Photos you choose as private references for sticker generation and editing, including lifting a subject out of them.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
@@ -92,6 +96,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

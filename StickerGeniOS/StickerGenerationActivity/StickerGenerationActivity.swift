@@ -4,7 +4,10 @@ import WidgetKit
 
 @main
 struct StickerGenerationActivityBundle: WidgetBundle {
-    var body: some Widget { StickerGenerationActivity() }
+    var body: some Widget {
+        StickerGenerationActivity()
+        PetWidget()
+    }
 }
 
 struct StickerGenerationActivity: Widget {

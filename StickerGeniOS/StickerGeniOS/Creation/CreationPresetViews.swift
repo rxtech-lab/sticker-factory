@@ -173,6 +173,7 @@ struct CreationPresetPage: View {
     let group: CreationPresetGroup
     @Binding var flow: CreationWizardState
     var animated = false
+    var onSelection: ((String, Bool) -> Void)?
     @Environment(\.locale) private var locale
     private var chosen: Set<String> { flow.selections[group.id] ?? [] }
     private var previews: [CreationPresetOption] {
@@ -209,7 +210,9 @@ struct CreationPresetPage: View {
                     ForEach(group.options) { option in
                         let selected = chosen.contains(option.id)
                         Button {
-                            flow.toggle(option.id, in: group); Haptics.selection()
+                            flow.toggle(option.id, in: group)
+                            Haptics.selection()
+                            onSelection?(option.id, flow.selections[group.id]?.contains(option.id) == true)
                         } label: {
                             VStack(alignment: .leading, spacing: 9) {
                                 CreationPresetImage(url: option.cover, animated: false, size: 256)
