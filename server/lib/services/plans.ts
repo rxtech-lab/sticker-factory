@@ -489,6 +489,8 @@ export async function confirmPlan(
   stickerId: string,
   planId: string,
   clientVersion = 6,
+  /** `pet`: the pet confirming its own evolution plan — free, and none of the owner's allowance. */
+  origin: "user" | "pet" = "user",
 ) {
   const sticker = await db.select().from(stickers).where(and(
     eq(stickers.id, stickerId),
@@ -537,7 +539,7 @@ export async function confirmPlan(
   const generations = planGenerationCount(plan);
   const videos = planVideoCount(plan);
   const creditHold = composeCreditHold(plan);
-  const reservationId = await holdCreditsForJob({
+  const reservationId = origin === "pet" ? null : await holdCreditsForJob({
     ownerId,
     amount: creditHold,
     idempotencyKey: `reserve:${jobId}`,
@@ -546,7 +548,7 @@ export async function confirmPlan(
   });
   try {
     // Confirming a plan is a user turn, so it spends the daily message allowance.
-    await consumeDailyUsage(ownerId, [DAILY_STICKER_REFINEMENT_ITEM], jobId);
+    if (origin === "user") await consumeDailyUsage(ownerId, [DAILY_STICKER_REFINEMENT_ITEM], jobId);
     await db.transaction(async (tx) => {
       try {
         await tx.insert(generationJobs).values({
@@ -555,6 +557,7 @@ export async function confirmPlan(
           stickerId,
           sourceMessageId: messageId,
           kind: "compose",
+          origin,
           state: "queued",
           reservationId,
           billingEnvironment: await currentBillingEnvironment(),

@@ -14,6 +14,21 @@ nonisolated struct PetSnapshot: Codable, Equatable, Sendable {
     var selectedAt: Date
     /// Names the drawn pose: same key, same picture. A new one means the PNG has to be fetched again.
     var poseKey: String
+    /// The weather where the owner is, as the pet last read it. Nil without location, and in
+    /// snapshots written before the widget showed weather.
+    var weather: PetSnapshotWeather? = nil
+}
+
+/// The weather beside the pet on the widget: what it is, and the server's drawing of it, if any.
+nonisolated struct PetSnapshotWeather: Codable, Equatable, Sendable {
+    /// `PetWeatherKind.rawValue`, which the widget does not link; it only shows `symbol`.
+    var kind: String
+    /// The SF Symbol drawn while there is no drawing, and on surfaces that cannot show one.
+    var symbol: String
+    var temperatureC: Double
+    var isDay: Bool
+    /// Names the drawing in the pet's style written beside the pose. Nil until the server drew it.
+    var artKey: String?
 }
 
 /// What the phone last said about the pet, including that there is none.
@@ -58,6 +73,7 @@ nonisolated struct PetSnapshotStore: Sendable {
 
     private var envelopeURL: URL { directory.appending(path: "snapshot.json") }
     var poseURL: URL { directory.appending(path: "pose.png") }
+    var weatherArtURL: URL { directory.appending(path: "weather.png") }
 
     func envelope() -> PetSnapshotEnvelope? {
         guard let data = try? Data(contentsOf: envelopeURL) else { return nil }
@@ -70,11 +86,20 @@ nonisolated struct PetSnapshotStore: Sendable {
         return (snapshot, pose)
     }
 
-    /// Writes `envelope`. `pose` replaces the picture when given; a nil pet removes it.
-    func save(_ envelope: PetSnapshotEnvelope, pose: Data?) throws {
+    /// The drawing of the pet's weather, or nil when there is none on disk.
+    func weatherArt() -> Data? {
+        guard envelope()?.pet?.weather?.artKey != nil else { return nil }
+        return try? Data(contentsOf: weatherArtURL)
+    }
+
+    /// Writes `envelope`. `pose` and `weatherArt` replace their pictures when given; a nil pet removes
+    /// both, and a snapshot whose weather names no drawing removes the weather's.
+    func save(_ envelope: PetSnapshotEnvelope, pose: Data?, weatherArt: Data? = nil) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if let pose { try pose.write(to: poseURL, options: .atomic) }
+        if let weatherArt { try weatherArt.write(to: weatherArtURL, options: .atomic) }
         if envelope.pet == nil { try? FileManager.default.removeItem(at: poseURL) }
+        if envelope.pet?.weather?.artKey == nil { try? FileManager.default.removeItem(at: weatherArtURL) }
         try envelope.encoded().write(to: envelopeURL, options: .atomic)
     }
 
@@ -95,4 +120,6 @@ nonisolated enum PetCompanion {
     static let requestKey = "requestPet"
     /// The edge the server draws the pose at: sharp on a large widget, small enough to cross to the watch.
     static let poseSize = 320
+    /// The edge the server draws the weather at: it sits in a corner of the widget.
+    static let weatherArtSize = 192
 }

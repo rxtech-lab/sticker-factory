@@ -80,6 +80,9 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     /// The pet drawn by the server in its current pose: a transparent PNG `size` pixels square. What
     /// the widget and the watch show, since neither can run the animation engine.
     func petPose(size: Int) async throws -> Data
+    /// The weather the pet is in, drawn by the server in the pet's style: a transparent PNG `size`
+    /// pixels square. Fails until `Pet.weatherArt` names a drawing.
+    func petWeatherArt(size: Int) async throws -> Data
     /// Performs an action and returns the pet's updated stats, pose, and spoken response.
     func interactWithPet(_ action: PetAction) async throws -> Pet?
     /// Shows the pet a JPEG: uploads it, then asks the pet to look at it. Returns the pet with its
@@ -120,6 +123,7 @@ extension StickerAPIClientProtocol {
     func clearPet() async throws {}
     func petCandidates(query: String?) async throws -> LibrarySectionsResponse { throw StickerAPIError.invalidResponse }
     func petPose(size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
+    func petWeatherArt(size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
     func interactWithPet(_ action: PetAction) async throws -> Pet? { throw StickerAPIError.invalidResponse }
     func sendPetPhoto(jpeg: Data) async throws -> Pet? { throw StickerAPIError.invalidResponse }
 

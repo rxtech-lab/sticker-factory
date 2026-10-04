@@ -108,8 +108,11 @@ describe("pet life", () => {
       await Promise.all(tasks.map((task) => task()));
 
       const { events } = await listPetEvents(db, "owner", { limit: 10 });
-      expect(events.map((event) => event.kind)).toEqual(["send", "random", "adopted"]);
-      const [send, random] = events;
+      expect(events.map((event) => event.kind)).toEqual(["send", "random", "special", "adopted"]);
+      const [send, random, walk] = events;
+      // Today's 12,500 steps are paid first, at one gold per 250.
+      expect(walk).toMatchObject({ title: "Walk reward", effects: { happiness: 0, hp: 0, energy: 0, gold: 50 } });
+      expect(walk.statsAfter.gold).toBe(70);
       // Send: +2/0/-1 base, rainy favourite +4, athlete's big walk +4/+3/-2, model mood clamped to +8.
       // Energy costs are scaled by the athlete's 1.5: (-1 - 2) × 1.5 = -4.5 → -4.
       expect(send.effects).toEqual({ happiness: 18, hp: 3, energy: -4, gold: 0 });

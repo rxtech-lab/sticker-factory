@@ -33,9 +33,11 @@ final class PetUITests: StickerGeniOSUITestCase {
         XCTAssertTrue(current.waitForExistence(timeout: 15))
         XCTAssertTrue(current.label.contains("Loaf"))
         XCTAssertTrue(element("change-pet-button").exists)
+        // The weather where the owner is stands behind the pet.
+        XCTAssertTrue(element("pet-weather").waitForExistence(timeout: 5))
 
         XCTAssertTrue(element("pet-stats").exists)
-        app.swipeUp()
+        element("pet-stats").swipeUp()
         element("pet-actions-button").tap()
         XCTAssertTrue(app.navigationBars["Spend Time Together"].waitForExistence(timeout: 5))
         element("pet-action-22222222-2222-4222-8222-222222222222").tap()
@@ -63,7 +65,7 @@ final class PetUITests: StickerGeniOSUITestCase {
         XCTAssertTrue(element("current-pet").waitForExistence(timeout: 15))
         XCTAssertEqual(element("pet-gold").label, "20 gold")
 
-        app.swipeUp()
+        element("pet-stats").swipeUp()
         element("pet-actions-button").tap()
         XCTAssertTrue(app.navigationBars["Spend Time Together"].waitForExistence(timeout: 5))
         // The cake costs 40 gold and the pet has 20.

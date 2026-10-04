@@ -6,7 +6,7 @@ import type { PetContextV1, PetIdentityV1, PetInteractionRequest, PetSignalsV1, 
 import { normalizedControlValues } from "@/lib/contracts/configuration";
 import { canonicalJson, resolveStickerConfiguration } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
-import { packInstalls, petEvents, stickerPackItems, stickerPacks, stickerRevisions, stickers, userPets, type UserPetRow } from "@/lib/db/schema";
+import { generationJobs, packInstalls, petEvents, stickerPackItems, stickerPacks, stickerRevisions, stickers, userPets, type UserPetRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { notifyPetStatusChanged } from "@/lib/notifications/pet";
 import { describeError, traceEvent } from "@/lib/observability/trace";
@@ -17,9 +17,12 @@ import { pickEvent, SEND_EVENT_CHANCE } from "@/lib/pets/events";
 import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
 import { petLog, petRandom } from "@/lib/pets/log";
 import { localHour, mergeContext, resolveSignals, signalEffects } from "@/lib/pets/signals";
+import { WALK_PAYOUT_MIN_GOLD, walkReward } from "@/lib/pets/walk";
 import { addEffects, applyEffects, initialStats, personalizeEffects, preferenceEffects, ZERO_EFFECTS } from "@/lib/pets/stats";
 import { getReadyOwnedAssets } from "./assets";
 import { generateActions, ownerMoment, refreshActions, sentStickerImage } from "./pet-actions";
+import { canEvolve, serializePetEvolution, startPetEvolution } from "./pet-evolution";
+import { drawPetWeatherArt, serializePetWeatherArt } from "./pet-weather";
 import { commitPetChange, currentStats, ensurePetIdentity, petRow, type PetChange } from "./pet-state";
 import { startPetLife } from "./pet-life-runner";
 import { loadPlaybackPayload, readablePlayback } from "./playback";
@@ -36,6 +39,8 @@ export type PetResponse = {
     identity: PetIdentityV1 | null;
     signals: PetSignalsV1 | null;
     nextEventAt: string | null;
+    evolution: ReturnType<typeof serializePetEvolution>;
+    weatherArt: Awaited<ReturnType<typeof serializePetWeatherArt>>;
   } | null;
 };
 
@@ -115,7 +120,8 @@ async function serializePet(
     // Actions stored before gold existed are free.
     stats: currentStats(row), actions: (actions ?? []).map((action) => ({ ...action, effects: { ...action.effects, gold: action.effects.gold ?? 0 } })),
     identity: row.identityJson, signals: row.signalsJson,
-    nextEventAt: row.nextEventAt?.toISOString() ?? null } };
+    nextEventAt: row.nextEventAt?.toISOString() ?? null, evolution: serializePetEvolution(row.evolutionJson),
+    weatherArt: await serializePetWeatherArt(db, playback.revision.id, row.signalsJson) } };
 }
 
 /**
@@ -236,6 +242,7 @@ export async function interactWithPet(
   if (!claimed.length) throw new ApiError(409, "PET_CHANGED", "Your pet changed. Please try again.");
   const preference = preferenceEffects(`${action.title} ${action.description}`, pet.identityJson);
   const effects = personalizeEffects(addEffects(action.effects, preference.effects), pet.identityJson);
+  const mayGrow = canEvolve(pet, sticker);
   try {
     // The next actions are chosen alongside the reply, from the mood the action leaves the pet in,
     // so the owner is offered what fits now without waiting on a second model call.
@@ -246,6 +253,8 @@ export async function interactWithPet(
         stats: currentStats(pet),
         controls: configuration?.controls ?? [],
         current: pet.statusJson?.values ?? null,
+        ...ownerMoment(pet.contextJson),
+        canEvolve: mayGrow,
       }),
       refreshActions(db, pet, sticker, revision, {
         stats: applyEffects(currentStats(pet), effects, pet.identityJson),
@@ -267,10 +276,14 @@ export async function interactWithPet(
         detail: caption,
         effects,
         debug: { actionId: action.id, actionEffects: action.effects, preference: preference.matched,
-          energyMultiplier: pet.identityJson?.energyMultiplier ?? 1, nextActions: actions?.map((next) => next.title) ?? null },
+          energyMultiplier: pet.identityJson?.energyMultiplier ?? 1, nextActions: actions?.map((next) => next.title) ?? null,
+          mayGrow, evolve: answer.evolve?.brief ?? null },
       }],
     });
     if (!committed) throw new ApiError(409, "PET_CHANGED", "Your pet changed. Please try again.");
+    if (mayGrow && answer.evolve) {
+      await startPetEvolution(db, userId, { stickerId: pet.stickerId, brief: answer.evolve.brief, trigger: `action: ${action.title}` });
+    }
     await notify(db, userId).catch((error) => traceEvent("pet.interaction:notify:failed", { userId, error: describeError(error) }));
     return getPet(db, userId);
   } catch (error) {
@@ -374,6 +387,7 @@ export async function readPetSend(
       signals,
       stats: currentStats(pet),
       event: event && eventDetail ? { title: event.title, detail: eventDetail } : null,
+      ...ownerMoment(pet.contextJson, now),
       sent: {
         title: sent.sticker.title,
         kind: sent.sticker.kind,
@@ -434,6 +448,92 @@ export async function readPetSend(
   }
 }
 
+/** What a sticker its owner made does to the pet when it cares at all: a little pride. */
+const STICKER_EFFECTS = { happiness: 2, hp: 0, energy: 0 };
+
+/** The turns that can leave a new sticker behind. Plans, exports and cleanups make nothing to look at. */
+const NOTICED_JOB_KINDS = new Set(["image", "edit", "animation", "chat", "compose"]);
+
+/**
+ * Shows the owner's pet a sticker one of their turns just made, and lets the pet decide whether it
+ * cares. Most stickers it lets pass; one it likes, or one that looks like a friend, gets a line, a
+ * pose and a nudge to its stats, and a fresh set of actions for the mood it leaves.
+ *
+ * Runs as a step after the turn has completed. Never throws: the sticker is made either way, and a
+ * pet that missed one is a pet that was not looking.
+ */
+export async function noticeNewSticker(
+  db: Database,
+  jobId: string,
+  revisionId: string | undefined,
+  notify: (db: Database, userId: string) => Promise<void> = notifyPetStatusChanged,
+): Promise<void> {
+  try {
+    if (!revisionId) return;
+    const job = await db.select().from(generationJobs).where(eq(generationJobs.id, jobId)).then(firstRow);
+    // The pet's own growth is announced by the pet when it is published, not noticed turn by turn.
+    if (!job || job.origin !== "user" || job.state !== "succeeded" || !NOTICED_JOB_KINDS.has(job.kind)) return;
+    const userId = job.ownerId;
+    const found = await petRow(db, userId);
+    if (!found?.lifeId || found.stickerId === job.stickerId) return;
+    const made = await db.select({ sticker: stickers, revision: stickerRevisions }).from(stickerRevisions)
+      .innerJoin(stickers, eq(stickers.id, stickerRevisions.stickerId))
+      .where(and(eq(stickerRevisions.id, revisionId), eq(stickers.id, job.stickerId), eq(stickers.ownerId, userId)))
+      .then(firstRow);
+    if (!made) return;
+    const { sticker: petSticker, revision: petRevision } = await readablePlayback(db, userId, found.stickerId);
+    const configuration = petRevision.playbackJson?.document.configuration;
+    if (!configuration) return;
+    const now = new Date();
+    const answer = await getAiProvider().noticePetSticker({
+      petTitle: petSticker.title,
+      identity: found.identityJson,
+      signals: found.signalsJson,
+      stats: currentStats(found),
+      controls: configuration.controls,
+      current: found.statusJson?.values ?? null,
+      ...ownerMoment(found.contextJson, now),
+      made: {
+        title: made.sticker.title,
+        kind: made.sticker.kind,
+        image: await sentStickerImage(db, made.revision.previewAssetId ?? made.revision.masterAssetId ?? made.revision.pngAssetId),
+      },
+    });
+    if (!answer.react) {
+      petLog("sticker:ignored", { userId, stickerId: made.sticker.id, jobId });
+      return;
+    }
+    const values = normalizedControlValues(configuration, { ...found.statusJson?.values, ...answer.values });
+    const caption = answer.caption.trim();
+    const bound = (value: number) => Math.max(-8, Math.min(8, Math.round(value)));
+    const mood = answer.effects
+      ? { happiness: bound(answer.effects.happiness), hp: bound(answer.effects.hp), energy: bound(answer.effects.energy) }
+      : ZERO_EFFECTS;
+    const effects = personalizeEffects(addEffects(STICKER_EFFECTS, mood), found.identityJson);
+    const actions = await refreshActions(db, found, petSticker, petRevision, {
+      stats: applyEffects(currentStats(found), effects, found.identityJson),
+      mood: `${caption} (after its owner made a new sticker, “${made.sticker.title}”)`,
+    });
+    const committed = await commitPetChange(db, userId, {
+      lifeId: found.lifeId,
+      where: eq(userPets.stickerId, found.stickerId),
+      set: { statusJson: { values, caption }, statusUpdatedAt: now, ...(actions ? { actionsJson: actions } : {}) },
+      changes: [{
+        kind: "sticker",
+        title: `Saw “${made.sticker.title}”`,
+        detail: caption,
+        effects,
+        debug: { jobId, stickerId: made.sticker.id, revisionId, base: STICKER_EFFECTS, moodEffects: mood,
+          modelEffects: answer.effects ?? null, pose: values, nextActions: actions?.map((next) => next.title) ?? null },
+      }],
+    });
+    petLog("sticker:noticed", { userId, stickerId: made.sticker.id, jobId, stored: !!committed });
+    if (committed) await notify(db, userId);
+  } catch (error) {
+    petLog("sticker:notice-failed", { jobId, error: describeError(error) });
+  }
+}
+
 /** What being shown any picture does on its own: a little attention, a little effort to look. */
 const PHOTO_EFFECTS = { happiness: 2, hp: 0, energy: -1 };
 
@@ -465,6 +565,7 @@ export async function sendPetPhoto(
       pet.interactionId ? eq(userPets.interactionId, pet.interactionId) : isNull(userPets.interactionId)))
     .returning({ userId: userPets.userId });
   if (!claimed.length) throw new ApiError(409, "PET_CHANGED", "Your pet changed. Please try again.");
+  const mayGrow = canEvolve(pet, sticker);
   try {
     const answer = await getAiProvider().reactToPetPhoto({
       petTitle: sticker.title,
@@ -474,6 +575,8 @@ export async function sendPetPhoto(
       stats: currentStats(pet),
       controls: configuration?.controls ?? [],
       current: pet.statusJson?.values ?? null,
+      ...ownerMoment(pet.contextJson),
+      canEvolve: mayGrow,
     });
     const values = configuration ? normalizedControlValues(configuration, { ...pet.statusJson?.values, ...answer.values }) : {};
     const caption = answer.caption.trim();
@@ -497,10 +600,14 @@ export async function sendPetPhoto(
         detail: caption,
         effects,
         debug: { assetId: asset.id, base: PHOTO_EFFECTS, moodEffects: mood, modelEffects: answer.effects ?? null,
-          energyMultiplier: pet.identityJson?.energyMultiplier ?? 1, nextActions: actions?.map((next) => next.title) ?? null },
+          energyMultiplier: pet.identityJson?.energyMultiplier ?? 1, nextActions: actions?.map((next) => next.title) ?? null,
+          mayGrow, evolve: answer.evolve?.brief ?? null },
       }],
     });
     if (!committed) throw new ApiError(409, "PET_CHANGED", "Your pet changed. Please try again.");
+    if (mayGrow && answer.evolve) {
+      await startPetEvolution(db, userId, { stickerId: pet.stickerId, brief: answer.evolve.brief, trigger: "photo" });
+    }
     await notify(db, userId).catch((error) => traceEvent("pet.photo:notify:failed", { userId, error: describeError(error) }));
     return getPet(db, userId);
   } catch (error) {
@@ -557,15 +664,22 @@ export async function updatePetContext(
 ): Promise<{ stored: boolean }> {
   const pet = await petRow(db, userId);
   if (!pet) return { stored: false };
-  const context = mergeContext(pet.contextJson, input, new Date());
+  const now = new Date();
+  const context = mergeContext(pet.contextJson, input, now);
   await db.update(userPets).set({ contextJson: context }).where(eq(userPets.userId, userId));
   petLog("context:stored", { userId, hasLocation: context?.latitude !== undefined, stepsToday: context?.stepsToday ?? null,
     timeZone: context?.timeZone ?? null });
+  // A good stretch of walking pays out as soon as the phone reports it, not at the pet's next visit.
+  const walk = walkReward({ contextJson: context, walkGoldJson: pet.walkGoldJson }, now);
+  if (walk && walk.gold >= WALK_PAYOUT_MIN_GOLD && pet.lifeId) await commitPetChange(db, userId, { lifeId: pet.lifeId, changes: [] });
   schedule(() => refreshPetSignals(db, userId));
   return { stored: true };
 }
 
-/** Re-reads the world for the current pet and stores it. Never throws; it runs after the response. */
+/**
+ * Re-reads the world for the current pet and stores it, then draws the weather it found if that
+ * look is new. Never throws; it runs after the response.
+ */
 export async function refreshPetSignals(db: Database, userId: string): Promise<void> {
   try {
     const pet = await petRow(db, userId);
@@ -579,6 +693,7 @@ export async function refreshPetSignals(db: Database, userId: string): Promise<v
   } catch (error) {
     petLog("signals:refresh-failed", { userId, error: describeError(error) });
   }
+  await drawPetWeatherArt(db, userId);
 }
 
 /** Edges the pose may be drawn at: a complication's worth up to a large widget's. */

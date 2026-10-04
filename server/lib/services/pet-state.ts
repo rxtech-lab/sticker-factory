@@ -9,6 +9,7 @@ import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
 import { petLog, petRandom } from "@/lib/pets/log";
 import { EMPTY_SIGNALS } from "@/lib/pets/signals";
 import { applyEffects, initialStats, withGold, type PetEffects, type PetStats } from "@/lib/pets/stats";
+import { walkReward } from "@/lib/pets/walk";
 import type { StickerControl } from "@/lib/contracts/configuration";
 import type { AiReferenceImage } from "@/lib/ai/gateway-contracts";
 
@@ -39,6 +40,9 @@ export function currentStats(row: UserPetRow): PetStats {
  * being read while the owner taps an action must not lose either one — so the slow part (asking a
  * model) happens before this, and this only re-adds deltas. Null when the pet stopped being this
  * life, or `where` no longer holds.
+ *
+ * Gold the owner's walk has earned since it was last paid lands first, as its own line, worked
+ * out again on every attempt so a retried write never pays the same steps twice.
  */
 export async function commitPetChange(
   db: Database,
@@ -50,12 +54,20 @@ export async function commitPetChange(
     if (!row || row.lifeId !== input.lifeId) return null;
     const before = currentStats(row);
     let stats = before;
-    const lines = input.changes.map((change) => {
+    const walk = walkReward(row, new Date());
+    const changes: PetChange[] = walk ? [{
+      kind: "special",
+      title: "Walk reward",
+      detail: `${walk.steps.toLocaleString("en-US")} steps today earned ${walk.gold} gold.`,
+      effects: { happiness: 0, hp: 0, energy: 0, gold: walk.gold },
+      debug: { source: "walk", steps: walk.steps, paidBefore: row.walkGoldJson ?? null },
+    }, ...input.changes] : input.changes;
+    const lines = changes.map((change) => {
       const statsBefore = stats;
       stats = applyEffects(stats, change.effects, row.identityJson);
       return { change, statsBefore, statsAfter: stats };
     });
-    const updated = await db.update(userPets).set({ ...input.set, statsJson: stats })
+    const updated = await db.update(userPets).set({ ...input.set, statsJson: stats, ...(walk ? { walkGoldJson: walk.ledger } : {}) })
       .where(and(
         eq(userPets.userId, userId),
         eq(userPets.lifeId, input.lifeId),

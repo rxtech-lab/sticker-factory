@@ -6,6 +6,10 @@ nonisolated struct PetEntry: TimelineEntry {
     var date: Date
     var snapshot: PetSnapshot?
     var pose: Data?
+    /// The drawing of the pet's weather, when the phone has one.
+    var weatherArt: Data? = nil
+    /// Alternates entry by entry, so the weather drifts a little each time the widget moves on.
+    var phase = 0
 
     static let placeholder = PetEntry(
         date: .now,
@@ -29,11 +33,24 @@ nonisolated struct PetTimelineProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<PetEntry>) -> Void) {
-        completion(Timeline(entries: [Self.current()], policy: .never))
+        let current = Self.current()
+        guard current.weatherArt != nil else {
+            completion(Timeline(entries: [current], policy: .never))
+            return
+        }
+        // With weather to show, an hour of entries a minute apart: each one nudges the weather the
+        // other way, and the system animates between them so the sky drifts behind the pet.
+        let entries = (0..<60).map { minute in
+            var entry = current
+            entry.date = current.date.addingTimeInterval(Double(minute) * 60)
+            entry.phase = minute
+            return entry
+        }
+        completion(Timeline(entries: entries, policy: .atEnd))
     }
 
     private static func current() -> PetEntry {
-        guard let stored = PetSnapshotStore()?.load() else { return PetEntry(date: .now, snapshot: nil, pose: nil) }
-        return PetEntry(date: .now, snapshot: stored.snapshot, pose: stored.pose)
+        guard let store = PetSnapshotStore(), let stored = store.load() else { return PetEntry(date: .now, snapshot: nil, pose: nil) }
+        return PetEntry(date: .now, snapshot: stored.snapshot, pose: stored.pose, weatherArt: store.weatherArt())
     }
 }

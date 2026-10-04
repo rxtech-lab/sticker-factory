@@ -19,6 +19,8 @@ final class AppEnvironment {
     /// banner. Held here rather than in a view so it survives whichever screen happens to be up;
     /// `StickerFactoryTabView` consumes it and clears it.
     var pendingStickerID: String?
+    /// Set by tapping a "your pet grew" banner; `ContentView` switches to the Pet tab and clears it.
+    var pendingOpenPet = false
     var pendingShareRoute: StickerShareRoute?
     var pendingTutorialLink: TutorialDeepLink?
     let tutorials: TutorialCoordinator
@@ -140,6 +142,7 @@ final class AppEnvironment {
             notifier: notifier
         )
         notifier?.onOpenSticker = { [weak environment] id in environment?.pendingStickerID = id }
+        notifier?.onOpenPet = { [weak environment] in environment?.pendingOpenPet = true }
         // Every 402 from the server, wherever it came from, raises the paywall. The error itself
         // still reaches whichever screen asked, so the user also reads the server's own words.
         if let live = api as? StickerAPIClient {

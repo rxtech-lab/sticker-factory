@@ -52,6 +52,8 @@ export const unusedAiProvider: AiProvider = {
   generatePetPersona: () => { throw new Error("Unexpected generatePetPersona"); },
   searchPetHeadlines: () => { throw new Error("Unexpected searchPetHeadlines"); },
   narratePetEvent: () => { throw new Error("Unexpected narratePetEvent"); },
+  // Every finished turn shows the owner's pet the new sticker; the step swallows a failure.
+  noticePetSticker: () => { throw new Error("Unexpected noticePetSticker"); },
 };
 
 /**

@@ -30,7 +30,9 @@ actor PetSendReporter {
                 try await client.recordPetSend(stickerID: stickerID, context: context, accessToken: refreshed.accessToken)
             }
         } catch {
-            logger.debug("pet send not reported sticker=\(stickerID, privacy: .private) error=\(String(describing: error), privacy: .private)")
+            logger.debug(
+                "pet send not reported sticker=\(stickerID, privacy: .private) error=\(String(describing: error), privacy: .private)"
+            )
         }
     }
 }

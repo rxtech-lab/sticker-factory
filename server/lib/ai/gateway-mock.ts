@@ -10,7 +10,7 @@ import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -451,7 +451,7 @@ export class MockAiProvider implements AiProvider {
   }
   async generatePetActions(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]> {
     return [
-      { title: `Greet ${input.petTitle}`, description: `Say hello to ${input.petTitle}.`, effects: { happiness: 8, hp: 0, energy: 0, gold: 0 } },
+      { title: `Greet ${input.petTitle}`, description: `Say hello to ${input.petTitle}.`, effects: { happiness: 8, hp: 0, energy: -3, gold: 0 } },
       { title: `Dance with ${input.petTitle}`, description: `Move together with ${input.petTitle}.`, effects: { happiness: 14, hp: 0, energy: -12, gold: -5 } },
       { title: `Rest with ${input.petTitle}`, description: `Take a break beside ${input.petTitle}.`, effects: { happiness: 2, hp: 8, energy: 20, gold: 0 } },
     ];
@@ -470,5 +470,8 @@ export class MockAiProvider implements AiProvider {
   }
   async narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus> {
     return { values: {}, caption: `${input.petTitle}: ${input.event.title}` };
+  }
+  async noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction> {
+    return { react: true, values: {}, caption: `${input.petTitle} likes ${input.made.title}`, effects: { happiness: 2, hp: 0, energy: 0 } };
   }
 }

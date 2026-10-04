@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getAiProvider } from "@/lib/ai/gateway";
-import type { AiPetActionsContext, PetAction } from "@/lib/ai/gateway-contracts";
-import { PetActionV1Schema } from "@/lib/contracts/api";
+import type { AiOwnerMoment, AiPetActionsContext, PetAction } from "@/lib/ai/gateway-contracts";
+import { PET_ACTION_GOLD_EARN_MAX, PetActionV1Schema } from "@/lib/contracts/api";
 import { firstRow, type Database } from "@/lib/db/client";
 import { assets, type PetStoredContext, type stickerRevisions, type stickers, type UserPetRow } from "@/lib/db/schema";
 import { describeError } from "@/lib/observability/trace";
@@ -25,8 +25,33 @@ export async function generateActions(
     ...mood,
   });
   return PetActionV1Schema.array().min(1).max(5).parse(
-    generated.map((action) => ({ ...action, id: crypto.randomUUID() })),
+    balanceActions(generated).map((action) => ({ ...action, id: crypto.randomUUID() })),
   );
+}
+
+/** What an action that should tire the pet costs at the least. */
+export const PET_ACTION_MIN_ENERGY_COST = 3;
+
+/**
+ * Whatever the agent offered: gold is earned by walking, so at most one action may earn, and only
+ * a little; and doing things is tiring, so at most one action — a rest — may leave energy as it is
+ * or restore it, and every other one costs some.
+ */
+function balanceActions(actions: Omit<PetAction, "id">[]): Omit<PetAction, "id">[] {
+  let earner = false;
+  let rest = false;
+  return actions.map((action) => {
+    let { gold, energy } = action.effects;
+    if (gold > 0) {
+      gold = earner ? 0 : Math.min(gold, PET_ACTION_GOLD_EARN_MAX);
+      earner = true;
+    }
+    if (energy > -PET_ACTION_MIN_ENERGY_COST) {
+      if (rest || energy <= 0) energy = Math.min(energy, -PET_ACTION_MIN_ENERGY_COST);
+      else rest = true;
+    }
+    return { ...action, effects: { ...action.effects, gold, energy } };
+  });
 }
 
 /**
@@ -56,10 +81,10 @@ export async function refreshActions(
 }
 
 /**
- * When and where the owner is, as the action agent reads it: their local time, in their own time
+ * When and where the owner is, as every pet agent reads it: their local time, in their own time
  * zone when the phone has told us one, and their rounded location when they have shared it.
  */
-export function ownerMoment(context: PetStoredContext | null, now = new Date()): Pick<AiPetActionsContext, "localTime" | "location"> {
+export function ownerMoment(context: PetStoredContext | null, now = new Date()): AiOwnerMoment {
   const format = (timeZone?: string) => new Intl.DateTimeFormat("en-GB", {
     weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", hour12: false, timeZone,
   }).format(now);

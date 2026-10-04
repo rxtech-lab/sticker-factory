@@ -148,6 +148,27 @@
       "when": 1789531200011,
       "tag": "0020_pet_identity_events",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789531200012,
+      "tag": "0021_pet_evolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789531200013,
+      "tag": "0022_pet_walk_gold",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789531200014,
+      "tag": "0023_pet_weather_art",
+      "breakpoints": true
     }
   ]
 }

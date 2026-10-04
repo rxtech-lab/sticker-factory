@@ -48,7 +48,9 @@ final class PetDiaryModel {
             nextCursor = page.nextCursor
             hasLoaded = true
             errorMessage = nil
-            Self.log.info("pet diary loaded \(page.events.count, privacy: .public) events, more=\(page.nextCursor != nil, privacy: .public)")
+            Self.log.info(
+                "pet diary loaded \(page.events.count, privacy: .public) events, more=\(page.nextCursor != nil, privacy: .public)"
+            )
         } catch {
             guard !StickerStore.isCancellation(error) else { return }
             hasLoaded = true
@@ -101,7 +103,6 @@ struct PetDiarySheet: View {
                 message: String(localized: "Everything that changes how your pet feels will be written here.")
             ) {
                 Button("Refresh") {
-                    Haptics.tap(.light)
                     Task { await model.reload() }
                 }
                 .buttonStyle(.posterSecondary)
@@ -185,9 +186,12 @@ struct PetEventDetailView: View {
             }
 
             Section("Stats") {
-                statChange("Happiness", symbol: "heart.fill", color: .pink, before: event.statsBefore.happiness, after: event.statsAfter.happiness, maximum: 100)
-                statChange("HP", symbol: "cross.vial.fill", color: .red, before: event.statsBefore.hp, after: event.statsAfter.hp, maximum: maxHp)
-                statChange("Energy", symbol: "bolt.fill", color: .orange, before: event.statsBefore.energy, after: event.statsAfter.energy, maximum: 100)
+                statChange("Happiness", symbol: "heart.fill", color: .pink,
+                           before: event.statsBefore.happiness, after: event.statsAfter.happiness, maximum: 100)
+                statChange("HP", symbol: "cross.vial.fill", color: .red,
+                           before: event.statsBefore.hp, after: event.statsAfter.hp, maximum: maxHp)
+                statChange("Energy", symbol: "bolt.fill", color: .orange,
+                           before: event.statsBefore.energy, after: event.statsAfter.energy, maximum: 100)
                 if event.effects != PetActionEffects(happiness: 0, hp: 0, energy: 0) {
                     LabeledContent("Effects") { PetEffectsRow(effects: event.effects) }
                 }
@@ -197,7 +201,8 @@ struct PetEventDetailView: View {
                 Section("The world at the time") {
                     if let weather = signals.weather {
                         LabeledContent {
-                            Text(verbatim: "\(weather.kind.displayName), \(weather.temperatureC.formatted(.number.precision(.fractionLength(0...1))))°C")
+                            Text(verbatim: "\(weather.kind.displayName), "
+                                 + "\(weather.temperatureC.formatted(.number.precision(.fractionLength(0...1))))°C")
                         } label: {
                             Label("Weather", systemImage: weather.kind.symbol(isDay: weather.isDay))
                         }

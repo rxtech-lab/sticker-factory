@@ -17,6 +17,7 @@ struct PetWorldSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // swiftlint:disable:next line_length
                     Text("Your pet can feel the weather where you are and notice how much you walk. It changes their mood and energy — a rainy day might delight one pet and sulk another.")
                         .foregroundStyle(AppColors.muted)
 
@@ -35,6 +36,7 @@ struct PetWorldSheet: View {
                     sourceCard(
                         title: "Weather",
                         symbol: "cloud.sun.fill",
+                        // swiftlint:disable:next line_length
                         detail: "Your approximate location, to about a kilometre, is used to look up the weather. Only while you use the app.",
                         state: locationState,
                         identifier: "pet-world-location-button"
@@ -101,7 +103,6 @@ struct PetWorldSheet: View {
                 switch state {
                 case .ask:
                     Button {
-                        Haptics.tap(.light)
                         ask()
                     } label: {
                         Text("Allow").frame(maxWidth: .infinity)
@@ -116,7 +117,6 @@ struct PetWorldSheet: View {
                         .accessibilityIdentifier("\(identifier)-connected")
                 case .refused:
                     Button {
-                        Haptics.tap(.light)
                         if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
                     } label: {
                         Text("Open Settings").frame(maxWidth: .infinity)

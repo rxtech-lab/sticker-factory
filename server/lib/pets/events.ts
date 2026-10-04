@@ -32,7 +32,7 @@ const stepsAtLeast = (steps: number) => ({ signals }: PetEventContext) => signal
  * scaled by the pet's own multiplier when it lands.
  */
 export const PET_EVENTS: PetEventDefinition[] = [
-  { id: "found-trinket", title: "Found a shiny trinket", weight: 3, effects: { happiness: 6, hp: 0, energy: -2, gold: 8 },
+  { id: "found-trinket", title: "Found a shiny trinket", weight: 3, effects: { happiness: 6, hp: 0, energy: -2, gold: 3 },
     classes: ["explorer", "trickster"], detail: () => "Something sparkly turned up under the sofa." },
   { id: "snack-stash", title: "Discovered a snack stash", weight: 3, effects: { happiness: 4, hp: 5, energy: 3 },
     detail: () => "A forgotten stash of snacks — a feast!" },

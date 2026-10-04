@@ -51,8 +51,9 @@ final class PetContextProvider {
     var hasLocationAccess: Bool { locationStatus == .authorizedWhenInUse || locationStatus == .authorizedAlways }
     var canAskForLocation: Bool { locationStatus == .notDetermined }
     var isHealthAvailable: Bool { health != nil }
-    /// Something the user has not yet been asked about — the Pet tab's cue to offer the sheet.
-    var needsPermissions: Bool { canAskForLocation || (isHealthAvailable && !healthRequested) }
+    /// A source not yet granted — the Pet tab's cue to offer the sheet. A refused location still
+    /// counts: the sheet points it to Settings, and that is the only way back.
+    var needsPermissions: Bool { !hasLocationAccess || (isHealthAvailable && !healthRequested) }
 
     // MARK: Permissions — only ever from a tap in `PetWorldSheet`
 
@@ -126,20 +127,31 @@ final class PetContextProvider {
            Date().timeIntervalSince(last) < Self.minimumUploadInterval {
             return false
         }
+        return await upload(api: api).stored
+    }
+
+    /// Collects and uploads now, whatever the half-hour wait says. Reports whether the server kept
+    /// it and whether it carried a location — the one part the pet's weather depends on.
+    func upload(api: any StickerAPIClientProtocol) async -> (stored: Bool, hasLocation: Bool) {
         let payload = await collect()
-        guard !payload.isEmpty else { return false }
+        guard !payload.isEmpty else { return (false, false) }
         do {
             let stored = try await api.updatePetContext(payload)
-            // Only a kept upload counts: with no pet yet, the next foreground should try again.
-            if stored { defaults.set(Date(), forKey: Self.lastUploadKey) }
+            // Only a kept upload counts: with no pet yet, the next foreground should try again. So
+            // does one whose location fix timed out while location is allowed — without it the pet
+            // has no weather, and half an hour is too long to go without trying again.
+            if stored, payload.hasLocation || !hasLocationAccess { defaults.set(Date(), forKey: Self.lastUploadKey) }
             Self.log.info(
-                "pet context uploaded: stored=\(stored, privacy: .public) location=\(payload.hasLocation, privacy: .public) steps=\(payload.stepsToday ?? -1, privacy: .public)"
+                """
+                pet context uploaded: stored=\(stored, privacy: .public) \
+                location=\(payload.hasLocation, privacy: .public) steps=\(payload.stepsToday ?? -1, privacy: .public)
+                """
             )
-            return stored
+            return (stored, payload.hasLocation)
         } catch {
-            guard !StickerStore.isCancellation(error) else { return false }
+            guard !StickerStore.isCancellation(error) else { return (false, payload.hasLocation) }
             Self.log.error("pet context upload failed: \(error.localizedDescription, privacy: .public)")
-            return false
+            return (false, payload.hasLocation)
         }
     }
 
@@ -153,7 +165,11 @@ final class PetContextProvider {
             payload.longitude = coordinate.longitude
         }
         Self.log.info(
-            "pet context collected: steps=\(payload.stepsToday ?? -1, privacy: .public) location=\(payload.hasLocation, privacy: .public) lat=\(payload.latitude ?? 0, privacy: .private) lon=\(payload.longitude ?? 0, privacy: .private)"
+            """
+            pet context collected: steps=\(payload.stepsToday ?? -1, privacy: .public) \
+            location=\(payload.hasLocation, privacy: .public) \
+            lat=\(payload.latitude ?? 0, privacy: .private) lon=\(payload.longitude ?? 0, privacy: .private)
+            """
         )
         return payload
     }
@@ -165,7 +181,10 @@ final class PetContextProvider {
         let now = Date()
         let start = Calendar.current.startOfDay(for: now)
         let descriptor = HKStatisticsQueryDescriptor(
-            predicate: .quantitySample(type: HKQuantityType(.stepCount), predicate: HKQuery.predicateForSamples(withStart: start, end: now)),
+            predicate: .quantitySample(
+                type: HKQuantityType(.stepCount),
+                predicate: HKQuery.predicateForSamples(withStart: start, end: now)
+            ),
             options: .cumulativeSum
         )
         do {
@@ -308,7 +327,12 @@ nonisolated struct PetContextCache: Sendable {
         guard let entry = try? JSONDecoder().decode(Entry.self, from: data),
               let capturedAt = ISO8601DateFormatter().date(from: entry.capturedAt) else { return nil }
         return Snapshot(
-            payload: PetContextPayload(latitude: entry.latitude, longitude: entry.longitude, stepsToday: entry.stepsToday, timeZone: entry.timeZone),
+            payload: PetContextPayload(
+                latitude: entry.latitude,
+                longitude: entry.longitude,
+                stepsToday: entry.stepsToday,
+                timeZone: entry.timeZone
+            ),
             capturedAt: capturedAt
         )
     }

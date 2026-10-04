@@ -31,7 +31,9 @@ extension MockStickerAPIClient {
         guard var current = adoptedPet else { return nil }
         guard let selected = current.actions?.first(where: { $0.id == action.id }) else { throw StickerAPIError.invalidResponse }
         guard selected.effects.price <= current.stats.gold else {
-            throw APIErrorEnvelope(error: .init(code: "PET_NOT_ENOUGH_GOLD", message: "Not enough gold.", requestId: "mock-pet", details: nil))
+            throw APIErrorEnvelope(error: .init(
+                code: "PET_NOT_ENOUGH_GOLD", message: "Not enough gold.", requestId: "mock-pet", details: nil
+            ))
         }
         current.stats.gold = max(0, current.stats.gold + selected.effects.gold)
         current.stats.happiness = min(100, max(0, current.stats.happiness + selected.effects.happiness))
@@ -66,10 +68,30 @@ extension MockStickerAPIClient {
             ))
         }
         let actions = [
-            PetAction(id: "11111111-1111-4111-8111-111111111111", title: "Greet \(sticker.title)", description: "Say hello to \(sticker.title).", effects: .init(happiness: 8, hp: 0, energy: 0)),
-            PetAction(id: "22222222-2222-4222-8222-222222222222", title: "Dance with \(sticker.title)", description: "Move together with \(sticker.title).", effects: .init(happiness: 14, hp: 0, energy: -12, gold: -5)),
-            PetAction(id: "44444444-4444-4444-8444-444444444444", title: "Buy \(sticker.title) a cake", description: "Share a fancy cake with \(sticker.title).", effects: .init(happiness: 12, hp: 4, energy: 0, gold: -40)),
-            PetAction(id: "33333333-3333-4333-8333-333333333333", title: "Rest with \(sticker.title)", description: "Take a break beside \(sticker.title).", effects: .init(happiness: 2, hp: 8, energy: 20)),
+            PetAction(
+                id: "11111111-1111-4111-8111-111111111111",
+                title: "Greet \(sticker.title)",
+                description: "Say hello to \(sticker.title).",
+                effects: .init(happiness: 8, hp: 0, energy: 0)
+            ),
+            PetAction(
+                id: "22222222-2222-4222-8222-222222222222",
+                title: "Dance with \(sticker.title)",
+                description: "Move together with \(sticker.title).",
+                effects: .init(happiness: 14, hp: 0, energy: -12, gold: -5)
+            ),
+            PetAction(
+                id: "44444444-4444-4444-8444-444444444444",
+                title: "Buy \(sticker.title) a cake",
+                description: "Share a fancy cake with \(sticker.title).",
+                effects: .init(happiness: 12, hp: 4, energy: 0, gold: -40)
+            ),
+            PetAction(
+                id: "33333333-3333-4333-8333-333333333333",
+                title: "Rest with \(sticker.title)",
+                description: "Take a break beside \(sticker.title).",
+                effects: .init(happiness: 2, hp: 8, energy: 20)
+            )
         ]
         adoptedPet = Pet(
             sticker: sticker,
@@ -78,7 +100,8 @@ extension MockStickerAPIClient {
             actions: actions,
             identity: Self.sampleIdentity,
             signals: Self.sampleSignals,
-            nextEventAt: Date().addingTimeInterval(3 * 60 * 60)
+            nextEventAt: Date().addingTimeInterval(3 * 60 * 60),
+            weatherArt: PetWeatherArt(kind: .rainy, isDay: true, key: "mock-rainy-day")
         )
         return adoptedPet
     }
@@ -109,7 +132,12 @@ extension MockStickerAPIClient {
         favoriteWeather: .rainy,
         maxHp: 120,
         energyMultiplier: 1.4,
-        birth: PetBirth(weather: PetWeather(kind: .sunny, temperatureC: 21, isDay: true), stepsToday: 1_200, headlines: [], at: Date(timeIntervalSince1970: 1_790_000_000))
+        birth: PetBirth(
+            weather: PetWeather(kind: .sunny, temperatureC: 21, isDay: true),
+            stepsToday: 1_200,
+            headlines: [],
+            at: Date(timeIntervalSince1970: 1_790_000_000)
+        )
     )
 
     static func sampleEvents(now: Date) -> [PetEvent] {
@@ -154,16 +182,38 @@ extension MockStickerAPIClient {
                 signals: sampleIdentity.birth.signals,
                 debug: ["class": .string("explorer"), "maxHp": .number(120)],
                 createdAt: now.addingTimeInterval(-3 * 24 * 60 * 60)
-            ),
+            )
         ]
     }
 
     func clearPet() async throws { adoptedPet = nil }
 
+    /// The weather's symbol in colour, standing in for the server's drawing of it in the pet's style.
+    func petWeatherArt(size: Int) async throws -> Data {
+        guard let weather = adoptedPet?.signals?.weather, adoptedPet?.weatherArt != nil else {
+            throw APIErrorEnvelope(error: .init(
+                code: "PET_WEATHER_ART_NOT_READY",
+                message: "Your pet's weather has not been drawn yet.",
+                requestId: "mock-pet",
+                details: nil
+            ))
+        }
+        let bounds = CGRect(x: 0, y: 0, width: size, height: size)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let configuration = UIImage.SymbolConfiguration(paletteColors: [.white, .systemBlue])
+        let symbol = UIImage(systemName: weather.kind.symbol(isDay: weather.isDay), withConfiguration: configuration)
+        return UIGraphicsImageRenderer(bounds: bounds, format: format).pngData { _ in
+            symbol?.draw(in: bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.height * 0.08))
+        }
+    }
+
     /// A paw on a warm disc, standing in for the server's drawing of the pet.
     func petPose(size: Int) async throws -> Data {
         guard adoptedPet != nil else {
-            throw APIErrorEnvelope(error: .init(code: "PET_NOT_FOUND", message: "You have not chosen a pet.", requestId: "mock-pet", details: nil))
+            throw APIErrorEnvelope(error: .init(
+                code: "PET_NOT_FOUND", message: "You have not chosen a pet.", requestId: "mock-pet", details: nil
+            ))
         }
         petPoseRequests += 1
         let bounds = CGRect(x: 0, y: 0, width: size, height: size)

@@ -1,11 +1,11 @@
 import { type LanguageModel } from "ai";
 import { animateSticker } from "./gateway-animate";
 import { reply, routeChatTurn, showSticker, summarizeStickerTitle } from "./gateway-chat";
-import type { AiAnimationContext, AiChatContext, AiEditContext, AiImageInput, AiLayoutContext, AiPetActionsContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersonaContext, AiPetStatusContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AnimationDraftingSession, EditDraftingSession, LayoutDraftingSession, PlanDraftingSession } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatContext, AiEditContext, AiImageInput, AiLayoutContext, AiPetActionsContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersonaContext, AiPetStatusContext, AiPetStickerContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AnimationDraftingSession, EditDraftingSession, LayoutDraftingSession, PlanDraftingSession } from "./gateway-contracts";
 import { editSticker } from "./gateway-edit";
 import { generateConceptImage, generateStickerImage, generateStickerVideo, inspectSpriteSheet, selectImageReferences } from "./gateway-images";
 import { MockAiProvider } from "./gateway-mock";
-import { choosePetStatus, generatePetActions, generatePetPersona, narratePetEvent, reactToPetPhoto, respondToPetInteraction, searchPetHeadlines } from "./gateway-pet";
+import { choosePetStatus, generatePetActions, generatePetPersona, narratePetEvent, noticePetSticker, reactToPetPhoto, respondToPetInteraction, searchPetHeadlines } from "./gateway-pet";
 import { planSticker, refineStickerLayout } from "./gateway-plan";
 
 export class GatewayAiProvider implements AiProvider {
@@ -39,6 +39,7 @@ export class GatewayAiProvider implements AiProvider {
   generatePetPersona(input: AiPetPersonaContext) { return generatePetPersona(input); }
   searchPetHeadlines(input: AiPetHeadlinesContext) { return searchPetHeadlines(input); }
   narratePetEvent(input: AiPetEventContext) { return narratePetEvent(input); }
+  noticePetSticker(input: AiPetStickerContext) { return noticePetSticker(input); }
 }
 
 let testProvider: AiProvider | undefined;

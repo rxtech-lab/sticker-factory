@@ -78,6 +78,29 @@ final class PetCompanionSyncTests: XCTestCase {
         XCTAssertEqual(reloads, 3)
     }
 
+    func testPublishesTheWeatherDrawingBesideThePetAndDropsItWhenTheSkyHasNone() async throws {
+        let api = MockStickerAPIClient()
+        _ = try await api.installPack(id: PreviewFixtures.pack.id, idempotencyKey: "install-pet-pack")
+        let adopted = try await api.setPet(stickerID: PreviewFixtures.borrowedSticker.id)
+        var pet = try XCTUnwrap(adopted)
+        let store = PetSnapshotStore(directory: directory)
+        let sync = PetCompanionSync(api: api, store: store, reloadWidgets: {})
+
+        await sync.publish(pet)
+        let weather = try XCTUnwrap(store.envelope()?.pet?.weather)
+        XCTAssertEqual(weather.kind, "rainy")
+        XCTAssertEqual(weather.artKey, "mock-rainy-day")
+        XCTAssertNotNil(store.weatherArt())
+
+        // The weather turned and its new look is still being drawn: the widget falls back to the symbol.
+        pet.signals?.weather = PetWeather(kind: .sunny, temperatureC: 22, isDay: true)
+        await sync.publish(pet)
+        XCTAssertEqual(store.envelope()?.pet?.weather?.symbol, "sun.max.fill")
+        XCTAssertNil(store.envelope()?.pet?.weather?.artKey)
+        XCTAssertNil(store.weatherArt())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.weatherArtURL.path()))
+    }
+
     func testKeepsTheLastPoseWhenTheDrawingFails() async throws {
         let api = MockStickerAPIClient()
         let store = PetSnapshotStore(directory: directory)

@@ -6,7 +6,7 @@ import XCTest
 final class PetContractsTests: XCTestCase {
     private func petJSON(extra: [String: Any] = [:]) throws -> [String: Any] {
         let pet = Pet(sticker: PreviewFixtures.borrowedSticker, selectedAt: Date(timeIntervalSince1970: 0))
-        var json = try JSONSerialization.jsonObject(with: JSONEncoder.api.encode(pet)) as! [String: Any]
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder.api.encode(pet)) as? [String: Any])
         for (key, value) in extra { json[key] = value }
         return json
     }
@@ -45,15 +45,15 @@ final class PetContractsTests: XCTestCase {
                     "weather": ["kind": "foggy", "temperatureC": 9.5, "isDay": false],
                     "stepsToday": NSNull(),
                     "headlines": [],
-                    "at": "2026-10-01T08:00:00.000Z",
-                ],
+                    "at": "2026-10-01T08:00:00.000Z"
+                ]
             ],
             "signals": [
                 "weather": ["kind": "hurricane", "temperatureC": 30, "isDay": true],
                 "stepsToday": 1234,
-                "headlines": ["A headline"],
+                "headlines": ["A headline"]
             ],
-            "nextEventAt": "2026-10-04T18:30:00.123Z",
+            "nextEventAt": "2026-10-04T18:30:00.123Z"
         ])
         let pet = try JSONDecoder.api.decode(Pet.self, from: JSONSerialization.data(withJSONObject: json))
         XCTAssertEqual(pet.identity?.petClass, .guardian)
@@ -72,7 +72,7 @@ final class PetContractsTests: XCTestCase {
 
         // And it survives a round trip with `class` spelled as the server spells it.
         let encoded = try JSONEncoder.api.encode(pet)
-        let object = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         XCTAssertEqual((object["identity"] as? [String: Any])?["class"] as? String, "guardian")
         XCTAssertEqual(try JSONDecoder.api.decode(Pet.self, from: encoded).identity, pet.identity)
     }
@@ -126,11 +126,11 @@ final class PetContractsTests: XCTestCase {
 
     func testContextPayloadLeavesOutWhatWasNotCollected() throws {
         let payload = PetContextPayload(stepsToday: 120, timeZone: "Europe/Paris")
-        let object = try JSONSerialization.jsonObject(with: JSONEncoder.api.encode(payload)) as! [String: Any]
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder.api.encode(payload)) as? [String: Any])
         XCTAssertEqual(Set(object.keys), ["stepsToday", "timeZone"])
 
         let request = SetPetRequest(stickerId: "s")
-        let requestObject = try JSONSerialization.jsonObject(with: JSONEncoder.api.encode(request)) as! [String: Any]
+        let requestObject = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder.api.encode(request)) as? [String: Any])
         XCTAssertEqual(Set(requestObject.keys), ["stickerId"])
     }
 
@@ -147,7 +147,7 @@ final class PetContractsTests: XCTestCase {
 
         // The exact contract the Messages extension decodes.
         let raw = try XCTUnwrap(UserDefaults(suiteName: suite)?.data(forKey: "StickerFactoryPetContext"))
-        let object = try JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: raw) as? [String: Any])
         XCTAssertEqual(object["latitude"] as? Double, 48.86)
         XCTAssertEqual(object["longitude"] as? Double, 2.35)
         XCTAssertEqual(object["stepsToday"] as? Int, 4321)
@@ -159,7 +159,8 @@ final class PetContractsTests: XCTestCase {
         cache.write(PetContextPayload(timeZone: "Europe/Paris"), previous: cache.read(), capturedAt: later)
         XCTAssertEqual(cache.read()?.payload.latitude, 48.86)
         cache.write(PetContextPayload(timeZone: "UTC"), previous: nil, capturedAt: later)
-        let sparse = try JSONSerialization.jsonObject(with: XCTUnwrap(UserDefaults(suiteName: suite)?.data(forKey: PetContextCache.key))) as! [String: Any]
+        let sparseData = try XCTUnwrap(UserDefaults(suiteName: suite)?.data(forKey: PetContextCache.key))
+        let sparse = try XCTUnwrap(JSONSerialization.jsonObject(with: sparseData) as? [String: Any])
         XCTAssertEqual(Set(sparse.keys), ["timeZone", "capturedAt"])
 
         cache.clear()

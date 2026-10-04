@@ -73,3 +73,60 @@ export async function notifyPetStatusChanged(
     console.error("[push] notifyPetStatusChanged failed", { userId, error });
   }
 }
+
+/** What the app reads to open the Pet tab on a tap, and to refresh the widget and watch on arrival. */
+export const PET_EVOLVED_PUSH_KIND = "pet-evolved";
+
+export function petEvolvedPayload(alert: { title: string; body: string }): Record<string, unknown> {
+  return {
+    // A banner the owner sees, and a background wake so the widget and the watch draw the new look.
+    aps: { alert, sound: "default", "content-available": 1, "thread-id": "pet" },
+    kind: PET_EVOLVED_PUSH_KIND,
+  };
+}
+
+/**
+ * Tells the owner their pet just grew something new, in the pet's own words.
+ *
+ * Unlike a pose change this one is worth a banner: the owner did not ask for it, it happened while
+ * they were away, and the pet now looks different. Never throws.
+ */
+export async function notifyPetEvolved(
+  db: Database,
+  userId: string,
+  alert: { title: string; body: string },
+  options: {
+    config?: ApnsConfig;
+    send?: (pushes: ApnsPush[], config: ApnsConfig) => Promise<ApnsResult[]>;
+  } = {},
+): Promise<void> {
+  try {
+    const config = options.config ?? getApnsConfig();
+    if (!config) {
+      traceEvent("push:skipped", { userId, kind: PET_EVOLVED_PUSH_KIND, reason: "APNS_NOT_CONFIGURED" });
+      return;
+    }
+    const devices = await listActiveDeviceTokens(db, userId);
+    if (devices.length === 0) return;
+    const payload = petEvolvedPayload(alert);
+    const results = await (options.send ?? sendPushes)(devices.map((device) => ({
+      token: device.token,
+      environment: device.environment,
+      payload,
+      collapseId: `pet-evolved-${userId}`,
+      pushType: "alert",
+      priority: "10",
+    })), config);
+    for (const result of results) {
+      if (result.permanentlyGone) await disableDeviceToken(db, result.token, result.reason ?? `HTTP ${result.status}`);
+    }
+    traceEvent("push:sent", {
+      userId,
+      kind: PET_EVOLVED_PUSH_KIND,
+      delivered: results.filter((result) => result.ok).length,
+      failed: results.filter((result) => !result.ok).map((result) => result.reason ?? result.status),
+    });
+  } catch (error) {
+    console.error("[push] notifyPetEvolved failed", { userId, error });
+  }
+}

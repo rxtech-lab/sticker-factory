@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PetResponseV1Schema, RecordPetSendResponseV1Schema } from "@/lib/contracts/api";
 import { assets, packInstalls, stickerPackItems, stickerPacks, stickers, userPets } from "@/lib/db/schema";
 import { getObjectStore, MemoryObjectStore, setObjectStoreForTests } from "@/lib/storage/r2";
-import { clearPet, getPet, getPetPose, interactWithPet, readPetSend, recordPetSend, sendPetPhoto, setPet } from "@/lib/services/pets";
+import { clearPet, getPet, getPetPose, interactWithPet, readPetSend, recordPetSend, sendPetPhoto, setPet, updatePetContext } from "@/lib/services/pets";
 import { notifyPetStatusChanged, PET_STATUS_PUSH_KIND } from "@/lib/notifications/pet";
 import type { ApnsPush } from "@/lib/notifications/apns";
 import { registerDeviceToken } from "@/lib/services/devices";
@@ -66,12 +66,13 @@ describe("pets", () => {
     }, respondToPetInteraction: async ({ action }) => ({ values: {}, caption: action.description }) });
     try {
       const first = await setPet(db, "owner", { stickerId: controllable.stickerId });
-      expect(first.pet?.actions).toMatchObject([{ title: "Wave to Loaf", effects: { happiness: 3, hp: 0, energy: -1 } }]);
+      // Too light an energy cost for anything but a rest is raised to the least an action costs.
+      expect(first.pet?.actions).toMatchObject([{ title: "Wave to Loaf", effects: { happiness: 3, hp: 0, energy: -3 } }]);
       const again = await setPet(db, "owner", { stickerId: controllable.stickerId });
       expect(again.pet?.actions).toEqual(first.pet?.actions);
       expect(seen).toEqual(["Loaf:0"]);
       const waved = await interactWithPet(db, "owner", { actionId: first.pet!.actions[0].id }, async () => {});
-      expect(waved.pet).toMatchObject({ stats: { happiness: 83, hp: 100, energy: 79 }, status: { caption: "Wave at Loaf's ears." } });
+      expect(waved.pet).toMatchObject({ stats: { happiness: 83, hp: 100, energy: 77 }, status: { caption: "Wave at Loaf's ears." } });
       await expect(interactWithPet(db, "owner", { actionId: crypto.randomUUID() }, async () => {}))
         .rejects.toMatchObject({ code: "PET_ACTION_NOT_AVAILABLE" });
     } finally {
@@ -158,36 +159,54 @@ describe("pets", () => {
     }
   });
 
-  it("spends and earns gold, and refuses an action the pet cannot afford", async () => {
+  it("earns gold mostly from walking, a little from one action, and refuses what the pet cannot afford", async () => {
     const { db, close, controllable } = await setup();
     try {
       await setPet(db, "owner", { stickerId: controllable.stickerId, context: { latitude: 22.3193, longitude: 114.1694, timeZone: "Asia/Hong_Kong" } });
       const seen: { localTime?: string | null; location?: unknown }[] = [];
+      const replied: { localTime?: string | null; location?: unknown }[] = [];
       setAiProviderForTests({ ...unusedAiProvider,
         generatePetActions: async ({ localTime, location }) => {
           seen.push({ localTime, location });
           return [
             { title: "Busk together", description: "Sing on the corner for coins.", effects: { happiness: 3, hp: 0, energy: -6, gold: 15 } },
+            { title: "Sweep up", description: "Tidy the porch for a coin.", effects: { happiness: 0, hp: 0, energy: -3, gold: 2 } },
             { title: "Buy a cake", description: "Share a fancy cake.", effects: { happiness: 12, hp: 2, energy: 0, gold: -40 } },
           ];
         },
-        respondToPetInteraction: async ({ action }) => ({ values: {}, caption: action.description }) });
+        respondToPetInteraction: async ({ action, localTime, location }) => {
+          replied.push({ localTime, location });
+          return { values: {}, caption: action.description };
+        } });
       await db.update(userPets).set({ actionsJson: null }).where(eq(userPets.userId, "owner"));
       const offered = PetResponseV1Schema.parse(await getPet(db, "owner")).pet!;
       expect(seen[0].location).toEqual({ latitude: 22.32, longitude: 114.17 });
       expect(seen[0].localTime).toMatch(/\d{2}:\d{2}/);
+      // Only one action may earn, and only a little.
+      expect(offered.actions.map((action) => action.effects.gold)).toEqual([3, 0, -40]);
 
       const cake = offered.actions.find((action) => action.title === "Buy a cake")!;
       await expect(interactWithPet(db, "owner", { actionId: cake.id }, async () => {}))
         .rejects.toMatchObject({ code: "PET_NOT_ENOUGH_GOLD" });
-      let pet = offered;
-      for (let index = 0; index < 2; index += 1) {
-        const busk = pet.actions.find((action) => action.title === "Busk together")!;
-        pet = PetResponseV1Schema.parse(await interactWithPet(db, "owner", { actionId: busk.id }, async () => {})).pet!;
-      }
-      expect(pet.stats.gold).toBe(50);
+      const busk = offered.actions.find((action) => action.title === "Busk together")!;
+      let pet = PetResponseV1Schema.parse(await interactWithPet(db, "owner", { actionId: busk.id }, async () => {})).pet!;
+      expect(pet.stats.gold).toBe(23);
+      // The pet's reply knows the owner's time and place too, not just the actions it offers.
+      expect(replied[0].location).toEqual({ latitude: 22.32, longitude: 114.17 });
+      expect(replied[0].localTime).toMatch(/\d{2}:\d{2}/);
+
+      // A short walk waits for the next change; a long one pays as soon as the phone reports it.
+      await updatePetContext(db, "owner", { stepsToday: 1_000 });
+      expect((await getPet(db, "owner")).pet?.stats.gold).toBe(23);
+      await updatePetContext(db, "owner", { stepsToday: 4_400 });
+      pet = PetResponseV1Schema.parse(await getPet(db, "owner")).pet!;
+      expect(pet.stats.gold).toBe(40);
+      // The same steps reported again are not paid twice.
+      await updatePetContext(db, "owner", { stepsToday: 4_400 });
+      expect((await getPet(db, "owner")).pet?.stats.gold).toBe(40);
+
       const bought = await interactWithPet(db, "owner", { actionId: pet.actions.find((action) => action.title === "Buy a cake")!.id }, async () => {});
-      expect(bought.pet?.stats.gold).toBe(10);
+      expect(bought.pet?.stats.gold).toBe(0);
     } finally {
       setAiProviderForTests(undefined);
       await close();

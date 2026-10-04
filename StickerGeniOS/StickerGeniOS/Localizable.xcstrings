@@ -2104,9 +2104,6 @@
         }
       }
     },
-    "Change" : {
-
-    },
     "Change how long this animation runs" : {
 
     },
@@ -3384,6 +3381,9 @@
     "Down" : {
 
     },
+    "Down %lld" : {
+
+    },
     "Downloaded artwork and iMessage stickers will be removed from this device and downloaded again when needed." : {
 
     },
@@ -4213,6 +4213,12 @@
         }
       }
     },
+    "Find My Weather" : {
+
+    },
+    "Finding the weather where you are…" : {
+
+    },
     "Finding your pet…" : {
 
     },
@@ -4583,6 +4589,12 @@
           }
         }
       }
+    },
+    "Grew something new" : {
+
+    },
+    "Growing something new…" : {
+
     },
     "Guardian" : {
 
@@ -5145,6 +5157,9 @@
         }
       }
     },
+    "Lift Up" : {
+
+    },
     "Lifted subject. Tap to choose a different one." : {
       "localizations" : {
         "zh-CN" : {
@@ -5482,6 +5497,9 @@
           }
         }
       }
+    },
+    "Location is on for Winky, but your phone hasn't found where you are yet, so your pet can't feel the weather." : {
+
     },
     "Looking for subjects…" : {
       "localizations" : {
@@ -6021,6 +6039,9 @@
         }
       }
     },
+    "New sticker seen" : {
+
+    },
     "Newest" : {
       "localizations" : {
         "zh-CN" : {
@@ -6313,6 +6334,9 @@
           }
         }
       }
+    },
+    "No Weather Yet" : {
+
     },
     "None" : {
       "localizations" : {
@@ -7012,6 +7036,9 @@
         }
       }
     },
+    "Pet Options" : {
+
+    },
     "Photo Library" : {
       "localizations" : {
         "zh-CN" : {
@@ -7417,6 +7444,9 @@
 
     },
     "Press and hold to drag it onto a message, or send it." : {
+
+    },
+    "Press Down" : {
 
     },
     "Preview only" : {
@@ -10018,6 +10048,9 @@
     "Stormy" : {
 
     },
+    "Stroke" : {
+
+    },
     "Subscription" : {
       "localizations" : {
         "zh-CN" : {
@@ -10895,6 +10928,9 @@
 
     },
     "The sticker service returned an invalid response." : {
+
+    },
+    "The weather where you are couldn't be looked up just now. Try again in a little while." : {
 
     },
     "The WebP encoder is unavailable." : {
@@ -11796,6 +11832,9 @@
     "Up" : {
 
     },
+    "Up %lld" : {
+
+    },
     "Update plan" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -12258,6 +12297,16 @@
     },
     "Weather & Steps" : {
 
+    },
+    "Weather: %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Weather: %1$@, %2$@"
+          }
+        }
+      }
     },
     "WebP" : {
       "localizations" : {
@@ -12729,10 +12778,10 @@
         }
       }
     },
-    "Your Pet" : {
+    "Your pet can feel the weather where you are and notice how much you walk. It changes their mood and energy — a rainy day might delight one pet and sulk another." : {
 
     },
-    "Your pet can feel the weather where you are and notice how much you walk. It changes their mood and energy — a rainy day might delight one pet and sulk another." : {
+    "Your pet couldn't be reached. Check your connection, then try again." : {
 
     },
     "Your pet hasn't felt the outside world yet." : {
@@ -12759,6 +12808,9 @@
           }
         }
       }
+    },
+    "Your phone couldn't find where you are. Check that Location Services is on, then try again." : {
+
     },
     "Your session expired. Please sign in again." : {
       "localizations" : {

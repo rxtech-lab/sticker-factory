@@ -20,7 +20,7 @@ import type { PlanV1 } from "@/lib/contracts/plan";
 import type { StickerDocument } from "@/lib/contracts/sticker";
 import type { StickerControlValues } from "@/lib/contracts/configuration";
 import type { PetAction } from "@/lib/ai/gateway-contracts";
-import type { PetIdentityV1, PetSignalsV1 } from "@/lib/contracts/api";
+import { PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
 
 /**
  * Every instant is a `timestamptz`, read back as a `Date`.
@@ -46,6 +46,8 @@ const stickerKinds = ["static", "animated"] as const;
 const stickerStatuses = ["draft", "published", "deleting"] as const;
 const jobKinds = ["image", "edit", "animation", "chat", "plan", "compose", "export", "cleanup"] as const;
 const jobStates = ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] as const;
+/** Who asked for a job: the user, or their pet growing in the background. */
+const jobOrigins = ["user", "pet"] as const;
 const messageRoles = ["user", "assistant", "system"] as const;
 const messageKinds = [
   "text", "image", "image_edit", "animation", "device_edit", "plan", "export", "status",
@@ -172,6 +174,11 @@ export const generationJobs = pgTable("generation_jobs", {
    */
   quick: boolean("quick").notNull().default(false),
   appClip: boolean("app_clip").notNull().default(false),
+  /**
+   * `pet` for a turn the user's pet started on its own sticker while evolving. Those are free to
+   * the user and announce nothing: the pet says so itself once the new look is published.
+   */
+  origin: text("origin", { enum: jobOrigins }).notNull().default("user"),
   usageReservationId: text("usage_reservation_id"),
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
   state: text("state", { enum: jobStates }).notNull().default("queued"),
@@ -206,6 +213,7 @@ export const generationJobs = pgTable("generation_jobs", {
     .on(table.stickerId)
     .where(sql`${table.state} IN ('queued', 'running', 'waiting')`),
   check("generation_jobs_kind_check", sql`${table.kind} IN (${oneOf(jobKinds)})`),
+  check("generation_jobs_origin_check", sql`${table.origin} IN (${oneOf(jobOrigins)})`),
   check("generation_jobs_state_check", sql`${table.state} IN (${oneOf(jobStates)})`),
   check("generation_jobs_billing_environment_check", sql`${table.billingEnvironment} IN ('xcode', 'sandbox', 'production')`),
 ]);
@@ -626,6 +634,15 @@ export const userPets = pgTable("user_pets", {
    */
   lastSentStickerId: text("last_sent_sticker_id").references(() => stickers.id, { onDelete: "set null" }),
   lastSentAt: timestampColumn("last_sent_at"),
+  /**
+   * The pet growing a new mood, property or look on its own sticker, while it runs and after it
+   * ends. Only one at a time: a pet that is already evolving is not offered another.
+   */
+  evolutionJson: jsonb("evolution_json").$type<PetEvolution>(),
+  /** When the last evolution started, so a pet grows at most once per cooldown. */
+  lastEvolvedAt: timestampColumn("last_evolved_at"),
+  /** The steps already paid out as gold on the phone's local date, so a walk is only paid once. */
+  walkGoldJson: jsonb("walk_gold_json").$type<PetWalkGold>(),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
@@ -633,6 +650,19 @@ export const userPets = pgTable("user_pets", {
 ]);
 
 export type PetStatus = { values: StickerControlValues; caption: string };
+export type PetEvolution = {
+  id: string;
+  state: "planning" | "building" | "publishing" | "ready" | "failed";
+  /** What the pet decided to grow, as the brief the planner reads. */
+  brief: string;
+  trigger: string;
+  stickerId: string;
+  startedAt: string;
+  finishedAt?: string;
+  planJobId?: string;
+  composeJobId?: string;
+  error?: string;
+};
 export type PetStoredContext = {
   latitude?: number;
   longitude?: number;
@@ -642,6 +672,7 @@ export type PetStoredContext = {
   timeZone?: string;
   updatedAt: string;
 };
+export type PetWalkGold = { date: string; steps: number };
 /** Stored stats and effects. `gold` came later: rows and diary lines from before it have none. */
 export type PetStatsValues = { happiness: number; hp: number; energy: number; gold?: number };
 
@@ -655,7 +686,7 @@ export const petEvents = pgTable("pet_events", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   lifeId: text("life_id").notNull(),
   stickerId: text("sticker_id"),
-  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo"] }).notNull(),
+  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "sticker", "evolved"] }).notNull(),
   title: text("title").notNull(),
   detail: text("detail").notNull(),
   effectsJson: jsonb("effects_json").$type<PetStatsValues>().notNull(),
@@ -668,4 +699,28 @@ export const petEvents = pgTable("pet_events", {
   index("pet_events_life_idx").on(table.userId, table.lifeId, table.createdAt),
 ]);
 export type PetEventRow = typeof petEvents.$inferSelect;
+
+/**
+ * The weather drawn in a pet's own art style, for the Pet tab and the widget to stand it in.
+ *
+ * Keyed by the revision the pet plays rather than by owner: everyone whose pet is the same sticker
+ * sees the same rain, so each look is drawn once, and a pet that grows a new revision gets its
+ * weather redrawn to match. A row is claimed (`drawing`) before the model is asked, so two reads of
+ * the same pet in the same weather draw it once.
+ */
+export const petWeatherArt = pgTable("pet_weather_art", {
+  id: text("id").primaryKey(),
+  revisionId: text("revision_id").notNull().references(() => stickerRevisions.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: PET_WEATHER_KINDS }).notNull(),
+  isDay: boolean("is_day").notNull(),
+  state: text("state", { enum: ["drawing", "ready", "failed"] }).notNull(),
+  r2Key: text("r2_key"),
+  claimedAt: timestampColumn("claimed_at").notNull(),
+  readyAt: timestampColumn("ready_at"),
+}, (table) => [
+  uniqueIndex("pet_weather_art_look_idx").on(table.revisionId, table.kind, table.isDay),
+  check("pet_weather_art_kind_check", sql`${table.kind} IN (${oneOf(PET_WEATHER_KINDS)})`),
+  check("pet_weather_art_state_check", sql`${table.state} IN ('drawing', 'ready', 'failed')`),
+]);
+export type PetWeatherArtRow = typeof petWeatherArt.$inferSelect;
 export type UserPetRow = typeof userPets.$inferSelect;

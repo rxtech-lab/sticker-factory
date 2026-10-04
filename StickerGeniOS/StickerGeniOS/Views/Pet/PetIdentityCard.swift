@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// The identity half is fixed at adoption — class, temperament, tastes — so it reads like a
 /// character sheet. The "World" half is what the server last read for it: weather, steps, a
-/// headline, and when it will next drop by. When steps or location were never connected, the sheet
+/// headline, and when it will next drop by. While steps or location are not granted, the sheet
 /// offers to connect them; the asking itself happens in `PetWorldSheet`, never here.
 struct PetIdentitySheet: View {
     @Bindable var model: PetModel
@@ -22,7 +22,6 @@ struct PetIdentitySheet: View {
                     PetWorldRow(signals: model.pet?.signals, nextEventAt: model.pet?.nextEventAt)
                     if model.context.needsPermissions {
                         Button {
-                            Haptics.tap(.light)
                             showingWorld = true
                         } label: {
                             Label("Connect weather & steps", systemImage: "location.fill")
@@ -30,6 +29,22 @@ struct PetIdentitySheet: View {
                         }
                         .buttonStyle(.posterSecondaryCompact)
                         .accessibilityIdentifier("pet-connect-world-button")
+                    } else if model.isWeatherMissing {
+                        // Allowed, but the phone has not found where it is yet — a fix that timed
+                        // out, or Location Services turned off. Nothing to connect; only to retry.
+                        Text("Location is on for Winky, but your phone hasn't found where you are yet, so your pet can't feel the weather.")
+                            .font(.footnote)
+                            .foregroundStyle(AppColors.muted)
+                        Button {
+                            Haptics.tap(.light)
+                            Task { await model.retryWeather() }
+                        } label: {
+                            Label("Find My Weather", systemImage: "location.magnifyingglass")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.posterSecondaryCompact)
+                        .disabled(model.activity != nil)
+                        .accessibilityIdentifier("pet-retry-weather-button")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -46,7 +61,22 @@ struct PetIdentitySheet: View {
             .sheet(isPresented: $showingWorld) {
                 PetWorldSheet(model: model)
             }
+            // Either may have changed in Settings since the app last looked.
+            .task { await model.context.refreshPermissions() }
+            .alert(
+                "No Weather Yet",
+                isPresented: Binding(get: { model.weatherProblem != nil }, set: { if !$0 { model.weatherProblem = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(model.weatherProblem ?? "")
+            }
         }
+        .overlay {
+            if let activity = model.activity { PetActivityOverlay(activity: activity) }
+        }
+        .animation(.snappy(duration: 0.2), value: model.activity)
+        .interactiveDismissDisabled(model.activity != nil)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .accessibilityIdentifier("pet-identity-sheet")

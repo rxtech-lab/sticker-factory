@@ -672,7 +672,15 @@ export interface AiTitleContext {
  * The sent sticker is the evidence, not the pet — it may be any sticker the user can send, posable
  * or not, and its picture is there so a sticker titled "IMG 2041" can still be read for its mood.
  */
-export interface AiPetStatusContext {
+/** When and where the owner is right now, so the pet can tell a sleepy midnight from a sunny noon. */
+export interface AiOwnerMoment {
+  /** The owner's local date and time, e.g. "Sunday 5 October, 21:40". */
+  localTime?: string | null;
+  /** Roughly where the owner is, as rounded coordinates the model can place. */
+  location?: { latitude: number; longitude: number } | null;
+}
+
+export interface AiPetStatusContext extends AiOwnerMoment {
   petTitle: string;
   controls: StickerControl[];
   current: StickerControlValues | null;
@@ -691,7 +699,31 @@ export interface AiPetStatus {
   caption: string;
   /** How the sent sticker's mood moves the stats, each -8 to 8. Omitted means no change. */
   effects?: { happiness: number; hp: number; energy: number };
+  /**
+   * The pet decided this moment is worth growing from: a brief for the planner, asking for one new
+   * mood, property or look on its own sticker. Only ever set when the context allowed it.
+   */
+  evolve?: { brief: string };
 }
+
+/** Whether the pet may decide to grow from this moment; see `AiPetStatus.evolve`. */
+export interface AiPetEvolutionChoice {
+  canEvolve?: boolean;
+}
+
+/** A sticker its owner just made, for the pet to notice — or, as often, to let pass. */
+export interface AiPetStickerContext extends AiOwnerMoment {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  signals: PetSignalsV1 | null;
+  stats: { happiness: number; hp: number; energy: number };
+  controls: StickerControl[];
+  current: StickerControlValues | null;
+  made: { title: string; kind: "static" | "animated"; image: AiReferenceImage | null };
+}
+
+/** `react: false` leaves the pet as it was; otherwise a pose, a line and how it felt. */
+export type AiPetStickerReaction = { react: false } | ({ react: true } & AiPetStatus);
 
 /** What the model decides about a pet at adoption; the server turns it into numbers. */
 export interface AiPetPersona {
@@ -720,7 +752,7 @@ export interface AiPetHeadlinesContext {
 }
 
 /** Something that happened to the pet on its own — a life-workflow visit. */
-export interface AiPetEventContext {
+export interface AiPetEventContext extends AiOwnerMoment {
   petTitle: string;
   identity: PetIdentityV1 | null;
   signals: PetSignalsV1;
@@ -730,7 +762,7 @@ export interface AiPetEventContext {
   current: StickerControlValues | null;
 }
 
-export interface AiPetInteractionContext {
+export interface AiPetInteractionContext extends AiOwnerMoment, AiPetEvolutionChoice {
   petTitle: string;
   action: Pick<PetAction, "title" | "description">;
   stats: { happiness: number; hp: number; energy: number };
@@ -739,7 +771,7 @@ export interface AiPetInteractionContext {
 }
 
 /** A picture the owner just showed their pet, for it to look at and react to. */
-export interface AiPetPhotoContext {
+export interface AiPetPhotoContext extends AiOwnerMoment, AiPetEvolutionChoice {
   petTitle: string;
   photo: AiReferenceImage;
   identity: PetIdentityV1 | null;
@@ -760,21 +792,17 @@ export type PetAction = {
  * What the agent knows when it decides what the owner can do next. Everything but the pet itself
  * is optional: a pet just adopted has no mood yet, and its first actions come from its look alone.
  */
-export interface AiPetActionsContext {
+export interface AiPetActionsContext extends AiOwnerMoment {
   petTitle: string;
   controls: StickerControl[];
   image: AiReferenceImage | null;
   identity?: PetIdentityV1 | null;
   signals?: PetSignalsV1 | null;
-  stats?: { happiness: number; hp: number; energy: number };
+  stats?: { happiness: number; hp: number; energy: number; gold?: number };
   /** What the pet is feeling or just went through, in a line. */
   mood?: string | null;
   /** The titles offered until now, so a refreshed list moves on instead of repeating itself. */
   previous?: string[];
-  /** The owner's local date and time, e.g. "Sunday 5 October, 21:40". */
-  localTime?: string | null;
-  /** Roughly where the owner is, as rounded coordinates the model can place. */
-  location?: { latitude: number; longitude: number } | null;
 }
 
 export interface AiProvider {
@@ -874,6 +902,8 @@ export interface AiProvider {
   searchPetHeadlines(input: AiPetHeadlinesContext): Promise<string[]>;
   /** The pet's line and pose about something that just happened to it. */
   narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus>;
+  /** The pet decides whether a sticker its owner just made is worth reacting to, and how. */
+  noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction>;
 }
 
 /**

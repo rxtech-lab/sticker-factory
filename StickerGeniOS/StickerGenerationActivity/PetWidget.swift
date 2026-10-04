@@ -46,6 +46,7 @@ struct PetWidgetView: View {
                 HStack(spacing: 14) {
                     PetPoseImage(data: entry.pose)
                         .frame(maxHeight: .infinity)
+                        .overlay(alignment: .topLeading) { weather(size: 48).offset(x: -10, y: -8) }
                     VStack(alignment: .leading, spacing: 6) {
                         Text(snapshot.title)
                             .font(.system(.headline, design: .rounded, weight: .bold))
@@ -64,6 +65,8 @@ struct PetWidgetView: View {
                 VStack(spacing: 6) {
                     PetPoseImage(data: entry.pose)
                         .frame(maxHeight: .infinity)
+                        .frame(maxWidth: .infinity)
+                        .overlay(alignment: .topTrailing) { weather(size: 40).offset(x: 6, y: -6) }
                     PetCaption(snapshot: snapshot)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
@@ -72,6 +75,59 @@ struct PetWidgetView: View {
         } else {
             NoPetView(family: family)
         }
+    }
+
+    /// The weather beside the pet, when the phone knows it.
+    @ViewBuilder
+    private func weather(size: CGFloat) -> some View {
+        if let weather = entry.snapshot?.weather {
+            PetWidgetWeather(weather: weather, art: entry.weatherArt, size: size, phase: entry.phase)
+        }
+    }
+}
+
+/// The weather drawn in the pet's style, or its symbol, over the temperature. Widgets cannot run an
+/// animation of their own, so each timeline entry nudges it the other way and the system animates
+/// the move: a slow drift and bob from one minute to the next.
+private struct PetWidgetWeather: View {
+    let weather: PetSnapshotWeather
+    let art: Data?
+    let size: CGFloat
+    let phase: Int
+
+    private var temperature: String {
+        Measurement(value: weather.temperatureC, unit: UnitTemperature.celsius)
+            .formatted(.measurement(width: .narrow, numberFormatStyle: .number.precision(.fractionLength(0))))
+    }
+
+    var body: some View {
+        let swing: CGFloat = phase.isMultiple(of: 2) ? 1 : -1
+        VStack(spacing: 0) {
+            Group {
+                if let art, let image = UIImage(data: art) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .widgetAccentedRenderingMode(.fullColor)
+                        .scaledToFit()
+                } else {
+                    Image(systemName: weather.symbol)
+                        .resizable()
+                        .scaledToFit()
+                        .symbolRenderingMode(.multicolor)
+                        .padding(size * 0.12)
+                }
+            }
+            .frame(width: size, height: size)
+            .offset(x: swing * size * 0.06, y: swing * -size * 0.04)
+            .rotationEffect(.degrees(Double(swing) * 3))
+            .animation(.smooth(duration: 1.6), value: phase)
+            Text(verbatim: temperature)
+                .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                .monospacedDigit()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: temperature))
     }
 }
 
@@ -136,5 +192,13 @@ private struct PetWidgetBackground: View {
     PetWidget()
 } timeline: {
     PetEntry.placeholder
+    PetEntry(
+        date: .now,
+        snapshot: PetSnapshot(stickerID: "placeholder", title: "Winky", caption: "Puddles!", statusUpdatedAt: .now,
+                              selectedAt: .now, poseKey: "placeholder",
+                              weather: PetSnapshotWeather(kind: "rainy", symbol: "cloud.rain.fill", temperatureC: 14,
+                                                          isDay: true, artKey: nil)),
+        pose: nil
+    )
     PetEntry(date: .now, snapshot: nil, pose: nil)
 }

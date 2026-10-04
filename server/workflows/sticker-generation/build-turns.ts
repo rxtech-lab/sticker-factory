@@ -165,11 +165,11 @@ async function refineBuiltLayout(
           throw new Error("Call view_plan_image before finalizing the generated sticker");
         }
         if (configurationCursor < configurations.length) throw new Error(`Review all ${configurations.length} configurations with view_sticker before finalizing; ${configurationCursor} viewed`);
-        const diagnostics = layoutDiagnostics(working);
-        if (diagnostics.offCanvasLayerIds.length > 0) {
-          throw new Error(
-            `Keep every complete layer box on canvas. Fix: ${diagnostics.offCanvasLayerIds.join(", ")}`,
-          );
+        // Retained layers are locked by applyLayout, so demanding they come back on canvas would
+        // leave the reviewer finalizing and adjusting in a loop it can never win.
+        const offCanvas = layoutDiagnostics(working).offCanvasLayerIds.filter((id) => !retainedLayerIds.has(id));
+        if (offCanvas.length > 0) {
+          throw new Error(`Keep every complete layer box on canvas. Fix: ${offCanvas.join(", ")}`);
         }
         await saveReview(true);
         await finishToolCall(job, call, "complete", { revision, document: working });

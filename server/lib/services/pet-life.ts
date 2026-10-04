@@ -10,7 +10,7 @@ import { pickEvent } from "@/lib/pets/events";
 import { petLog, petRandom } from "@/lib/pets/log";
 import { localHour, resolveSignals, signalEffects } from "@/lib/pets/signals";
 import { addEffects, applyEffects, personalizeEffects, preferenceEffects } from "@/lib/pets/stats";
-import { refreshActions } from "./pet-actions";
+import { ownerMoment, refreshActions } from "./pet-actions";
 import { commitPetChange, currentStats, ensurePetIdentity, petRow } from "./pet-state";
 import { readablePlayback } from "./playback";
 
@@ -93,6 +93,7 @@ export async function visitPet(
       const answer = await getAiProvider().narratePetEvent({
         petTitle: playback.sticker.title, identity, signals, event: { title: event.title, detail },
         stats: currentStats(row), controls: configuration?.controls ?? [], current: row.statusJson?.values ?? null,
+        ...ownerMoment(row.contextJson, now),
       });
       status = {
         values: configuration ? normalizedControlValues(configuration, { ...row.statusJson?.values, ...answer.values }) : {},

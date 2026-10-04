@@ -116,7 +116,8 @@ struct PetCardPayloadTests {
           "status":{"values":{},"caption":"Sunny day!","updatedAt":"2026-10-04T00:00:00Z"},
           "stats":{"happiness":80,"hp":120,"energy":60},"actions":[],
           "identity":{"class":"explorer","personality":"Curious","likes":[],"dislikes":[],
-            "favoriteWeather":"sunny","maxHp":140,"energyMultiplier":1,"birth":{"weather":null,"stepsToday":null,"headlines":[],"at":"2026-10-01T00:00:00Z"}},
+            "favoriteWeather":"sunny","maxHp":140,"energyMultiplier":1,\
+        "birth":{"weather":null,"stepsToday":null,"headlines":[],"at":"2026-10-01T00:00:00Z"}},
           "signals":{"weather":{"kind":"rainy","temperatureC":18.4,"isDay":true},"stepsToday":4210,"headlines":[]},
           "nextEventAt":null}}
         """.utf8)

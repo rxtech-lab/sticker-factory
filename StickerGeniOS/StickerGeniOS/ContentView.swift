@@ -143,10 +143,12 @@ struct StickerFactoryTabView: View {
         .onChange(of: environment.tutorials.navigation?.id) { _, _ in openTutorialDestination() }
         .onChange(of: environment.pendingShareRoute) { _, _ in openShareRoute() }
         .onChange(of: environment.pendingStickerID) { _, _ in openPendingSticker() }
+        .onChange(of: environment.pendingOpenPet) { _, _ in openPendingPet() }
         .task {
             // A deep link can arrive before authentication finishes and before this tab hierarchy
             // exists. Consume it on first appearance as well as through `onChange`.
             openPendingSticker()
+            openPendingPet()
             openShareRoute()
             StickerOnboardingTips.setWelcomeCompleted(hasSeenWelcome)
             presentLaunchFlowIfNeeded()
@@ -269,6 +271,12 @@ struct StickerFactoryTabView: View {
             libraryPath = NavigationPath()
             libraryPath.append(SharedPackDestination(slug: slug))
         }
+    }
+
+    private func openPendingPet() {
+        guard environment.pendingOpenPet else { return }
+        environment.pendingOpenPet = false
+        selection = 3
     }
 
     private func openPendingSticker() {

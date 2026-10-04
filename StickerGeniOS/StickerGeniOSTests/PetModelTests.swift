@@ -21,18 +21,18 @@ final class PetModelTests: XCTestCase {
 
     func testDecodesThePetStatusTheServerReadFromSends() throws {
         var pet = Pet(sticker: PreviewFixtures.borrowedSticker, selectedAt: Date(timeIntervalSince1970: 0))
-        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder.api.encode(pet)) as! [String: Any]
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder.api.encode(pet)) as? [String: Any])
         var json = encoded
         json["status"] = [
             "values": ["mood": "happy", "speed": 1.5, "hat": true],
             "caption": "Party time!",
-            "updatedAt": "2026-10-04T12:00:00.000Z",
+            "updatedAt": "2026-10-04T12:00:00.000Z"
         ]
         json["actions"] = [[
             "id": "11111111-1111-4111-8111-111111111111",
             "title": "Wave to Loaf",
             "description": "Wave at Loaf's ears.",
-            "effects": ["happiness": 3, "hp": 0, "energy": -1],
+            "effects": ["happiness": 3, "hp": 0, "energy": -1]
         ]]
         let decoded = try JSONDecoder.api.decode(Pet.self, from: JSONSerialization.data(withJSONObject: json))
         XCTAssertEqual(decoded.status?.values, ["mood": .string("happy"), "speed": .number(1.5), "hat": .bool(true)])

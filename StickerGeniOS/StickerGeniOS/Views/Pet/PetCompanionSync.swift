@@ -63,19 +63,27 @@ final class PetCompanionSync {
     func publish(_ pet: Pet?, resendToWatch: Bool = false) async -> Bool {
         guard let api, let store else { return false }
         return await serially { [watch, reloadWidgets] in
-            let snapshot = pet.map(PetSnapshot.init(pet:))
+            var snapshot = pet.map(PetSnapshot.init(pet:))
             let current = store.envelope()
             do {
                 // The picture is the expensive part — a server render — so it is fetched only when
                 // the pose it names changed, or the copy on disk went missing.
                 let needsPose = snapshot != nil && (current?.pet?.poseKey != snapshot?.poseKey || store.load() == nil)
                 let pose = needsPose ? try await api.petPose(size: PetCompanion.poseSize) : nil
-                if let current, current.pet == snapshot, pose == nil {
+                // The weather's drawing likewise. One that will not come is left out rather than
+                // failing the pet: the widget shows the weather's symbol, and the next publish retries.
+                var weatherArt: Data?
+                if let artKey = snapshot?.weather?.artKey,
+                   current?.pet?.weather?.artKey != artKey || store.weatherArt() == nil {
+                    weatherArt = try? await api.petWeatherArt(size: PetCompanion.weatherArtSize)
+                    if weatherArt == nil { snapshot?.weather?.artKey = nil }
+                }
+                if let current, current.pet == snapshot, pose == nil, weatherArt == nil {
                     if resendToWatch { watch.send(current, poseURL: current.pet == nil ? nil : store.poseURL) }
                     return true
                 }
                 let envelope = PetSnapshotEnvelope(pet: snapshot, writtenAt: .now)
-                try store.save(envelope, pose: pose)
+                try store.save(envelope, pose: pose, weatherArt: weatherArt)
                 reloadWidgets()
                 watch.send(envelope, poseURL: snapshot == nil ? nil : store.poseURL)
                 return true
@@ -128,8 +136,18 @@ extension PetSnapshot {
             poseKey: [
                 sticker.id,
                 sticker.playbackRevisionId ?? sticker.activeRevisionId ?? "",
-                pet.status.map { String($0.updatedAt.timeIntervalSince1970) } ?? "default",
-            ].joined(separator: "|")
+                pet.status.map { String($0.updatedAt.timeIntervalSince1970) } ?? "default"
+            ].joined(separator: "|"),
+            weather: pet.signals?.weather.map { weather in
+                PetSnapshotWeather(
+                    kind: weather.kind.rawValue,
+                    symbol: weather.kind.symbol(isDay: weather.isDay),
+                    temperatureC: weather.temperatureC,
+                    isDay: weather.isDay,
+                    // Only a drawing of the weather it is in now; a stale one would show the wrong sky.
+                    artKey: pet.weatherArt.flatMap { $0.kind == weather.kind && $0.isDay == weather.isDay ? $0.key : nil }
+                )
+            }
         )
     }
 }

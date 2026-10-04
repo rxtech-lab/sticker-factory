@@ -71,6 +71,8 @@ async function announceJobEnded(
   outcome: GenerationOutcome,
 ): Promise<void> {
   if (!isNotifiableJobKind(job.kind)) return;
+  // A pet evolving on its own sticker announces itself once, when the new look is published.
+  if (job.origin === "pet") return;
   const sticker = await db.select({ id: stickers.id, title: stickers.title, status: stickers.status })
     .from(stickers).where(and(eq(stickers.id, job.stickerId), eq(stickers.ownerId, job.ownerId))).then(firstRow);
   // A sticker the user has since deleted has nothing to open.

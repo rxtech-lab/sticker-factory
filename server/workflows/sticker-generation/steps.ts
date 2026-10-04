@@ -10,6 +10,7 @@ import { exportRejectionReason } from "@/lib/services/export-publish";
 import { beginJob, completeJob, failJob } from "@/lib/services/job-lifecycle";
 import { acceptRevision, bindExports, rejectRevision, revertRevision } from "@/lib/services/stickers";
 import { quickPublishSticker } from "@/lib/services/quick-publish";
+import { noticeNewSticker } from "@/lib/services/pets";
 import { getObjectStore } from "@/lib/storage/r2";
 import { ApiError } from "@/lib/http/errors";
 import { recordJobApiCost } from "@/lib/subscription/credits";
@@ -24,6 +25,15 @@ import type { AiTurnResult } from "./turn-context";
 export async function beginJobStep(jobId: string): Promise<void> {
   "use step";
   return beginJob(jobId);
+}
+
+/**
+ * Shows the owner's pet the sticker this turn just made; the pet decides whether it cares. After
+ * the turn has completed, so the owner never waits on their pet. Swallows its own failures.
+ */
+export async function noticePetStickerStep(jobId: string, revisionId: string | undefined): Promise<void> {
+  "use step";
+  await noticeNewSticker(await getDatabase(), jobId, revisionId);
 }
 
 export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {

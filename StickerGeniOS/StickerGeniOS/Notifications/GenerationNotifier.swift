@@ -37,6 +37,8 @@ protocol GenerationNotifying: AnyObject {
 final class GenerationNotifier: NSObject, GenerationNotifying {
     /// Set by `AppEnvironment` so tapping a banner lands on the sticker it is about.
     var onOpenSticker: (@MainActor (String) -> Void)?
+    /// Set by `AppEnvironment` so tapping a "your pet grew" banner lands on the Pet tab.
+    var onOpenPet: (@MainActor () -> Void)?
 
     /// Read back from `userInfo` on the delegate's queue, so it cannot be actor-isolated. The
     /// server writes the same key into every generation push.
@@ -102,9 +104,10 @@ extension GenerationNotifier: UNUserNotificationCenterDelegate {
     ) {
         // Read the payload out here: `userInfo` is not `Sendable`, but the id inside it is.
         let stickerID = response.notification.request.content.userInfo[Self.stickerIDKey] as? String
+        let isPet = response.notification.request.content.userInfo["kind"] as? String == "pet-evolved"
         let completion = NotificationResponseCompletion(completionHandler)
         Task { @MainActor [weak self] in
-            if let stickerID { self?.onOpenSticker?(stickerID) }
+            if isPet { self?.onOpenPet?() } else if let stickerID { self?.onOpenSticker?(stickerID) }
             // UIKit continues launch/background state restoration from this callback. The async
             // protocol witness can resume it on a cooperative-pool thread, which trips UIKit's
             // main-thread assertion when a banner is tapped. Finish explicitly on MainActor.

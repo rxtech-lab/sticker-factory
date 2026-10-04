@@ -5,8 +5,8 @@ import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
-import { PET_ACTION_GOLD_MAX, PET_CLASSES, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
-import type { AiPetActionsContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, PetAction } from "./gateway-contracts";
+import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_CLASSES, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
+import type { AiOwnerMoment, AiPetActionsContext, AiPetEvolutionChoice, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, PetAction } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
 
 const PetStatusInputSchema = z.object({
@@ -30,6 +30,25 @@ const PetPersonaInputSchema = z.object({
   dislikes: z.array(z.string().trim().min(1).max(32)).min(1).max(4),
   favoriteWeather: z.enum(PET_WEATHER_KINDS),
 }).strict();
+
+/** What the pet asks the planner for when it decides to grow. */
+const PetEvolveInputSchema = z.object({ brief: z.string().trim().min(1).max(400) }).strict();
+
+/**
+ * The extra instruction a pet that may grow is given. Growing redraws its sticker in the
+ * background, so it is meant to be rare: a milestone, not a pat on the head.
+ */
+function evolutionGuidance(input: AiPetEvolutionChoice): string {
+  if (!input.canEvolve) return "";
+  return [
+    "You may also decide to grow from this moment. Only when it truly matters — a feeling or a moment none of",
+    "your current controls can show, a milestone, something new you just learned — set evolve.brief: one or two",
+    "sentences in English for the artist who draws you, asking for exactly one new thing on your own sticker:",
+    "a new mood (a new option on your mood or expression control), a new pose or property (a new choice option",
+    "or a toggle), or a small accessory. Ask to keep everything you already are unchanged. Most moments are not",
+    "a reason to grow: leave evolve out unless this one clearly is.",
+  ].join(" ");
+}
 
 const PetHeadlinesInputSchema = z.object({ headlines: z.array(z.string().trim().min(1).max(160)).max(3) }).strict();
 
@@ -55,6 +74,14 @@ function describeSignals(signals: PetSignalsV1 | null | undefined): string {
   ].join("\n");
 }
 
+/** The owner's time and place, as lines for the model; empty when the phone has told us neither. */
+function describeMoment(input: AiOwnerMoment): string {
+  return [
+    input.localTime ? `Owner's local time: ${input.localTime}` : "",
+    input.location ? `Owner's rough location: latitude ${input.location.latitude}, longitude ${input.location.longitude}` : "",
+  ].filter(Boolean).join("\n");
+}
+
 const PetEffectsInputSchema = z.object({
   happiness: z.number().int().min(-20).max(20),
   hp: z.number().int().min(-20).max(20),
@@ -64,7 +91,7 @@ const PetEffectsInputSchema = z.object({
 const PetActionsInputSchema = z.object({ actions: z.array(z.object({
   title: z.string().trim().min(1).max(32),
   description: z.string().trim().min(1).max(120),
-  effects: PetEffectsInputSchema.extend({ gold: z.number().int().min(-PET_ACTION_GOLD_MAX).max(PET_ACTION_GOLD_MAX) }).strict(),
+  effects: PetEffectsInputSchema.extend({ gold: z.number().int().min(-PET_ACTION_GOLD_MAX).max(PET_ACTION_GOLD_EARN_MAX) }).strict(),
 }).strict()).min(3).max(5) }).strict();
 
 /** The controls as the model reads them: ids it must answer with, labels it can reason about. */
@@ -94,13 +121,15 @@ export async function generatePetActions(input: AiPetActionsContext): Promise<Om
       "Fit them to how the pet feels at the moment: its mood, its stats, its personality and likes, the owner's",
       "local time and place, and the world around it. Low energy calls for something restful, low HP for care,",
       "low happiness for comfort or fun; late at night, something quiet; a morning, something to start the day.",
-      `Gold is the pet's money. Set each action's gold from -${PET_ACTION_GOLD_MAX} to ${PET_ACTION_GOLD_MAX}: negative`,
-      "for treats, toys, outings and other things that cost money, positive for work, chores, busking or anything",
-      "that earns, 0 for free things. Mix them: at least one action is free or earns gold, and when gold is low,",
-      "offer a way to earn some. Never price an action above what it is worth.",
+      `Gold is the pet's money, and it comes from the owner's walks, not from actions. Set each action's gold from`,
+      `-${PET_ACTION_GOLD_MAX} to ${PET_ACTION_GOLD_EARN_MAX}: negative for treats, toys, outings and other things that cost money,`,
+      "0 for free things. Most actions are free or cost gold, and at least one is free. Rarely, and only when gold is",
+      `low, one action may earn a little (1 to ${PET_ACTION_GOLD_EARN_MAX}) for a small chore; never more than one. Never price an action above what it is worth.`,
       "When earlier actions are listed, offer a fresh mix; keep one only if it still fits the mood best.",
       "Give each action a short button title and a description of what happens, in the language of the pet's name.",
       "Set small, plausible changes to happiness, HP, and energy, each from -20 to 20; most fun has a cost.",
+      "Doing things tires the pet: every action costs energy (-3 or less), except at most one restful action",
+      "that may restore it.",
       "Return only through set-pet-actions, exactly once. Do not use generic pet/play/feed/rest actions unless the character itself calls for one.",
     ].join(" "),
     messages: userTurn([
@@ -108,8 +137,7 @@ export async function generatePetActions(input: AiPetActionsContext): Promise<Om
       input.identity !== undefined ? describeIdentity(input.identity) : "",
       input.stats ? `Stats: ${JSON.stringify(input.stats)}` : "",
       input.mood ? `Mood right now: ${input.mood}` : "",
-      input.localTime ? `Owner's local time: ${input.localTime}` : "",
-      input.location ? `Owner's rough location: latitude ${input.location.latitude}, longitude ${input.location.longitude}` : "",
+      describeMoment(input),
       input.signals !== undefined ? describeSignals(input.signals) : "",
       input.previous?.length ? `Earlier actions: ${input.previous.join(", ")}` : "",
       `Controls:\n${describeControls(input)}`,
@@ -165,6 +193,7 @@ export async function choosePetStatus(input: AiPetStatusContext): Promise<AiPetS
       "If the sticker says nothing about mood, keep the current pose and say something calm.",
       "Stay in character: the pet's class, personality and likes colour how it reacts. It may mention",
       "the weather, its owner's steps, a headline, or the event that just happened when it fits.",
+      "Let the owner's local time and place colour it too: sleepy late at night, bright in the morning.",
       "Set effects from -8 to 8 for how the sticker's mood moves happiness, HP and energy; mostly small.",
     ].join(" "),
     messages: userTurn([
@@ -172,6 +201,7 @@ export async function choosePetStatus(input: AiPetStatusContext): Promise<AiPetS
       describeIdentity(input.identity),
       input.stats ? `Stats: ${JSON.stringify(input.stats)}` : "",
       describeSignals(input.signals),
+      describeMoment(input),
       input.event ? `Just happened: ${input.event.title} — ${input.event.detail}` : "",
       `Controls:\n${describeControls(input)}`,
       `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
@@ -201,17 +231,20 @@ export async function respondToPetInteraction(input: AiPetInteractionContext): P
       "Use the language of the pet's name. Choose controls to pose yourself for the action.",
       "Answer only through respond-as-pet, exactly once. Use only listed control and option ids.",
       "Omit a control to keep its current value. Never claim an action happened if it did not.",
-    ].join(" "),
+      "Fit the reply to the owner's local time and place when they are given.",
+      evolutionGuidance(input),
+    ].filter(Boolean).join(" "),
     messages: userTurn([
       `Pet: ${input.petTitle}`,
       `Action: ${input.action.title} — ${input.action.description}`,
       `Stats after action: ${JSON.stringify(input.stats)}`,
+      describeMoment(input),
       `Controls:\n${describeControls(input)}`,
       `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
-    ].join("\n\n"), []),
+    ].filter(Boolean).join("\n\n"), []),
     tools: { "respond-as-pet": tool({
       description: "Set the pet's new pose and spoken response.",
-      inputSchema: PetStatusInputSchema,
+      inputSchema: input.canEvolve ? PetStatusInputSchema.extend({ evolve: PetEvolveInputSchema.optional() }).strict() : PetStatusInputSchema,
       execute: async (value) => value,
     }) },
     toolChoice: "required",
@@ -222,7 +255,9 @@ export async function respondToPetInteraction(input: AiPetInteractionContext): P
   await recordTextApiCost(result);
   const call = result.toolCalls.find((candidate) => candidate?.toolName === "respond-as-pet");
   if (!call) throw new Error("Pet agent did not respond to interaction");
-  return PetStatusInputSchema.parse(call.input);
+  return input.canEvolve
+    ? PetStatusInputSchema.extend({ evolve: PetEvolveInputSchema.optional() }).strict().parse(call.input)
+    : PetStatusInputSchema.parse(call.input);
 }
 
 /** The pet looks at a picture its owner showed it, says what it thinks, and is moved by it. */
@@ -236,20 +271,23 @@ export async function reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetSt
       "of your name. Pose yourself to match by setting your controls. Set effects from -8 to 8 for how the picture",
       "moves your happiness, HP and energy: something you like cheers you, something you dislike or find scary",
       "upsets you, food may make you hungry. Mostly small. Answer only through react-to-photo, exactly once. Use only",
-      "listed control and option ids, and omit a control to keep its current value.",
-    ].join(" "),
+      "listed control and option ids, and omit a control to keep its current value. The owner's local time and",
+      "place, when given, may colour your reaction.",
+      evolutionGuidance(input),
+    ].filter(Boolean).join(" "),
     messages: userTurn([
       `Pet: ${input.petTitle}`,
       describeIdentity(input.identity),
       `Stats now: ${JSON.stringify(input.stats)}`,
       describeSignals(input.signals),
+      describeMoment(input),
       `Controls:\n${describeControls(input)}`,
       `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
       "The attached picture is what your owner just showed you.",
-    ].join("\n\n"), [input.photo]),
+    ].filter(Boolean).join("\n\n"), [input.photo]),
     tools: { "react-to-photo": tool({
       description: "Set the pet's pose, what it says about the picture, and how the picture moves its stats.",
-      inputSchema: PetSendStatusInputSchema,
+      inputSchema: input.canEvolve ? PetSendStatusInputSchema.extend({ evolve: PetEvolveInputSchema.optional() }).strict() : PetSendStatusInputSchema,
       execute: async (value) => value,
     }) },
     toolChoice: "required",
@@ -260,7 +298,9 @@ export async function reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetSt
   await recordTextApiCost(result);
   const call = result.toolCalls.find((candidate) => candidate?.toolName === "react-to-photo");
   if (!call) throw new Error("Pet agent did not react to the photo");
-  return PetSendStatusInputSchema.parse(call.input);
+  return input.canEvolve
+    ? PetSendStatusInputSchema.extend({ evolve: PetEvolveInputSchema.optional() }).strict().parse(call.input)
+    : PetSendStatusInputSchema.parse(call.input);
 }
 
 /**
@@ -348,17 +388,18 @@ export async function narratePetEvent(input: AiPetEventContext): Promise<AiPetSt
       "You are a virtual pet. Something just happened to you; tell your owner about it in one warm, specific",
       "sentence (at most 60 characters), in character and in the language of your name. Pose yourself to match",
       "by setting your controls. Answer only through respond-as-pet, exactly once. Use only listed control and",
-      "option ids, and omit a control to keep its current value.",
+      "option ids, and omit a control to keep its current value. Fit it to the owner's local time and place when given.",
     ].join(" "),
     messages: userTurn([
       `Pet: ${input.petTitle}`,
       describeIdentity(input.identity),
       `Stats now: ${JSON.stringify(input.stats)}`,
       describeSignals(input.signals),
+      describeMoment(input),
       `What happened: ${input.event.title} — ${input.event.detail}`,
       `Controls:\n${describeControls(input)}`,
       `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
-    ].join("\n\n"), []),
+    ].filter(Boolean).join("\n\n"), []),
     tools: { "respond-as-pet": tool({
       description: "Set the pet's new pose and what it says.",
       inputSchema: PetStatusInputSchema,
@@ -373,4 +414,53 @@ export async function narratePetEvent(input: AiPetEventContext): Promise<AiPetSt
   const call = result.toolCalls.find((candidate) => candidate?.toolName === "respond-as-pet");
   if (!call) throw new Error("Pet agent did not narrate the event");
   return PetStatusInputSchema.parse(call.input);
+}
+
+const PetStickerReactionInputSchema = z.discriminatedUnion("react", [
+  z.object({ react: z.literal(false) }).strict(),
+  PetSendStatusInputSchema.extend({ react: z.literal(true) }).strict(),
+]);
+
+/**
+ * Its owner just made a new sticker. The pet looks at it and decides whether it cares: a sticker
+ * of something it likes, or one that looks like a friend, gets a reaction; most get let pass.
+ */
+export async function noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction> {
+  const result = await generateText({
+    onLanguageModelCallEnd: reportAiStepUsage,
+    model: gateway(process.env.AI_SUMMARY_MODEL ?? process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    system: [
+      "You are a virtual pet. Your owner just made a new sticker, attached. Decide whether you care.",
+      "React only when it means something to you: it shows something you like or dislike, looks like you or a",
+      "friend, fits the moment, or is simply delightful. Otherwise answer react false and nothing else.",
+      "When you react, say one warm, specific sentence (at most 60 characters) about the sticker, in character and",
+      "in the language of your name; pose yourself to match by setting your controls; and set effects from -8 to 8",
+      "for how it moves your happiness, HP and energy, mostly small. Use only listed control and option ids, and",
+      "omit a control to keep its current value. Answer only through notice-sticker, exactly once.",
+    ].join(" "),
+    messages: userTurn([
+      `Pet: ${input.petTitle}`,
+      describeIdentity(input.identity),
+      `Stats now: ${JSON.stringify(input.stats)}`,
+      describeSignals(input.signals),
+      describeMoment(input),
+      `Controls:\n${describeControls(input)}`,
+      `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
+      `New sticker: ${input.made.title} (${input.made.kind})`,
+      input.made.image ? "The attached image is the new sticker." : "",
+    ].filter(Boolean).join("\n\n"), input.made.image ? [input.made.image] : []),
+    tools: { "notice-sticker": tool({
+      description: "Decide whether the pet reacts to the new sticker, and if so how.",
+      inputSchema: PetStickerReactionInputSchema,
+      execute: async (value) => value,
+    }) },
+    toolChoice: "required",
+    stopWhen: [hasToolCall("notice-sticker"), stepCountIs(2)],
+    maxRetries: 1,
+    abortSignal: AbortSignal.timeout(30_000),
+  });
+  await recordTextApiCost(result);
+  const call = result.toolCalls.find((candidate) => candidate?.toolName === "notice-sticker");
+  if (!call) throw new Error("Pet agent did not decide about the new sticker");
+  return PetStickerReactionInputSchema.parse(call.input);
 }

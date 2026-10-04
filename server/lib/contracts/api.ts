@@ -810,6 +810,8 @@ export const SetPetRequestSchema = z.object({
 export const PET_ACTIONS_MAX = 12;
 /** The most gold one action may cost or earn. */
 export const PET_ACTION_GOLD_MAX = 50;
+/** Gold comes mostly from walking: the most a freshly offered action may earn, and only one may. */
+export const PET_ACTION_GOLD_EARN_MAX = 3;
 
 export const PetActionV1Schema = z.object({
   id: z.string().uuid(),
@@ -824,6 +826,14 @@ export const PetActionV1Schema = z.object({
   }).strict(),
 }).strict();
 
+
+export const PET_EVOLUTION_STATES = ["planning", "building", "publishing", "ready", "failed"] as const;
+
+export const PetEvolutionV1Schema = z.object({
+  state: z.enum(PET_EVOLUTION_STATES),
+  startedAt: z.string().datetime(),
+  finishedAt: z.string().datetime().nullable(),
+}).strict();
 
 export const PetResponseV1Schema = z.object({
   pet: z.object({
@@ -846,10 +856,25 @@ export const PetResponseV1Schema = z.object({
     /** The latest signals the pet has read, and when the life workflow will next visit it. */
     signals: PetSignalsV1Schema.nullable(),
     nextEventAt: z.string().datetime().nullable(),
+    /**
+     * The pet growing a new mood, property or look in the background, or how its last growth
+     * ended. Null when it has never evolved. Optional so responses from before evolution decode.
+     */
+    evolution: PetEvolutionV1Schema.nullable().optional(),
+    /**
+     * The weather in `signals`, drawn in the pet's own art style, fetched as a PNG from
+     * `GET /api/v1/pet/weather-art`. `key` changes whenever the drawing does. Null while there is
+     * no weather or it is still being drawn; optional so responses from before it decode.
+     */
+    weatherArt: z.object({
+      kind: z.enum(PET_WEATHER_KINDS),
+      isDay: z.boolean(),
+      key: z.string().min(1),
+    }).strict().nullable().optional(),
   }).strict().nullable(),
 }).strict();
 
-export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo"] as const;
+export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "sticker", "evolved"] as const;
 
 /**
  * One line of the pet's diary: what happened, what it did to the stats, and what the server knew

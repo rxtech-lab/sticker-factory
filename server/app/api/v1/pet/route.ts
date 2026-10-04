@@ -1,6 +1,8 @@
+import { after } from "next/server";
 import { SetPetRequestSchema } from "@/lib/contracts/api";
 import { noStoreJson, readJson } from "@/lib/http/errors";
 import { withApiAuth } from "@/lib/http/handler";
+import { drawPetWeatherArt } from "@/lib/services/pet-weather";
 import { clearPet, getPet, setPet } from "@/lib/services/pets";
 
 /**
@@ -10,7 +12,11 @@ import { clearPet, getPet, setPet } from "@/lib/services/pets";
  * the same state, so a retried request cannot do anything a first one would not.
  */
 export async function GET(request: Request) {
-  return withApiAuth(request, async (principal, db) => noStoreJson(await getPet(db, principal.sub)));
+  return withApiAuth(request, async (principal, db) => {
+    // The weather the pet is in, drawn in its style, if this look is new; the next read carries it.
+    after(() => drawPetWeatherArt(db, principal.sub));
+    return noStoreJson(await getPet(db, principal.sub));
+  });
 }
 
 export async function PUT(request: Request) {
