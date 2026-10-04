@@ -186,7 +186,9 @@ final class PetModel {
         defer { activity = nil }
         let result = await context.upload(api: api)
         guard result.hasLocation else {
-            weatherProblem = String(localized: "Your phone couldn't find where you are. Check that Location Services is on, then try again.")
+            weatherProblem = String(
+                localized: "Your phone couldn't find where you are. Check that Location Services is on, then try again."
+            )
             Haptics.failure()
             return
         }
