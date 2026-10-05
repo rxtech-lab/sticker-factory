@@ -954,10 +954,55 @@ export const PetResponseV1Schema = z.object({
     illness: PetIllnessV1Schema.nullable().optional(),
     /** Doses of medicine the pet has; one cures an illness. */
     medicine: z.number().int().min(0).optional(),
+    /**
+     * The room the pet lives in, drawn behind it: fetched from `GET /api/v1/pet/rooms/art`. Null on
+     * the plain page; optional so responses from before rooms decode.
+     */
+    room: z.object({ id: z.string().uuid(), title: z.string(), artKey: z.string().uuid() }).strict().nullable().optional(),
   }).strict().nullable(),
 }).strict();
 
-export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine"] as const;
+/**
+ * A room the owner's pets can live in. What it does lands once a day on the pet living there;
+ * `price` is what it cost, or costs while it is still on offer.
+ */
+export const PetRoomV1Schema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string(),
+  effects: z.object({ happiness: z.number().int(), hp: z.number().int(), energy: z.number().int() }).strict(),
+  price: z.number().int().min(0),
+  artKey: z.string().uuid(),
+  owned: z.boolean(),
+}).strict();
+
+/** The rooms the owner has, the shop's offers, and which room the pet lives in. */
+export const PetRoomsV1Schema = z.object({
+  activeRoomId: z.string().uuid().nullable(),
+  owned: z.array(PetRoomV1Schema),
+  offers: z.array(PetRoomV1Schema),
+  /** When the shop puts up new rooms. Null before it has offered any. */
+  offersRefreshAt: z.string().datetime().nullable(),
+  /** True while the pet's agent is drawing the shop's next rooms. */
+  drawing: z.boolean(),
+}).strict();
+
+export const PetRoomsResponseV1Schema = z.object({ rooms: PetRoomsV1Schema }).strict();
+
+export const PurchasePetRoomRequestSchema = z.object({ roomId: z.string().uuid() }).strict();
+export type PurchasePetRoomRequest = z.infer<typeof PurchasePetRoomRequestSchema>;
+
+/** Moves the pet into a room the owner has; null moves it back onto the plain page. */
+export const SetPetRoomRequestSchema = z.object({ roomId: z.string().uuid().nullable() }).strict();
+export type SetPetRoomRequest = z.infer<typeof SetPetRoomRequestSchema>;
+
+/** A purchase or a move: the pet after it, and the rooms as they now stand. */
+export const PetRoomChangeResponseV1Schema = z.object({
+  pet: PetResponseV1Schema.shape.pet,
+  rooms: PetRoomsV1Schema,
+}).strict();
+
+export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room"] as const;
 
 /**
  * One line of the pet's diary: what happened, what it did to the stats, and what the server knew
@@ -1064,6 +1109,8 @@ export type RecordPetSendRequest = z.infer<typeof RecordPetSendRequestSchema>;
 export type PetIdentityV1 = z.infer<typeof PetIdentityV1Schema>;
 export type PetSignalsV1 = z.infer<typeof PetSignalsV1Schema>;
 export type PetEventV1 = z.infer<typeof PetEventV1Schema>;
+export type PetRoomsV1 = z.infer<typeof PetRoomsV1Schema>;
+export type PetRoomV1 = z.infer<typeof PetRoomV1Schema>;
 export type PostChatMessageRequest = z.infer<typeof PostChatMessageRequestSchema>;
 export type CreateUploadRequest = z.infer<typeof CreateUploadRequestSchema>;
 export type PublishExportsRequest = z.infer<typeof PublishExportsRequestSchema>;

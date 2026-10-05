@@ -828,6 +828,26 @@ export type AiPetEncounter = {
   }>;
 };
 
+/** A room the pet's agent dreamed up for its shop: what it is, what living there does, and its price. */
+export type AiPetRoom = {
+  title: string;
+  description: string;
+  /** What to draw: the room as a scene, for the image model. */
+  scene: string;
+  effects: { happiness: number; hp: number; energy: number };
+  price: number;
+};
+
+/**
+ * One room drawn as a full portrait background, in the pet's own art style. Its window glass is
+ * flooded with `windowKey` so the server can cut it out and the app can show the live weather behind.
+ */
+export interface AiPetRoomArtInput {
+  scene: string;
+  reference: AiReferenceImage | null;
+  windowKey: ChromaKeyColor;
+}
+
 export type PetAction = {
   id: string;
   title: string;
@@ -942,6 +962,10 @@ export interface AiProvider {
   choosePetStatus(input: AiPetStatusContext): Promise<AiPetStatus>;
   generatePetActions(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]>;
   generatePetItems(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]>;
+  /** Dreams up the rooms the pet's shop offers, each with its own daily effect and price. */
+  generatePetRooms(input: AiPetActionsContext): Promise<AiPetRoom[]>;
+  /** Draws one room as the background the pet stands in. */
+  generatePetRoomArt(input: AiPetRoomArtInput): Promise<AiImageOutput>;
   respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus>;
   reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus>;
   reactToPetSharedContent(input: AiPetSharedContentContext): Promise<AiPetStatus>;

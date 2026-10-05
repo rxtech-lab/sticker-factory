@@ -2,6 +2,7 @@ import SwiftUI
 
 /// What the owner can do with the pet right now: the actions its agent offers for its mood, and the
 /// four objects it chose from its world. Picking one closes the sheet; the pet answers on the tab.
+/// The Rooms tab is where the owner buys the pet a room to live in, and moves it between them.
 struct PetActionsSheet: View {
     @Bindable var model: PetModel
     @Environment(\.dismiss) private var dismiss
@@ -9,11 +10,13 @@ struct PetActionsSheet: View {
     private enum Tab: Hashable, CaseIterable {
         case actions
         case items
+        case rooms
 
         var title: LocalizedStringKey {
             switch self {
             case .actions: "Actions"
             case .items: "Items"
+            case .rooms: "Rooms"
             }
         }
     }
@@ -29,6 +32,7 @@ struct PetActionsSheet: View {
                 Picker("Spend time", selection: $selectedTab) {
                     ForEach(Tab.allCases, id: \.self) { tab in
                         Text(tab.title).tag(tab)
+                        .accessibilityIdentifier("pet-sheet-tab-\(tab)")
                     }
                 }
                 .pickerStyle(.segmented)
@@ -36,7 +40,11 @@ struct PetActionsSheet: View {
                 .padding(.top, 12)
                 .onChange(of: selectedTab) { _, _ in Haptics.tap(.light) }
                 ScrollView {
-                    if selectedTab == .actions { actionList } else { itemList }
+                    switch selectedTab {
+                    case .actions: actionList
+                    case .items: itemList
+                    case .rooms: PetRoomsList(model: model)
+                    }
                 }
             }
             .task(id: selectedTab) {
@@ -164,9 +172,8 @@ struct PetActionsSheet: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(.vertical, 8)
                     }
-                    .buttonStyle(.posterSecondary)
+                    .buttonStyle(.posterCard)
                     .disabled(model.activity != nil || model.isAnswering || !affordable)
                     .accessibilityIdentifier("pet-item-\(index)")
                 }

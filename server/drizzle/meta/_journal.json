@@ -197,6 +197,13 @@
       "when": 1789531200018,
       "tag": "0027_user_wallets",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789531200019,
+      "tag": "0028_pet_rooms",
+      "breakpoints": true
     }
   ]
 }

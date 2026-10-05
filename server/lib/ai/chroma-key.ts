@@ -99,6 +99,7 @@ const KEYED_DOMINANCE = 110;
 export async function chromaKeyBackground(
   bytes: Uint8Array,
   color: ChromaKeyColor,
+  options: { crop?: boolean } = {},
 ): Promise<{ bytes: Uint8Array; keyedFraction: number; subject?: SubjectBounds }> {
   const { data, info } = await sharp(bytes, { limitInputPixels: 4096 * 4096 })
     .ensureAlpha()
@@ -142,7 +143,8 @@ export async function chromaKeyBackground(
   const keyed = sharp(data, {
     raw: { width: info.width, height: info.height, channels: stride as 4 },
   });
-  const crop = subjectCropRect(info, bounds);
+  // A scene keyed for its windows is the whole frame, not a subject on a backdrop: never cropped.
+  const crop = options.crop === false ? undefined : subjectCropRect(info, bounds);
   const png = await (crop ? keyed.extract(crop) : keyed)
     .png({ compressionLevel: 9, adaptiveFiltering: true })
     .toBuffer();

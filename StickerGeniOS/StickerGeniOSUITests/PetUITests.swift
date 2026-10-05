@@ -107,6 +107,70 @@ final class PetUITests: StickerGeniOSUITestCase {
         XCTAssertTrue(element("choose-pet-button").waitForExistence(timeout: 15))
     }
 
+    /// The Rooms tab lists the shop; a room opens in its own sheet, where buying it asks first, spends
+    /// the gold and moves the pet in, drawing the room behind it. Moving out puts it back on the page.
+    @MainActor
+    func testBuyingARoomMovesThePetIn() {
+        app.terminate()
+        app.launchArguments.append("--ui-installed-pack")
+        app.launch()
+
+        app.tabBars.buttons["Pet"].tap()
+        let choose = element("choose-pet-button")
+        XCTAssertTrue(choose.waitForExistence(timeout: 15))
+        choose.tap()
+        let candidate = element("pet-candidate-sticker-borrowed")
+        XCTAssertTrue(candidate.waitForExistence(timeout: 15))
+        candidate.tap()
+        XCTAssertTrue(element("current-pet").waitForExistence(timeout: 15))
+        XCTAssertEqual(element("pet-gold").label, "20 gold")
+        XCTAssertTrue(element("pet-room-backdrop-plain").exists)
+
+        element("pet-stats").swipeUp()
+        element("pet-actions-button").tap()
+        XCTAssertTrue(app.navigationBars["Spend Time Together"].waitForExistence(timeout: 5))
+        app.buttons["Rooms"].firstMatch.tap()
+
+        // The garden costs 90 gold and the pet has 20: it opens, but cannot be bought.
+        let garden = element("pet-room-mock-room-garden")
+        XCTAssertTrue(garden.waitForExistence(timeout: 15))
+        garden.tap()
+        XCTAssertTrue(app.navigationBars["Rooftop Garden"].waitForExistence(timeout: 5))
+        XCTAssertFalse(element("pet-room-buy").isEnabled)
+        app.navigationBars["Rooftop Garden"].buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Rooftop Garden"].waitForNonExistence(timeout: 5))
+
+        element("pet-room-mock-room-burrow").tap()
+        let buy = element("pet-room-buy")
+        XCTAssertTrue(buy.waitForExistence(timeout: 5))
+        XCTAssertTrue(buy.isEnabled)
+        buy.tap()
+        let confirm = element("pet-room-purchase-confirm")
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+        // Bought: the detail closes, and the room is listed as the one the pet lives in.
+        XCTAssertTrue(app.navigationBars["Moss Burrow"].waitForNonExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Living here"].waitForExistence(timeout: 5))
+
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Spend Time Together"].waitForNonExistence(timeout: 5))
+        let spent = NSPredicate(format: "label == %@", "5 gold")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: spent, evaluatedWith: element("pet-gold"))], timeout: 15), .completed)
+        XCTAssertTrue(element("pet-room-backdrop").waitForExistence(timeout: 15))
+
+        element("pet-actions-button").tap()
+        app.buttons["Rooms"].firstMatch.tap()
+        let burrow = element("pet-room-mock-room-burrow")
+        XCTAssertTrue(burrow.waitForExistence(timeout: 15))
+        burrow.tap()
+        let moveOut = element("pet-room-move-out")
+        XCTAssertTrue(moveOut.waitForExistence(timeout: 5))
+        moveOut.tap()
+        XCTAssertTrue(moveOut.waitForNonExistence(timeout: 15))
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(element("pet-room-backdrop-plain").waitForExistence(timeout: 15))
+    }
+
     /// The microphone beside the pet opens the talk sheet, which starts listening on its own. With
     /// nothing said yet there is nothing to send, and Cancel closes it.
     @MainActor

@@ -3,7 +3,7 @@ import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetEventV1, PetSignalsV1 } from "@/lib/contracts/api";
 import { firstRow, type Database } from "@/lib/db/client";
-import { petEvents, userPets, userWallets, type PetStatsValues, type UserPetRow, type UserWalletRow } from "@/lib/db/schema";
+import { petEvents, petRooms, userPets, userWallets, type PetRoomRow, type PetStatsValues, type UserPetRow, type UserWalletRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { describeError } from "@/lib/observability/trace";
 import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
@@ -11,6 +11,7 @@ import { petLog, petRandom } from "@/lib/pets/log";
 import { ATTENTION_KINDS } from "@/lib/pets/neglect";
 import { EMPTY_SIGNALS, localDate } from "@/lib/pets/signals";
 import { dailyGold } from "@/lib/pets/daily-gold";
+import { describeRoomEffects, roomComfortDate } from "@/lib/pets/rooms";
 import { applyEffects, initialStats, STARTING_GOLD, withGold, withoutGold, type PetEffects, type PetStats } from "@/lib/pets/stats";
 import { walkDetail, walkReward } from "@/lib/pets/walk";
 import type { StickerControl } from "@/lib/contracts/configuration";
@@ -28,15 +29,19 @@ export type PetChange = {
   debug?: Record<string, unknown>;
 };
 
-/** The caller's pet, read with the owner's wallet: gold is theirs, shared by every pet they have. */
-export type PetRow = UserPetRow & { wallet: UserWalletRow | null };
+/**
+ * The caller's pet, read with the owner's wallet — gold is theirs, shared by every pet they have —
+ * and the room it lives in.
+ */
+export type PetRow = UserPetRow & { wallet: UserWalletRow | null; room: PetRoomRow | null };
 
 export async function petRow(db: Database, userId: string): Promise<PetRow | undefined> {
-  const row = await db.select({ pet: userPets, wallet: userWallets }).from(userPets)
+  const row = await db.select({ pet: userPets, wallet: userWallets, room: petRooms }).from(userPets)
     .leftJoin(userWallets, eq(userWallets.userId, userPets.userId))
+    .leftJoin(petRooms, and(eq(petRooms.id, userPets.roomId), eq(petRooms.state, "owned")))
     .where(eq(userPets.userId, userId))
     .then(firstRow);
-  return row && { ...row.pet, wallet: row.wallet };
+  return row && { ...row.pet, wallet: row.wallet, room: row.room };
 }
 
 /** The owner's gold, or what a new owner starts with. */
@@ -109,20 +114,27 @@ class WalletConflict extends Error {}
  * Today's gold allowance, if not yet granted, and gold the owner's walk has earned since it was
  * last paid land first, as their own lines, worked out again on every attempt so a retried write
  * never pays the same day or steps twice. Gold goes to the owner's wallet in the same transaction
- * as the pet's other stats.
+ * as the pet's other stats. So does the day's comfort from the room the pet lives in.
+ *
+ * `price` is gold the change spends: refused with `PET_NOT_ENOUGH_GOLD` when the wallet read on this
+ * attempt holds less, so two purchases racing can never take the wallet below what they cost.
  */
 export async function commitPetChange(
   db: Database,
   userId: string,
-  input: { lifeId: string; changes: PetChange[]; set?: PgUpdateSetSource<typeof userPets>; where?: SQL },
+  input: { lifeId: string; changes: PetChange[]; set?: PgUpdateSetSource<typeof userPets>; where?: SQL; price?: number },
 ): Promise<{ before: PetStatsValues; after: PetStatsValues } | null> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const row = await petRow(db, userId);
     if (!row || row.lifeId !== input.lifeId) return null;
     const before = currentStats(row);
+    if (input.price && before.gold < input.price) {
+      throw new ApiError(422, "PET_NOT_ENOUGH_GOLD", `This costs ${input.price} gold, and you have ${before.gold}.`);
+    }
     let stats = before;
     const now = new Date();
     const daily = dailyGold(row.contextJson, row.wallet, now);
+    const comfortDate = row.room ? roomComfortDate(row.contextJson, row.roomEffectDate, now) : null;
     const walk = walkReward({ contextJson: row.contextJson, walkGoldJson: row.wallet?.walkGoldJson ?? null }, now);
     const changes: PetChange[] = [
       ...(daily ? [{
@@ -140,6 +152,14 @@ export async function commitPetChange(
         effects: { happiness: 0, hp: 0, energy: walk.energy, gold: walk.gold },
         debug: { source: "walk", steps: walk.steps, paidBefore: row.wallet?.walkGoldJson ?? null },
       }] : []),
+      ...(row.room && comfortDate ? [{
+        kind: "room" as const,
+        title: `A day in ${row.room.title}`,
+        detail: `${describeRoomEffects(row.room.effectsJson)} from living in ${row.room.title}.`,
+        // The room's own effect, as it says on the door: not scaled by the pet's energy multiplier.
+        effects: { ...row.room.effectsJson, gold: 0 },
+        debug: { source: "room", roomId: row.room.id, date: comfortDate },
+      }] : []),
       ...input.changes,
     ];
     const lines = changes.map((change) => {
@@ -151,7 +171,8 @@ export async function commitPetChange(
     let updated: boolean;
     try {
       updated = await db.transaction(async (tx) => {
-        const written = await tx.update(userPets).set({ ...input.set, statsJson: withoutGold(stats) })
+        const written = await tx.update(userPets)
+          .set({ ...input.set, statsJson: withoutGold(stats), ...(comfortDate ? { roomEffectDate: comfortDate } : {}) })
           .where(and(
             eq(userPets.userId, userId),
             eq(userPets.lifeId, input.lifeId),

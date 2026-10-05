@@ -27,6 +27,35 @@ extension StickerAPIClient {
         return response.pet
     }
 
+    func petRooms() async throws -> PetRooms {
+        let response: PetRoomsResponse = try await send(path: "api/v1/pet/rooms")
+        return response.rooms
+    }
+
+    func purchasePetRoom(roomID: String) async throws -> PetRoomChangeResponse {
+        try await send(path: "api/v1/pet/rooms/purchase", method: "POST", body: PurchasePetRoomRequest(roomId: roomID))
+    }
+
+    func setPetRoom(roomID: String?) async throws -> PetRoomChangeResponse {
+        try await send(path: "api/v1/pet/rooms/active", method: "PUT", body: SetPetRoomRequest(roomId: roomID))
+    }
+
+    func petRoomArt(roomID: String) async throws -> Data {
+        var request = try await authorizedRequest(path: "api/v1/pet/rooms/art", query: [URLQueryItem(name: "id", value: roomID)])
+        request.setValue("image/webp", forHTTPHeaderField: "Accept")
+        var (data, response) = try await session.data(for: request)
+        if (response as? HTTPURLResponse)?.statusCode == 401 {
+            request.setValue("Bearer \(try await tokenBroker.validAccessToken(forceRefresh: true))", forHTTPHeaderField: "Authorization")
+            (data, response) = try await session.data(for: request)
+        }
+        guard let http = response as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            let _: PetResponse = try decode(data, response: response, context: "GET api/v1/pet/rooms/art")
+            throw StickerAPIError.invalidResponse
+        }
+        return data
+    }
+
     func sendPetPhoto(jpeg: Data) async throws -> Pet? {
         // Unbound to any sticker, so the server's sweep of stale uploads clears it within a day.
         let assetID = try await upload(

@@ -650,6 +650,16 @@ export const userPets = pgTable("user_pets", {
   illnessJson: jsonb("illness_json").$type<PetIllness>(),
   /** Doses of medicine the pet has, won from its daily encounters. One cures an illness. */
   medicine: integer("medicine").notNull().default(0),
+  /**
+   * The room the pet lives in, bought from its shop: drawn behind it on the tab, and good for it
+   * once a day. Null for the plain page. Kept when the owner adopts another pet, like the room is.
+   */
+  roomId: text("room_id").references((): AnyPgColumn => petRooms.id, { onDelete: "set null" }),
+  /** The owner's local date the room last comforted the pet, so it does once a day. */
+  roomEffectDate: text("room_effect_date"),
+  /** When the room shop last put new rooms up, and a refresh in flight, like the items'. */
+  roomsOfferedAt: timestampColumn("rooms_offered_at"),
+  roomsClaimedAt: timestampColumn("rooms_claimed_at"),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
@@ -692,6 +702,30 @@ export const userWalletGrants = pgTable("user_wallet_grants", {
   index("user_wallet_grants_user_idx").on(table.userId, table.createdAt),
   check("user_wallet_grants_kind_check", sql`${table.kind} IN ('sticker')`),
 ]);
+
+/**
+ * A room the owner's pets can live in, drawn by the pet's agent: offered in the room shop until it
+ * is bought or the shop moves on, then the owner's for good, whichever pet they have.
+ */
+export const petRooms = pgTable("pet_rooms", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  /** What living here does to the pet, once a day. Gold is never one of them. */
+  effectsJson: jsonb("effects_json").$type<{ happiness: number; hp: number; energy: number }>().notNull(),
+  price: integer("price").notNull(),
+  /** Names the drawing in storage; a room is drawn once and never changes. */
+  artKey: text("art_key").notNull(),
+  state: text("state", { enum: ["offered", "owned"] }).notNull(),
+  createdAt: timestampColumn("created_at").notNull(),
+  purchasedAt: timestampColumn("purchased_at"),
+}, (table) => [
+  index("pet_rooms_user_idx").on(table.userId, table.state, table.createdAt),
+  check("pet_rooms_state_check", sql`${table.state} IN ('offered', 'owned')`),
+  check("pet_rooms_price_check", sql`${table.price} >= 0`),
+]);
+export type PetRoomRow = typeof petRooms.$inferSelect;
 
 export type PetMusing = { text: string; afterMinutes: number };
 export type PetStatus = { values: StickerControlValues; caption: string; animateEverySeconds?: number; musings?: PetMusing[] };
@@ -737,7 +771,7 @@ export const petEvents = pgTable("pet_events", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   lifeId: text("life_id").notNull(),
   stickerId: text("sticker_id"),
-  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine"] }).notNull(),
+  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room"] }).notNull(),
   title: text("title").notNull(),
   detail: text("detail").notNull(),
   effectsJson: jsonb("effects_json").$type<PetStatsValues>().notNull(),
