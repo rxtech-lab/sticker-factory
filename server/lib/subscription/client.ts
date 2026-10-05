@@ -163,9 +163,9 @@ export async function reserveCredits(input: {
   description: string;
   metadata?: Record<string, unknown>;
   expiresInSeconds?: number;
-}): Promise<Reservation> {
+}, environment?: BillingEnvironment | null): Promise<Reservation> {
   return call<Reservation>(
-    await requireConfig(),
+    await requireConfig(environment),
     "POST",
     "balances/reserve",
     { body: input },
@@ -200,6 +200,25 @@ export async function releaseReservation(input: {
   });
 }
 
+/** One unit's balance for a user, or null when they have never held any. */
+export async function fetchBalance(rxlabUserId: string, unit: string, environment?: BillingEnvironment | null): Promise<EntitlementBalance | null> {
+  const { balances } = await call<{ balances: { unit: string; name: string; amount: number; available: number; precision: number }[] }>(
+    await requireConfig(environment), "GET", "balances", { query: { rxlabUserId } });
+  return balances.find((balance) => balance.unit === unit) ?? null;
+}
+
+/** Credits or debits a balance outright. Keyed: a retry with the same key moves nothing. */
+export async function adjustBalance(input: {
+  rxlabUserId: string;
+  unit: string;
+  amount: number;
+  operation: "credit" | "debit";
+  idempotencyKey: string;
+  description: string;
+  metadata?: Record<string, unknown>;
+}, environment?: BillingEnvironment | null): Promise<{ entryId: string; duplicate: boolean; balanceAfter: number }> {
+  return call(await requireConfig(environment), "POST", "balances", { body: input });
+}
 
 export interface UsageAllowance {
   key: string; used: number; reserved?: number; limit: number | null;

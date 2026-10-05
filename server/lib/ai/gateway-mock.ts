@@ -10,7 +10,7 @@ import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetRoom, AiPetRoomArtInput, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -461,6 +461,23 @@ export class MockAiProvider implements AiProvider {
       { title: `Weather gift for ${input.petTitle}`, description: "A gift inspired by today's weather.", effects: { happiness: 4, hp: 0, energy: -3, gold: -1 } },
       { title: `Star tonic for ${input.petTitle}`, description: "A sparkling tonic that wakes a tired pet right up.", effects: { happiness: 3, hp: 0, energy: 40, gold: -35 } },
     );
+  }
+  async generatePetRooms(input: AiPetActionsContext): Promise<AiPetRoom[]> {
+    return [
+      { title: "Moss Burrow", description: `A soft, quiet den where ${input.petTitle} naps.`, scene: "A cozy mossy burrow with lanterns.",
+        effects: { happiness: 1, hp: 0, energy: 5 }, price: 60 },
+      { title: "Rooftop Garden", description: `Sun, flowers and breeze for ${input.petTitle}.`, scene: "A sunny rooftop garden at noon.",
+        effects: { happiness: 6, hp: 0, energy: -2 }, price: 90 },
+      { title: "Crystal Spring", description: `Healing water ${input.petTitle} can soak in.`, scene: "A glowing cave spring.",
+        effects: { happiness: 0, hp: 6, energy: 1 }, price: 120 },
+    ];
+  }
+  async generatePetRoomArt(input: AiPetRoomArtInput): Promise<AiImageOutput> {
+    const label = input.scene.replace(/[<&>]/g, "").slice(0, 24) || "Room";
+    const bytes = await sharp(Buffer.from(
+      `<svg width="1024" height="1536" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1536" fill="#e6f2e0"/><rect x="312" y="160" width="400" height="360" fill="${input.windowKey.hex}"/><rect y="1000" width="1024" height="536" fill="#c9a77c"/><text x="512" y="720" text-anchor="middle" font-family="system-ui" font-size="56" fill="#3b2a5a">${label}</text></svg>`,
+    )).png().toBuffer();
+    return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
   }
   async respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus> {
     return { values: {}, caption: `${input.petTitle}: ${input.action.description}` };

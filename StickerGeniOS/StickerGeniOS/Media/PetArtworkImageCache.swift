@@ -13,6 +13,8 @@ actor PetArtworkImageCache {
 
     private nonisolated let cache: ImageCache
     private nonisolated let weatherCache: ImageCache
+    /// Rooms are drawn once and never change, so a room is kept until the cache needs the space.
+    private nonisolated let roomCache: ImageCache
     private static let weatherScopeKey = "pet.weatherArtwork.scope.v1"
     private var weatherScope = UserDefaults.standard.string(forKey: weatherScopeKey)
     private var weatherReset: Task<Void, Never>?
@@ -38,6 +40,10 @@ actor PetArtworkImageCache {
         weatherCache.diskStorage.config.expiration = .never
         weatherCache.diskStorage.config.sizeLimit = 0
         weatherCache.memoryStorage.config.totalCostLimit = 8 * 1024 * 1024
+        roomCache = ImageCache(name: "pet-rooms-v1")
+        roomCache.diskStorage.config.expiration = .never
+        roomCache.diskStorage.config.sizeLimit = 64 * 1024 * 1024
+        roomCache.memoryStorage.config.totalCostLimit = 24 * 1024 * 1024
     }
 
     nonisolated var diskDirectory: URL { cache.diskStorage.directoryURL }
@@ -47,6 +53,7 @@ actor PetArtworkImageCache {
         await weatherReset?.value
         await cache.clearCache()
         await weatherCache.clearCache()
+        await roomCache.clearCache()
     }
 
     /// Weather looks stay until the owner changes pets or this sticker's playback changes.
@@ -88,6 +95,13 @@ actor PetArtworkImageCache {
         guard scope == weatherScope else { throw CancellationError() }
         return try await load(key: "weather.\(scope).\(artKey).\(size)", cache: weatherCache, options: weatherOptions) {
             try await api.petWeatherArt(size: size, artKey: artKey)
+        }
+    }
+
+    /// One room's drawing. Keyed by its `artKey`, which names a drawing that never changes.
+    func loadRoom(roomID: String, artKey: String, api: StickerAPIClientProtocol) async throws -> UIImage {
+        try await load(key: "room.\(artKey)", cache: roomCache, options: weatherOptions) {
+            try await api.petRoomArt(roomID: roomID)
         }
     }
 

@@ -650,6 +650,16 @@ export const userPets = pgTable("user_pets", {
   illnessJson: jsonb("illness_json").$type<PetIllness>(),
   /** Doses of medicine the pet has, won from its daily encounters. One cures an illness. */
   medicine: integer("medicine").notNull().default(0),
+  /**
+   * The room the pet lives in, bought from its shop: drawn behind it on the tab, and good for it
+   * once a day. Null for the plain page. Kept when the owner adopts another pet, like the room is.
+   */
+  roomId: text("room_id").references((): AnyPgColumn => petRooms.id, { onDelete: "set null" }),
+  /** The owner's local date the room last comforted the pet, so it does once a day. */
+  roomEffectDate: text("room_effect_date"),
+  /** When the room shop last put new rooms up, and a refresh in flight, like the items'. */
+  roomsOfferedAt: timestampColumn("rooms_offered_at"),
+  roomsClaimedAt: timestampColumn("rooms_claimed_at"),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
@@ -657,15 +667,16 @@ export const userPets = pgTable("user_pets", {
 ]);
 
 /**
- * The owner's gold, shared by every pet they ever have: adopting another pet or letting one go
- * leaves it where it is. Earned by walking and a daily allowance, spent on actions and items.
+ * What the owner's gold has been paid for, shared by every pet they ever have: adopting another
+ * pet or letting one go leaves it where it is. The gold itself is a balance in RxSubscription,
+ * unit `gold`, next to the owner's points — so a points pack can carry gold too. Earned by walking,
+ * a daily allowance and making stickers, spent on actions, items and rooms.
  *
- * Written only alongside a pet's stats, guarded by `version` so two changes racing never pay or
- * spend the same gold twice.
+ * Written only alongside a pet's stats, guarded by `version` so two changes racing never pay the
+ * same day or steps twice.
  */
 export const userWallets = pgTable("user_wallets", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  gold: integer("gold").notNull(),
   /** The steps already paid out on the phone's local date, so a walk is only paid once. */
   walkGoldJson: jsonb("walk_gold_json").$type<PetWalkGold>(),
   /** The owner's local date the daily gold was last granted on. */
@@ -673,25 +684,62 @@ export const userWallets = pgTable("user_wallets", {
   version: integer("version").notNull().default(0),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
-}, (table) => [
-  check("user_wallets_gold_check", sql`${table.gold} >= 0`),
-]);
+});
 export type UserWalletRow = typeof userWallets.$inferSelect;
 
 /**
- * Gold granted for something the owner did outside the pet, one row per thing, so a retried step
- * never pays the same sticker twice. The id names what was paid for, like `sticker:<jobId>`.
+ * Every move of the owner's gold, written here first and then carried to RxSubscription — the
+ * outbox that keeps a gold change and the pet change it belongs to together. A row is written in
+ * the same transaction as what it pays for, so a retried step never pays the same sticker twice,
+ * and is carried with its own id as the idempotency key, so a retried carry never moves it twice.
+ * `settledAt` is set once RxSubscription has it.
+ *
+ * The id names what moved the gold, like `sticker:<jobId>` or `pet:<uuid>`. A spend (negative
+ * `gold`) is held in RxSubscription before its row is written, and its row settles that hold.
  */
 export const userWalletGrants = pgTable("user_wallet_grants", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["sticker"] }).notNull(),
+  kind: text("kind", { enum: ["sticker", "pet", "starting"] }).notNull(),
   gold: integer("gold").notNull(),
+  /** The RxSubscription hold a spend settles. */
+  reservationId: text("reservation_id"),
+  /** The RxSubscription environment the gold moves in, or null for the deployment's own. */
+  billingEnvironment: text("billing_environment", { enum: ["xcode", "sandbox", "production"] }),
+  settledAt: timestampColumn("settled_at"),
   createdAt: timestampColumn("created_at").notNull(),
 }, (table) => [
   index("user_wallet_grants_user_idx").on(table.userId, table.createdAt),
-  check("user_wallet_grants_kind_check", sql`${table.kind} IN ('sticker')`),
+  index("user_wallet_grants_unsettled_idx").on(table.userId).where(sql`${table.settledAt} IS NULL`),
+  check("user_wallet_grants_kind_check", sql`${table.kind} IN ('sticker', 'pet', 'starting')`),
+  check("user_wallet_grants_billing_environment_check",
+    sql`${table.billingEnvironment} IN ('xcode', 'sandbox', 'production')`),
 ]);
+export type UserWalletGrantRow = typeof userWalletGrants.$inferSelect;
+
+/**
+ * A room the owner's pets can live in, drawn by the pet's agent: offered in the room shop until it
+ * is bought or the shop moves on, then the owner's for good, whichever pet they have.
+ */
+export const petRooms = pgTable("pet_rooms", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  /** What living here does to the pet, once a day. Gold is never one of them. */
+  effectsJson: jsonb("effects_json").$type<{ happiness: number; hp: number; energy: number }>().notNull(),
+  price: integer("price").notNull(),
+  /** Names the drawing in storage; a room is drawn once and never changes. */
+  artKey: text("art_key").notNull(),
+  state: text("state", { enum: ["offered", "owned"] }).notNull(),
+  createdAt: timestampColumn("created_at").notNull(),
+  purchasedAt: timestampColumn("purchased_at"),
+}, (table) => [
+  index("pet_rooms_user_idx").on(table.userId, table.state, table.createdAt),
+  check("pet_rooms_state_check", sql`${table.state} IN ('offered', 'owned')`),
+  check("pet_rooms_price_check", sql`${table.price} >= 0`),
+]);
+export type PetRoomRow = typeof petRooms.$inferSelect;
 
 export type PetMusing = { text: string; afterMinutes: number };
 export type PetStatus = { values: StickerControlValues; caption: string; animateEverySeconds?: number; musings?: PetMusing[] };
@@ -737,7 +785,7 @@ export const petEvents = pgTable("pet_events", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   lifeId: text("life_id").notNull(),
   stickerId: text("sticker_id"),
-  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine"] }).notNull(),
+  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room"] }).notNull(),
   title: text("title").notNull(),
   detail: text("detail").notNull(),
   effectsJson: jsonb("effects_json").$type<PetStatsValues>().notNull(),

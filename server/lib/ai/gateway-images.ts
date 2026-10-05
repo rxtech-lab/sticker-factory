@@ -11,7 +11,7 @@ import { recordImageApiCost, recordTextApiCost, recordVideoApiCost, reportAiStep
 import { ApiError } from "@/lib/http/errors";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
 import { downscaleForModelInput, inspectImage, normalizeTransparentPng } from "@/lib/storage/r2";
-import type { AiImageInput, AiImageOutput, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiVideoInput, AiVideoOutput } from "./gateway-contracts";
+import type { AiImageInput, AiImageOutput, AiPetRoomArtInput, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiVideoInput, AiVideoOutput } from "./gateway-contracts";
 import { IMAGE_TIMEOUT_MS, VIDEO_FPS, VIDEO_MODEL, VIDEO_RESOLUTION, VIDEO_TIMEOUT_MS, assertImageInputBounds, generateKeyedStickerImage, generateThroughImageModel, userTurn, videoInstruction } from "./gateway-models";
 
 export async function selectImageReferences(
@@ -326,6 +326,44 @@ export async function generateStickerVideo(input: AiVideoInput): Promise<AiVideo
     mimeType: result.video.mediaType || "video/mp4",
     modelId: VIDEO_MODEL,
   };
+}
+
+/** Edges of a room drawing: portrait, like the Pet tab it fills. */
+export const PET_ROOM_ART_WIDTH = 1024;
+export const PET_ROOM_ART_HEIGHT = 1536;
+
+/**
+ * A room for the pet to stand in, as a portrait scene that fills its frame. Unlike a sticker it is
+ * the backdrop, so it skips the transparency path, and the pet itself is never drawn in it. Its
+ * windows are a screen of `windowKey` instead of a view: the app keys them out and shows the live
+ * weather through them.
+ */
+export async function generatePetRoomArt(input: AiPetRoomArtInput): Promise<AiImageOutput> {
+  const key = `pure flat ${input.windowKey.name} (${input.windowKey.hex})`;
+  const prompt = [
+    input.scene,
+    "Draw this room as one full-bleed portrait illustration that fills the whole frame, seen from the front at",
+    "the pet's eye level. Leave the lower middle of the floor open and uncluttered: a pet will stand there.",
+    "Keep the middle calm and softly lit so a character in front of it reads clearly.",
+    "Give the room at least one large window in its upper half, framed in the style of the room. Every pane of",
+    `glass and every opening to the outside must be filled edge to edge with ${key}, like a film green screen:`,
+    "no sky, landscape, weather, reflections, curtains across it, light rays or shading inside it, just that one flat colour.",
+    `Use ${input.windowKey.name} nowhere else in the room: no ${input.windowKey.name} walls, plants, objects or glow.`,
+    input.reference ? "Match the reference character's art style, outline, palette and shading, but do NOT draw the character or any creature." : "",
+    "No characters, animals, people, words, letters, numbers, frames, borders or UI.",
+  ].filter(Boolean).join(" ");
+  const result = await generateImage({
+    model: gateway.imageModel(process.env.AI_IMAGE_MODEL ?? "openai/gpt-image-2"),
+    prompt: input.reference ? { text: prompt, images: [input.reference.bytes] } : prompt,
+    n: 1,
+    size: `${PET_ROOM_ART_WIDTH}x${PET_ROOM_ART_HEIGHT}`,
+    maxRetries: 1,
+    abortSignal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
+  });
+  await reportAiStepUsage(result);
+  await recordImageApiCost(result);
+  const bytes = await sharp(Buffer.from(result.image.uint8Array)).png().toBuffer();
+  return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
 }
 
 export async function generateConceptImage(input: {

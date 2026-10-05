@@ -268,6 +268,16 @@
     "%@ tokens" : {
 
     },
+    "%@ will be released for %@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ will be released for %2$@. %3$@"
+          }
+        }
+      }
+    },
     "%@, %@" : {
       "localizations" : {
         "en" : {
@@ -1311,6 +1321,9 @@
         }
       }
     },
+    "Adopt %@" : {
+
+    },
     "Adopt any controllable sticker you made or installed as your pet." : {
 
     },
@@ -1940,6 +1953,12 @@
         }
       }
     },
+    "Buy for %lld Gold" : {
+
+    },
+    "Buy This Room?" : {
+
+    },
     "by %@" : {
       "localizations" : {
         "zh-CN" : {
@@ -2120,6 +2139,9 @@
 
     },
     "Change Pet" : {
+
+    },
+    "Change Pet?" : {
 
     },
     "Change the animation after you make it. Try a new move, fine-tune the timing, or keep the version that feels just right." : {
@@ -3846,6 +3868,9 @@
         }
       }
     },
+    "Every day your pet lives here" : {
+
+    },
     "Every layer needs a name." : {
 
     },
@@ -4977,6 +5002,9 @@
     "Items" : {
 
     },
+    "Its stats, items and medicine are gone for good. Your gold stays with you." : {
+
+    },
     "Just an example of this sticker type — your own sticker won’t look like this." : {
 
     },
@@ -5288,6 +5316,9 @@
 
     },
     "Listening… tap to stop" : {
+
+    },
+    "Living here" : {
 
     },
     "Load earlier messages" : {
@@ -5950,6 +5981,12 @@
     "Move around the canvas" : {
 
     },
+    "Move In" : {
+
+    },
+    "Move Out" : {
+
+    },
     "Move to draft" : {
       "localizations" : {
         "zh-CN" : {
@@ -5970,6 +6007,12 @@
 
     },
     "Moves around" : {
+
+    },
+    "Moving into %@…" : {
+
+    },
+    "Moving your pet…" : {
 
     },
     "MP4 background" : {
@@ -6112,6 +6155,9 @@
           }
         }
       }
+    },
+    "New rooms %@" : {
+
     },
     "New sticker" : {
       "extractionState" : "stale",
@@ -6964,6 +7010,9 @@
     "Opening the diary…" : {
 
     },
+    "Opening the room shop…" : {
+
+    },
     "Opens full screen" : {
       "localizations" : {
         "zh-CN" : {
@@ -7569,6 +7618,9 @@
       }
     },
     "Preview unavailable" : {
+
+    },
+    "Price" : {
 
     },
     "Privacy Policy" : {
@@ -8202,6 +8254,9 @@
         }
       }
     },
+    "Release %@?" : {
+
+    },
     "Release Pet" : {
 
     },
@@ -8661,6 +8716,21 @@
       }
     },
     "Right" : {
+
+    },
+    "Room" : {
+
+    },
+    "Room Shop" : {
+
+    },
+    "Room Unavailable" : {
+
+    },
+    "Rooms" : {
+
+    },
+    "Rooms your pet dreamed up. Each is good for your pet in its own way, every day it lives there." : {
 
     },
     "Running…" : {
@@ -11028,6 +11098,9 @@
         }
       }
     },
+    "The shop has moved on from this room." : {
+
+    },
     "The sticker didn't finish publishing. Open it from your library and export it again." : {
       "localizations" : {
         "zh-CN" : {
@@ -11553,6 +11626,26 @@
     },
     "Title and summary" : {
 
+    },
+    "Tomorrow %@–%@%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Tomorrow %1$@–%2$@%3$@"
+          }
+        }
+      }
+    },
+    "Tomorrow: %@, %@ to %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Tomorrow: %1$@, %2$@ to %3$@"
+          }
+        }
+      }
     },
     "Too many stickers for one Telegram set." : {
       "localizations" : {
@@ -12720,6 +12813,9 @@
         }
       }
     },
+    "You bought everything on offer. New rooms arrive soon." : {
+
+    },
     "You can attach up to eight reference images." : {
 
     },
@@ -12748,6 +12844,9 @@
           }
         }
       }
+    },
+    "You need %lld more gold. Walks and new stickers earn it." : {
+
     },
     "You’ll review a static visual reference before we build the animation." : {
 
@@ -12938,6 +13037,12 @@
         }
       }
     },
+    "Your pet" : {
+
+    },
+    "Your Pet" : {
+
+    },
     "Your pet can feel the weather where you are and notice how much you walk. It changes their mood and energy — a rainy day might delight one pet and sulk another." : {
 
     },
@@ -12956,7 +13061,13 @@
     "Your pet is choosing and drawing some things…" : {
 
     },
+    "Your pet is dreaming up and drawing some rooms…" : {
+
+    },
     "Your pet is still thinking of something to do. Check back in a moment." : {
+
+    },
+    "Your pet moves into %@ right away. You keep the room, and can move back any time." : {
 
     },
     "Your pet picks these for how they feel right now. They change as their mood does." : {
@@ -12982,6 +13093,9 @@
       }
     },
     "Your phone couldn't find where you are. Check that Location Services is on, then try again." : {
+
+    },
+    "Your Rooms" : {
 
     },
     "Your session expired. Please sign in again." : {

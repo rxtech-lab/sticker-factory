@@ -41,7 +41,7 @@ struct PetView: View {
 
     var body: some View {
         content
-            .background { PosterPaper() }
+            .background { PetRoomBackdrop(image: model.pet == nil ? nil : model.roomArt, weather: model.pet?.signals?.weather) }
             .safeAreaInset(edge: .top) {
                 // The picker shows its own errors while it is up; this is for the tab's.
                 if let errorMessage = model.errorMessage, !isPresentingSheet {
@@ -896,6 +896,8 @@ struct PetActivityOverlay: View {
                     case .findingWeather: Text("Finding the weather where you are…")
                     case .deciding: Text("Seeing how it turns out…")
                     case .givingMedicine: Text("Giving your pet its medicine…")
+                    case .buyingRoom(let title): Text("Moving into \(title)…")
+                    case .movingRoom: Text("Moving your pet…")
                     }
                 }
                 .font(.footnote)

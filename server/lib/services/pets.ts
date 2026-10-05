@@ -13,21 +13,24 @@ import { describeError, traceEvent } from "@/lib/observability/trace";
 import type { RenderAssets } from "@/lib/render/document-svg";
 import { renderPosePng } from "@/lib/render/renditions";
 import { downscaleForModelInput, getObjectStore } from "@/lib/storage/r2";
+import { goldBalance } from "@/lib/subscription/gold";
 import { pickEvent, SEND_EVENT_CHANCE } from "@/lib/pets/events";
 import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
 import { petLog, petRandom } from "@/lib/pets/log";
 import { localHour, mergeContext, resolveSignals, signalEffects } from "@/lib/pets/signals";
 import { isWalkPayoutDue, walkReward } from "@/lib/pets/walk";
 import { dailyGold } from "@/lib/pets/daily-gold";
+import { roomComfortDate } from "@/lib/pets/rooms";
 import { addEffects, applyEffects, initialStats, personalizeEffects, preferenceEffects, withoutGold, ZERO_EFFECTS } from "@/lib/pets/stats";
 import { getReadyOwnedAssets } from "./assets";
 import { generateActions, ownerMoment, refreshActions, sentStickerImage } from "./pet-actions";
 import { canEvolve, serializePetEvolution, startPetEvolution } from "./pet-evolution";
 import { openEncounter, serializeEncounter } from "./pet-encounters";
 import { drawPetWeatherArt, serializePetWeatherArt } from "./pet-weather";
-import { commitPetChange, currentStats, ensurePetIdentity, ensureWallet, petRow, walletGold, type PetChange, type PetRow } from "./pet-state";
+import { commitPetChange, currentStats, ensurePetIdentity, ensureWallet, petRow, type PetChange, type PetRow } from "./pet-state";
 import { startPetLife } from "./pet-life-runner";
 import { refreshPetItems } from "./pet-items";
+import { serializePetRoom } from "./pet-rooms";
 import { loadPlaybackPayload, readablePlayback } from "./playback";
 import { selectStickerSummaries, serializeStickerSummary } from "./sticker-summaries";
 
@@ -50,6 +53,7 @@ export type PetResponse = {
     encounter: ReturnType<typeof serializeEncounter>;
     illness: { name: string; since: string } | null;
     medicine: number;
+    room: ReturnType<typeof serializePetRoom>;
   } | null;
 };
 
@@ -99,8 +103,11 @@ export async function getPet(db: Database, userId: string): Promise<PetResponse>
   // Pets adopted before identities get one on first read, and a life of their own.
   let pet = await ensurePetIdentity(db, row, describePet(db, playback.sticker, playback.revision));
   if (!pet.lifeRunId && pet.lifeId) await startPetLife(db, userId, pet.lifeId);
-  // Today's gold is there the moment the owner looks, not only at the pet's next visit.
-  if (pet.lifeId && dailyGold(pet.contextJson, pet.wallet, new Date())) {
+  // Today's gold, and the room's comfort, are there the moment the owner looks, not only at the
+  // pet's next visit.
+  const now = new Date();
+  if (pet.lifeId && (dailyGold(pet.contextJson, pet.wallet, now)
+    || (pet.room && roomComfortDate(pet.contextJson, pet.roomEffectDate, now)))) {
     await commitPetChange(db, userId, { lifeId: pet.lifeId, changes: [] });
     pet = await petRow(db, userId) ?? pet;
   }
@@ -140,7 +147,7 @@ async function serializePet(
     nextEventAt: row.nextEventAt?.toISOString() ?? null, evolution: serializePetEvolution(row.evolutionJson),
     weatherArt: await serializePetWeatherArt(db, row.stickerId, row.signalsJson, playback.revision.id),
     encounter: serializeEncounter(row.lifeId ? await openEncounter(db, userId, row.lifeId) : undefined),
-    illness: row.illnessJson, medicine: row.medicine } };
+    illness: row.illnessJson, medicine: row.medicine, room: serializePetRoom(row) } };
 }
 
 /**
@@ -187,7 +194,7 @@ export async function setPet(db: Database, userId: string, input: SetPetRequest)
   // Gold is the owner's, not the pet's: a new pet spends from the same purse as the last one.
   const petStats = withoutGold(initialStats(identity));
   await ensureWallet(db, userId, context?.timeZone);
-  const stats = { ...petStats, gold: await walletGold(db, userId) };
+  const stats = { ...petStats, gold: await goldBalance(db, userId) };
   const lifeId = crypto.randomUUID();
   const fresh = {
     stickerId: input.stickerId,
@@ -297,6 +304,7 @@ export async function interactWithPet(
     const caption = answer.caption.trim();
     const committed = await commitPetChange(db, userId, {
       lifeId: pet.lifeId!,
+      price,
       where: eq(userPets.interactionId, interactionId),
       set: { statusJson: { values, caption, animateEverySeconds: answer.animateEverySeconds, musings: answer.musings }, statusUpdatedAt: new Date(), interactionId: null,
         ...(actions ? { actionsJson: actions } : {}) },

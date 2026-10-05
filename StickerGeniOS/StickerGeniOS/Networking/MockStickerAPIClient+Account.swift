@@ -191,6 +191,79 @@ extension MockStickerAPIClient {
 
     func clearPet() async throws { adoptedPet = nil }
 
+    static let sampleRooms: [PetRoom] = [
+        PetRoom(id: "mock-room-burrow", title: "Moss Burrow", description: "A soft, quiet den for long naps.",
+                effects: .init(happiness: 1, hp: 0, energy: 5), price: 15, artKey: "mock-room-burrow", owned: false),
+        PetRoom(id: "mock-room-garden", title: "Rooftop Garden", description: "Sun, flowers and a breeze.",
+                effects: .init(happiness: 6, hp: 0, energy: -2), price: 90, artKey: "mock-room-garden", owned: false),
+        PetRoom(id: "mock-room-spring", title: "Crystal Spring", description: "Healing water to soak in.",
+                effects: .init(happiness: 0, hp: 6, energy: 1), price: 120, artKey: "mock-room-spring", owned: false)
+    ]
+
+    private var mockRooms: PetRooms {
+        PetRooms(
+            activeRoomId: adoptedPet?.room?.id,
+            owned: petRoomList.filter(\.owned), offers: petRoomList.filter { !$0.owned },
+            offersRefreshAt: Date().addingTimeInterval(20 * 60 * 60), drawing: false
+        )
+    }
+
+    func petRooms() async throws -> PetRooms { mockRooms }
+
+    func purchasePetRoom(roomID: String) async throws -> PetRoomChangeResponse {
+        guard var pet = adoptedPet else {
+            throw APIErrorEnvelope(error: .init(code: "PET_NOT_FOUND", message: "Choose a pet first.", requestId: "mock-pet", details: nil))
+        }
+        guard let index = petRoomList.firstIndex(where: { $0.id == roomID && !$0.owned }) else {
+            throw APIErrorEnvelope(error: .init(
+                code: "PET_ROOM_OWNED", message: "You already have this room.", requestId: "mock-pet", details: nil
+            ))
+        }
+        let room = petRoomList[index]
+        guard room.price <= pet.stats.gold else {
+            throw APIErrorEnvelope(error: .init(
+                code: "PET_NOT_ENOUGH_GOLD", message: "Not enough gold.", requestId: "mock-pet", details: nil
+            ))
+        }
+        petRoomList[index].owned = true
+        pet.stats.gold -= room.price
+        pet.room = room.ref
+        adoptedPet = pet
+        return PetRoomChangeResponse(pet: pet, rooms: mockRooms)
+    }
+
+    func setPetRoom(roomID: String?) async throws -> PetRoomChangeResponse {
+        guard var pet = adoptedPet else {
+            throw APIErrorEnvelope(error: .init(code: "PET_NOT_FOUND", message: "Choose a pet first.", requestId: "mock-pet", details: nil))
+        }
+        if let roomID {
+            guard let room = petRoomList.first(where: { $0.id == roomID && $0.owned }) else {
+                throw APIErrorEnvelope(error: .init(
+                    code: "PET_ROOM_NOT_FOUND", message: "Buy this room before moving your pet in.", requestId: "mock-pet", details: nil
+                ))
+            }
+            pet.room = room.ref
+        } else {
+            pet.room = nil
+        }
+        adoptedPet = pet
+        return PetRoomChangeResponse(pet: pet, rooms: mockRooms)
+    }
+
+    /// A sky and a floor in a colour of the room's own, portrait like the server's drawings.
+    func petRoomArt(roomID: String) async throws -> Data {
+        guard let index = petRoomList.firstIndex(where: { $0.id == roomID }) else { throw StickerAPIError.invalidResponse }
+        let hues: [CGFloat] = [0.3, 0.12, 0.55]
+        let hue = hues[index % hues.count]
+        let bounds = CGRect(x: 0, y: 0, width: 384, height: 576)
+        return UIGraphicsImageRenderer(bounds: bounds).pngData { context in
+            UIColor(hue: hue, saturation: 0.25, brightness: 0.95, alpha: 1).setFill()
+            context.fill(bounds)
+            UIColor(hue: hue, saturation: 0.4, brightness: 0.7, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: bounds.height * 0.66, width: bounds.width, height: bounds.height * 0.34))
+        }
+    }
+
     /// The weather's symbol in colour, standing in for the server's drawing of it in the pet's style.
     func petWeatherArt(size: Int) async throws -> Data {
         guard let weather = adoptedPet?.signals?.weather, adoptedPet?.weatherArt != nil else {

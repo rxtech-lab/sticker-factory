@@ -172,6 +172,17 @@ hold estimates, `credits.ts` the hold/settle/release cycle and the permission ch
   missing item is `503 DAILY_USAGE_NOT_CONFIGURED` and an unreadable one
   `503 DAILY_USAGE_UNAVAILABLE` — both items must exist in the sandbox **and** production
   RxSubscription applications before this deploys, or generation and chat fail closed.
+- Pet gold is an RxSubscription balance too, unit `gold`, beside points (`lib/subscription/gold.ts`),
+  so a points pack can carry gold: give the pack a `gold` bonus grant in RxSubscription and its
+  purchase credits both. Every gold move is written to `user_wallet_grants` in the same transaction
+  as the pet change it belongs to, then carried to RxSubscription keyed by the row id; a spend is
+  held first (`balances/reserve`) and its row settles the hold, so an outage only delays gold and a
+  retry never moves it twice. Outside a request (the pet's life, sticker rewards) gold uses the
+  job's billing environment, else `users.last_billing_environment`, else production. The `gold`
+  unit must exist in the sandbox **and** production RxSubscription applications before this
+  deploys. Migration `0029_gold_in_rxsubscription` drops the old wallet balances without carrying
+  them over: existing owners start from zero, new owners from the starting purse. With billing
+  unconfigured (tests, local development) the rows themselves are the purse.
 - Set `RX_SUBSCRIPTION_URL`, `RX_SUBSCRIPTION_SANDBOX_API_KEY`, and
   `RX_SUBSCRIPTION_PRODUCTION_API_KEY` to serve TestFlight and App Store users together. Both
   keys are server-only secrets. Every Apple surface that can spend credits sends

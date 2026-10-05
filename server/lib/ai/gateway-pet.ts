@@ -6,8 +6,9 @@ import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { ENCOUNTER_PENALTY_MAX, ENCOUNTER_REWARD_MAX } from "@/lib/pets/encounters";
+import { ROOM_EFFECT_MAX, ROOM_EFFECT_MIN, ROOM_OFFER_COUNT, ROOM_PRICE_MAX, ROOM_PRICE_MIN } from "@/lib/pets/rooms";
 import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_ITEM_RESTORE_ENERGY_MAX, PET_ITEM_RESTORE_ENERGY_MIN, PET_ITEM_RESTORE_PRICE_MAX, PET_ITEM_RESTORE_PRICE_MIN, PET_ANIMATE_EVERY_MAX, PET_ANIMATE_EVERY_MIN, PET_CLASSES, PET_MUSING_AFTER_MAX, PET_MUSING_AFTER_MIN, PET_MUSINGS_MAX, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
-import type { AiOwnerMoment, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEvolutionChoice, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, PetAction } from "./gateway-contracts";
+import type { AiOwnerMoment, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEvolutionChoice, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetRoom, AiPetStatus, AiPetStatusContext, PetAction } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
 
 const PetStatusInputSchema = z.object({
@@ -187,6 +188,60 @@ export async function generatePetActions(input: AiPetActionsContext): Promise<Om
     throw new Error("Pet agent generated duplicate actions");
   }
   return actions;
+}
+
+/** The rooms the pet's shop offers: places it would love to live, each good for it in its own way. */
+export async function generatePetRooms(input: AiPetActionsContext): Promise<AiPetRoom[]> {
+  const effect = z.number().int().min(ROOM_EFFECT_MIN).max(ROOM_EFFECT_MAX);
+  const schema = z.object({ rooms: z.array(z.object({
+    title: z.string().trim().min(1).max(32),
+    description: z.string().trim().min(1).max(140),
+    scene: z.string().trim().min(1).max(400),
+    effects: z.object({ happiness: effect, hp: effect, energy: effect }).strict(),
+    price: z.number().int().min(ROOM_PRICE_MIN).max(ROOM_PRICE_MAX),
+  }).strict()).length(ROOM_OFFER_COUNT) }).strict();
+  const result = await generateText({
+    onLanguageModelCallEnd: reportAiStepUsage,
+    model: gateway(process.env.AI_SUMMARY_MODEL ?? process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    system: [
+      `Design exactly ${ROOM_OFFER_COUNT} distinct rooms this pet could live in, for its owner to buy with gold.`,
+      "A room is a whole place — a cozy burrow, a rooftop greenhouse, a starlit library, a beach hut — that suits",
+      "the pet's personality, likes, class and look; let its location, weather, mood and the news inspire some of them.",
+      "Make the three clearly different in feel: for example one restful, one lively, one healing.",
+      "Give each a short title, a description of what living there is like for this pet, and a scene: a vivid",
+      "visual description of the empty room for an illustrator, with an open floor in the middle where the pet will stand",
+      "and at least one big window to the outside; leave what is outside the window undescribed, it shows the owner's real weather.",
+      `Set what living there does to the pet each day, each stat from ${ROOM_EFFECT_MIN} to ${ROOM_EFFECT_MAX}: restful rooms`,
+      "restore energy, lively rooms lift happiness but may tire it, healing rooms restore HP. Every room helps at least",
+      "one stat, and the strongest rooms have a small drawback.",
+      `Price each from ${ROOM_PRICE_MIN} to ${ROOM_PRICE_MAX} gold by how much it helps: modest rooms near ${ROOM_PRICE_MIN},`,
+      "rooms with big daily effects much more. Gold comes mostly from walks, about 10 to 40 a day.",
+      "Write titles and descriptions in the language of the pet's name. Return only through set-pet-rooms.",
+    ].join(" "),
+    messages: userTurn([
+      `Pet: ${input.petTitle}`,
+      describeIdentity(input.identity),
+      input.stats ? `Stats: ${JSON.stringify(input.stats)}` : "",
+      input.mood ? `Mood: ${input.mood}` : "",
+      describeMoment(input),
+      describeSignals(input.signals),
+      input.previous?.length ? `Rooms already offered or owned, do not repeat: ${input.previous.join(", ")}` : "",
+      input.image ? "The attached picture is the pet; design rooms that suit its look." : "",
+    ].filter(Boolean).join("\n\n"), input.image ? [input.image] : []),
+    tools: { "set-pet-rooms": tool({ description: "Offer these rooms in the pet's shop.", inputSchema: schema, execute: async (value) => value }) },
+    toolChoice: "required",
+    stopWhen: [hasToolCall("set-pet-rooms"), stepCountIs(2)],
+    maxRetries: 1,
+    abortSignal: AbortSignal.timeout(30_000),
+  });
+  await recordTextApiCost(result);
+  const call = result.toolCalls.find((candidate) => candidate?.toolName === "set-pet-rooms");
+  if (!call) throw new Error("Pet agent did not design rooms");
+  const rooms = schema.parse(call.input).rooms;
+  if (new Set(rooms.map((room) => room.title.toLocaleLowerCase())).size !== rooms.length) {
+    throw new Error("Pet agent designed duplicate rooms");
+  }
+  return rooms;
 }
 
 /** Four objects the pet chooses from its current place, weather, mood and news. */

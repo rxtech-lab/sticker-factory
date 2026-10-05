@@ -95,6 +95,15 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func resolvePetEncounter(encounterID: String, choiceID: String) async throws -> ResolvePetEncounterResponse
     /// Gives the ill pet one dose of medicine, curing it. Refused while it is well or has none.
     func givePetMedicine() async throws -> Pet?
+    /// The owner's rooms, the room shop's offers, and the room the pet lives in. A shop that is due
+    /// new rooms starts drawing them; `drawing` says so, and a later call carries them.
+    func petRooms() async throws -> PetRooms
+    /// Buys a room from the shop with the owner's gold and moves the pet in.
+    func purchasePetRoom(roomID: String) async throws -> PetRoomChangeResponse
+    /// Moves the pet into a room the owner has, or back onto the plain page with nil.
+    func setPetRoom(roomID: String?) async throws -> PetRoomChangeResponse
+    /// One room's drawing, owned or on offer, as portrait image data.
+    func petRoomArt(roomID: String) async throws -> Data
     /// Hands the server the phone's coarse context for the pet's life workflow to read on its next
     /// visit. Returns whether it was kept — false when there is no pet to keep it for — and what the
     /// owner's walk paid the pet, when these steps paid it out.
@@ -147,6 +156,10 @@ extension StickerAPIClientProtocol {
         throw StickerAPIError.invalidResponse
     }
     func givePetMedicine() async throws -> Pet? { throw StickerAPIError.invalidResponse }
+    func petRooms() async throws -> PetRooms { throw StickerAPIError.invalidResponse }
+    func purchasePetRoom(roomID: String) async throws -> PetRoomChangeResponse { throw StickerAPIError.invalidResponse }
+    func setPetRoom(roomID: String?) async throws -> PetRoomChangeResponse { throw StickerAPIError.invalidResponse }
+    func petRoomArt(roomID: String) async throws -> Data { throw StickerAPIError.invalidResponse }
 
     /// Clients that cannot observe the transfer still upload; they just never report partway.
     func upload(
