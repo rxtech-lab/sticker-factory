@@ -39,10 +39,10 @@ final class ChatUITests: StickerGeniOSUITestCase {
         XCTAssertTrue(menu.waitForExistence(timeout: 15))
         menu.tap()
 
-        XCTAssertTrue(app.buttons["export-sticker"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["rename-sticker"].exists)
-        XCTAssertTrue(app.buttons["view-versions"].exists)
-        XCTAssertTrue(app.buttons["delete-project"].exists)
+        XCTAssertTrue(menuItem("export-sticker", label: "Export").waitForExistence(timeout: 15))
+        XCTAssertTrue(menuItem("rename-sticker", label: "Rename sticker").exists)
+        XCTAssertTrue(menuItem("view-versions", label: "Version history").exists)
+        XCTAssertTrue(menuItem("delete-project", label: "Delete project").exists)
     }
 
     @MainActor
