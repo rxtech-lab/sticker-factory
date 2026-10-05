@@ -127,6 +127,12 @@ class StickerGeniOSUITestCase: XCTestCase {
     func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
+
+    /// A button inside an open `Menu`. iOS 27 drops the identifiers of menu items, keeping only
+    /// their labels, so this matches either.
+    func menuItem(_ identifier: String, label: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", identifier, label)).firstMatch
+    }
 }
 
 @MainActor

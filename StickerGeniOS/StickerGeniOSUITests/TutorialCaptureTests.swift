@@ -103,7 +103,8 @@ final class TutorialCaptureTests: XCTestCase {
         element("sticker-controls-apply").tap()
         element("dismiss-full-screen-player").tap()
         element("sticker-actions-menu").tap()
-        element("export-sticker").tap()
+        // iOS 27 drops menu items' identifiers and keeps their labels.
+        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", "export-sticker", "Export")).firstMatch.tap()
         XCTAssertTrue(element("sticker-export-sheet").waitForExistence(timeout: 15))
         capture("export")
 

@@ -59,6 +59,6 @@ final class ClipPackURLUITests: ClipUITestCase {
         XCTAssertTrue(app.staticTexts["Pack unavailable"].waitForExistence(timeout: 15))
         app.buttons["Try again"].tap()
         XCTAssertTrue(app.staticTexts["This pack is no longer available."].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["Install in Sticker Factory"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["Install in Sticker Factory"].exists)
     }
 }

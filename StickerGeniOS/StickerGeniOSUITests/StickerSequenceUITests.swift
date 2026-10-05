@@ -128,9 +128,9 @@ final class StickerSequenceUITests: XCTestCase {
         export.tap()
         XCTAssertTrue(element("viewer-export-format").waitForExistence(timeout: 15))
         element("viewer-export-start").tap()
-        // A real encode followed by the system share sheet, both of which slow down sharply when
-        // sibling simulator clones are competing for the host.
-        XCTAssertTrue(app.buttons["Copy"].waitForExistence(timeout: 90) || app.otherElements["ActivityListView"].exists)
+        // A real encode, which slows down sharply when sibling simulator clones are competing for
+        // the host. Under UI testing the app swaps the system share sheet for a marker.
+        XCTAssertTrue(element("viewer-export-shared").waitForExistence(timeout: 90))
     }
 
 }

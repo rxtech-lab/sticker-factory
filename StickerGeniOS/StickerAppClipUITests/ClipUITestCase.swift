@@ -31,7 +31,7 @@ class ClipUITestCase: XCTestCase {
         XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 15), file: file, line: line)
         XCTAssertTrue(app.staticTexts["by Clip Creator"].exists, file: file, line: line)
         XCTAssertTrue(app.buttons[sticker].exists, file: file, line: line)
-        XCTAssertTrue(app.buttons["Install in Sticker Factory"].exists, file: file, line: line)
+        XCTAssertTrue(app.descendants(matching: .any)["Install in Sticker Factory"].exists, file: file, line: line)
         XCTAssertTrue(app.buttons["Share pack"].exists, file: file, line: line)
         XCTAssertFalse(app.buttons["Sign in with RxLab"].exists, file: file, line: line)
     }

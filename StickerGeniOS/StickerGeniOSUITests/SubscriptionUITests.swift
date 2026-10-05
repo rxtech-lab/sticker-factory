@@ -8,7 +8,9 @@ final class SubscriptionUITests: StickerGeniOSUITestCase {
         app.launchArguments.append("--ui-free-generation-allowance")
         app.launch()
 
-        let create = element("create-sticker-button")
+        // Scoped to buttons: on iOS 27 the toolbar item's host also carries the identifier, without
+        // the value, and comes first in the hierarchy.
+        let create = app.buttons["create-sticker-button"]
         XCTAssertTrue(create.waitForExistence(timeout: 15))
         XCTAssertEqual(create.value as? String, "3 free sticker generations remaining today")
         let screenshot = XCTAttachment(screenshot: app.screenshot())

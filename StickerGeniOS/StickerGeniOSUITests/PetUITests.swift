@@ -3,10 +3,20 @@ import XCTest
 @MainActor
 final class PetUITests: StickerGeniOSUITestCase {
     /// Pet is the first tab, even though launch still lands on the Library.
+    ///
+    /// On iOS 27 the Pet tab takes the `.prominent` role, which the system lifts out of the tab
+    /// group into its own slot at the trailing end of the bar, so there it is the last button and
+    /// Library leads the rest.
     @MainActor
     func testPetIsTheFirstTab() {
-        XCTAssertEqual(app.tabBars.buttons.element(boundBy: 0).label, "Pet")
-        XCTAssertEqual(app.tabBars.buttons.element(boundBy: 1).label, "Library")
+        let tabs = app.tabBars.buttons
+        if #available(iOS 27.0, *) {
+            XCTAssertEqual(tabs.element(boundBy: 0).label, "Library")
+            XCTAssertEqual(tabs.element(boundBy: tabs.count - 1).label, "Pet")
+        } else {
+            XCTAssertEqual(tabs.element(boundBy: 0).label, "Pet")
+            XCTAssertEqual(tabs.element(boundBy: 1).label, "Library")
+        }
     }
 
     /// Adopt from the Pet tab, see it shown, then spend time with it.
