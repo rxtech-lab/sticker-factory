@@ -61,7 +61,15 @@ struct StickerViewerExportSheet: View {
         }
         .interactiveDismissDisabled(busy)
         .sheet(isPresented: $sharing) {
-            if let output { StickerViewerShareSheet(url: output) }
+            if let output {
+                // On iOS 27 the share sheet lives in SharingUIService; every UI-test query then walks
+                // its remote hierarchy, which stalls the runner when parallel clones load the host.
+                if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+                    Text(output.lastPathComponent).accessibilityIdentifier("viewer-export-shared")
+                } else {
+                    StickerViewerShareSheet(url: output)
+                }
+            }
         }
         .onDisappear { work?.cancel(); removeOutput() }
         .onChange(of: format) { _, _ in if !busy { removeOutput() } }
