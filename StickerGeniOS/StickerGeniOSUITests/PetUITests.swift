@@ -17,7 +17,7 @@ final class PetUITests: StickerGeniOSUITestCase {
         app.launch()
 
         app.tabBars.buttons["Pet"].tap()
-        XCTAssertTrue(app.navigationBars["Pet"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.tabBars.buttons["Pet"].isSelected)
         let choose = element("choose-pet-button")
         XCTAssertTrue(choose.waitForExistence(timeout: 15))
         choose.tap()
