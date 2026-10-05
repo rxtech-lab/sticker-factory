@@ -10,7 +10,7 @@ import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -456,11 +456,20 @@ export class MockAiProvider implements AiProvider {
       { title: `Rest with ${input.petTitle}`, description: `Take a break beside ${input.petTitle}.`, effects: { happiness: 2, hp: 8, energy: 20, gold: 0 } },
     ];
   }
+  async generatePetItems(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]> {
+    return (await this.generatePetActions(input)).slice(0, 2).concat(
+      { title: `Weather gift for ${input.petTitle}`, description: "A gift inspired by today's weather.", effects: { happiness: 4, hp: 0, energy: -3, gold: -1 } },
+      { title: `Star tonic for ${input.petTitle}`, description: "A sparkling tonic that wakes a tired pet right up.", effects: { happiness: 3, hp: 0, energy: 40, gold: -35 } },
+    );
+  }
   async respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus> {
     return { values: {}, caption: `${input.petTitle}: ${input.action.description}` };
   }
   async reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus> {
     return { values: {}, caption: `${input.petTitle} loves this picture`, effects: { happiness: 5, hp: 0, energy: -1 } };
+  }
+  async reactToPetSharedContent(input: AiPetSharedContentContext): Promise<AiPetStatus> {
+    return { values: {}, caption: `${input.petTitle} read ${input.title ?? "your share"}` };
   }
   async generatePetPersona(input: AiPetPersonaContext): Promise<AiPetPersona> {
     return { class: "explorer", personality: `Curious ${input.petTitle}`, likes: ["walks"], dislikes: ["thunder"], favoriteWeather: "sunny" };
@@ -470,6 +479,20 @@ export class MockAiProvider implements AiProvider {
   }
   async narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus> {
     return { values: {}, caption: `${input.petTitle}: ${input.event.title}`, musings: [{ text: "What next?", afterMinutes: 15 }] };
+  }
+  async generatePetEncounter(input: AiPetEncounterContext): Promise<AiPetEncounter> {
+    return {
+      title: "A stray kitten",
+      prompt: `${input.petTitle} found a kitten shivering by the door. What should we do?`,
+      choices: [
+        { title: "Bring it a blanket", description: "Wrap it up warm.", correct: true, outcome: "The kitten purred and left a coin behind.",
+          effects: { happiness: 6, hp: 0, energy: 0, gold: 8 }, medicine: 0, sickens: false },
+        { title: "Chase it away", description: "Shoo it off.", correct: false, outcome: "That felt mean. Now I'm sad.",
+          effects: { happiness: -8, hp: 0, energy: -3, gold: 0 }, medicine: 0, sickens: false },
+        { title: "Share a nap", description: "Curl up together outside.", correct: false, outcome: "It was cold out there… achoo!",
+          effects: { happiness: 0, hp: -5, energy: -2, gold: 0 }, medicine: 0, sickens: true },
+      ],
+    };
   }
   async noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction> {
     return { react: true, values: {}, caption: `${input.petTitle} likes ${input.made.title}`, effects: { happiness: 2, hp: 0, energy: 0 } };

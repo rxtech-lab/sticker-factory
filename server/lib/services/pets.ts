@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetAction } from "@/lib/ai/gateway-contracts";
-import type { PetContextV1, PetIdentityV1, PetInteractionRequest, PetSignalsV1, RecordPetSendRequest, SendPetPhotoRequest, SetPetRequest } from "@/lib/contracts/api";
+import type { PetContextStoredV1, PetContextV1, PetIdentityV1, PetInteractionRequest, PetSignalsV1, RecordPetSendRequest, SendPetPhotoRequest, SetPetRequest, SharePetContentRequest } from "@/lib/contracts/api";
 import { normalizedControlValues } from "@/lib/contracts/configuration";
 import { canonicalJson, resolveStickerConfiguration } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
-import { generationJobs, packInstalls, petEvents, stickerPackItems, stickerPacks, stickerRevisions, stickers, userPets, type UserPetRow } from "@/lib/db/schema";
+import { generationJobs, packInstalls, petEvents, stickerPackItems, stickerPacks, stickerRevisions, stickers, userPets } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { notifyPetStatusChanged } from "@/lib/notifications/pet";
 import { describeError, traceEvent } from "@/lib/observability/trace";
@@ -17,14 +17,17 @@ import { pickEvent, SEND_EVENT_CHANCE } from "@/lib/pets/events";
 import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
 import { petLog, petRandom } from "@/lib/pets/log";
 import { localHour, mergeContext, resolveSignals, signalEffects } from "@/lib/pets/signals";
-import { WALK_PAYOUT_MIN_GOLD, walkReward } from "@/lib/pets/walk";
-import { addEffects, applyEffects, initialStats, personalizeEffects, preferenceEffects, ZERO_EFFECTS } from "@/lib/pets/stats";
+import { isWalkPayoutDue, walkReward } from "@/lib/pets/walk";
+import { dailyGold } from "@/lib/pets/daily-gold";
+import { addEffects, applyEffects, initialStats, personalizeEffects, preferenceEffects, withoutGold, ZERO_EFFECTS } from "@/lib/pets/stats";
 import { getReadyOwnedAssets } from "./assets";
 import { generateActions, ownerMoment, refreshActions, sentStickerImage } from "./pet-actions";
 import { canEvolve, serializePetEvolution, startPetEvolution } from "./pet-evolution";
+import { openEncounter, serializeEncounter } from "./pet-encounters";
 import { drawPetWeatherArt, serializePetWeatherArt } from "./pet-weather";
-import { commitPetChange, currentStats, ensurePetIdentity, petRow, type PetChange } from "./pet-state";
+import { commitPetChange, currentStats, ensurePetIdentity, ensureWallet, petRow, walletGold, type PetChange, type PetRow } from "./pet-state";
 import { startPetLife } from "./pet-life-runner";
+import { refreshPetItems } from "./pet-items";
 import { loadPlaybackPayload, readablePlayback } from "./playback";
 import { selectStickerSummaries, serializeStickerSummary } from "./sticker-summaries";
 
@@ -38,11 +41,15 @@ export type PetResponse = {
     } | null;
     stats: PetStats;
     actions: PetAction[];
+    items: { actions: PetAction[]; artKey: string } | null;
     identity: PetIdentityV1 | null;
     signals: PetSignalsV1 | null;
     nextEventAt: string | null;
     evolution: ReturnType<typeof serializePetEvolution>;
     weatherArt: Awaited<ReturnType<typeof serializePetWeatherArt>>;
+    encounter: ReturnType<typeof serializeEncounter>;
+    illness: { name: string; since: string } | null;
+    medicine: number;
   } | null;
 };
 
@@ -78,7 +85,7 @@ const REPEAT_SEND_WINDOW_MS = 30_000;
  * being posable reads as no pet — the row is left alone, so reinstalling the pack brings it back.
  */
 export async function getPet(db: Database, userId: string): Promise<PetResponse> {
-  const row = await db.select().from(userPets).where(eq(userPets.userId, userId)).then(firstRow);
+  const row = await petRow(db, userId);
   if (!row) return { pet: null };
   let playback;
   try {
@@ -90,15 +97,20 @@ export async function getPet(db: Database, userId: string): Promise<PetResponse>
   const summary = await selectStickerSummaries(db).where(eq(stickers.id, row.stickerId)).then(firstRow);
   if (!summary) return { pet: null };
   // Pets adopted before identities get one on first read, and a life of their own.
-  const pet = await ensurePetIdentity(db, row, describePet(db, playback.sticker, playback.revision));
+  let pet = await ensurePetIdentity(db, row, describePet(db, playback.sticker, playback.revision));
   if (!pet.lifeRunId && pet.lifeId) await startPetLife(db, userId, pet.lifeId);
+  // Today's gold is there the moment the owner looks, not only at the pet's next visit.
+  if (pet.lifeId && dailyGold(pet.contextJson, pet.wallet, new Date())) {
+    await commitPetChange(db, userId, { lifeId: pet.lifeId, changes: [] });
+    pet = await petRow(db, userId) ?? pet;
+  }
   return serializePet(db, userId, pet, playback, summary);
 }
 
 async function serializePet(
   db: Database,
   userId: string,
-  row: UserPetRow,
+  row: PetRow,
   playback: Awaited<ReturnType<typeof readablePlayback>>,
   summary: Parameters<typeof serializeStickerSummary>[0],
 ): Promise<PetResponse> {
@@ -121,9 +133,14 @@ async function serializePet(
   return { pet: { sticker: serializeStickerSummary(summary), selectedAt: row.updatedAt.toISOString(), status,
     // Actions stored before gold existed are free.
     stats: currentStats(row), actions: (actions ?? []).map((action) => ({ ...action, effects: { ...action.effects, gold: action.effects.gold ?? 0 } })),
+    items: row.itemsArtKey && row.itemsJson?.length === 4
+      ? { actions: row.itemsJson.map((item) => ({ ...item, effects: { ...item.effects, gold: item.effects.gold ?? 0 } })), artKey: row.itemsArtKey }
+      : null,
     identity: row.identityJson, signals: row.signalsJson,
     nextEventAt: row.nextEventAt?.toISOString() ?? null, evolution: serializePetEvolution(row.evolutionJson),
-    weatherArt: await serializePetWeatherArt(db, row.stickerId, row.signalsJson) } };
+    weatherArt: await serializePetWeatherArt(db, row.stickerId, row.signalsJson, playback.revision.id),
+    encounter: serializeEncounter(row.lifeId ? await openEncounter(db, userId, row.lifeId) : undefined),
+    illness: row.illnessJson, medicine: row.medicine } };
 }
 
 /**
@@ -167,16 +184,24 @@ export async function setPet(db: Database, userId: string, input: SetPetRequest)
       }),
   ]);
   const identity = persona ? buildIdentity(persona, signals, now, petRandom) : fallbackIdentity(input.stickerId, signals, now);
-  const stats = initialStats(identity);
+  // Gold is the owner's, not the pet's: a new pet spends from the same purse as the last one.
+  const petStats = withoutGold(initialStats(identity));
+  await ensureWallet(db, userId, context?.timeZone);
+  const stats = { ...petStats, gold: await walletGold(db, userId) };
   const lifeId = crypto.randomUUID();
   const fresh = {
     stickerId: input.stickerId,
     updatedAt: now,
     statusJson: null,
     statusUpdatedAt: null,
-    statsJson: stats,
+    statsJson: petStats,
     interactionId: null,
     actionsJson: actions,
+    itemsJson: null,
+    itemsArtKey: null,
+    itemsContextKey: null,
+    itemsUpdatedAt: null,
+    itemsClaimedAt: null,
     identityJson: identity,
     contextJson: context,
     signalsJson: signals,
@@ -186,6 +211,8 @@ export async function setPet(db: Database, userId: string, input: SetPetRequest)
     lifeTickAt: null,
     nextEventAt: null,
     lastShareAt: null,
+    illnessJson: null,
+    medicine: 0,
   };
   await db.insert(userPets).values({ userId, createdAt: now, ...fresh })
     .onConflictDoUpdate({ target: userPets.userId, set: fresh });
@@ -229,11 +256,12 @@ export async function interactWithPet(
   if (!found) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
   const { sticker, revision } = await readablePlayback(db, userId, found.stickerId);
   const pet = await ensurePetIdentity(db, found, describePet(db, sticker, revision));
-  const action = pet.actionsJson?.find((candidate) => candidate.id === input.actionId);
+  const action = [...(pet.actionsJson ?? []), ...(pet.itemsJson ?? [])]
+    .find((candidate) => candidate.id === input.actionId);
   if (!action) throw new ApiError(422, "PET_ACTION_NOT_AVAILABLE", "This action is no longer available for your pet.");
   const price = -Math.min(0, action.effects.gold ?? 0);
   if (price > currentStats(pet).gold) {
-    throw new ApiError(422, "PET_NOT_ENOUGH_GOLD", `This costs ${price} gold, and your pet has ${currentStats(pet).gold}.`);
+    throw new ApiError(422, "PET_NOT_ENOUGH_GOLD", `This costs ${price} gold, and you have ${currentStats(pet).gold}.`);
   }
   const configuration = revision.playbackJson?.document.configuration;
   const interactionId = crypto.randomUUID();
@@ -621,6 +649,84 @@ export async function sendPetPhoto(
   }
 }
 
+/** Accepts a share promptly; the pet reads it after the HTTP response has been sent. */
+export async function acceptPetContentShare(
+  db: Database,
+  userId: string,
+  input: SharePetContentRequest,
+  schedule: (task: () => Promise<void>) => void,
+): Promise<{ accepted: true }> {
+  const found = await petRow(db, userId);
+  if (!found) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
+  await readablePlayback(db, userId, found.stickerId);
+  schedule(async () => {
+    try {
+      await shareContentWithPet(db, userId, input);
+    } catch (error) {
+      petLog("content:read-failed", { userId, error: describeError(error) });
+    }
+  });
+  return { accepted: true };
+}
+
+/** Reads an explicit share, updates the pet's pose, and keeps a diary line for its reply. */
+export async function shareContentWithPet(
+  db: Database,
+  userId: string,
+  input: SharePetContentRequest,
+  notify: (db: Database, userId: string) => Promise<void> = notifyPetStatusChanged,
+): Promise<PetResponse> {
+  const found = await petRow(db, userId);
+  if (!found) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
+  const { sticker, revision } = await readablePlayback(db, userId, found.stickerId);
+  const pet = await ensurePetIdentity(db, found, describePet(db, sticker, revision));
+  const configuration = revision.playbackJson?.document.configuration;
+  const interactionId = crypto.randomUUID();
+  const claimed = await db.update(userPets).set({ interactionId })
+    .where(and(eq(userPets.userId, userId), eq(userPets.stickerId, pet.stickerId),
+      pet.interactionId ? eq(userPets.interactionId, pet.interactionId) : isNull(userPets.interactionId)))
+    .returning({ userId: userPets.userId });
+  if (!claimed.length) throw new ApiError(409, "PET_CHANGED", "Your pet is busy. Please try again.");
+  try {
+    const answer = await getAiProvider().reactToPetSharedContent({
+      petTitle: sticker.title,
+      identity: pet.identityJson,
+      title: input.title ?? null,
+      url: input.url ?? null,
+      content: input.content ?? null,
+      html: input.html ?? null,
+      stats: currentStats(pet),
+      controls: configuration?.controls ?? [],
+      current: pet.statusJson?.values ?? null,
+      ...ownerMoment(pet.contextJson),
+    });
+    const values = configuration
+      ? normalizedControlValues(configuration, { ...pet.statusJson?.values, ...answer.values })
+      : {};
+    const caption = answer.caption.trim();
+    const effects = personalizeEffects({ happiness: 2, hp: 0, energy: -1, gold: 0 }, pet.identityJson);
+    const actions = await refreshActions(db, pet, sticker, revision, {
+      stats: applyEffects(currentStats(pet), effects, pet.identityJson),
+      mood: `The owner shared ${input.title ?? input.url ?? "some content"}: ${caption}`,
+    });
+    const committed = await commitPetChange(db, userId, {
+      lifeId: pet.lifeId!,
+      where: eq(userPets.interactionId, interactionId),
+      set: { statusJson: { values, caption, animateEverySeconds: answer.animateEverySeconds, musings: answer.musings },
+        statusUpdatedAt: new Date(), interactionId: null, ...(actions ? { actionsJson: actions } : {}) },
+      changes: [{ kind: "content", title: input.title?.slice(0, 120) || "Read a share", detail: caption,
+        effects, debug: { url: input.url ?? null, contentLength: input.content?.length ?? 0, htmlLength: input.html?.length ?? 0 } }],
+    });
+    if (!committed) throw new ApiError(409, "PET_CHANGED", "Your pet changed. Please try again.");
+    await notify(db, userId).catch((error) => traceEvent("pet.content:notify:failed", { userId, error: describeError(error) }));
+    return getPet(db, userId);
+  } catch (error) {
+    await db.update(userPets).set({ interactionId: null })
+      .where(and(eq(userPets.userId, userId), eq(userPets.interactionId, interactionId)));
+    throw error;
+  }
+}
+
 /**
  * Shows the pet off to someone in Messages. Sharing is a little outing: it cheers the pet and
  * costs some energy — once per `SHARE_WINDOW_MS`, so a pet shown in five chats is not exhausted.
@@ -665,19 +771,31 @@ export async function updatePetContext(
   userId: string,
   input: PetContextV1,
   schedule: (task: () => Promise<void>) => void = () => {},
-): Promise<{ stored: boolean }> {
+): Promise<PetContextStoredV1> {
   const pet = await petRow(db, userId);
-  if (!pet) return { stored: false };
+  if (!pet) return { stored: false, walk: null };
   const now = new Date();
   const context = mergeContext(pet.contextJson, input, now);
   await db.update(userPets).set({ contextJson: context }).where(eq(userPets.userId, userId));
   petLog("context:stored", { userId, hasLocation: context?.latitude !== undefined, stepsToday: context?.stepsToday ?? null,
     timeZone: context?.timeZone ?? null });
-  // A good stretch of walking pays out as soon as the phone reports it, not at the pet's next visit.
-  const walk = walkReward({ contextJson: context, walkGoldJson: pet.walkGoldJson }, now);
-  if (walk && walk.gold >= WALK_PAYOUT_MIN_GOLD && pet.lifeId) await commitPetChange(db, userId, { lifeId: pet.lifeId, changes: [] });
+  // A good stretch of walking pays out as soon as the phone reports it, not at the pet's next visit,
+  // and says what it paid so the phone can have the pet thank its owner for the walk right away.
+  let paid: PetContextStoredV1["walk"] = null;
+  const walk = walkReward({ contextJson: context, walkGoldJson: pet.wallet?.walkGoldJson ?? null }, now);
+  if (isWalkPayoutDue(walk) && pet.lifeId) {
+    const committed = await commitPetChange(db, userId, { lifeId: pet.lifeId, changes: [] });
+    if (committed) {
+      paid = {
+        steps: walk.steps,
+        energy: committed.after.energy - committed.before.energy,
+        // The day's allowance may land in the same write; only the walk's share is the walk's.
+        gold: Math.min(walk.gold, (committed.after.gold ?? 0) - (committed.before.gold ?? 0)),
+      };
+    }
+  }
   schedule(() => refreshPetSignals(db, userId));
-  return { stored: true };
+  return { stored: true, walk: paid };
 }
 
 /**
@@ -698,6 +816,7 @@ export async function refreshPetSignals(db: Database, userId: string): Promise<v
     petLog("signals:refresh-failed", { userId, error: describeError(error) });
   }
   await drawPetWeatherArt(db, userId);
+  await refreshPetItems(db, userId);
 }
 
 /** Edges the pose may be drawn at: a complication's worth up to a large widget's. */

@@ -7,9 +7,10 @@ import os
 ///
 /// Anything that changes the pet — an action, a picture it is shown — is decided by the pet's agent
 /// on the server, which answers with the pet's new stats, pose and line. Small things that change
-/// nothing are decided here on the phone when it has Apple Intelligence: what the pet says back when
-/// it is touched, and whether it plays its animation in reply. Without the on-device model the pet
-/// still reacts with its body; it just keeps its agent's line.
+/// nothing are decided here on the phone when it has Apple Intelligence, so the pet answers at once:
+/// what it says back when it is touched or greeted, its first reaction to an action or a picture
+/// while its agent is still thinking, and its thanks when a walk gives it energy back. Without the
+/// on-device model the pet still reacts with its body, and with a predefined line where there is one.
 @MainActor
 @Observable
 final class PetBrain {
@@ -39,6 +40,8 @@ final class PetBrain {
     let api: any StickerAPIClientProtocol
 
     @ObservationIgnored private var thinking: Task<Void, Never>?
+    /// Names the thought in `thinking`, so one that was replaced does not clear its successor.
+    @ObservationIgnored private var thinkingID = UUID()
     @ObservationIgnored private var lineExpiry: Task<Void, Never>?
     @ObservationIgnored private var lastReplyAt: Date?
     @ObservationIgnored private let model = SystemLanguageModel.default
@@ -91,8 +94,10 @@ final class PetBrain {
         let instructions = Self.instructions(for: pet)
         let prompt = Self.prompt(for: touch, pet: pet)
         let model = model
+        let id = UUID()
+        thinkingID = id
         thinking = Task {
-            defer { thinking = nil }
+            defer { if thinkingID == id { thinking = nil } }
             do {
                 let session = LanguageModelSession(model: model, instructions: instructions)
                 let reply = try await session.respond(
@@ -119,18 +124,95 @@ final class PetBrain {
         let hasNeed = mood == .sick || mood == .sleepy || mood == .grumpy
         let wasAwhile = away.map { $0 >= Self.quietReturn } ?? true
         guard hasNeed || wasAwhile else { return }
+        speak(for: pet, prompt: Self.greetingPrompt(away: away), fallback: Self.greetingLine(for: mood, away: away))
+    }
+
+    /// Has the pet thank its owner for a walk that just gave it energy (and gold) back: a hop at
+    /// once, and a line of its own. `pet` is the pet after the walk was paid.
+    func thank(forWalk walk: PetWalkReward, pet: Pet) {
+        playRequest &+= 1
+        speak(for: pet, prompt: Self.walkPrompt(walk, pet: pet), fallback: Self.walkLine(walk))
+    }
+
+    /// Has the pet react to `action` the moment it is chosen, while its agent works out what really
+    /// happens. Only with the on-device model; without it the thinking bubble stands in.
+    func anticipate(_ action: PetAction, pet: Pet) {
+        // An older line must not pass for the reaction while the thinking bubble is up.
+        forgetLocalLine()
+        guard canThinkOnDevice else { return }
+        speak(for: pet, prompt: Self.anticipationPrompt(for: action), fallback: nil)
+    }
+
+    /// Has the pet react to being held up a picture, before its agent has looked at it properly.
+    func anticipatePhoto(pet: Pet) {
+        forgetLocalLine()
+        guard canThinkOnDevice else { return }
+        speak(
+            for: pet,
+            prompt: "Your owner is holding up a picture for you to look at. You have not looked closely yet. React right away.",
+            fallback: nil
+        )
+    }
+
+    /// Has the pet answer `words` its owner said aloud, thought of on the phone, and waits for the
+    /// answer so the thinking bubble can stay up until it lands. Without the on-device model, or when
+    /// it fails, the pet answers from its mood instead: it always says something back.
+    func hear(_ words: String, pet: Pet) async {
+        thinking?.cancel()
+        thinking = nil
+        lastReplyAt = .now
+        let fallback = Self.heardLine(for: PetMood(stats: pet.stats, maxHp: pet.maxHp))
+        guard canThinkOnDevice else {
+            show(LocalLine(text: fallback))
+            return
+        }
+        do {
+            let session = LanguageModelSession(model: model, instructions: Self.instructions(for: pet))
+            let reply = try await session.respond(
+                to: Self.hearingPrompt(words),
+                generating: PetTouchReply.self,
+                options: GenerationOptions(temperature: 0.9, maximumResponseTokens: 80)
+            ).content
+            let line = reply.line.trimmingCharacters(in: .whitespacesAndNewlines)
+            show(LocalLine(text: line.isEmpty ? fallback : line))
+            if reply.playsAnimation { playRequest &+= 1 }
+        } catch {
+            Self.log.error("On-device reply to speech failed: \(error.localizedDescription, privacy: .public)")
+            show(LocalLine(text: fallback))
+        }
+    }
+
+    static func hearingPrompt(_ words: String) -> String {
+        "Your owner just said to you, out loud: \"\(words)\". Answer them in your own voice, " +
+            "in the language they spoke. Take what they said to heart, but stay in character."
+    }
+
+    /// What the pet says back to its owner's words without the on-device model.
+    static func heardLine(for mood: PetMood) -> String {
+        switch mood {
+        case .sick: String(localized: "I hear you… I'm not feeling well, though.")
+        case .sleepy: String(localized: "Mm-hm… I'm listening… just so sleepy.")
+        case .grumpy: String(localized: "Hmph. Fine, I'm listening.")
+        case .content: String(localized: "I love it when you talk to me.")
+        case .joyful: String(localized: "Ooh, tell me more! I love your voice!")
+        }
+    }
+
+    /// Has the on-device model say one line for `pet` in reply to `prompt`, in place of any thought
+    /// in flight. Without the model, or when it fails, says `fallback` instead when there is one.
+    private func speak(for pet: Pet, prompt: String, fallback: String?) {
         thinking?.cancel()
         lastReplyAt = .now
-        let fallback = Self.greetingLine(for: mood, away: away)
         guard canThinkOnDevice else {
             if let fallback { show(LocalLine(text: fallback)) }
             return
         }
         let instructions = Self.instructions(for: pet)
-        let prompt = Self.greetingPrompt(away: away)
         let model = model
+        let id = UUID()
+        thinkingID = id
         thinking = Task {
-            defer { thinking = nil }
+            defer { if thinkingID == id { thinking = nil } }
             do {
                 let session = LanguageModelSession(model: model, instructions: instructions)
                 let reply = try await session.respond(
@@ -144,10 +226,30 @@ final class PetBrain {
                 if reply.playsAnimation { playRequest &+= 1 }
             } catch {
                 guard !Task.isCancelled else { return }
-                Self.log.error("On-device greeting failed: \(error.localizedDescription, privacy: .public)")
+                Self.log.error("On-device line failed: \(error.localizedDescription, privacy: .public)")
                 if let fallback { show(LocalLine(text: fallback)) }
             }
         }
+    }
+
+    /// What the pet says for a walk without the on-device model.
+    static func walkLine(_ walk: PetWalkReward) -> String {
+        walk.energy > 0
+            ? String(localized: "What a walk! I feel full of energy again.")
+            : String(localized: "Thanks for the walk! I had so much fun.")
+    }
+
+    static func walkPrompt(_ walk: PetWalkReward, pet: Pet) -> String {
+        var lines = ["Your owner has walked \(walk.steps) steps today and took you along."]
+        if walk.energy > 0 { lines.append("The walk gave you back \(walk.energy) energy; you now have \(pet.stats.energy)/100.") }
+        if walk.gold > 0 { lines.append("You also found \(walk.gold) gold on the way.") }
+        lines.append("Thank them for the walk in your own way.")
+        return lines.joined(separator: " ")
+    }
+
+    static func anticipationPrompt(for action: PetAction) -> String {
+        "Your owner just chose to do this with you: \(action.title) — \(action.description) " +
+            "It has not happened yet. React right away, as eager or as wary as you feel about it."
     }
 
     /// Back within this long, the owner barely left: a content pet greets them with its body only.
@@ -194,7 +296,7 @@ final class PetBrain {
         }
     }
 
-    /// Puts the touch reply away, so the agent's line shows again. Called when the agent answers.
+    /// Puts the on-device line away, so the agent's line shows again. Called when the agent answers.
     func forgetLocalLine() {
         thinking?.cancel()
         thinking = nil
@@ -219,7 +321,7 @@ final class PetBrain {
         let mood = PetMood(stats: pet.stats, maxHp: pet.maxHp)
         var lines = [
             "You are \(pet.sticker.title), a small virtual pet living in a sticker app.",
-            "You answer your owner's touch with one short line in your own voice: at most 12 words, no emoji, no quotes.",
+            "You answer your owner with one short line in your own voice: at most 12 words, no emoji, no quotes.",
             "Stay in character. Never mention being an AI, a model or an app.",
             "Right now you feel \(mood.promptDescription).",
             "Happiness \(pet.stats.happiness)/100, energy \(pet.stats.energy)/100, HP \(pet.stats.hp)/\(pet.maxHp)."
@@ -272,6 +374,7 @@ extension PetTouch {
         case .swipe(.up): "lifted you up"
         case .swipe(.down): "pressed you down"
         case .overwhelmed: "tapped you over and over, far too quickly"
+        case .shaken: "shook the phone you live in, rattling you about"
         }
     }
 }

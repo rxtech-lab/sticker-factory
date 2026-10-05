@@ -55,7 +55,7 @@ export interface AiImageInput {
    * `faceRegion` is the plan's description of where that face sits, so the sheet paragraph can
    * name it rather than assume a head.
    */
-  sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean; faceRegion?: string };
+  sheet?: { columns: number; rows: number; count: number; facePlaceholder?: boolean; tiles?: boolean; faceRegion?: string; independentCells?: boolean };
   /** The image model's quality tier. Sheets ask for more than the default, since a cell is a third of the canvas. */
   quality?: "low" | "medium" | "high";
   /**
@@ -787,6 +787,47 @@ export interface AiPetPhotoContext extends AiOwnerMoment, AiPetEvolutionChoice {
   current: StickerControlValues | null;
 }
 
+/** Article, HTML, text, or link the owner intentionally showed the pet. */
+export interface AiPetSharedContentContext extends AiOwnerMoment {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  title: string | null;
+  url: string | null;
+  content: string | null;
+  html: string | null;
+  stats: { happiness: number; hp: number; energy: number };
+  controls: StickerControl[];
+  current: StickerControlValues | null;
+}
+
+/** What the agent knows when it writes the day's encounter for the pet. */
+export interface AiPetEncounterContext extends AiOwnerMoment {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  signals: PetSignalsV1 | null;
+  stats: { happiness: number; hp: number; energy: number; gold: number };
+  /** What the pet is ill with, or null while it is well. */
+  illness: string | null;
+  mood: string | null;
+  /** The titles of recent encounters, so a new day brings something new. */
+  previous: string[];
+}
+
+/** A situation the owner has to decide, and what each choice leads to. */
+export type AiPetEncounter = {
+  title: string;
+  prompt: string;
+  choices: Array<{
+    title: string;
+    description: string;
+    correct: boolean;
+    outcome: string;
+    effects: { happiness: number; hp: number; energy: number; gold: number };
+    medicine: number;
+    sickens: boolean;
+  }>;
+};
+
 export type PetAction = {
   id: string;
   title: string;
@@ -900,14 +941,18 @@ export interface AiProvider {
    */
   choosePetStatus(input: AiPetStatusContext): Promise<AiPetStatus>;
   generatePetActions(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]>;
+  generatePetItems(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]>;
   respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus>;
   reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus>;
+  reactToPetSharedContent(input: AiPetSharedContentContext): Promise<AiPetStatus>;
   /** Chooses a new pet's class, personality and preferences. */
   generatePetPersona(input: AiPetPersonaContext): Promise<AiPetPersona>;
   /** Up to three short headlines from a web search, for the pet to have heard about. */
   searchPetHeadlines(input: AiPetHeadlinesContext): Promise<string[]>;
   /** The pet's line and pose about something that just happened to it. */
   narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus>;
+  /** Writes the day's encounter: a situation the owner decides, with right and wrong choices. */
+  generatePetEncounter(input: AiPetEncounterContext): Promise<AiPetEncounter>;
   /** The pet decides whether a sticker its owner just made is worth reacting to, and how. */
   noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction>;
 }

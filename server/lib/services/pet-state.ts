@@ -1,15 +1,18 @@
-import { and, desc, eq, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetEventV1, PetSignalsV1 } from "@/lib/contracts/api";
 import { firstRow, type Database } from "@/lib/db/client";
-import { petEvents, userPets, type PetStatsValues, type UserPetRow } from "@/lib/db/schema";
+import { petEvents, userPets, userWallets, type PetStatsValues, type UserPetRow, type UserWalletRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { describeError } from "@/lib/observability/trace";
 import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
 import { petLog, petRandom } from "@/lib/pets/log";
-import { EMPTY_SIGNALS } from "@/lib/pets/signals";
-import { applyEffects, initialStats, withGold, type PetEffects, type PetStats } from "@/lib/pets/stats";
-import { walkReward } from "@/lib/pets/walk";
+import { ATTENTION_KINDS } from "@/lib/pets/neglect";
+import { EMPTY_SIGNALS, localDate } from "@/lib/pets/signals";
+import { dailyGold } from "@/lib/pets/daily-gold";
+import { applyEffects, initialStats, STARTING_GOLD, withGold, withoutGold, type PetEffects, type PetStats } from "@/lib/pets/stats";
+import { walkDetail, walkReward } from "@/lib/pets/walk";
 import type { StickerControl } from "@/lib/contracts/configuration";
 import type { AiReferenceImage } from "@/lib/ai/gateway-contracts";
 
@@ -25,13 +28,50 @@ export type PetChange = {
   debug?: Record<string, unknown>;
 };
 
-export async function petRow(db: Database, userId: string): Promise<UserPetRow | undefined> {
-  return db.select().from(userPets).where(eq(userPets.userId, userId)).then(firstRow);
+/** The caller's pet, read with the owner's wallet: gold is theirs, shared by every pet they have. */
+export type PetRow = UserPetRow & { wallet: UserWalletRow | null };
+
+export async function petRow(db: Database, userId: string): Promise<PetRow | undefined> {
+  const row = await db.select({ pet: userPets, wallet: userWallets }).from(userPets)
+    .leftJoin(userWallets, eq(userWallets.userId, userPets.userId))
+    .where(eq(userPets.userId, userId))
+    .then(firstRow);
+  return row && { ...row.pet, wallet: row.wallet };
 }
 
-export function currentStats(row: UserPetRow): PetStats {
-  return row.statsJson ? withGold(row.statsJson) : initialStats(row.identityJson);
+/** The owner's gold, or what a new owner starts with. */
+export async function walletGold(db: Database, userId: string): Promise<number> {
+  const wallet = await db.select({ gold: userWallets.gold }).from(userWallets).where(eq(userWallets.userId, userId)).then(firstRow);
+  return wallet?.gold ?? STARTING_GOLD;
 }
+
+/**
+ * Opens the owner's wallet with the starting purse, unless they already have one. The starting
+ * purse is the first day's gold: the daily allowance begins tomorrow.
+ */
+export async function ensureWallet(db: Database, userId: string, timeZone: string | undefined): Promise<void> {
+  const now = new Date();
+  await db.insert(userWallets).values({ userId, gold: STARTING_GOLD, dailyGoldDate: localDate(now, timeZone), createdAt: now, updatedAt: now })
+    .onConflictDoNothing();
+}
+
+/** When the owner last spent time with this life's pet, or null if the diary has no such line. */
+export async function lastAttendedAt(db: Database, userId: string, lifeId: string): Promise<Date | null> {
+  const latest = await db.select({ createdAt: petEvents.createdAt }).from(petEvents)
+    .where(and(eq(petEvents.userId, userId), eq(petEvents.lifeId, lifeId), inArray(petEvents.kind, [...ATTENTION_KINDS])))
+    .orderBy(desc(petEvents.createdAt))
+    .limit(1)
+    .then(firstRow);
+  return latest?.createdAt ?? null;
+}
+
+/** The pet's stats, with the owner's gold. */
+export function currentStats(row: PetRow): PetStats {
+  return { ...withoutGold(row.statsJson ?? initialStats(row.identityJson)), gold: row.wallet?.gold ?? STARTING_GOLD };
+}
+
+/** Thrown inside the commit's transaction when the wallet moved underneath it, to roll back and retry. */
+class WalletConflict extends Error {}
 
 /**
  * Applies `changes` to the pet's stats in order and writes a diary line for each.
@@ -41,42 +81,84 @@ export function currentStats(row: UserPetRow): PetStats {
  * model) happens before this, and this only re-adds deltas. Null when the pet stopped being this
  * life, or `where` no longer holds.
  *
- * Gold the owner's walk has earned since it was last paid lands first, as its own line, worked
- * out again on every attempt so a retried write never pays the same steps twice.
+ * Today's gold allowance, if not yet granted, and gold the owner's walk has earned since it was
+ * last paid land first, as their own lines, worked out again on every attempt so a retried write
+ * never pays the same day or steps twice. Gold goes to the owner's wallet in the same transaction
+ * as the pet's other stats.
  */
 export async function commitPetChange(
   db: Database,
   userId: string,
-  input: { lifeId: string; changes: PetChange[]; set?: Partial<typeof userPets.$inferInsert>; where?: SQL },
+  input: { lifeId: string; changes: PetChange[]; set?: PgUpdateSetSource<typeof userPets>; where?: SQL },
 ): Promise<{ before: PetStatsValues; after: PetStatsValues } | null> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const row = await petRow(db, userId);
     if (!row || row.lifeId !== input.lifeId) return null;
     const before = currentStats(row);
     let stats = before;
-    const walk = walkReward(row, new Date());
-    const changes: PetChange[] = walk ? [{
-      kind: "special",
-      title: "Walk reward",
-      detail: `${walk.steps.toLocaleString("en-US")} steps today earned ${walk.gold} gold.`,
-      effects: { happiness: 0, hp: 0, energy: 0, gold: walk.gold },
-      debug: { source: "walk", steps: walk.steps, paidBefore: row.walkGoldJson ?? null },
-    }, ...input.changes] : input.changes;
+    const now = new Date();
+    const daily = dailyGold(row.contextJson, row.wallet, now);
+    const walk = walkReward({ contextJson: row.contextJson, walkGoldJson: row.wallet?.walkGoldJson ?? null }, now);
+    const changes: PetChange[] = [
+      ...(daily ? [{
+        kind: "special" as const,
+        title: "Daily gold",
+        detail: `${daily.gold} gold for a new day.`,
+        effects: { happiness: 0, hp: 0, energy: 0, gold: daily.gold },
+        debug: { source: "daily-gold", date: daily.date },
+      }] : []),
+      ...(walk ? [{
+        kind: "special" as const,
+        title: "Walk reward",
+        detail: walkDetail(walk),
+        // Resting energy, like any other recovery: not scaled by the pet's energy multiplier.
+        effects: { happiness: 0, hp: 0, energy: walk.energy, gold: walk.gold },
+        debug: { source: "walk", steps: walk.steps, paidBefore: row.wallet?.walkGoldJson ?? null },
+      }] : []),
+      ...input.changes,
+    ];
     const lines = changes.map((change) => {
       const statsBefore = stats;
       stats = applyEffects(stats, change.effects, row.identityJson);
       return { change, statsBefore, statsAfter: stats };
     });
-    const updated = await db.update(userPets).set({ ...input.set, statsJson: stats, ...(walk ? { walkGoldJson: walk.ledger } : {}) })
-      .where(and(
-        eq(userPets.userId, userId),
-        eq(userPets.lifeId, input.lifeId),
-        row.statsJson ? sql`${userPets.statsJson} = ${JSON.stringify(row.statsJson)}::jsonb` : isNull(userPets.statsJson),
-        input.where,
-      ))
-      .returning({ userId: userPets.userId });
-    if (!updated.length) continue;
-    const now = Date.now();
+    const { gold } = stats;
+    let updated: boolean;
+    try {
+      updated = await db.transaction(async (tx) => {
+        const written = await tx.update(userPets).set({ ...input.set, statsJson: withoutGold(stats) })
+          .where(and(
+            eq(userPets.userId, userId),
+            eq(userPets.lifeId, input.lifeId),
+            row.statsJson ? sql`${userPets.statsJson} = ${JSON.stringify(row.statsJson)}::jsonb` : isNull(userPets.statsJson),
+            input.where,
+          ))
+          .returning({ userId: userPets.userId });
+        if (!written.length) return false;
+        if (!row.wallet || daily || walk || gold !== row.wallet.gold) {
+          const wallet = {
+            gold,
+            walkGoldJson: walk?.ledger ?? row.wallet?.walkGoldJson ?? null,
+            dailyGoldDate: daily?.date ?? row.wallet?.dailyGoldDate ?? null,
+            version: (row.wallet?.version ?? -1) + 1,
+            updatedAt: now,
+          };
+          const paid = row.wallet
+            ? await tx.update(userWallets).set(wallet)
+              .where(and(eq(userWallets.userId, userId), eq(userWallets.version, row.wallet.version)))
+              .returning({ userId: userWallets.userId })
+            : await tx.insert(userWallets).values({ userId, createdAt: now, ...wallet }).onConflictDoNothing()
+              .returning({ userId: userWallets.userId });
+          if (!paid.length) throw new WalletConflict();
+        }
+        return true;
+      });
+    } catch (error) {
+      if (error instanceof WalletConflict) continue;
+      throw error;
+    }
+    if (!updated) continue;
+    const at = now.getTime();
     if (lines.length) {
       await db.insert(petEvents).values(lines.map(({ change, statsBefore, statsAfter }, index) => ({
         id: crypto.randomUUID(),
@@ -92,7 +174,7 @@ export async function commitPetChange(
         signalsJson: change.signals ?? null,
         debugJson: change.debug ?? {},
         // A millisecond apart, so lines written together keep their order in the diary.
-        createdAt: new Date(now + index),
+        createdAt: new Date(at + index),
       })));
     }
     for (const { change, statsBefore, statsAfter } of lines) {
@@ -111,9 +193,9 @@ export async function commitPetChange(
  */
 export async function ensurePetIdentity(
   db: Database,
-  row: UserPetRow,
+  row: PetRow,
   describe: () => Promise<{ title: string; controls: StickerControl[]; image: AiReferenceImage | null }>,
-): Promise<UserPetRow> {
+): Promise<PetRow> {
   if (row.identityJson && row.lifeId) return row;
   const now = new Date();
   let identity = row.identityJson;

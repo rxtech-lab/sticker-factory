@@ -23,6 +23,11 @@ final class PetContextProvider {
     static let minimumUploadInterval: TimeInterval = 30 * 60
     /// Where the time of the last accepted upload is kept, in the app's own defaults.
     nonisolated static let lastUploadKey = "PetContextProvider.lastUploadAt"
+    /// The steps the last accepted upload carried, so a walk since then can skip the half-hour wait.
+    nonisolated static let lastUploadStepsKey = "PetContextProvider.lastUploadSteps"
+    /// This many new steps since the last upload are a walk worth telling the pet about at once:
+    /// the server pays energy back for every 100 steps and on its own once 10 points are owed.
+    static let walkUploadSteps = 1_000
     private static let healthRequestedKey = "PetContextProvider.healthRequested"
     private static let log = Logger(subsystem: "app.rxlab.sticker-factory", category: "pet")
 
@@ -30,6 +35,9 @@ final class PetContextProvider {
     /// connect them. Health never says whether reading was allowed, only whether it was asked.
     private(set) var locationStatus: CLAuthorizationStatus
     private(set) var healthRequested: Bool
+    /// What the owner's walk paid the pet on the latest upload, until the Pet tab has the pet react.
+    /// Whoever uploaded — the tab or the app coming forward — the pet thanks its owner once.
+    private(set) var pendingWalk: PetWalkReward?
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let cache: PetContextCache
@@ -118,16 +126,31 @@ final class PetContextProvider {
         return await collect(locationTimeout: .seconds(3))
     }
 
-    /// Collects and uploads, unless the server heard from this phone in the last half hour.
-    /// `force` skips that wait — after the user just connected a source, they expect it to count.
-    /// Returns whether the server kept something.
+    /// Collects and uploads, unless the server heard from this phone in the last half hour and the
+    /// owner has not walked much since. `force` skips that wait — after the user just connected a
+    /// source, they expect it to count. Returns whether the server kept something.
     @discardableResult
     func syncIfNeeded(api: any StickerAPIClientProtocol, force: Bool = false) async -> Bool {
         if !force, let last = defaults.object(forKey: Self.lastUploadKey) as? Date,
-           Date().timeIntervalSince(last) < Self.minimumUploadInterval {
+           Date().timeIntervalSince(last) < Self.minimumUploadInterval,
+           !(await hasWalkedSinceUpload(lastUploadAt: last)) {
             return false
         }
         return await upload(api: api).stored
+    }
+
+    /// Whether today's steps grew by a walk's worth since the last accepted upload. Reads Health
+    /// only, which is quick; the slow location fix waits until there is something to send.
+    private func hasWalkedSinceUpload(lastUploadAt: Date) async -> Bool {
+        guard let steps = await stepsToday() else { return false }
+        let uploaded = Calendar.current.isDateInToday(lastUploadAt) ? defaults.integer(forKey: Self.lastUploadStepsKey) : 0
+        return steps - uploaded >= Self.walkUploadSteps
+    }
+
+    /// Hands over the walk the pet has yet to react to, once.
+    func takePendingWalk() -> PetWalkReward? {
+        defer { pendingWalk = nil }
+        return pendingWalk
     }
 
     /// Collects and uploads now, whatever the half-hour wait says. Reports whether the server kept
@@ -136,15 +159,21 @@ final class PetContextProvider {
         let payload = await collect()
         guard !payload.isEmpty else { return (false, false) }
         do {
-            let stored = try await api.updatePetContext(payload)
+            let response = try await api.updatePetContext(payload)
+            let stored = response.stored
             // Only a kept upload counts: with no pet yet, the next foreground should try again. So
             // does one whose location fix timed out while location is allowed — without it the pet
             // has no weather, and half an hour is too long to go without trying again.
-            if stored, payload.hasLocation || !hasLocationAccess { defaults.set(Date(), forKey: Self.lastUploadKey) }
+            if stored, payload.hasLocation || !hasLocationAccess {
+                defaults.set(Date(), forKey: Self.lastUploadKey)
+                defaults.set(payload.stepsToday ?? 0, forKey: Self.lastUploadStepsKey)
+            }
+            if let walk = response.walk, walk.energy > 0 || walk.gold > 0 { pendingWalk = walk }
             Self.log.info(
                 """
                 pet context uploaded: stored=\(stored, privacy: .public) \
-                location=\(payload.hasLocation, privacy: .public) steps=\(payload.stepsToday ?? -1, privacy: .public)
+                location=\(payload.hasLocation, privacy: .public) steps=\(payload.stepsToday ?? -1, privacy: .public) \
+                walkEnergy=\(response.walk?.energy ?? 0, privacy: .public)
                 """
             )
             return (stored, payload.hasLocation)

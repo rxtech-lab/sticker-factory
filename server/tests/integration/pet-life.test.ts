@@ -110,12 +110,12 @@ describe("pet life", () => {
       const { events } = await listPetEvents(db, "owner", { limit: 10 });
       expect(events.map((event) => event.kind)).toEqual(["send", "random", "special", "adopted"]);
       const [send, random, walk] = events;
-      // Today's 12,500 steps are paid first, at one gold per 250.
-      expect(walk).toMatchObject({ title: "Walk reward", effects: { happiness: 0, hp: 0, energy: 0, gold: 50 } });
-      expect(walk.statsAfter.gold).toBe(70);
-      // Send: +2/0/-1 base, rainy favourite +4, athlete's big walk +4/+3/-2, model mood clamped to +8.
-      // Energy costs are scaled by the athlete's 1.5: (-1 - 2) × 1.5 = -4.5 → -4.
-      expect(send.effects).toEqual({ happiness: 18, hp: 3, energy: -4, gold: 0 });
+      // Today's 12,500 steps are paid first, at one gold per 250 and one energy per 100 (topping out at full).
+      expect(walk).toMatchObject({ title: "Walk reward", effects: { happiness: 0, hp: 0, energy: 125, gold: 50 } });
+      expect(walk.statsAfter).toMatchObject({ gold: 70, energy: 100 });
+      // Send: +2/0/-1 base, rainy favourite +4, athlete's big walk +4/+3, model mood clamped to +8.
+      // Energy costs are scaled by the athlete's 1.5: -1 × 1.5 = -1.5 → -1.
+      expect(send.effects).toEqual({ happiness: 18, hp: 3, energy: -1, gold: 0 });
       expect(send.debug).toMatchObject({ moodEffects: { happiness: 8 }, worldReasons: expect.arrayContaining([expect.stringContaining("rainy")]) });
       expect(send.signals).toMatchObject({ stepsToday: 12_500, weather: { kind: "rainy" } });
       expect(random.statsAfter).toEqual(send.statsBefore);
@@ -193,6 +193,38 @@ describe("pet life", () => {
     }
   });
 
+  it("drops happiness and HP on visits once the owner has been away too long", async () => {
+    const { db, close, pet } = await setup();
+    try {
+      await setPet(db, "owner", { stickerId: pet.stickerId, context });
+      const { lifeId, token } = started[0];
+
+      // Just adopted: a visit carries no neglect.
+      expect(await visitPet(db, "owner", lifeId, token, noNotify)).toBe(true);
+      const [fresh] = (await listPetEvents(db, "owner", { limit: 1 })).events;
+      expect(fresh.debug).toMatchObject({ neglect: null });
+
+      // Two days later, with nobody around, the pet pines whatever the visit brought.
+      const later = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+      expect(await visitPet(db, "owner", lifeId, token, noNotify, later)).toBe(true);
+      const [lonely] = (await listPetEvents(db, "owner", { limit: 1 })).events;
+      expect(lonely.debug).toMatchObject({ neglect: { happiness: -6, hp: -3 } });
+      expect(lonely.detail).toContain("Hasn't seen you in 2 days.");
+      expect(lonely.effects.happiness).toBeLessThanOrEqual(-6);
+      expect(lonely.effects.hp).toBeLessThanOrEqual(-3);
+      expect(lonely.statsAfter.happiness).toBeLessThan(lonely.statsBefore.happiness);
+      expect(lonely.statsAfter.hp).toBeLessThan(lonely.statsBefore.hp);
+
+      // Spending time with it again ends the neglect.
+      await sharePet(db, "owner");
+      expect(await visitPet(db, "owner", lifeId, token, noNotify)).toBe(true);
+      const [back] = (await listPetEvents(db, "owner", { limit: 1 })).events;
+      expect(back.debug).toMatchObject({ neglect: null });
+    } finally {
+      await close();
+    }
+  });
+
   it("pages the current life's diary and starts a fresh one for a new pet", async () => {
     const { db, close, pet } = await setup();
     try {
@@ -219,12 +251,12 @@ describe("pet life", () => {
   it("stores context for the next visit, and gives an older pet an identity on first read", async () => {
     const { db, close, pet } = await setup();
     try {
-      expect(await updatePetContext(db, "owner", context)).toEqual({ stored: false });
+      expect(await updatePetContext(db, "owner", context)).toEqual({ stored: false, walk: null });
       await setPet(db, "owner", { stickerId: pet.stickerId });
       // An older pet: no identity, no life.
       await db.update(userPets).set({ identityJson: null, lifeId: null, lifeRunId: null }).where(eq(userPets.userId, "owner"));
       const tasks: Array<() => Promise<void>> = [];
-      expect(await updatePetContext(db, "owner", { stepsToday: 321, timeZone: "UTC" }, (task) => tasks.push(task))).toEqual({ stored: true });
+      expect(await updatePetContext(db, "owner", { stepsToday: 321, timeZone: "UTC" }, (task) => tasks.push(task))).toEqual({ stored: true, walk: null });
       await Promise.all(tasks.map((task) => task()));
       expect((await db.select().from(userPets))[0].signalsJson).toMatchObject({ stepsToday: 321 });
       const read = (await getPet(db, "owner")).pet!;

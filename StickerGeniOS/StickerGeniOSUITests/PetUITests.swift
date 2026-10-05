@@ -82,4 +82,41 @@ final class PetUITests: StickerGeniOSUITestCase {
         release.tap()
         XCTAssertTrue(element("choose-pet-button").waitForExistence(timeout: 15))
     }
+
+    /// The microphone beside the pet opens the talk sheet, which starts listening on its own. With
+    /// nothing said yet there is nothing to send, and Cancel closes it.
+    @MainActor
+    func testTalkingToThePetOpensTheTalkSheet() {
+        app.terminate()
+        app.launchArguments.append("--ui-installed-pack")
+        app.launch()
+
+        app.tabBars.buttons["Pet"].tap()
+        let choose = element("choose-pet-button")
+        XCTAssertTrue(choose.waitForExistence(timeout: 15))
+        choose.tap()
+        let candidate = element("pet-candidate-sticker-borrowed")
+        XCTAssertTrue(candidate.waitForExistence(timeout: 15))
+        candidate.tap()
+        XCTAssertTrue(element("current-pet").waitForExistence(timeout: 15))
+
+        element("pet-stats").swipeUp()
+        let talk = element("pet-talk-button")
+        XCTAssertTrue(talk.waitForExistence(timeout: 5))
+        talk.tap()
+        XCTAssertTrue(app.navigationBars["Talk to Your Pet"].waitForExistence(timeout: 5))
+
+        // Opening the sheet asks for the microphone the first time.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.buttons["Allow"]
+        if allow.waitForExistence(timeout: 5) { allow.tap() }
+        // A simulator without the speech model for its language says so; that is fine here.
+        let ok = app.alerts.buttons["OK"]
+        if ok.waitForExistence(timeout: 3) { ok.tap() }
+
+        XCTAssertTrue(element("pet-talk-mic").exists)
+        XCTAssertFalse(app.navigationBars["Talk to Your Pet"].buttons["Send"].isEnabled)
+        app.navigationBars["Talk to Your Pet"].buttons["Cancel"].tap()
+        XCTAssertTrue(app.navigationBars["Talk to Your Pet"].waitForNonExistence(timeout: 5))
+    }
 }

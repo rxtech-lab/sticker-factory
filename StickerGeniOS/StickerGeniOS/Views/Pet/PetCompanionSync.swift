@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import UIKit
 import WidgetKit
 
 /// Keeps the widget and the watch showing the pet the account has now.
@@ -63,6 +64,7 @@ final class PetCompanionSync {
     func publish(_ pet: Pet?, resendToWatch: Bool = false) async -> Bool {
         guard let api, let store else { return false }
         return await serially { [watch, reloadWidgets] in
+            let weatherScopeChanged = await PetArtworkImageCache.shared.prepareWeather(for: pet)
             var snapshot = pet.map(PetSnapshot.init(pet:))
             let current = store.envelope()
             do {
@@ -73,9 +75,12 @@ final class PetCompanionSync {
                 // The weather's drawing likewise. One that will not come is left out rather than
                 // failing the pet: the widget shows the weather's symbol, and the next publish retries.
                 var weatherArt: Data?
-                if let artKey = snapshot?.weather?.artKey,
-                   current?.pet?.weather?.artKey != artKey || store.weatherArt() == nil {
-                    weatherArt = try? await api.petWeatherArt(size: PetCompanion.weatherArtSize)
+                if let pet, let artKey = snapshot?.weather?.artKey,
+                   weatherScopeChanged || current?.pet?.weather?.artKey != artKey || store.weatherArt() == nil {
+                    let image = try? await PetArtworkImageCache.shared.loadWeather(
+                        pet: pet, artKey: artKey, size: PetCompanion.weatherArtSize, api: api
+                    )
+                    weatherArt = image?.pngData()
                     if weatherArt == nil { snapshot?.weather?.artKey = nil }
                 }
                 if let current, current.pet == snapshot, pose == nil, weatherArt == nil {
@@ -98,6 +103,7 @@ final class PetCompanionSync {
     /// Signing out: the next person to hold this phone, or glance at this watch, must not see the pet.
     func signedOut() async {
         await serially { [store, watch, reloadWidgets] in
+            await PetArtworkImageCache.shared.prepareWeather(for: nil)
             store?.clear()
             reloadWidgets()
             watch.send(PetSnapshotEnvelope(pet: nil, writtenAt: .now), poseURL: nil)

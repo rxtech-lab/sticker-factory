@@ -15,6 +15,18 @@ extension StickerAPIClient {
         return response.pet
     }
 
+    func resolvePetEncounter(encounterID: String, choiceID: String) async throws -> ResolvePetEncounterResponse {
+        try await send(
+            path: "api/v1/pet/encounter", method: "POST",
+            body: ResolvePetEncounterRequest(encounterId: encounterID, choiceId: choiceID)
+        )
+    }
+
+    func givePetMedicine() async throws -> Pet? {
+        let response: PetResponse = try await send(path: "api/v1/pet/medicine", method: "POST")
+        return response.pet
+    }
+
     func sendPetPhoto(jpeg: Data) async throws -> Pet? {
         // Unbound to any sticker, so the server's sweep of stale uploads clears it within a day.
         let assetID = try await upload(
@@ -35,9 +47,8 @@ extension StickerAPIClient {
         return response.pet
     }
 
-    func updatePetContext(_ context: PetContextPayload) async throws -> Bool {
-        let response: PetContextStoredResponse = try await send(path: "api/v1/pet/context", method: "PUT", body: context)
-        return response.stored
+    func updatePetContext(_ context: PetContextPayload) async throws -> PetContextStoredResponse {
+        try await send(path: "api/v1/pet/context", method: "PUT", body: context)
     }
 
     func petEvents(cursor: String?) async throws -> PetEventsResponse {
@@ -64,10 +75,27 @@ extension StickerAPIClient {
         try await petImage(path: "api/v1/pet/weather-art", size: size)
     }
 
-    /// A PNG the server draws for the pet — its pose or its weather — `size` pixels square.
-    private func petImage(path: String, size: Int) async throws -> Data {
-        var request = try await authorizedRequest(path: path, query: [URLQueryItem(name: "size", value: String(size))])
-        request.setValue("image/png", forHTTPHeaderField: "Accept")
+    func petWeatherArt(size: Int, artKey: String) async throws -> Data {
+        try await petImage(path: "api/v1/pet/weather-art", size: size, artKey: artKey)
+    }
+
+    func petItemArt(index: Int, size: Int) async throws -> Data {
+        try await petImage(path: "api/v1/pet/items/art", size: size, index: index, mimeType: "image/webp")
+    }
+
+    func petItemArt(index: Int, size: Int, artKey: String) async throws -> Data {
+        try await petImage(path: "api/v1/pet/items/art", size: size, index: index, artKey: artKey, mimeType: "image/webp")
+    }
+
+    /// Artwork the server draws for the pet, `size` pixels square.
+    private func petImage(
+        path: String, size: Int, index: Int? = nil, artKey: String? = nil, mimeType: String = "image/png"
+    ) async throws -> Data {
+        var query = [URLQueryItem(name: "size", value: String(size))]
+        if let index { query.append(URLQueryItem(name: "index", value: String(index))) }
+        if let artKey { query.append(URLQueryItem(name: "artKey", value: artKey)) }
+        var request = try await authorizedRequest(path: path, query: query)
+        request.setValue(mimeType, forHTTPHeaderField: "Accept")
         var (data, response) = try await session.data(for: request)
         if (response as? HTTPURLResponse)?.statusCode == 401 {
             request.setValue("Bearer \(try await tokenBroker.validAccessToken(forceRefresh: true))", forHTTPHeaderField: "Authorization")

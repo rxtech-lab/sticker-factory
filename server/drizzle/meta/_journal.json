@@ -176,6 +176,27 @@
       "when": 1789531200015,
       "tag": "0024_pet_weather_art_sticker",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789531200016,
+      "tag": "0025_pet_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789531200017,
+      "tag": "0026_pet_encounters",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789531200018,
+      "tag": "0027_user_wallets",
+      "breakpoints": true
     }
   ]
 }

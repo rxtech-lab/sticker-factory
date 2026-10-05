@@ -611,6 +611,11 @@ export const userPets = pgTable("user_pets", {
   statusUpdatedAt: timestampColumn("status_updated_at"),
   statsJson: jsonb("stats_json").$type<PetStatsValues>(),
   actionsJson: jsonb("actions_json").$type<PetAction[]>(),
+  itemsJson: jsonb("items_json").$type<PetAction[]>(),
+  itemsArtKey: text("items_art_key"),
+  itemsContextKey: text("items_context_key"),
+  itemsUpdatedAt: timestampColumn("items_updated_at"),
+  itemsClaimedAt: timestampColumn("items_claimed_at"),
   interactionId: text("interaction_id"),
   /** Who this pet is: class, personality, preferences, and the world it was adopted into. */
   identityJson: jsonb("identity_json").$type<PetIdentityV1>(),
@@ -641,12 +646,51 @@ export const userPets = pgTable("user_pets", {
   evolutionJson: jsonb("evolution_json").$type<PetEvolution>(),
   /** When the last evolution started, so a pet grows at most once per cooldown. */
   lastEvolvedAt: timestampColumn("last_evolved_at"),
-  /** The steps already paid out as gold on the phone's local date, so a walk is only paid once. */
-  walkGoldJson: jsonb("walk_gold_json").$type<PetWalkGold>(),
+  /** What the pet is ill with, and since when. Null while it is well. */
+  illnessJson: jsonb("illness_json").$type<PetIllness>(),
+  /** Doses of medicine the pet has, won from its daily encounters. One cures an illness. */
+  medicine: integer("medicine").notNull().default(0),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
   index("user_pets_sticker_idx").on(table.stickerId),
+]);
+
+/**
+ * The owner's gold, shared by every pet they ever have: adopting another pet or letting one go
+ * leaves it where it is. Earned by walking and a daily allowance, spent on actions and items.
+ *
+ * Written only alongside a pet's stats, guarded by `version` so two changes racing never pay or
+ * spend the same gold twice.
+ */
+export const userWallets = pgTable("user_wallets", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  gold: integer("gold").notNull(),
+  /** The steps already paid out on the phone's local date, so a walk is only paid once. */
+  walkGoldJson: jsonb("walk_gold_json").$type<PetWalkGold>(),
+  /** The owner's local date the daily gold was last granted on. */
+  dailyGoldDate: text("daily_gold_date"),
+  version: integer("version").notNull().default(0),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  check("user_wallets_gold_check", sql`${table.gold} >= 0`),
+]);
+export type UserWalletRow = typeof userWallets.$inferSelect;
+
+/**
+ * Gold granted for something the owner did outside the pet, one row per thing, so a retried step
+ * never pays the same sticker twice. The id names what was paid for, like `sticker:<jobId>`.
+ */
+export const userWalletGrants = pgTable("user_wallet_grants", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["sticker"] }).notNull(),
+  gold: integer("gold").notNull(),
+  createdAt: timestampColumn("created_at").notNull(),
+}, (table) => [
+  index("user_wallet_grants_user_idx").on(table.userId, table.createdAt),
+  check("user_wallet_grants_kind_check", sql`${table.kind} IN ('sticker')`),
 ]);
 
 export type PetMusing = { text: string; afterMinutes: number };
@@ -676,7 +720,11 @@ export type PetStoredContext = {
   updatedAt: string;
 };
 export type PetWalkGold = { date: string; steps: number };
-/** Stored stats and effects. `gold` came later: rows and diary lines from before it have none. */
+export type PetIllness = { name: string; since: string };
+/**
+ * Stored stats and effects. `gold` came later: diary lines from before it have none, and a pet's
+ * own stats never do — gold is the owner's, in `user_wallets`.
+ */
 export type PetStatsValues = { happiness: number; hp: number; energy: number; gold?: number };
 
 /**
@@ -689,7 +737,7 @@ export const petEvents = pgTable("pet_events", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   lifeId: text("life_id").notNull(),
   stickerId: text("sticker_id"),
-  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "sticker", "evolved"] }).notNull(),
+  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine"] }).notNull(),
   title: text("title").notNull(),
   detail: text("detail").notNull(),
   effectsJson: jsonb("effects_json").$type<PetStatsValues>().notNull(),
@@ -702,6 +750,43 @@ export const petEvents = pgTable("pet_events", {
   index("pet_events_life_idx").on(table.userId, table.lifeId, table.createdAt),
 ]);
 export type PetEventRow = typeof petEvents.$inferSelect;
+
+/**
+ * Something that happens to the pet and needs its owner to decide: one a day at most, written by
+ * the pet's agent when its life workflow visits. The choices carry their outcomes, which stay on
+ * the server until the owner picks one — a wrong pick costs the pet, a right one rewards it.
+ */
+export const petEncounters = pgTable("pet_encounters", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  lifeId: text("life_id").notNull(),
+  /** The owner's local date it happened on: the one encounter that day. */
+  date: text("date").notNull(),
+  title: text("title").notNull(),
+  prompt: text("prompt").notNull(),
+  choicesJson: jsonb("choices_json").$type<PetEncounterChoice[]>().notNull(),
+  state: text("state", { enum: ["open", "resolved"] }).notNull(),
+  choiceId: text("choice_id"),
+  expiresAt: timestampColumn("expires_at").notNull(),
+  resolvedAt: timestampColumn("resolved_at"),
+  createdAt: timestampColumn("created_at").notNull(),
+}, (table) => [
+  uniqueIndex("pet_encounters_day_idx").on(table.userId, table.lifeId, table.date),
+  check("pet_encounters_state_check", sql`${table.state} IN ('open', 'resolved')`),
+]);
+export type PetEncounterChoice = {
+  id: string;
+  title: string;
+  description: string;
+  /** Whether this was the right call. Hidden from the client until it is chosen. */
+  correct: boolean;
+  /** What the pet says happened, shown once chosen. */
+  outcome: string;
+  effects: { happiness: number; hp: number; energy: number; gold: number };
+  medicine: number;
+  sickens: boolean;
+};
+export type PetEncounterRow = typeof petEncounters.$inferSelect;
 
 /**
  * The weather drawn in a pet's own art style, for the Pet tab and the widget to stand it in.

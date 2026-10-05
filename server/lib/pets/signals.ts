@@ -183,7 +183,7 @@ export function signalEffects(signals: PetSignalsV1, identity: PetIdentityV1 | n
     add({ hp: -2, energy: -2 }, `harsh temperature (${signals.weather.temperatureC}°C)`);
   }
   if (signals.stepsToday !== null) {
-    if (signals.stepsToday >= 10_000) add({ happiness: walker ? 4 : 2, hp: 3, energy: -2 }, `big walk (${signals.stepsToday} steps)`);
+    if (signals.stepsToday >= 10_000) add({ happiness: walker ? 4 : 2, hp: 3 }, `big walk (${signals.stepsToday} steps)`);
     else if (signals.stepsToday < 1_500) add({ happiness: walker ? -4 : -1, energy: 2 }, `barely walked (${signals.stepsToday} steps)`);
   }
   return { effects, reasons };

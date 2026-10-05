@@ -25,7 +25,8 @@ struct PetWorldSheet: View {
                         sourceCard(
                             title: "Steps",
                             symbol: "figure.walk",
-                            detail: "Only today's step count is read from Health. Nothing is written.",
+                            // swiftlint:disable:next line_length
+                            detail: "Walking your pet gives back its energy and earns gold. Only today's step count is read from Health. Nothing is written.",
                             state: healthState,
                             identifier: "pet-world-health-button"
                         ) {

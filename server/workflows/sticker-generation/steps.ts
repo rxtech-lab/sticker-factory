@@ -11,6 +11,7 @@ import { beginJob, completeJob, failJob } from "@/lib/services/job-lifecycle";
 import { acceptRevision, bindExports, rejectRevision, revertRevision } from "@/lib/services/stickers";
 import { quickPublishSticker } from "@/lib/services/quick-publish";
 import { noticeNewSticker } from "@/lib/services/pets";
+import { grantStickerGold } from "@/lib/services/pet-wallet";
 import { getObjectStore } from "@/lib/storage/r2";
 import { ApiError } from "@/lib/http/errors";
 import { recordJobApiCost } from "@/lib/subscription/credits";
@@ -28,12 +29,15 @@ export async function beginJobStep(jobId: string): Promise<void> {
 }
 
 /**
- * Shows the owner's pet the sticker this turn just made; the pet decides whether it cares. After
- * the turn has completed, so the owner never waits on their pet. Swallows its own failures.
+ * Pays the owner gold for the sticker this turn just made, then shows it to their pet; the pet
+ * decides whether it cares. After the turn has completed, so the owner never waits on their pet.
+ * Swallows its own failures.
  */
 export async function noticePetStickerStep(jobId: string, revisionId: string | undefined): Promise<void> {
   "use step";
-  await noticeNewSticker(await getDatabase(), jobId, revisionId);
+  const db = await getDatabase();
+  await grantStickerGold(db, jobId, revisionId);
+  await noticeNewSticker(db, jobId, revisionId);
 }
 
 export async function executeAiJobStep(jobId: string): Promise<AiTurnResult> {

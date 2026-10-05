@@ -6,6 +6,8 @@ nonisolated enum AppDiskCache {
     static func directories(fileManager: FileManager = .default) -> [URL] {
         var paths = [
             StickerImageCache.diskDirectory,
+            PetArtworkImageCache.shared.diskDirectory,
+            PetArtworkImageCache.shared.weatherDiskDirectory,
             StickerAssetData.directory,
             StickerVideoFrameLoader.directory
         ]
@@ -53,6 +55,7 @@ nonisolated enum AppDiskCache {
     static func clear() async throws -> Int64 {
         let paths = directories()
         await StickerImageCache.clear()
+        await PetArtworkImageCache.shared.clear()
         await StickerVideoFrameLoader.shared.removeAll()
         try await Task.detached(priority: .utility) {
             try remove(paths)

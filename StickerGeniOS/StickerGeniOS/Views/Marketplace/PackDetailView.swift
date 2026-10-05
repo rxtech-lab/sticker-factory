@@ -24,6 +24,10 @@ struct PackDetailView: View {
     @State private var wasDeleted = false
     /// Points at the messenger row, so the first pack a reader opens says what those two buttons do.
     private let messengerTip = MessengerExportTip()
+    /// The toolbar runs down the side of an opened iPhone Duo.
+    @State private var hasVerticalToolbar = false
+    /// The iPhone Duo's hinge is open all the way.
+    @State private var isFullyOpen = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -61,6 +65,9 @@ struct PackDetailView: View {
         .environment(\.tutorialContext, TutorialContext(packID: packID))
         .navigationTitle(detail?.title ?? String(localized: "Pack"))
         .navigationBarTitleDisplayMode(.inline)
+        // The header already leads with the pack's name, so on iPhone the bar does not repeat it.
+        // The title stays set for the back button of whatever is pushed next.
+        .toolbar(removing: isExpanded ? nil : .title)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             if let detail, detail.state == .published || detail.state == .unlisted {
@@ -74,7 +81,46 @@ struct PackDetailView: View {
                     .accessibilityIdentifier("pack-share")
                 }
             }
+            // An iPhone Duo opened all the way has a side toolbar with room for the pack's
+            // actions, so the page below is all stickers.
+            if let detail, isExpanded {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if !detail.stickers.isEmpty {
+                        ForEach(MessengerDestination.allCases) { destination in
+                            Button {
+                                Haptics.tap(.light)
+                                messengerTip.invalidate(reason: .actionPerformed)
+                                messengerDestination = destination
+                            } label: {
+                                Label {
+                                    Text(destination.label)
+                                } icon: {
+                                    Image(destination.logoAsset)
+                                        .renderingMode(.original)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 22, height: 22)
+                                }
+                            }
+                            .accessibilityLabel(String(localized: "Add to \(destination.label)"))
+                            .accessibilityIdentifier("pack-messenger-\(destination.rawValue)")
+                        }
+                    }
+                    if detail.isMine {
+                        Button {
+                            Haptics.tap(.light)
+                            openEditor()
+                        } label: {
+                            Label("Edit pack", systemImage: "pencil")
+                        }
+                        .accessibilityIdentifier("pack-edit-button")
+                    }
+                }
+            }
         }
+        .detectsFoldableLayout(verticalToolbar: $hasVerticalToolbar, fullyOpen: $isFullyOpen)
+        // The actions moving between the bottom bar and the toolbar are felt as well as seen.
+        .onChange(of: isExpanded) { _, _ in Haptics.tap(.soft) }
         .safeAreaInset(edge: .bottom) {
             if let detail { bottomBar(detail) }
         }
@@ -262,7 +308,7 @@ struct PackDetailView: View {
             // Every pack is also a WhatsApp or Telegram pack. The export cuts it to the
             // messenger's rules — one kind per pack, split when too large — so the buttons need
             // no conditions beyond there being something to send.
-            if !detail.stickers.isEmpty {
+            if !detail.stickers.isEmpty, !isExpanded {
                 HStack(spacing: 10) {
                     ForEach(MessengerDestination.allCases) { destination in
                         Button {
@@ -287,21 +333,25 @@ struct PackDetailView: View {
                     }
                 }
                 .popoverTip(messengerTip, arrowEdge: .bottom)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if detail.isMine {
-                // There is nothing to install — self-install is refused server-side, since the
-                // creator's own stickers already sit in their library — so the bar carries the one
-                // thing the creator *can* do here. A published pack is editable exactly like a
-                // draft: the change reaches everyone who added it.
-                Button { openEditor() } label: {
-                    Label("Edit pack", systemImage: "pencil")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                if !isExpanded {
+                    // There is nothing to install — self-install is refused server-side, since the
+                    // creator's own stickers already sit in their library — so the bar carries the one
+                    // thing the creator *can* do here. A published pack is editable exactly like a
+                    // draft: the change reaches everyone who added it.
+                    Button { openEditor() } label: {
+                        Label("Edit pack", systemImage: "pencil")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.poster)
+                    .accessibilityIdentifier("pack-edit-button")
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .buttonStyle(.poster)
-                .accessibilityIdentifier("pack-edit-button")
             } else if detail.installed {
                 // Already added: the way out stays available but does not compete with the grid,
                 // so it drops to plain glass while adding keeps the tinted, prominent treatment.
@@ -353,6 +403,9 @@ struct PackDetailView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
     }
+
+    /// An iPhone Duo opened all the way, where the pack's actions sit in the side toolbar.
+    private var isExpanded: Bool { hasVerticalToolbar && isFullyOpen }
 
     private func openEditor() {
         isEditing = true

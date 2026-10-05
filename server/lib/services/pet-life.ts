@@ -8,10 +8,14 @@ import { notifyPetStatusChanged } from "@/lib/notifications/pet";
 import { describeError } from "@/lib/observability/trace";
 import { pickEvent } from "@/lib/pets/events";
 import { petLog, petRandom } from "@/lib/pets/log";
+import { catchIllness, hasRecovered, ILLNESS_EFFECTS, illnessChance } from "@/lib/pets/illness";
+import { neglectEffects, neglectNote, withNeglect } from "@/lib/pets/neglect";
 import { localHour, resolveSignals, signalEffects } from "@/lib/pets/signals";
-import { addEffects, applyEffects, personalizeEffects, preferenceEffects } from "@/lib/pets/stats";
+import { addEffects, applyEffects, personalizeEffects, preferenceEffects, ZERO_EFFECTS } from "@/lib/pets/stats";
 import { ownerMoment, refreshActions } from "./pet-actions";
-import { commitPetChange, currentStats, ensurePetIdentity, petRow } from "./pet-state";
+import { maybeStartEncounter } from "./pet-encounters";
+import { refreshPetItems } from "./pet-items";
+import { commitPetChange, currentStats, ensurePetIdentity, lastAttendedAt, petRow, type PetChange } from "./pet-state";
 import { readablePlayback } from "./playback";
 
 /** Time passing between visits: the pet rests, and misses its owner a little. */
@@ -84,14 +88,39 @@ export async function visitPet(
     const detail = event.detail(eventContext);
     const world = signalEffects(signals, identity);
     const preference = preferenceEffects(`${event.title} ${detail}`, identity);
-    const raw = addEffects(VISIT_DRIFT, world.effects, event.effects, preference.effects);
-    const effects = personalizeEffects(raw, identity);
+    // An ill pet feels it on every visit until it is cured or gets over it; a well one may catch
+    // something, more likely when the event was a soaking or a bad snack, or it is worn down.
+    const illness = row.illnessJson;
+    const recovered = illness && hasRecovered(illness, now) ? illness : null;
+    const stillIll = illness && !recovered ? illness : null;
+    const caught = !illness && petRandom() < illnessChance({
+      hp: currentStats(row).hp, maxHp: identity?.maxHp ?? 100, eventSickens: event.sickens,
+    }) ? catchIllness(now, petRandom) : null;
+    const raw = addEffects(VISIT_DRIFT, world.effects, event.effects, preference.effects, stillIll ? ILLNESS_EFFECTS : ZERO_EFFECTS);
+    // Left alone too long, the pet pines: its happiness and HP slip on every visit until its owner is back.
+    const attendedAt = (await lastAttendedAt(db, userId, lifeId)) ?? row.createdAt;
+    const hoursAway = Math.max(0, (now.getTime() - attendedAt.getTime()) / 3_600_000);
+    const neglect = neglectEffects(hoursAway);
+    const effects = withNeglect(personalizeEffects(raw, identity), neglect);
+    const eventDetail = [
+      detail,
+      neglect ? neglectNote(hoursAway) : "",
+      stillIll ? `Still ill with ${stillIll.name}.` : "",
+      caught ? `Came down with ${caught.name}.` : "",
+      recovered ? `Got over ${recovered.name}.` : "",
+    ].filter(Boolean).join(" ");
+    const illnessChanges: PetChange[] = [
+      ...(caught ? [{ kind: "illness" as const, title: "Fell ill", detail: `Came down with ${caught.name}.`,
+        effects: ZERO_EFFECTS, debug: { source: "life-workflow", eventId: event.id, sickens: event.sickens ?? 0 } }] : []),
+      ...(recovered ? [{ kind: "illness" as const, title: "Got better", detail: `Got over ${recovered.name} on its own.`,
+        effects: ZERO_EFFECTS, debug: { source: "life-workflow", since: recovered.since } }] : []),
+    ];
 
     let status = row.statusJson;
     let narrated = true;
     try {
       const answer = await getAiProvider().narratePetEvent({
-        petTitle: playback.sticker.title, identity, signals, event: { title: event.title, detail },
+        petTitle: playback.sticker.title, identity, signals, event: { title: event.title, detail: eventDetail },
         stats: currentStats(row), controls: configuration?.controls ?? [], current: row.statusJson?.values ?? null,
         ...ownerMoment(row.contextJson, now),
       });
@@ -109,7 +138,7 @@ export async function visitPet(
     // A new mood brings new things to do; a visit the pet did not narrate leaves its actions alone.
     const actions = narrated && status
       ? await refreshActions(db, row, playback.sticker, playback.revision, {
-        stats: applyEffects(currentStats(row), effects, identity), mood: `${status.caption} (${event.title} — ${detail})`, signals,
+        stats: applyEffects(currentStats(row), effects, identity), mood: `${status.caption} (${event.title} — ${eventDetail})`, signals,
       })
       : undefined;
     const committed = await commitPetChange(db, userId, {
@@ -120,12 +149,13 @@ export async function visitPet(
         ...(actions ? { actionsJson: actions } : {}),
         signalsJson: signals,
         ...(headlinesRefreshed ? { signalsUpdatedAt: now } : {}),
+        ...(caught ? { illnessJson: caught } : recovered ? { illnessJson: null } : {}),
         lifeTickAt: now,
       },
       changes: [{
         kind: event.special ? "special" : "random",
         title: event.title,
-        detail: narrated && status ? `${detail} “${status.caption}”` : detail,
+        detail: narrated && status ? `${eventDetail} “${status.caption}”` : eventDetail,
         effects,
         signals,
         debug: {
@@ -133,17 +163,23 @@ export async function visitPet(
           eventId: event.id,
           eventEffects: event.effects,
           drift: VISIT_DRIFT,
+          hoursAway: Math.round(hoursAway * 10) / 10,
+          neglect,
           worldEffects: world.effects,
           worldReasons: world.reasons,
           preference: preference.matched,
           energyMultiplier: identity?.energyMultiplier ?? 1,
           hour: eventContext.hour,
+          illness: stillIll?.name ?? null,
           narrated,
           token,
         },
-      }],
+      }, ...illnessChanges],
     });
     if (!committed) return (await petRow(db, userId))?.lifeRunId === token;
+    await refreshPetItems(db, userId, now);
+    // Once a day, at a moment of its own, the pet runs into something its owner has to decide.
+    await maybeStartEncounter(db, userId, now);
     petLog("life:visited", { userId, lifeId, event: event.id, effects, after: committed.after });
     if (narrated) await notify(db, userId).catch((error) => petLog("life:notify-failed", { userId, error: describeError(error) }));
     return true;

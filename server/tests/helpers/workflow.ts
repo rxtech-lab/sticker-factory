@@ -45,13 +45,16 @@ export const unusedAiProvider: AiProvider = {
   summarizeStickerTitle: async ({ currentTitle }) => currentTitle,
   choosePetStatus: () => { throw new Error("Unexpected choosePetStatus"); },
   generatePetActions: () => { throw new Error("Unexpected generatePetActions"); },
+  generatePetItems: () => { throw new Error("Unexpected generatePetItems"); },
   respondToPetInteraction: () => { throw new Error("Unexpected respondToPetInteraction"); },
   reactToPetPhoto: () => { throw new Error("Unexpected reactToPetPhoto"); },
+  reactToPetSharedContent: () => { throw new Error("Unexpected reactToPetSharedContent"); },
   // Pet background reads fall back on failure — a persona to a balanced explorer, headlines to the
   // last ones — so a stub that throws here leaves a test's own pet assertions alone.
   generatePetPersona: () => { throw new Error("Unexpected generatePetPersona"); },
   searchPetHeadlines: () => { throw new Error("Unexpected searchPetHeadlines"); },
   narratePetEvent: () => { throw new Error("Unexpected narratePetEvent"); },
+  generatePetEncounter: () => { throw new Error("Unexpected generatePetEncounter"); },
   // Every finished turn shows the owner's pet the new sticker; the step swallows a failure.
   noticePetSticker: () => { throw new Error("Unexpected noticePetSticker"); },
 };
