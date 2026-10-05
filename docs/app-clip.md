@@ -50,7 +50,7 @@ The shared `StickerAppClip` scheme includes `StickerAppClipUITests`. Run from `S
 
 ```sh
 xcodebuild -project StickerGeniOS.xcodeproj -scheme StickerAppClip \
-  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
   -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
 ```
 

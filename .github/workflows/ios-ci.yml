@@ -73,12 +73,21 @@ jobs:
           xcrun simctl shutdown all 2>/dev/null || true
           xcrun simctl erase all 2>/dev/null || true
           xcrun simctl --set testing delete all 2>/dev/null || true
+          # Pick the newest "iPhone N Pro" the runner's Xcode ships, so an Xcode update that drops
+          # last year's model does not leave the destination pointing at a device that is gone.
+          name="$(xcrun simctl list devices available \
+            | sed -nE 's/^    (iPhone [0-9]+ Pro) \(.*/\1/p' | sort -t ' ' -k2 -n | tail -1)"
+          if [ -z "$name" ]; then
+            echo "No iPhone Pro simulator is available on this runner" >&2
+            exit 1
+          fi
+          echo "STICKER_FACTORY_SIMULATOR_NAME=$name" >> "$GITHUB_ENV"
           # An erased device runs its first-boot data migration, and the parallel workers' clones
           # each inherit that pending migration and run it at once. The slowest clone then sits on
           # the boot progress screen for minutes while xcodebuild already schedules tests on it, so
           # every tap lands nowhere. Boot the base device once so the clones copy a migrated disk.
           udid="$(xcrun simctl list devices available \
-            | awk -F '[()]' '/^    iPhone 17 Pro \(/ { id = $2 } END { print id }')"
+            | awk -F '[()]' -v name="    $name (" 'index($0, name) == 1 { id = $2 } END { print id }')"
           if [ -n "$udid" ]; then
             xcrun simctl bootstatus "$udid" -b
             xcrun simctl shutdown "$udid"
@@ -88,7 +97,6 @@ jobs:
         env:
           STICKER_FACTORY_TEST_ROOT: ${{ runner.temp }}/sticker-factory-ios-ui-tests-${{ matrix.plan }}
           STICKER_FACTORY_PACKAGE_ROOT: ${{ runner.temp }}/sticker-factory-packages
-          STICKER_FACTORY_SIMULATOR_NAME: iPhone 17 Pro
           STICKER_FACTORY_SCHEME: ${{ matrix.scheme }}
           STICKER_FACTORY_TEST_PLAN: ${{ matrix.plan }}
           STICKER_FACTORY_PARALLEL: "1"
@@ -158,12 +166,18 @@ jobs:
           xcrun simctl shutdown all 2>/dev/null || true
           xcrun simctl erase all 2>/dev/null || true
           xcrun simctl --set testing delete all 2>/dev/null || true
+          name="$(xcrun simctl list devices available \
+            | sed -nE 's/^    (iPhone [0-9]+ Pro) \(.*/\1/p' | sort -t ' ' -k2 -n | tail -1)"
+          if [ -z "$name" ]; then
+            echo "No iPhone Pro simulator is available on this runner" >&2
+            exit 1
+          fi
+          echo "STICKER_FACTORY_SIMULATOR_NAME=$name" >> "$GITHUB_ENV"
 
       - name: Run TutorialUITests
         env:
           STICKER_FACTORY_TEST_ROOT: ${{ runner.temp }}/sticker-factory-ios-tutorial-tests
           STICKER_FACTORY_PACKAGE_ROOT: ${{ runner.temp }}/sticker-factory-packages
-          STICKER_FACTORY_SIMULATOR_NAME: iPhone 17 Pro
           STICKER_FACTORY_TEST_PLAN: TutorialUITests
           # The capture tests all drive the one localhost server and share its content cache, so
           # they run on a single simulator rather than racing clones through the same endpoint.
