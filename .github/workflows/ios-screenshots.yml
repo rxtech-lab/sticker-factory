@@ -1,0 +1,266 @@
+name: iOS Screenshots
+
+# Captures the app's main screens on an iPhone and an iPad for every PR, and keeps one PR comment
+# showing them side by side. (No iPhone Duo yet: XCTest screenshots on the Duo simulator come back
+# black.) A new push flips the comment back to "capturing" before
+# the simulators start, so the images on the PR are never mistaken for the latest commit's.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-screenshots-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  COMMENT_MARKER: "<!-- ios-screenshots -->"
+  SCREENSHOT_BRANCH: ci-screenshots
+
+jobs:
+  announce:
+    name: Mark screenshots as pending
+    # Fork PRs get a read-only token and must not run on the self-hosted runner.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Update PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | contains(\"$COMMENT_MARKER\")) | .id" | head -1)
+          previous=""
+          if [ -n "$id" ]; then
+            # The last finished set stays visible, folded, until this run replaces it.
+            previous=$(gh api "repos/$REPO/issues/comments/$id" --jq .body \
+              | sed -n '/<!-- screenshots-table -->/,$p' | sed '1d')
+          fi
+          {
+            echo "$COMMENT_MARKER"
+            echo "## 📱 iOS screenshots"
+            echo
+            echo "⏳ Capturing screenshots for \`${SHA:0:7}\` on iPhone and iPad — [view run]($RUN_URL)."
+            if [ -n "$previous" ]; then
+              echo
+              echo "<details><summary>Screenshots from the previous commit</summary>"
+              echo
+              echo "$previous"
+              echo
+              echo "</details>"
+            fi
+          } > body.md
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@body.md > /dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@body.md > /dev/null
+          fi
+
+  capture:
+    name: Capture (${{ matrix.label }})
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64, ui-tests]
+    timeout-minutes: 45
+    strategy:
+      # One device that cannot boot must not cost the other its screenshots.
+      fail-fast: false
+      matrix:
+        include:
+          - device: iphone
+            label: iPhone
+            pattern: '^iPhone \d+ Pro$'
+          - device: ipad
+            label: iPad
+            pattern: '^iPad Pro 13-inch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Prepare simulator
+        env:
+          PATTERN: ${{ matrix.pattern }}
+        run: |
+          xcrun simctl shutdown all 2>/dev/null || true
+          xcrun simctl --set testing delete all 2>/dev/null || true
+          # The newest matching model on the newest iOS runtime, so an Xcode update that drops last
+          # year's model does not leave the job pointing at a device that is gone.
+          read -r udid name < <(xcrun simctl list devices available -j | python3 -c '
+          import json, os, re, sys
+          pattern = re.compile(os.environ["PATTERN"])
+          def key(text):
+              return [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", text)]
+          found = []
+          for runtime, devices in json.load(sys.stdin)["devices"].items():
+              if ".iOS-" not in runtime:
+                  continue
+              for d in devices:
+                  if pattern.search(d["name"]):
+                      found.append((key(runtime), key(d["name"]), d["udid"], d["name"]))
+          if found:
+              _, _, udid, name = max(found)
+              print(udid, name)
+          ')
+          if [ -z "${udid:-}" ]; then
+            echo "No simulator matching '$PATTERN' is available on this runner" >&2
+            exit 1
+          fi
+          echo "Using $name ($udid)"
+          xcrun simctl erase "$udid"
+          # Boot once so the first-boot data migration is done before xcodebuild drives the device.
+          xcrun simctl bootstatus "$udid" -b
+          echo "STICKER_FACTORY_SIMULATOR_ID=$udid" >> "$GITHUB_ENV"
+
+      - name: Run ScreenshotTests
+        # A screen that fails to load is reported in the comment, not by failing the job, so the
+        # screens that did load still get posted.
+        continue-on-error: true
+        env:
+          STICKER_FACTORY_TEST_ROOT: ${{ runner.temp }}/sticker-factory-ios-screenshots-${{ matrix.device }}
+          STICKER_FACTORY_PACKAGE_ROOT: ${{ runner.temp }}/sticker-factory-packages
+          STICKER_FACTORY_TEST_PLAN: ScreenshotTests
+          STICKER_FACTORY_PARALLEL: "0"
+          STICKER_FACTORY_TEST_ITERATIONS: "2"
+          STICKER_FACTORY_RESULT_BUNDLE: ${{ runner.temp }}/screenshots-${{ matrix.device }}.xcresult
+        run: ./StickerGeniOS/scripts/ios-test.sh
+
+      - name: Export screenshots
+        run: |
+          ./StickerGeniOS/scripts/export-screenshots.sh \
+            "$RUNNER_TEMP/screenshots-${{ matrix.device }}.xcresult" \
+            "$RUNNER_TEMP/screenshots/${{ matrix.device }}"
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-${{ matrix.device }}
+          path: ${{ runner.temp }}/screenshots/${{ matrix.device }}
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Shut down simulators
+        if: always()
+        run: |
+          xcrun simctl shutdown all 2>/dev/null || true
+          xcrun simctl --set testing delete all 2>/dev/null || true
+
+  publish:
+    name: Post screenshots
+    needs: [announce, capture]
+    # Still posts when one device failed: the comment says which device is missing.
+    if: always() && github.event_name == 'pull_request' && needs.announce.result == 'success' && needs.capture.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Download screenshots
+        uses: actions/download-artifact@v8
+        with:
+          pattern: screenshots-*
+          path: screenshots
+
+      # The images live on an orphan branch so the comment can embed them by raw URL; artifacts
+      # are zipped and cannot be shown inline.
+      - name: Push screenshots to ${{ env.SCREENSHOT_BRANCH }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          if git ls-remote --exit-code --heads "$remote" "$SCREENSHOT_BRANCH" > /dev/null; then
+            git clone --depth 1 --branch "$SCREENSHOT_BRANCH" "$remote" store
+          else
+            git init -q store
+            git -C store checkout -q --orphan "$SCREENSHOT_BRANCH"
+            git -C store remote add origin "$remote"
+          fi
+          git -C store config user.name "github-actions[bot]"
+          git -C store config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          # Only the latest run per PR is kept; the run id in the path defeats the raw URL cache.
+          rm -rf "store/pr-$PR"
+          mkdir -p "store/pr-$PR/$RUN_ID"
+          for dir in screenshots/screenshots-*; do
+            [ -d "$dir" ] || continue
+            cp -R "$dir" "store/pr-$PR/$RUN_ID/${dir##*/screenshots-}"
+          done
+          git -C store add -A
+          git -C store commit -q -m "Screenshots for PR #$PR (run $RUN_ID)" || exit 0
+          # Other PRs push here too; rebase over them rather than fail.
+          for attempt in 1 2 3 4 5; do
+            if git -C store push -q origin "HEAD:$SCREENSHOT_BRANCH"; then exit 0; fi
+            git -C store pull -q --rebase origin "$SCREENSHOT_BRANCH" || true
+            sleep $((attempt * 2))
+          done
+          echo "Could not push screenshots" >&2
+          exit 1
+
+      - name: Update PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CAPTURE_RESULT: ${{ needs.capture.result }}
+        run: |
+          base="https://raw.githubusercontent.com/$REPO/$SCREENSHOT_BRANCH/pr-$PR/$RUN_ID"
+          devices=(iphone ipad)
+          labels=("iPhone" "iPad")
+          screens=$(find screenshots -name '*.png' -exec basename {} .png \; | sort -u)
+          missing=0
+          table=""
+          if [ -n "$screens" ]; then
+            table="| Screen | ${labels[0]} | ${labels[1]} |"$'\n'"| --- | --- | --- |"
+            for screen in $screens; do
+              row="| \`${screen#*-}\` |"
+              for device in "${devices[@]}"; do
+                if [ -f "screenshots/screenshots-$device/$screen.png" ]; then
+                  row+=" <img src=\"$base/$device/$screen.png\" width=\"240\"> |"
+                else
+                  row+=" — |"
+                  missing=$((missing + 1))
+                fi
+              done
+              table+=$'\n'"$row"
+            done
+          fi
+          {
+            echo "$COMMENT_MARKER"
+            echo "## 📱 iOS screenshots"
+            echo
+            if [ -z "$screens" ]; then
+              echo "❌ No screenshots were captured for \`${SHA:0:7}\` — [view run]($RUN_URL)."
+            elif [ "$missing" -gt 0 ] || [ "$CAPTURE_RESULT" != "success" ]; then
+              echo "⚠️ Captured for \`${SHA:0:7}\`, but $missing screen(s) are missing (shown as —) — [view run]($RUN_URL)."
+            else
+              echo "✅ Captured for \`${SHA:0:7}\` — [view run]($RUN_URL). Check each layout before merging."
+            fi
+            echo
+            echo "<!-- screenshots-table -->"
+            echo "$table"
+          } > body.md
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | contains(\"$COMMENT_MARKER\")) | .id" | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@body.md > /dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@body.md > /dev/null
+          fi

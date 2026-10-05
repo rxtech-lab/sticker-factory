@@ -90,6 +90,20 @@ final class PetUITests: StickerGeniOSUITestCase {
         XCTAssertTrue(release.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Change Pet"].firstMatch.exists)
         release.tap()
+        // Releasing asks first; dismissing the dialog keeps the pet. iOS 26 shows it as a popover
+        // with no Cancel button, dismissed by a tap outside.
+        let confirm = element("pet-release-confirm")
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        let outside = app.otherElements["PopoverDismissRegion"].firstMatch
+        if outside.exists { outside.tap() } else { app.buttons["Cancel"].firstMatch.tap() }
+        XCTAssertTrue(confirm.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(element("current-pet").exists)
+
+        element("change-pet-button").tap()
+        XCTAssertTrue(release.waitForExistence(timeout: 5))
+        release.tap()
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
         XCTAssertTrue(element("choose-pet-button").waitForExistence(timeout: 15))
     }
 

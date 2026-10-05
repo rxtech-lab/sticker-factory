@@ -11,7 +11,7 @@ export const HEADLINES_TTL_MS = 3 * 60 * 60 * 1000;
 /** Context older than this says nothing about now: yesterday's location, last week's steps. */
 const CONTEXT_STALE_MS = 24 * 60 * 60 * 1000;
 
-export const EMPTY_SIGNALS: PetSignalsV1 = { weather: null, stepsToday: null, headlines: [] };
+export const EMPTY_SIGNALS: PetSignalsV1 = { weather: null, stepsToday: null, headlines: [], tomorrow: null };
 
 /** The phone's local date in `timeZone`, falling back to UTC for a zone this runtime cannot read. */
 export function localDate(at: Date, timeZone: string | undefined): string {
@@ -57,10 +57,17 @@ export function stepsToday(context: PetStoredContext | null, now: Date): number 
 }
 
 type WeatherFetcher = (latitude: number, longitude: number) => Promise<PetSignalsV1["weather"]>;
+type ForecastFetcher = (latitude: number, longitude: number) => Promise<PetForecast | null>;
+export type PetForecast = NonNullable<PetSignalsV1["tomorrow"]>;
 let weatherFetcherForTests: WeatherFetcher | undefined;
+let forecastFetcherForTests: ForecastFetcher | undefined;
 
 export function setWeatherFetcherForTests(fetcher: WeatherFetcher | undefined): void {
   weatherFetcherForTests = fetcher;
+}
+
+export function setForecastFetcherForTests(fetcher: ForecastFetcher | undefined): void {
+  forecastFetcherForTests = fetcher;
 }
 
 /** WMO weather interpretation codes, as Open-Meteo reports them, folded into the pet's few kinds. */
@@ -73,33 +80,74 @@ export function weatherKind(code: number, windKmh: number): PetWeatherKind {
   return code <= 1 ? "sunny" : "cloudy";
 }
 
+type OpenMeteoBody = {
+  current?: { temperature_2m?: number; weather_code?: number; wind_speed_10m?: number; is_day?: number };
+  daily?: {
+    weather_code?: number[];
+    temperature_2m_max?: number[];
+    temperature_2m_min?: number[];
+    precipitation_probability_max?: (number | null)[];
+    wind_speed_10m_max?: number[];
+  };
+};
+
+const tenths = (value: number) => Math.round(value * 10) / 10;
+
 /**
- * The current weather at a rounded location, from Open-Meteo (no key, no account). Null when it
- * cannot be read in five seconds — a pet that does not know the weather just does not mention it.
- * Tests and mock-services runs never reach the network.
+ * The current weather and tomorrow's forecast at a rounded location, from Open-Meteo (no key, no
+ * account), in one request. Days are counted in `timeZone` — the owner's tomorrow, not the
+ * server's. Either half is null when it cannot be read in five seconds: a pet that does not know
+ * the weather just does not mention it. Tests and mock-services runs never reach the network.
  */
-export async function fetchWeather(latitude: number, longitude: number): Promise<PetSignalsV1["weather"]> {
-  if (weatherFetcherForTests) return weatherFetcherForTests(latitude, longitude);
-  if (process.env.NODE_ENV === "test" || process.env.STICKER_FACTORY_MOCK_SERVICES === "true") return null;
+export async function fetchWeather(
+  latitude: number,
+  longitude: number,
+  timeZone?: string,
+): Promise<{ weather: PetSignalsV1["weather"]; tomorrow: PetForecast | null }> {
+  if (weatherFetcherForTests || forecastFetcherForTests) {
+    return {
+      weather: await weatherFetcherForTests?.(latitude, longitude) ?? null,
+      tomorrow: await forecastFetcherForTests?.(latitude, longitude) ?? null,
+    };
+  }
+  if (process.env.NODE_ENV === "test" || process.env.STICKER_FACTORY_MOCK_SERVICES === "true") return { weather: null, tomorrow: null };
   try {
     const url = new URL("https://api.open-meteo.com/v1/forecast");
     url.searchParams.set("latitude", String(latitude));
     url.searchParams.set("longitude", String(longitude));
     url.searchParams.set("current", "temperature_2m,weather_code,wind_speed_10m,is_day");
+    url.searchParams.set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max");
+    url.searchParams.set("forecast_days", "2");
+    url.searchParams.set("timezone", timeZone ?? "auto");
     const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const body = await response.json() as { current?: { temperature_2m?: number; weather_code?: number; wind_speed_10m?: number; is_day?: number } };
+    const body = await response.json() as OpenMeteoBody;
     const current = body.current;
-    if (current?.weather_code === undefined || current.temperature_2m === undefined) return null;
-    return {
+    const weather = current?.weather_code === undefined || current.temperature_2m === undefined ? null : {
       kind: weatherKind(current.weather_code, current.wind_speed_10m ?? 0),
-      temperatureC: Math.round(current.temperature_2m * 10) / 10,
+      temperatureC: tenths(current.temperature_2m),
       isDay: current.is_day !== 0,
     };
+    return { weather, tomorrow: readTomorrow(body.daily) };
   } catch (error) {
     petLog("signals.weather:failed", { error: describeError(error) });
-    return null;
+    return { weather: null, tomorrow: null };
   }
+}
+
+/** The second day of Open-Meteo's daily block — tomorrow — or null when any part of it is missing. */
+export function readTomorrow(daily: OpenMeteoBody["daily"]): PetForecast | null {
+  const code = daily?.weather_code?.[1];
+  const max = daily?.temperature_2m_max?.[1];
+  const min = daily?.temperature_2m_min?.[1];
+  if (typeof code !== "number" || typeof max !== "number" || typeof min !== "number") return null;
+  const chance = daily?.precipitation_probability_max?.[1];
+  return {
+    kind: weatherKind(code, daily?.wind_speed_10m_max?.[1] ?? 0),
+    minC: tenths(min),
+    maxC: tenths(max),
+    precipitationChance: typeof chance === "number" ? Math.max(0, Math.min(100, Math.round(chance))) : null,
+  };
 }
 
 /**
@@ -121,19 +169,22 @@ export async function resolveSignals(input: {
   const fresh = context && now.getTime() - new Date(context.updatedAt).getTime() < CONTEXT_STALE_MS ? context : null;
   const headlinesFresh = !input.refreshHeadlines && input.previousAt
     && now.getTime() - input.previousAt.getTime() < HEADLINES_TTL_MS;
-  const [weather, headlines] = await Promise.all([
-    fresh?.latitude !== undefined && fresh.longitude !== undefined ? fetchWeather(fresh.latitude, fresh.longitude) : null,
+  const [outlook, headlines] = await Promise.all([
+    fresh?.latitude !== undefined && fresh.longitude !== undefined ? fetchWeather(fresh.latitude, fresh.longitude, fresh.timeZone) : null,
     headlinesFresh ? null : searchHeadlines(input.userId, fresh, input.identity, now),
   ]);
+  const weather = outlook?.weather ?? null;
   const signals: PetSignalsV1 = {
     weather,
     stepsToday: stepsToday(context, now),
     headlines: headlines ?? input.previous?.headlines ?? [],
+    tomorrow: outlook?.tomorrow ?? null,
   };
   petLog("signals:resolved", {
     userId: input.userId,
     weather: weather?.kind ?? null,
     temperatureC: weather?.temperatureC ?? null,
+    tomorrow: signals.tomorrow?.kind ?? null,
     stepsToday: signals.stepsToday,
     headlines: signals.headlines.length,
     headlinesRefreshed: headlines !== null,

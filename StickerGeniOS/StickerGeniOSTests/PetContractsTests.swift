@@ -51,7 +51,8 @@ final class PetContractsTests: XCTestCase {
             "signals": [
                 "weather": ["kind": "hurricane", "temperatureC": 30, "isDay": true],
                 "stepsToday": 1234,
-                "headlines": ["A headline"]
+                "headlines": ["A headline"],
+                "tomorrow": ["kind": "rainy", "minC": 4.5, "maxC": 9, "precipitationChance": 80]
             ],
             "nextEventAt": "2026-10-04T18:30:00.123Z"
         ])
@@ -68,6 +69,7 @@ final class PetContractsTests: XCTestCase {
         XCTAssertEqual(pet.signals?.weather?.kind.rawValue, "hurricane")
         XCTAssertEqual(pet.signals?.stepsToday, 1234)
         XCTAssertEqual(pet.signals?.headlines, ["A headline"])
+        XCTAssertEqual(pet.signals?.tomorrow, PetForecast(kind: .rainy, minC: 4.5, maxC: 9, precipitationChance: 80))
         XCTAssertNotNil(pet.nextEventAt)
 
         // And it survives a round trip with `class` spelled as the server spells it.

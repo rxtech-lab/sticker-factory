@@ -123,7 +123,8 @@ extension MockStickerAPIClient {
     static let sampleSignals = PetSignals(
         weather: PetWeather(kind: .rainy, temperatureC: 14.5, isDay: true),
         stepsToday: 4_321,
-        headlines: ["City opens a new riverside park", "Local bakery wins national award"]
+        headlines: ["City opens a new riverside park", "Local bakery wins national award"],
+        tomorrow: PetForecast(kind: .rainy, minC: 6, maxC: 11, precipitationChance: 80)
     )
 
     static let sampleIdentity = PetIdentity(

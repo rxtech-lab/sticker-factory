@@ -232,11 +232,15 @@ nonisolated struct PetSignals: Codable, Equatable, Sendable {
     var weather: PetWeather?
     var stepsToday: Int?
     var headlines: [String] = []
+    /// Tomorrow's forecast where the owner is; the pet reads it in the evening to remind them of a
+    /// coat or an umbrella. Absent from servers and snapshots that predate it.
+    var tomorrow: PetForecast?
 
-    init(weather: PetWeather? = nil, stepsToday: Int? = nil, headlines: [String] = []) {
+    init(weather: PetWeather? = nil, stepsToday: Int? = nil, headlines: [String] = [], tomorrow: PetForecast? = nil) {
         self.weather = weather
         self.stepsToday = stepsToday
         self.headlines = headlines
+        self.tomorrow = tomorrow
     }
 
     init(from decoder: Decoder) throws {
@@ -244,7 +248,16 @@ nonisolated struct PetSignals: Codable, Equatable, Sendable {
         weather = try container.decodeIfPresent(PetWeather.self, forKey: .weather)
         stepsToday = try container.decodeIfPresent(Int.self, forKey: .stepsToday)
         headlines = try container.decodeIfPresent([String].self, forKey: .headlines) ?? []
+        tomorrow = try? container.decodeIfPresent(PetForecast.self, forKey: .tomorrow)
     }
+}
+
+/// Tomorrow's weather, as a day: its kind, low and high, and the chance of rain.
+nonisolated struct PetForecast: Codable, Equatable, Sendable {
+    var kind: PetWeatherKind
+    var minC: Double
+    var maxC: Double
+    var precipitationChance: Int?
 }
 
 /// The world on the day the pet was adopted: the same signals, and when they were read.

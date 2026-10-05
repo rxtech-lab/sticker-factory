@@ -18,6 +18,7 @@ struct PetView: View {
     /// the toolbar's "Needs You" button brings it back.
     @State private var autoPresentedEncounterID: String?
     @State private var confirmingMedicine = false
+    @State private var confirmingRelease = false
     @State private var photoItem: PhotosPickerItem?
     /// The owner opened the app and the pet has not said hello yet.
     @State private var owesGreeting = true
@@ -98,8 +99,8 @@ struct PetView: View {
                                 }
                                 .accessibilityIdentifier("pet-option-change")
                                 Button(role: .destructive) {
-                                    Haptics.tap(.medium)
-                                    Task { await model.release() }
+                                    Haptics.warning()
+                                    confirmingRelease = true
                                 } label: {
                                     Label("Release Pet", systemImage: "door.left.hand.open")
                                 }
@@ -222,6 +223,19 @@ struct PetView: View {
                 Button("Cancel", role: .cancel) { Haptics.tap(.light) }
             } message: { illness in
                 Text("Cures \(illness.name). Your pet has \(model.pet?.medicine ?? 0) medicine.")
+            }
+            .confirmationDialog(
+                "Release \(model.pet?.sticker.title ?? String(localized: "Your Pet"))?",
+                isPresented: $confirmingRelease, titleVisibility: .visible
+            ) {
+                Button("Release Pet", role: .destructive) {
+                    Haptics.tap(.heavy)
+                    Task { await model.release() }
+                }
+                .accessibilityIdentifier("pet-release-confirm")
+                Button("Cancel", role: .cancel) { Haptics.tap(.light) }
+            } message: {
+                Text("Its stats, items and medicine are gone for good. Your gold stays with you.")
             }
             .telemetryScreen("pet")
     }

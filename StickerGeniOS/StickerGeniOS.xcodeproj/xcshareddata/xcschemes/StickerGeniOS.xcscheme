@@ -70,6 +70,9 @@
          <TestPlanReference
             reference = "container:TestPlans/TutorialUITests.xctestplan">
          </TestPlanReference>
+         <TestPlanReference
+            reference = "container:TestPlans/ScreenshotTests.xctestplan">
+         </TestPlanReference>
       </TestPlans>
    </TestAction>
    <LaunchAction
