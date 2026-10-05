@@ -22,6 +22,7 @@ final class AppEnvironment {
     /// Set by tapping a "your pet grew" banner; `ContentView` switches to the Pet tab and clears it.
     var pendingOpenPet = false
     var pendingShareRoute: StickerShareRoute?
+    var pendingStickerCreation: SharedStickerCreationRequest?
     var pendingTutorialLink: TutorialDeepLink?
     let tutorials: TutorialCoordinator
     /// Strong-held: `UNUserNotificationCenter` keeps only a weak reference to its delegate.
@@ -230,6 +231,10 @@ final class AppEnvironment {
     /// authentication library.
     func handleIncomingURL(_ url: URL) {
         if let link = TutorialDeepLink(url: url) { pendingTutorialLink = link; return }
+        if let request = SharedStickerCreationHandoff.consume(url) {
+            AppTelemetry.event("deep_link_opened", parameters: ["destination": "create_from_share"])
+            pendingStickerCreation = request; return
+        }
         if let route = StickerShareRoute(url: url) {
             AppTelemetry.event("deep_link_opened", parameters: ["destination": "shared_content"])
             pendingShareRoute = route; return
@@ -257,6 +262,7 @@ final class AppEnvironment {
         subscription.reset()
         // A banner tapped on the way out points at a library this account no longer has.
         pendingStickerID = nil
+        pendingStickerCreation = nil
         authenticationState = .signedOut
     }
 
@@ -273,6 +279,7 @@ final class AppEnvironment {
         subscription.reset()
         // A banner tapped on the way out points at a library this account no longer has.
         pendingStickerID = nil
+        pendingStickerCreation = nil
         authenticationState = .signedOut
     }
 

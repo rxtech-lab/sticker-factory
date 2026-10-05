@@ -19,6 +19,10 @@ final class PetModel {
         case connectingWorld
         /// Looking for the phone's location again, and the weather there.
         case findingWeather
+        /// Telling the server which way the owner decided the pet's encounter.
+        case deciding
+        /// Giving the ill pet its medicine.
+        case givingMedicine
     }
 
     private(set) var pet: Pet?
@@ -29,11 +33,21 @@ final class PetModel {
     /// The action the pet is answering. Unlike `activity` it does not block the screen: the pet's
     /// dialogue box shows a thinking line until the reply lands.
     private(set) var pendingAction: PetAction?
+    /// The item being used, kept on the pet view through its reply and briefly afterward.
+    struct UsedItem: Identifiable {
+        let id = UUID()
+        let title: String
+        var image: UIImage?
+    }
+    private(set) var usedItem: UsedItem?
     /// The picture the pet was last shown, held up beside it until the next interaction or until
     /// `photoLifetime` after the pet has reacted to it.
     private(set) var shownPhoto: UIImage?
     /// True while the pet is looking at `shownPhoto`. Like `pendingAction`, it does not block the screen.
     private(set) var isLookingAtPhoto = false
+    /// True while the pet thinks of what to say back to its owner's words. Like `pendingAction`, it
+    /// does not block the screen.
+    private(set) var isHearingOwner = false
     /// The server's drawing of the pet in the pose it holds now, so an interaction shows on its body
     /// and not only in its words. Nil until the pet has been posed; the sticker stands in until then.
     private(set) var pose: UIImage?
@@ -66,6 +80,7 @@ final class PetModel {
     @ObservationIgnored private let animationAssets = StickerAssetStore()
     /// Puts the shown picture away once it has been up for `photoLifetime`.
     @ObservationIgnored private var photoExpiry: Task<Void, Never>?
+    @ObservationIgnored private var itemExpiry: Task<Void, Never>?
     /// How long the picture stays up after the pet's reaction lands.
     static let photoLifetime: Duration = .seconds(20)
     /// Edge of the pose drawing, in pixels: the tab shows the pet at 176 points, so about 3x.
@@ -108,8 +123,25 @@ final class PetModel {
         let lastSeen = UserDefaults.standard.object(forKey: Self.lastSeenKey) as? Date
         // Stamped now too, so an app killed without going to the background still counts as a visit.
         ownerLeft()
+        // Back from a walk, the pet's thanks for it is the hello.
+        if context.pendingWalk != nil {
+            Task { await reactToWalk() }
+            return
+        }
         greetCount &+= 1
         brain.greet(pet, awayFor: lastSeen.map { Date.now.timeIntervalSince($0) })
+    }
+
+    /// Has the pet thank its owner for the walk the last context upload paid out, once: reloads it
+    /// so the energy it got back shows, then hops and says so — on the phone, without waiting on its
+    /// agent. Waits while the pet is busy; the next chance picks the walk up.
+    func reactToWalk() async {
+        guard pet != nil, activity == nil, !isAnswering, let walk = context.takePendingWalk() else { return }
+        await loadPet()
+        guard let pet else { return }
+        greetCount &+= 1
+        Haptics.success()
+        brain.thank(forWalk: walk, pet: pet)
     }
 
     /// Every candidate, in section order, without the empty "My Stickers" a pack-only user gets.
@@ -167,6 +199,7 @@ final class PetModel {
             pet = try await api.setPet(stickerID: sticker.id, context: birthWorld)
             brain.forgetLocalLine()
             dismissPhoto()
+            dismissItem()
             errorMessage = nil
             publishToCompanions()
             await refreshPose()
@@ -181,12 +214,14 @@ final class PetModel {
     }
 
     /// Tells the server about the owner's world in the background after the tab loads. Silent: no
-    /// overlay, no haptics, and nothing at all within half an hour of the last upload.
+    /// overlay, and nothing at all within half an hour of the last upload unless the owner has
+    /// walked since — then the walk gives the pet energy back and it thanks them for it.
     func syncWorldInBackground() {
         let api = api, context = context
         Task {
             await context.refreshPermissions()
             await context.syncIfNeeded(api: api)
+            await reactToWalk()
         }
     }
 
@@ -213,6 +248,9 @@ final class PetModel {
         if stored {
             errorMessage = nil
             Haptics.success()
+            // Steps already walked today give the pet energy back as soon as Health is connected;
+            // its thanks waits until the overlay is down.
+            Task { await reactToWalk() }
         } else {
             Haptics.failure()
         }
@@ -344,16 +382,22 @@ final class PetModel {
     /// Fetches the drawing of the pet's weather when it changed. No weather, or none drawn yet,
     /// clears it so a stale sky never stands behind the pet; a failed fetch keeps what is up.
     private func refreshWeatherArt() async {
-        guard let art = pet?.weatherArt else {
+        if await PetArtworkImageCache.shared.prepareWeather(for: pet) {
+            weatherArt = nil
+            weatherArtKey = nil
+        }
+        guard let pet, let art = pet.weatherArt else {
             weatherArt = nil
             weatherArtKey = nil
             return
         }
         guard art.key != weatherArtKey || weatherArt == nil else { return }
         do {
-            let data = try await api.petWeatherArt(size: Self.weatherArtSize)
+            let image = try await PetArtworkImageCache.shared.loadWeather(
+                pet: pet, artKey: art.key, size: Self.weatherArtSize, api: api
+            )
             // The weather turned while this one was fetched; that one's fetch will land it.
-            guard self.pet?.weatherArt?.key == art.key, let image = UIImage(data: data) else { return }
+            guard self.pet?.weatherArt?.key == art.key else { return }
             weatherArt = image
             weatherArtKey = art.key
         } catch {
@@ -375,6 +419,7 @@ final class PetModel {
             await refreshPose()
             await refreshWeatherArt()
             dismissPhoto()
+            dismissItem()
             errorMessage = nil
             publishToCompanions()
             Haptics.success()
@@ -384,11 +429,111 @@ final class PetModel {
         }
     }
 
-    /// Whether the pet is busy answering an action or a picture; only one at a time.
-    var isAnswering: Bool { pendingAction != nil || isLookingAtPhoto }
+    /// Whether the pet is busy answering an action, a picture or its owner's words; only one at a time.
+    var isAnswering: Bool { pendingAction != nil || isLookingAtPhoto || isHearingOwner }
+
+    /// Has the pet answer `words` its owner said aloud, without waiting for the reply, so the talk
+    /// sheet can close at once. The answer is thought of on the phone and changes nothing on the
+    /// server. Returns whether the pet is answering.
+    @discardableResult
+    func talk(_ words: String) -> Bool {
+        let words = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty, let pet, activity == nil, !isAnswering else { return false }
+        isHearingOwner = true
+        // A new interaction moves on from the picture.
+        dismissPhoto()
+        dismissItem()
+        Task {
+            defer { isHearingOwner = false }
+            await brain.hear(words, pet: pet)
+            Haptics.success()
+        }
+        return true
+    }
+
+    /// Picks `choice` for the pet's open encounter, covering the screen while the server decides what
+    /// it led to. Returns the outcome for the sheet to reveal, or nil when it could not be picked.
+    func decide(_ choice: PetEncounter.Choice, in encounter: PetEncounter) async -> PetEncounterOutcome? {
+        guard activity == nil, !isAnswering else { return nil }
+        activity = .deciding
+        defer { activity = nil }
+        do {
+            let response = try await api.resolvePetEncounter(encounterID: encounter.id, choiceID: choice.id)
+            pet = response.pet
+            brain.forgetLocalLine()
+            errorMessage = nil
+            publishToCompanions()
+            Task { await refreshPose() }
+            // A right call feels like a win; a wrong one is felt as a warning, not an error.
+            if response.outcome.correct { Haptics.success() } else { Haptics.warning() }
+            return response.outcome
+        } catch {
+            errorMessage = error.localizedDescription
+            Haptics.failure()
+            // The moment may have passed or been decided elsewhere; the pet shows where it stands.
+            if let refreshed = try? await api.pet() { pet = refreshed }
+            return nil
+        }
+    }
+
+    /// Gives the ill pet a dose of medicine, covering the screen while it lands.
+    func giveMedicine() async {
+        guard activity == nil, !isAnswering, pet?.illness != nil, (pet?.medicine ?? 0) > 0 else { return }
+        activity = .givingMedicine
+        defer { activity = nil }
+        do {
+            pet = try await api.givePetMedicine()
+            errorMessage = nil
+            publishToCompanions()
+            greetCount &+= 1
+            Haptics.success()
+        } catch {
+            errorMessage = error.localizedDescription
+            Haptics.failure()
+        }
+    }
 
     /// Whether the pet has the gold `action` costs.
     func canAfford(_ action: PetAction) -> Bool { action.effects.price <= (pet?.stats.gold ?? 0) }
+
+    /// Checks whether the server's background item drawing has arrived while the sheet is open.
+    func refreshItems() async {
+        guard let latest = try? await api.pet(), latest.sticker.id == pet?.sticker.id else { return }
+        pet = latest
+    }
+
+    /// Carries the selected artwork out of the sheet, even when the pet's next reply changes its items.
+    @discardableResult
+    func useItem(at index: Int, image: UIImage?) -> Bool {
+        guard let items = pet?.items, items.actions.indices.contains(index) else { return false }
+        let item = UsedItem(title: items.actions[index].title, image: image)
+        guard interact(items.actions[index], item: item) else { return false }
+        if image == nil {
+            Task {
+                guard let image = try? await PetArtworkImageCache.shared.load(
+                    artKey: items.artKey, index: index, size: 256, api: api
+                ), usedItem?.id == item.id,
+                      pet?.items?.artKey == items.artKey else { return }
+                usedItem?.image = image
+            }
+        }
+        return true
+    }
+
+    private func dismissItem() {
+        itemExpiry?.cancel()
+        itemExpiry = nil
+        usedItem = nil
+    }
+
+    private func expireItem(_ item: UsedItem?) {
+        guard let item, usedItem?.id == item.id else { return }
+        itemExpiry = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            guard let self, self.usedItem?.id == item.id else { return }
+            self.dismissItem()
+        }
+    }
 
     /// Shows the pet `image` without blocking the screen: the picture appears above the pet at once,
     /// and its reaction lands in the dialogue box. Returns whether the picture was sent.
@@ -401,8 +546,10 @@ final class PetModel {
             return false
         }
         photoExpiry?.cancel()
+        dismissItem()
         shownPhoto = image
         isLookingAtPhoto = true
+        if let pet { brain.anticipatePhoto(pet: pet) }
         Task {
             defer {
                 isLookingAtPhoto = false
@@ -458,13 +605,20 @@ final class PetModel {
     /// Sends `action` without waiting for the reply, so the actions sheet can close at once.
     /// Returns whether the action was started.
     @discardableResult
-    func interact(_ action: PetAction) -> Bool {
+    func interact(_ action: PetAction, item: UsedItem? = nil) -> Bool {
         guard activity == nil, !isAnswering, pet != nil, canAfford(action) else { return false }
         pendingAction = action
+        dismissItem()
+        usedItem = item
         // A new interaction moves on from the picture.
         dismissPhoto()
+        // The pet's first reaction comes from the phone, so it answers at once; its agent's lands after.
+        if let pet { brain.anticipate(action, pet: pet) }
         Task {
-            defer { pendingAction = nil }
+            defer {
+                pendingAction = nil
+                expireItem(item)
+            }
             do {
                 pet = try await brain.answer(action)
                 errorMessage = nil
@@ -473,6 +627,7 @@ final class PetModel {
                 await refreshPose()
                 Haptics.success()
             } catch {
+                dismissItem()
                 errorMessage = error.localizedDescription
                 Haptics.failure()
             }

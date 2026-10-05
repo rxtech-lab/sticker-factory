@@ -1,0 +1,1 @@
+../StickerMessages/SharedAuthentication.swift

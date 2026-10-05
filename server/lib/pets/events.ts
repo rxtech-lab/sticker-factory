@@ -18,6 +18,8 @@ export type PetEventDefinition = {
   weight: number;
   /** Only the life workflow's visits roll these; a sticker send never does. */
   special?: boolean;
+  /** Added to the chance a well pet falls ill when this happens to it. */
+  sickens?: number;
   /** These classes are three times as likely to have it happen to them. */
   classes?: PetClass[];
   when?: (context: PetEventContext) => boolean;
@@ -36,7 +38,7 @@ export const PET_EVENTS: PetEventDefinition[] = [
     classes: ["explorer", "trickster"], detail: () => "Something sparkly turned up under the sofa." },
   { id: "snack-stash", title: "Discovered a snack stash", weight: 3, effects: { happiness: 4, hp: 5, energy: 3 },
     detail: () => "A forgotten stash of snacks — a feast!" },
-  { id: "tummy-ache", title: "Tummy ache", weight: 1, effects: { happiness: -3, hp: -8, energy: -2 },
+  { id: "tummy-ache", title: "Tummy ache", weight: 1, sickens: 0.4, effects: { happiness: -3, hp: -8, energy: -2 },
     detail: () => "Maybe that last snack was a bad idea." },
   { id: "new-friend", title: "Made a new friend", weight: 2, effects: { happiness: 7, hp: 0, energy: -3 },
     classes: ["trickster", "explorer"], detail: () => "A neighbourhood critter stopped by to play." },
@@ -45,7 +47,7 @@ export const PET_EVENTS: PetEventDefinition[] = [
   { id: "couch-day", title: "Lazy couch day", weight: 3, effects: { happiness: -2, hp: 0, energy: 8 },
     when: ({ signals }) => signals.stepsToday !== null && signals.stepsToday < 2_000, classes: ["dreamer"],
     detail: () => "Barely a step taken today, so it curled up on the couch." },
-  { id: "caught-drizzle", title: "Caught in the drizzle", weight: 3, effects: { happiness: -4, hp: -5, energy: -2 },
+  { id: "caught-drizzle", title: "Caught in the drizzle", weight: 3, sickens: 0.3, effects: { happiness: -4, hp: -5, energy: -2 },
     when: (context) => weatherIs("rainy")(context) && context.identity?.favoriteWeather !== "rainy",
     detail: () => "Got soaked on the way home and is a little sniffly." },
   { id: "puddle-party", title: "Puddle party", weight: 3, effects: { happiness: 8, hp: 0, energy: -4 }, when: weatherIs("rainy"),
@@ -53,7 +55,7 @@ export const PET_EVENTS: PetEventDefinition[] = [
   { id: "sunbeam-nap", title: "Sunbeam nap", weight: 3, effects: { happiness: 4, hp: 3, energy: 6 },
     when: (context) => weatherIs("sunny")(context) && !isNight(context), classes: ["dreamer", "guardian"],
     detail: ({ signals }) => `Napped in a warm sunbeam (${signals.weather?.temperatureC}°C).` },
-  { id: "snow-angel", title: "Made a snow angel", weight: 3, effects: { happiness: 7, hp: -2, energy: -5 }, when: weatherIs("snowy"),
+  { id: "snow-angel", title: "Made a snow angel", weight: 3, sickens: 0.15, effects: { happiness: 7, hp: -2, energy: -5 }, when: weatherIs("snowy"),
     detail: () => "Flopped into fresh snow and flapped its arms." },
   { id: "storm-jitters", title: "Storm jitters", weight: 3, effects: { happiness: -6, hp: 0, energy: -3 }, when: weatherIs("stormy"),
     detail: () => "Thunder rattled the windows; it is hiding under a blanket." },

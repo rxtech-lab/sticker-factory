@@ -358,7 +358,7 @@ function sheetInstruction(sheet: NonNullable<AiImageInput["sheet"]>): string {
     `Draw a sprite sheet: a grid of ${sheet.columns} columns by ${sheet.rows} rows of equal cells filling the 1024x1024 frame,`,
     `containing exactly ${sheet.count} drawings in row-major order (left to right, then top to bottom).`,
     "Every cell is the same size. Reserve at least 15% of each cell's width on both left and right and 15% of its height above and below as completely transparent safety margins. All visible pixels must fit inside the central 70% of the cell's width and height, including outlines, extremities, accessories, shadows, and motion effects.",
-    "Plan the full motion envelope before drawing: choose one uniform character scale small enough for the widest and tallest pose across all frames. Keep that scale and the same body anchor throughout. If any pose would reach the safety margins, reduce the character in every frame together; never crop, stretch, or shrink just that frame. A wide character must fit the cell's width even when there is spare height.",
+    sheet.independentCells ? "Each cell contains a different, complete object. Center and scale each object within its own cell." : "Plan the full motion envelope before drawing: choose one uniform character scale small enough for the widest and tallest pose across all frames. Keep that scale and the same body anchor throughout. If any pose would reach the safety margins, reduce the character in every frame together; never crop, stretch, or shrink just that frame. A wide character must fit the cell's width even when there is spare height.",
     "The references define the design and proportions, not how much of a cell to fill. Fit the complete drawing inside each cell independently, including cells on the outer edges of the sheet. Never let artwork touch a cell boundary or continue into a neighbouring cell.",
     `Cells after the ${sheet.count}th stay completely transparent.`,
     "No dividers, borders, numbers, labels, arrows, captions, or text anywhere.",
@@ -368,7 +368,7 @@ function sheetInstruction(sheet: NonNullable<AiImageInput["sheet"]>): string {
         sheet.faceRegion ? `The opening sits on ${sheet.faceRegion}; the patch contains everything that belongs to that face region and nothing outside it.` : "",
         "No enclosing outline, sticker border, rim, shadow, head or body silhouette, ears, hair, fur, shell, casing, neck, body, or background. Never draw a complete head or miniature portrait inside this patch. Match the surrounding surface's colour and texture so the patch blends into it. Keep transparent padding outside the patch. The patch is the same size, at the same position, and facing the same way in every cell; only the expression changes. Preserve hard pixel edges and the original pixel grid for pixel art.",
       ].filter(Boolean).join(" ")
-      : "Draw the same character at exactly the same scale and body position in every cell, so the frames register when flipped through.",
+      : sheet.independentCells ? "" : "Draw the same character at exactly the same scale and body position in every cell, so the frames register when flipped through.",
     sheet.facePlaceholder
       ? [
         "Keep the complete outer silhouette of the head or front of the character: ears, hair, fur, shell, casing, frames and trim.",

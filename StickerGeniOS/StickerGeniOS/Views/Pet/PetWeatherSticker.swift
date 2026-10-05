@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// The weather where the owner is, standing behind the pet: the server's drawing of it in the pet's
-/// own style, or the weather's symbol until that is drawn. It moves the way its weather does — a sun
+/// own style, or bundled weather artwork until that is drawn. It moves the way its weather does — a sun
 /// rocks and glows, clouds drift, rain and snow fall from under their cloud, a storm flashes — and
 /// holds still when the system asks for reduced motion.
 struct PetWeatherSticker: View {
@@ -41,19 +41,29 @@ struct PetWeatherSticker: View {
                 .scaledToFit()
                 .transition(.opacity.combined(with: .scale(scale: 0.8)))
         } else {
-            Image(systemName: weather.kind.symbol(isDay: weather.isDay))
+            Image(weather.kind.defaultArtworkName(isDay: weather.isDay))
                 .resizable()
+                .interpolation(.high)
                 .scaledToFit()
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(weather.kind.tint(isDay: weather.isDay))
-                .padding(18)
-                .opacity(0.85)
                 .transition(.opacity)
         }
     }
 }
 
 extension PetWeatherKind {
+    /// Bundled artwork is available immediately, including while offline or waiting for custom art.
+    func defaultArtworkName(isDay: Bool) -> String {
+        switch self {
+        case .sunny: isDay ? "PetWeatherSunny" : "PetWeatherMoon"
+        case .rainy: "PetWeatherRainy"
+        case .snowy: "PetWeatherSnowy"
+        case .stormy: "PetWeatherStormy"
+        case .foggy: "PetWeatherFoggy"
+        case .windy: "PetWeatherWindy"
+        default: "PetWeatherCloudy"
+        }
+    }
+
     /// The weather's colour, for its symbol on the poster paper, where a white cloud would vanish.
     func tint(isDay: Bool) -> Color {
         switch self {

@@ -4,6 +4,7 @@ import { PetIdentityV1Schema } from "@/lib/contracts/api";
 import { PET_EVENTS, pickEvent } from "@/lib/pets/events";
 import { buildIdentity, fallbackIdentity, PET_CLASS_TRAITS } from "@/lib/pets/identity";
 import { localDate, mergeContext, signalEffects, stepsToday, weatherKind } from "@/lib/pets/signals";
+import { neglectEffects, neglectNote, withNeglect } from "@/lib/pets/neglect";
 import { applyEffects, personalizeEffects, preferenceEffects } from "@/lib/pets/stats";
 
 const calm: PetSignalsV1 = { weather: null, stepsToday: null, headlines: [] };
@@ -74,7 +75,8 @@ describe("pet signals", () => {
   it("cheers the pet in its favourite weather and after a long walk", () => {
     const walker = identity({ class: "athlete", favoriteWeather: "rainy" });
     const result = signalEffects({ weather: { kind: "rainy", temperatureC: 12, isDay: true }, stepsToday: 12_000, headlines: [] }, walker);
-    expect(result.effects).toEqual({ happiness: 8, hp: 3, energy: -2, gold: 0 });
+    // The walk itself gives energy back through the walk reward, so the big walk costs none here.
+    expect(result.effects).toEqual({ happiness: 8, hp: 3, energy: 0, gold: 0 });
     expect(result.reasons).toHaveLength(2);
     expect(signalEffects(calm, walker).effects).toEqual({ happiness: 0, hp: 0, energy: 0, gold: 0 });
   });
@@ -104,5 +106,28 @@ describe("pet events", () => {
     expect(new Set(PET_EVENTS.map((event) => event.id)).size).toBe(PET_EVENTS.length);
     const rich = { identity: identity(), hour: 2, signals: { weather: { kind: "sunny" as const, temperatureC: 20, isDay: false }, stepsToday: 9000, headlines: ["Park reopens"] } };
     for (const event of PET_EVENTS) expect(event.detail(rich).length).toBeGreaterThan(0);
+  });
+});
+
+describe("pet neglect", () => {
+  it("leaves a recently seen pet alone and pines harder the longer its owner is away", () => {
+    expect(neglectEffects(0)).toBeNull();
+    expect(neglectEffects(11.9)).toBeNull();
+    expect(neglectEffects(12)).toEqual({ happiness: -4, hp: -2, energy: 0, gold: 0 });
+    expect(neglectEffects(30)).toEqual({ happiness: -6, hp: -3, energy: 0, gold: 0 });
+    expect(neglectEffects(24 * 5)).toEqual({ happiness: -8, hp: -5, energy: 0, gold: 0 });
+  });
+
+  it("never lets a neglected visit cheer the pet up", () => {
+    const neglect = neglectEffects(48)!;
+    expect(withNeglect({ happiness: 10, hp: 4, energy: 6, gold: 3 }, neglect)).toEqual({ happiness: -6, hp: -3, energy: 6, gold: 3 });
+    expect(withNeglect({ happiness: -5, hp: -8, energy: 0, gold: 0 }, neglect)).toEqual({ happiness: -11, hp: -11, energy: 0, gold: 0 });
+    expect(withNeglect({ happiness: 10, hp: 4, energy: 6, gold: 0 }, null)).toEqual({ happiness: 10, hp: 4, energy: 6, gold: 0 });
+  });
+
+  it("says how long the owner has been gone", () => {
+    expect(neglectNote(14.6)).toBe("Hasn't seen you in 14 hours.");
+    expect(neglectNote(25)).toBe("Hasn't seen you in 1 day.");
+    expect(neglectNote(80)).toBe("Hasn't seen you in 3 days.");
   });
 });

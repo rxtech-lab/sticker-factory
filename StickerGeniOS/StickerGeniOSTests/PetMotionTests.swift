@@ -37,7 +37,7 @@ final class PetMotionTests: XCTestCase {
 
     func testEachTouchGetsItsOwnReaction() {
         let pet = PetMotionProfile(mood: .content, petClass: nil)
-        let touches: [PetTouch] = [.tap, .release, .heldTooLong, .swipe(.left), .swipe(.up), .swipe(.down), .overwhelmed]
+        let touches: [PetTouch] = [.tap, .release, .heldTooLong, .swipe(.left), .swipe(.up), .swipe(.down), .overwhelmed, .shaken]
         let reactions = touches.map { pet.reaction(to: $0) }
         for (index, reaction) in reactions.enumerated() {
             for other in reactions[(index + 1)...] { XCTAssertNotEqual(reaction, other) }

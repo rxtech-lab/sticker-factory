@@ -10,6 +10,77 @@ struct PetAnimation {
     var assets: StickerRenderAssets
 }
 
+struct PetItemPresentation: ViewModifier {
+    let item: PetModel.UsedItem?
+    let isVisible: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottomTrailing) {
+                if let item, isVisible {
+                    PetUsedItemOverlay(item: item)
+                        .id(item.id)
+                        .offset(x: 12, y: -12)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.25), value: item?.id)
+    }
+}
+
+/// The selected object floats beside the pet while it reacts, without covering its dialogue.
+struct PetUsedItemOverlay: View {
+    let item: PetModel.UsedItem
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasArrived = false
+    @State private var startedAt = Date.now
+
+    var body: some View {
+        TimelineView(.animation(paused: reduceMotion)) { context in
+            let wave = reduceMotion ? 0 : sin(context.date.timeIntervalSince(startedAt) * .pi * 2 / 1.4)
+            ZStack {
+                Group {
+                    if let image = item.image {
+                        Image(uiImage: image).resizable().scaledToFit()
+                    } else {
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(AppColors.ink)
+                    }
+                }
+                .frame(width: 88, height: 88)
+                .rotationEffect(.degrees(wave * 8))
+                .scaleEffect(1 + wave * 0.05)
+                .offset(y: wave * -6)
+                .shadow(color: .black.opacity(0.12), radius: 5, y: 4)
+
+                Image(systemName: "sparkles")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.yellow)
+                    .scaleEffect(1 + wave * 0.15)
+                    .opacity(0.7 + wave * 0.25)
+                    .offset(x: -38, y: -36)
+            }
+            .frame(width: 104, height: 104)
+            .scaleEffect(hasArrived || reduceMotion ? 1 : 0.35)
+            .offset(x: hasArrived || reduceMotion ? 0 : 32, y: hasArrived || reduceMotion ? 0 : 20)
+            .opacity(hasArrived ? 1 : 0)
+        }
+        .allowsHitTesting(false)
+        .accessibilityLabel(Text(item.title))
+        .accessibilityIdentifier("pet-used-item")
+        .task {
+            // Let the sheet finish closing before the object arrives beside the pet.
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            startedAt = .now
+            withAnimation(reduceMotion ? .easeIn(duration: 0.2) : .spring(duration: 0.5, bounce: 0.35)) {
+                hasArrived = true
+            }
+            Haptics.tap(.soft)
+        }
+    }
+}
+
 /// Shows `still` and, every `interval`, plays the pet's own animation through once over it.
 ///
 /// The pet's agent picks the interval with each pose, so a lively pet moves often and a sleepy

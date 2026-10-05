@@ -59,6 +59,8 @@ struct StickerFactoryTabView: View {
     @State private var defersLibraryErrors = true
     @State private var featureStore = FeatureAnnouncementStore()
     @State private var showingQuickMode = false
+    @State private var sharedCreation: SharedStickerCreationRequest?
+    @State private var createdSharedStickerID: String?
     @State private var tutorialRequest: TutorialRequest?
     @State private var tutorialAfterLaunch = false
     @State private var pendingTutorialAction: TutorialAction?
@@ -139,9 +141,34 @@ struct StickerFactoryTabView: View {
                 }
             }
         }
+        .sheet(item: $sharedCreation, onDismiss: {
+            if let stickerID = createdSharedStickerID {
+                createdSharedStickerID = nil
+                environment.pendingStickerID = stickerID
+                openPendingSticker()
+            }
+            openPendingStickerCreation()
+        }, content: { request in
+            NavigationStack {
+                CreateStickerView(store: environment.store, onCreated: { sticker in
+                    createdSharedStickerID = sticker.id
+                    sharedCreation = nil
+                }, initialPrompt: request.prompt, subscription: environment.subscription)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") {
+                            Haptics.tap(.light)
+                            sharedCreation = nil
+                        }
+                    }
+                }
+            }
+            .interactiveDismissDisabled()
+        })
         .onChange(of: environment.pendingTutorialLink) { _, _ in openTutorialLink() }
         .onChange(of: environment.tutorials.navigation?.id) { _, _ in openTutorialDestination() }
         .onChange(of: environment.pendingShareRoute) { _, _ in openShareRoute() }
+        .onChange(of: environment.pendingStickerCreation?.id) { _, _ in openPendingStickerCreation() }
         .onChange(of: environment.pendingStickerID) { _, _ in openPendingSticker() }
         .onChange(of: environment.pendingOpenPet) { _, _ in openPendingPet() }
         .task {
@@ -152,6 +179,7 @@ struct StickerFactoryTabView: View {
             openShareRoute()
             StickerOnboardingTips.setWelcomeCompleted(hasSeenWelcome)
             presentLaunchFlowIfNeeded()
+            openPendingStickerCreation()
             openTutorialLink()
             defersLibraryErrors = launchFlow != nil
         }
@@ -161,6 +189,7 @@ struct StickerFactoryTabView: View {
                 pendingTutorialAction = nil
                 environment.tutorials.open(action)
             }
+            openPendingStickerCreation()
         }, content: { request in
             TutorialSheet(coordinator: environment.tutorials, request: request) { action in
                 pendingTutorialAction = action; tutorialRequest = nil
@@ -174,6 +203,7 @@ struct StickerFactoryTabView: View {
                 defersLibraryErrors = false
                 openTutorialLink()
             }
+            openPendingStickerCreation()
         }, content: { flow in
             LaunchFlowView(
                 steps: flow.steps,
@@ -276,6 +306,15 @@ struct StickerFactoryTabView: View {
             libraryPath = NavigationPath()
             libraryPath.append(SharedPackDestination(slug: slug))
         }
+    }
+
+    private func openPendingStickerCreation() {
+        guard sharedCreation == nil, launchFlow == nil, tutorialRequest == nil,
+              let request = environment.pendingStickerCreation else { return }
+        environment.pendingStickerCreation = nil
+        selection = 0
+        libraryPath = NavigationPath()
+        sharedCreation = request
     }
 
     private func openPendingPet() {

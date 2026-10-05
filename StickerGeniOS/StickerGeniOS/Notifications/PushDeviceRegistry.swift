@@ -122,7 +122,7 @@ final class PushApplicationDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any]
     ) async -> UIBackgroundFetchResult {
-        guard ["pet-status", "pet-evolved"].contains(userInfo["kind"] as? String) else { return .noData }
+        guard ["pet-status", "pet-evolved", "pet-encounter"].contains(userInfo["kind"] as? String) else { return .noData }
         return await PetCompanionSync.shared.refresh() ? .newData : .failed
     }
 }

@@ -740,7 +740,10 @@ const PetStatsV1Schema = z.object({
   happiness: z.number().int().min(0).max(100),
   hp: z.number().int().min(0).max(200),
   energy: z.number().int().min(0).max(100),
-  /** What the pet has to spend on actions that cost gold. Earned by some actions and events; never negative. */
+  /**
+   * The owner's gold, shared by every pet they have, to spend on actions that cost it. Earned by
+   * walking, a daily allowance, making stickers, and some actions and events; never negative.
+   */
   gold: z.number().int().min(0),
 }).strict();
 
@@ -788,6 +791,21 @@ export const PetContextV1Schema = z.object({
 export type PetContextV1 = z.infer<typeof PetContextV1Schema>;
 
 /**
+ * Whether the context was kept (false with no pet to keep it for), and what the owner's walk paid
+ * the pet if reporting these steps paid it out: the energy and gold it actually gained, after
+ * topping out. Null when nothing was paid this time.
+ */
+export const PetContextStoredV1Schema = z.object({
+  stored: z.boolean(),
+  walk: z.object({
+    steps: z.number().int().min(0),
+    energy: z.number().int().min(0),
+    gold: z.number().int().min(0),
+  }).nullable(),
+});
+export type PetContextStoredV1 = z.infer<typeof PetContextStoredV1Schema>;
+
+/**
  * Adopts a controllable sticker as the caller's pet. Only the id: whether it is controllable, and
  * whether the caller may pose it, are the server's to decide.
  */
@@ -810,6 +828,14 @@ export const SetPetRequestSchema = z.object({
 export const PET_ACTIONS_MAX = 12;
 /** The most gold one action may cost or earn. */
 export const PET_ACTION_GOLD_MAX = 50;
+/**
+ * Every item set carries one pricey tonic that gives the pet a big burst of energy back: the gold
+ * walks earn has something worth saving for, and a worn-out pet has a way back besides resting.
+ */
+export const PET_ITEM_RESTORE_ENERGY_MIN = 30;
+export const PET_ITEM_RESTORE_ENERGY_MAX = 50;
+export const PET_ITEM_RESTORE_PRICE_MIN = 30;
+export const PET_ITEM_RESTORE_PRICE_MAX = PET_ACTION_GOLD_MAX;
 /** Gold comes mostly from walking: the most a freshly offered action may earn, and only one may. */
 export const PET_ACTION_GOLD_EARN_MAX = 3;
 /** The bounds on how often, in seconds, the pet's agent may have the app play its animation. */
@@ -830,7 +856,8 @@ export const PetActionV1Schema = z.object({
   effects: z.object({
     happiness: z.number().int().min(-20).max(20),
     hp: z.number().int().min(-20).max(20),
-    energy: z.number().int().min(-20).max(20),
+    /** Up to 20 either way; only an item set's energy restorer goes past it. */
+    energy: z.number().int().min(-20).max(PET_ITEM_RESTORE_ENERGY_MAX),
     /** Negative costs gold, and the action is refused while the pet has less; positive earns it. */
     gold: z.number().int().min(-PET_ACTION_GOLD_MAX).max(PET_ACTION_GOLD_MAX),
   }).strict(),
@@ -844,6 +871,20 @@ export const PetEvolutionV1Schema = z.object({
   startedAt: z.string().datetime(),
   finishedAt: z.string().datetime().nullable(),
 }).strict();
+
+/**
+ * Something that happened to the pet and needs its owner to decide, as the client sees it: the
+ * choices without their outcomes, which the server reveals only once one is picked.
+ */
+export const PetEncounterV1Schema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  prompt: z.string(),
+  choices: z.array(z.object({ id: z.string().uuid(), title: z.string(), description: z.string() }).strict()).min(2).max(4),
+  expiresAt: z.string().datetime(),
+}).strict();
+
+export const PetIllnessV1Schema = z.object({ name: z.string(), since: z.string().datetime() }).strict();
 
 export const PetResponseV1Schema = z.object({
   pet: z.object({
@@ -871,6 +912,11 @@ export const PetResponseV1Schema = z.object({
     }).strict().nullable(),
     stats: PetStatsV1Schema,
     actions: z.array(PetActionV1Schema).max(PET_ACTIONS_MAX),
+    /** Four agent-chosen objects drawn together in one sheet. Null until the first drawing lands. */
+    items: z.object({
+      actions: z.array(PetActionV1Schema).length(4),
+      artKey: z.string().uuid(),
+    }).strict().nullable().optional(),
     /** Null only for a moment after adoption on an older pet, until its identity is written. */
     identity: PetIdentityV1Schema.nullable(),
     /** The latest signals the pet has read, and when the life workflow will next visit it. */
@@ -891,10 +937,16 @@ export const PetResponseV1Schema = z.object({
       isDay: z.boolean(),
       key: z.string().min(1),
     }).strict().nullable().optional(),
+    /** Today's encounter while it waits for the owner's choice; null once chosen, expired, or none. */
+    encounter: PetEncounterV1Schema.nullable().optional(),
+    /** What the pet is ill with. Null while it is well. */
+    illness: PetIllnessV1Schema.nullable().optional(),
+    /** Doses of medicine the pet has; one cures an illness. */
+    medicine: z.number().int().min(0).optional(),
   }).strict().nullable(),
 }).strict();
 
-export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "sticker", "evolved"] as const;
+export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine"] as const;
 
 /**
  * One line of the pet's diary: what happened, what it did to the stats, and what the server knew
@@ -924,6 +976,26 @@ export const SharePetResponseV1Schema = z.object({
   pet: PetResponseV1Schema.shape.pet,
 }).strict();
 
+/** The owner's pick for an open encounter. */
+export const ResolvePetEncounterRequestSchema = z.object({
+  encounterId: z.string().uuid(),
+  choiceId: z.string().uuid(),
+}).strict();
+export type ResolvePetEncounterRequest = z.infer<typeof ResolvePetEncounterRequestSchema>;
+
+/** What the pick did: whether it was right, what the pet says happened, and what it won or lost. */
+export const ResolvePetEncounterResponseV1Schema = z.object({
+  outcome: z.object({
+    choiceId: z.string().uuid(),
+    correct: z.boolean(),
+    text: z.string(),
+    effects: PetEffectsV1Schema,
+    medicine: z.number().int().min(0),
+    sickened: z.boolean(),
+  }).strict(),
+  pet: PetResponseV1Schema.shape.pet,
+}).strict();
+
 export const PetInteractionRequestSchema = z.object({
   actionId: z.string().uuid(),
 }).strict();
@@ -934,6 +1006,18 @@ export const SendPetPhotoRequestSchema = z.object({
   assetId: z.string().uuid(),
 }).strict();
 export type SendPetPhotoRequest = z.infer<typeof SendPetPhotoRequestSchema>;
+
+/** Text or a Safari page the owner explicitly shares with the pet. HTML preserves article structure. */
+export const SharePetContentRequestSchema = z.object({
+  title: z.string().trim().max(200).optional(),
+  url: z.url().max(2_048).refine((value) => {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+  }).optional(),
+  content: z.string().trim().max(20_000).optional(),
+  html: z.string().trim().max(40_000).optional(),
+}).strict().refine((value) => Boolean(value.url || value.content || value.html), "Share a link or some content.");
+export type SharePetContentRequest = z.infer<typeof SharePetContentRequestSchema>;
 
 
 /**

@@ -18,6 +18,7 @@ struct FeatureAnnouncement: Identifiable, Equatable {
         case "telegram-sticker-import": "FeatureTelegram"
         case "controllable-animation": "FeatureControllableAnimation"
         case "tutorial-library": "FeatureTutorial"
+        case "pet-on-apple-watch": "FeaturePetWatch"
         default: nil
         }
     }

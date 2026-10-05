@@ -107,7 +107,9 @@ extension MockStickerAPIClient {
     }
 
     /// Kept only when there is a pet, like the server.
-    func updatePetContext(_ context: PetContextPayload) async throws -> Bool { adoptedPet != nil }
+    func updatePetContext(_ context: PetContextPayload) async throws -> PetContextStoredResponse {
+        PetContextStoredResponse(stored: adoptedPet != nil)
+    }
 
     /// A fixed diary in two pages, so the sheet's list, its paging and the debug view all have
     /// something to show in previews and UI tests.
@@ -205,6 +207,16 @@ extension MockStickerAPIClient {
         let symbol = UIImage(systemName: weather.kind.symbol(isDay: weather.isDay), withConfiguration: configuration)
         return UIGraphicsImageRenderer(bounds: bounds, format: format).pngData { _ in
             symbol?.draw(in: bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.height * 0.08))
+        }
+    }
+
+    func petItemArt(index: Int, size: Int) async throws -> Data {
+        guard adoptedPet?.items?.actions.indices.contains(index) == true else {
+            throw StickerAPIError.invalidResponse
+        }
+        let bounds = CGRect(x: 0, y: 0, width: size, height: size)
+        return UIGraphicsImageRenderer(bounds: bounds).pngData { _ in
+            UIImage(systemName: "shippingbox.fill")?.draw(in: bounds.insetBy(dx: 12, dy: 12))
         }
     }
 

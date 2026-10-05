@@ -14,6 +14,7 @@ nonisolated struct Pet: Codable, Equatable, Sendable {
     var status: PetStatus?
     var stats: PetStats = .initial
     var actions: [PetAction]?
+    var items: PetItems?
     /// Who the pet is: its class, temperament and the world it was born into. Fixed at adoption.
     /// Nil for a moment after adopting, until the server has written it — and from older servers.
     var identity: PetIdentity?
@@ -27,6 +28,13 @@ nonisolated struct Pet: Codable, Equatable, Sendable {
     /// The weather in `signals`, drawn by the server in the pet's own art style. Nil while there is
     /// no weather or it is still being drawn, and from older servers.
     var weatherArt: PetWeatherArt?
+    /// Today's encounter while it waits for the owner's choice. Nil once chosen or expired, on days
+    /// without one, and from older servers.
+    var encounter: PetEncounter?
+    /// What the pet is ill with. Nil while it is well.
+    var illness: PetIllness?
+    /// Doses of medicine the pet has, won from its encounters. One cures an illness.
+    var medicine: Int = 0
 
     /// The HP gauge's ceiling: the class sets it, and a pet without an identity yet uses the old 100.
     var maxHp: Int { identity?.maxHp ?? 100 }
@@ -42,12 +50,64 @@ nonisolated extension Pet {
         status = try container.decodeIfPresent(PetStatus.self, forKey: .status)
         stats = try container.decodeIfPresent(PetStats.self, forKey: .stats) ?? .initial
         actions = try container.decodeIfPresent([PetAction].self, forKey: .actions)
+        items = try container.decodeIfPresent(PetItems.self, forKey: .items)
         identity = try container.decodeIfPresent(PetIdentity.self, forKey: .identity)
         signals = try container.decodeIfPresent(PetSignals.self, forKey: .signals)
         nextEventAt = try container.decodeIfPresent(Date.self, forKey: .nextEventAt)
         evolution = try container.decodeIfPresent(PetEvolution.self, forKey: .evolution)
         weatherArt = try container.decodeIfPresent(PetWeatherArt.self, forKey: .weatherArt)
+        encounter = try container.decodeIfPresent(PetEncounter.self, forKey: .encounter)
+        illness = try container.decodeIfPresent(PetIllness.self, forKey: .illness)
+        medicine = try container.decodeIfPresent(Int.self, forKey: .medicine) ?? 0
     }
+}
+
+/// Something the pet ran into that needs its owner to decide. Which choice is right, and what each
+/// leads to, stays on the server until one is picked.
+nonisolated struct PetEncounter: Codable, Equatable, Identifiable, Sendable {
+    var id: String
+    var title: String
+    var prompt: String
+    var choices: [Choice]
+    var expiresAt: Date
+
+    nonisolated struct Choice: Codable, Equatable, Identifiable, Sendable {
+        var id: String
+        var title: String
+        var description: String
+    }
+}
+
+/// What a pick led to: whether it was right, what the pet says happened, and what it won or lost.
+nonisolated struct PetEncounterOutcome: Codable, Equatable, Sendable {
+    var choiceId: String
+    var correct: Bool
+    var text: String
+    var effects: PetActionEffects
+    var medicine: Int
+    var sickened: Bool
+}
+
+nonisolated struct ResolvePetEncounterRequest: Codable, Sendable {
+    var encounterId: String
+    var choiceId: String
+}
+
+nonisolated struct ResolvePetEncounterResponse: Codable, Sendable {
+    var outcome: PetEncounterOutcome
+    var pet: Pet?
+}
+
+/// What the pet is ill with, and since when. It drains the pet until medicine cures it, or it gets
+/// over it on its own after a few days.
+nonisolated struct PetIllness: Codable, Equatable, Sendable {
+    var name: String
+    var since: Date
+}
+
+nonisolated struct PetItems: Codable, Equatable, Sendable {
+    var actions: [PetAction]
+    var artKey: String
 }
 
 /// Names the server's drawing of the pet's weather, fetched with `petWeatherArt(size:)`. A new
@@ -244,8 +304,12 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
     static let special = PetEventKind(rawValue: "special")
     static let share = PetEventKind(rawValue: "share")
     static let photo = PetEventKind(rawValue: "photo")
+    static let content = PetEventKind(rawValue: "content")
     static let sticker = PetEventKind(rawValue: "sticker")
     static let evolved = PetEventKind(rawValue: "evolved")
+    static let encounter = PetEventKind(rawValue: "encounter")
+    static let illness = PetEventKind(rawValue: "illness")
+    static let medicine = PetEventKind(rawValue: "medicine")
 
     var displayName: String {
         switch self {
@@ -256,8 +320,12 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
         case .special: String(localized: "Special visit")
         case .share: String(localized: "Shared")
         case .photo: String(localized: "Picture shown")
+        case .content: String(localized: "Read a share")
         case .sticker: String(localized: "New sticker seen")
         case .evolved: String(localized: "Grew something new")
+        case .encounter: String(localized: "Needed you")
+        case .illness: String(localized: "Health")
+        case .medicine: String(localized: "Medicine")
         default: rawValue.capitalized
         }
     }
@@ -271,8 +339,12 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
         case .special: "sparkles"
         case .share: "square.and.arrow.up.fill"
         case .photo: "photo.fill"
+        case .content: "text.book.closed.fill"
         case .sticker: "eye.fill"
         case .evolved: "wand.and.stars"
+        case .encounter: "exclamationmark.bubble.fill"
+        case .illness: "thermometer.medium"
+        case .medicine: "pills.fill"
         default: "circle.fill"
         }
     }
@@ -343,8 +415,19 @@ nonisolated struct PetContextPayload: Codable, Equatable, Sendable {
     var isEmpty: Bool { !hasLocation && stepsToday == nil && timeZone == nil }
 }
 
-/// Whether the server kept the context — false when there is no pet to keep it for.
-nonisolated struct PetContextStoredResponse: Codable, Equatable, Sendable { var stored: Bool }
+/// Whether the server kept the context — false when there is no pet to keep it for — and what the
+/// owner's walk paid the pet if these steps paid it out. `walk` is absent from older servers.
+nonisolated struct PetContextStoredResponse: Codable, Equatable, Sendable {
+    var stored: Bool
+    var walk: PetWalkReward?
+}
+
+/// What the owner's walk just gave the pet: the energy and gold it actually gained, after topping out.
+nonisolated struct PetWalkReward: Codable, Equatable, Sendable {
+    var steps: Int
+    var energy: Int
+    var gold: Int
+}
 
 nonisolated struct PetStats: Codable, Equatable, Sendable {
     var happiness: Int

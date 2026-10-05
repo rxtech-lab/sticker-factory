@@ -83,14 +83,22 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     /// The weather the pet is in, drawn by the server in the pet's style: a transparent PNG `size`
     /// pixels square. Fails until `Pet.weatherArt` names a drawing.
     func petWeatherArt(size: Int) async throws -> Data
+    func petWeatherArt(size: Int, artKey: String) async throws -> Data
+    func petItemArt(index: Int, size: Int) async throws -> Data
+    func petItemArt(index: Int, size: Int, artKey: String) async throws -> Data
     /// Performs an action and returns the pet's updated stats, pose, and spoken response.
     func interactWithPet(_ action: PetAction) async throws -> Pet?
     /// Shows the pet a JPEG: uploads it, then asks the pet to look at it. Returns the pet with its
     /// reaction, the stats the picture moved, and the actions its new mood brought.
     func sendPetPhoto(jpeg: Data) async throws -> Pet?
+    /// Picks `choiceID` for the pet's open encounter. Returns what it led to and the pet after it.
+    func resolvePetEncounter(encounterID: String, choiceID: String) async throws -> ResolvePetEncounterResponse
+    /// Gives the ill pet one dose of medicine, curing it. Refused while it is well or has none.
+    func givePetMedicine() async throws -> Pet?
     /// Hands the server the phone's coarse context for the pet's life workflow to read on its next
-    /// visit. Returns whether it was kept — false when there is no pet to keep it for.
-    func updatePetContext(_ context: PetContextPayload) async throws -> Bool
+    /// visit. Returns whether it was kept — false when there is no pet to keep it for — and what the
+    /// owner's walk paid the pet, when these steps paid it out.
+    func updatePetContext(_ context: PetContextPayload) async throws -> PetContextStoredResponse
     /// One page of the pet's diary, newest first. Pass the previous page's `nextCursor` for more.
     func petEvents(cursor: String?) async throws -> PetEventsResponse
 
@@ -118,14 +126,27 @@ extension StickerAPIClientProtocol {
     func setPet(stickerID: String, context: PetContextPayload?) async throws -> Pet? { throw StickerAPIError.invalidResponse }
     /// Adopts without telling the server anything about the world the pet is born into.
     func setPet(stickerID: String) async throws -> Pet? { try await setPet(stickerID: stickerID, context: nil) }
-    func updatePetContext(_ context: PetContextPayload) async throws -> Bool { false }
+    func updatePetContext(_ context: PetContextPayload) async throws -> PetContextStoredResponse {
+        PetContextStoredResponse(stored: false)
+    }
     func petEvents(cursor: String?) async throws -> PetEventsResponse { PetEventsResponse(events: [], nextCursor: nil) }
     func clearPet() async throws {}
     func petCandidates(query: String?) async throws -> LibrarySectionsResponse { throw StickerAPIError.invalidResponse }
     func petPose(size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
     func petWeatherArt(size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
+    func petWeatherArt(size: Int, artKey: String) async throws -> Data {
+        try await petWeatherArt(size: size)
+    }
+    func petItemArt(index: Int, size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
+    func petItemArt(index: Int, size: Int, artKey: String) async throws -> Data {
+        try await petItemArt(index: index, size: size)
+    }
     func interactWithPet(_ action: PetAction) async throws -> Pet? { throw StickerAPIError.invalidResponse }
     func sendPetPhoto(jpeg: Data) async throws -> Pet? { throw StickerAPIError.invalidResponse }
+    func resolvePetEncounter(encounterID: String, choiceID: String) async throws -> ResolvePetEncounterResponse {
+        throw StickerAPIError.invalidResponse
+    }
+    func givePetMedicine() async throws -> Pet? { throw StickerAPIError.invalidResponse }
 
     /// Clients that cannot observe the transfer still upload; they just never report partway.
     func upload(

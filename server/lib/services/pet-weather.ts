@@ -3,9 +3,8 @@
 // animates it; the widget shows it beside the pet.
 //
 // Drawn once per look — the pet's sticker, the kind of weather, day or night — and kept, so a rainy
-// Tuesday costs nothing if it already rained on Monday. The look belongs to the sticker, not to one
-// revision of it: a pet that grows keeps its weather unless it asks for it to be drawn again in its
-// new style (`forgetPetWeatherArt`). Drawing happens after a response is out; until it lands the
+// Tuesday costs nothing if it already rained on Monday. Each look belongs to the sticker's current
+// playback revision; updating the sticker invalidates it. Drawing happens after a response is out; until it lands the
 // client shows the weather as a symbol.
 
 import { createHash } from "node:crypto";
@@ -80,7 +79,7 @@ function drawingPrompt(weather: Pick<Weather, "kind" | "isDay">): string {
 
 /** Names exactly what a ready row shows, so a client re-fetches only when the drawing changed. */
 function artKey(row: PetWeatherArtRow): string {
-  return createHash("sha256").update(`${row.id}:${row.readyAt?.toISOString() ?? ""}`).digest("hex").slice(0, 24);
+  return createHash("sha256").update(`${row.id}:${row.revisionId}:${row.readyAt?.toISOString() ?? ""}`).digest("hex").slice(0, 24);
 }
 
 async function lookRow(db: Database, stickerId: string, weather: Pick<Weather, "kind" | "isDay">) {
@@ -90,11 +89,11 @@ async function lookRow(db: Database, stickerId: string, weather: Pick<Weather, "
 }
 
 /** `PetResponseV1.pet.weatherArt`: the drawn look for the weather now, or null until it is drawn. */
-export async function serializePetWeatherArt(db: Database, stickerId: string, signals: PetSignalsV1 | null) {
+export async function serializePetWeatherArt(db: Database, stickerId: string, signals: PetSignalsV1 | null, revisionId: string) {
   const weather = signals?.weather;
   if (!weather) return null;
   const row = await lookRow(db, stickerId, weather);
-  if (row?.state !== "ready" || !row.r2Key) return null;
+  if (row?.state !== "ready" || !row.r2Key || row.revisionId !== revisionId) return null;
   return { kind: weather.kind, isDay: weather.isDay, key: artKey(row) };
 }
 
@@ -119,16 +118,24 @@ export async function drawPetWeatherArt(db: Database, userId: string, now = new 
       mode: "generate",
       isolatedLayer: true,
     });
-    const r2Key = `private/pet-weather/${pet.stickerId}/${weather.kind}-${weather.isDay ? "day" : "night"}-${claimed.id}.png`;
+    const r2Key = `private/pet-weather/${pet.stickerId}/${weather.kind}-${weather.isDay ? "day" : "night"}-${crypto.randomUUID()}.png`;
     await getObjectStore().put(r2Key, { bytes: drawn.bytes, contentType: "image/png" });
-    await db.update(petWeatherArt).set({ state: "ready", r2Key, readyAt: new Date() })
-      .where(and(eq(petWeatherArt.id, claimed.id), eq(petWeatherArt.claimedAt, claimed.claimedAt)));
+    const published = await db.update(petWeatherArt).set({ state: "ready", r2Key, readyAt: new Date() })
+      .where(and(eq(petWeatherArt.id, claimed.id), eq(petWeatherArt.claimedAt, claimed.claimedAt),
+        eq(petWeatherArt.revisionId, revision.id)))
+      .returning({ id: petWeatherArt.id });
+    if (!published.length) {
+      await getObjectStore().delete(r2Key).catch(() => undefined);
+      return;
+    }
+    if (claimed.r2Key) await getObjectStore().delete(claimed.r2Key).catch(() => undefined);
     petLog("weather-art:drawn", { userId, stickerId: pet.stickerId, revisionId: revision.id, kind: weather.kind, isDay: weather.isDay });
   } catch (error) {
     petLog("weather-art:failed", { userId, error: describeError(error) });
     if (claimed) {
       await db.update(petWeatherArt).set({ state: "failed" })
-        .where(and(eq(petWeatherArt.id, claimed.id), eq(petWeatherArt.claimedAt, claimed.claimedAt)))
+        .where(and(eq(petWeatherArt.id, claimed.id), eq(petWeatherArt.claimedAt, claimed.claimedAt),
+          eq(petWeatherArt.revisionId, claimed.revisionId)))
         .catch(() => undefined);
     }
   }
@@ -148,10 +155,12 @@ async function claimLook(db: Database, stickerId: string, revisionId: string, we
       .then(firstRow);
   }
   const age = now.getTime() - existing.claimedAt.getTime();
-  if (existing.state === "ready" || (existing.state === "drawing" && age < DRAWING_STALE_MS)
-    || (existing.state === "failed" && age < FAILED_RETRY_MS)) return undefined;
+  if (existing.revisionId === revisionId && (existing.state === "ready"
+    || (existing.state === "drawing" && age < DRAWING_STALE_MS)
+    || (existing.state === "failed" && age < FAILED_RETRY_MS))) return undefined;
   return db.update(petWeatherArt).set({ state: "drawing", claimedAt: now, revisionId })
-    .where(and(eq(petWeatherArt.id, existing.id), eq(petWeatherArt.claimedAt, existing.claimedAt)))
+    .where(and(eq(petWeatherArt.id, existing.id), eq(petWeatherArt.claimedAt, existing.claimedAt),
+      eq(petWeatherArt.revisionId, existing.revisionId), eq(petWeatherArt.state, existing.state)))
     .returning()
     .then(firstRow);
 }
@@ -165,21 +174,27 @@ export async function getPetWeatherArt(
   userId: string,
   size: number,
   ifNoneMatch?: string | null,
+  expectedArtKey?: string | null,
 ): Promise<{ etag: string; bytes: Uint8Array | null }> {
   const pet = await petRow(db, userId);
   if (!pet) throw new ApiError(404, "PET_NOT_FOUND", "You have not chosen a pet.");
+  let playback;
   try {
-    await readablePlayback(db, userId, pet.stickerId);
+    playback = await readablePlayback(db, userId, pet.stickerId);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) throw new ApiError(404, "PET_NOT_FOUND", "You have not chosen a pet.");
     throw error;
   }
   const weather = pet.signalsJson?.weather;
   const row = weather ? await lookRow(db, pet.stickerId, weather) : undefined;
-  if (row?.state !== "ready" || !row.r2Key) {
+  if (row?.state !== "ready" || !row.r2Key || row.revisionId !== playback.revision.id) {
     throw new ApiError(404, "PET_WEATHER_ART_NOT_READY", "Your pet's weather has not been drawn yet.");
   }
-  const etag = `"${artKey(row)}-${size}"`;
+  const key = artKey(row);
+  if (expectedArtKey && expectedArtKey !== key) {
+    throw new ApiError(409, "PET_WEATHER_ART_CHANGED", "Your pet's weather has changed. Refresh to see it.");
+  }
+  const etag = `"${key}-${size}"`;
   if (ifNoneMatch?.split(",").some((candidate) => candidate.trim() === etag)) return { etag, bytes: null };
   const stored = await getObjectStore().get(row.r2Key);
   const bytes = await sharp(stored.bytes)

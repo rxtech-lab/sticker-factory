@@ -98,7 +98,7 @@ describe("pet weather art", () => {
     }
   });
 
-  it("keeps the weather through a new revision, and draws it again only once forgotten", async () => {
+  it("keeps weather until the sticker revision changes or its artwork is forgotten", async () => {
     const { db, close, pet } = await setup();
     try {
       const prompts: string[] = [];
@@ -114,18 +114,22 @@ describe("pet weather art", () => {
       await db.insert(stickerRevisions).values({ ...revision, id: grownId, parentRevisionId: revision.id, createdAt: new Date() });
       await db.update(stickers).set({ activeRevisionId: grownId }).where(eq(stickers.id, pet.stickerId));
 
+      expect((await getPet(db, "owner")).pet?.weatherArt).toBeNull();
       await drawPetWeatherArt(db, "owner");
-      expect(prompts).toHaveLength(1);
-      expect((await getPet(db, "owner")).pet?.weatherArt).toEqual(drawn);
+      expect(prompts).toHaveLength(2);
+      const updated = (await getPet(db, "owner")).pet?.weatherArt;
+      expect(updated?.key).not.toBe(drawn?.key);
+      await drawPetWeatherArt(db, "owner");
+      expect(prompts).toHaveLength(2);
       expect((await getPetWeatherArt(db, "owner", 128)).bytes).not.toBeNull();
 
       // A restyle forgets it; the next read draws it from the grown revision.
       await forgetPetWeatherArt(db, pet.stickerId);
       expect((await getPet(db, "owner")).pet?.weatherArt).toBeNull();
       await drawPetWeatherArt(db, "owner");
-      expect(prompts).toHaveLength(2);
+      expect(prompts).toHaveLength(3);
       expect((await db.select().from(petWeatherArt))[0]).toMatchObject({ stickerId: pet.stickerId, revisionId: grownId, state: "ready" });
-      expect((await getPet(db, "owner")).pet?.weatherArt?.key).not.toBe(drawn?.key);
+      expect((await getPet(db, "owner")).pet?.weatherArt?.key).not.toBe(updated?.key);
     } finally {
       await close();
     }

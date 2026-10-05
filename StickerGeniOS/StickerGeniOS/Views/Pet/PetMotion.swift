@@ -327,6 +327,28 @@ struct PetMotionProfile: Equatable {
             // Too many pats at once leave the pet dizzy, reeling round and round.
             return reacting(PetMove(squash: 0.06, stretch: 1.02, hop: 0, tilts: [-14, 12, -12, 10], duration: 1.6),
                             PetParticle(symbol: "tornado", color: .purple, count: 3, rise: 46), .warning)
+
+        case .shaken:
+            // The whole world rattles: a happy pet takes it as a ride, the rest are jolted about.
+            switch mood {
+            case .joyful, .content:
+                var ride = PetMove(squash: 0.12, stretch: 1.12, hop: 28, tilts: [-12, 12, -8, 6], duration: 1.0).amplified(by: joy)
+                ride.turns = petClass == .trickster
+                ride.rebounds = petClass == .athlete
+                return reacting(ride, PetParticle(symbol: "sparkles", color: .yellow, count: 3, rise: 60), .impact(.heavy))
+            case .grumpy:
+                // Furious at being thrown about.
+                return reacting(PetMove(squash: 0.14, stretch: 1.06, hop: 8, tilts: [-18, 18, -16, 12], duration: 0.7),
+                                PetParticle(symbol: "cloud.bolt.fill", color: .gray, count: 3, rise: 50), .warning)
+            case .sleepy:
+                // Jolted awake, then sinks straight back down.
+                return reacting(PetMove(squash: 0.1, stretch: 1.1, hop: 10, tilts: [-8, 8, 3, 3], duration: 1.4),
+                                PetParticle(symbol: "exclamationmark", color: .indigo, count: 1, rise: 44), .impact(.rigid, intensity: 0.6))
+            case .sick:
+                // Queasy and wobbling.
+                return reacting(PetMove(squash: 0.06, stretch: 1.0, hop: 0, tilts: [-10, 9, -7, 5], duration: 1.8),
+                                PetParticle(symbol: "drop.fill", color: .green, count: 2, rise: 36), .impact(.soft, intensity: 0.5))
+            }
         }
     }
 
@@ -406,6 +428,8 @@ enum PetTouch: Equatable {
     case swipe(PetSwipe)
     /// Tapped too many times too quickly.
     case overwhelmed
+    /// Rattled about inside the phone by its owner shaking it.
+    case shaken
 }
 
 enum PetSwipe: Equatable {
@@ -616,6 +640,8 @@ struct PetTouchReactions: ViewModifier {
     let onTouch: () -> Void
     /// Called with each touch the pet reacted to, once the touch is over.
     var onReaction: (PetTouch) -> Void = { _ in }
+    /// Whether shaking the phone rattles the pet. Off while it is out of sight or behind a sheet.
+    var acceptsShakes = false
 
     /// How far a finger moves before the touch is a swipe rather than a tap or a hold.
     private static let swipeDistance: CGFloat = 30
@@ -624,6 +650,8 @@ struct PetTouchReactions: ViewModifier {
     /// Taps within this window count toward overwhelming the pet.
     private static let tapWindow: TimeInterval = 2.5
     private static let overwhelmingTaps = 6
+    /// A shake fires several motion events; one reaction plays per this window.
+    private static let shakeCooldown: TimeInterval = 1.2
 
     private enum Hold: Equatable {
         case none
@@ -644,6 +672,7 @@ struct PetTouchReactions: ViewModifier {
     @State private var holdTask: Task<Void, Never>?
     @State private var recentTaps: [Date] = []
     @State private var width: CGFloat = 1
+    @State private var lastShake = Date.distantPast
 
     func body(content: Content) -> some View {
         let pose = hold == .cuddling || hold == .asleep
@@ -667,6 +696,7 @@ struct PetTouchReactions: ViewModifier {
                 trigger += 1
             }
             .onChange(of: greetKey) { greet() }
+            .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in shake() }
             .contentShape(.rect)
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -686,6 +716,7 @@ struct PetTouchReactions: ViewModifier {
             .accessibilityAction(named: Text("Stroke")) { react(to: .swipe(.right), at: center) }
             .accessibilityAction(named: Text("Lift Up")) { react(to: .swipe(.up), at: center) }
             .accessibilityAction(named: Text("Press Down")) { react(to: .swipe(.down), at: center) }
+            .accessibilityAction(named: Text("Shake")) { react(to: .shaken, at: center) }
             .onDisappear {
                 holdTask?.cancel()
                 isTouching = false
@@ -765,6 +796,13 @@ struct PetTouchReactions: ViewModifier {
         if let particle = reaction.particle { burst(particle, at: location) }
         onTouch()
         onReaction(touch)
+    }
+
+    /// Rattles the pet when the phone is shaken, unless a finger is on it or it just was.
+    private func shake() {
+        guard acceptsShakes, !isTouching, Date.now.timeIntervalSince(lastShake) >= Self.shakeCooldown else { return }
+        lastShake = .now
+        react(to: .shaken, at: CGPoint(x: width / 2, y: width / 3))
     }
 
     /// Welcomes the owner back. Not a touch: nothing is reported, so the photo stays up.

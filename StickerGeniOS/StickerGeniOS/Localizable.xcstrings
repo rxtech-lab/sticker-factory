@@ -434,6 +434,9 @@
         }
       }
     },
+    "%lld medicine" : {
+
+    },
     "%lld of %lld" : {
       "localizations" : {
         "en" : {
@@ -1059,6 +1062,9 @@
           }
         }
       }
+    },
+    "Actions" : {
+
     },
     "Active plan required" : {
       "localizations" : {
@@ -1970,6 +1976,9 @@
         }
       }
     },
+    "Can't Listen" : {
+
+    },
     "Cancel" : {
       "localizations" : {
         "zh-CN" : {
@@ -2103,6 +2112,9 @@
           }
         }
       }
+    },
+    "Catching your last words…" : {
+
     },
     "Change how long this animation runs" : {
 
@@ -2273,6 +2285,9 @@
 
     },
     "Choose an emoji for this sticker in the exported pack." : {
+
+    },
+    "Choose carefully — a wrong call can cost your pet." : {
 
     },
     "Choose stickers" : {
@@ -2952,6 +2967,16 @@
         }
       }
     },
+    "Cures %@. Your pet has %lld medicine." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cures %1$@. Your pet has %2$lld medicine."
+          }
+        }
+      }
+    },
     "Current" : {
       "localizations" : {
         "zh-CN" : {
@@ -3522,6 +3547,9 @@
       }
     },
     "Each sticker is encoded once per messenger and saved with the pack, so nobody who adds it has to do this again. Keep the app open; stop now and the rest is prepared the next time you save this pack." : {
+
+    },
+    "Earned %lld medicine" : {
 
     },
     "Earns %lld gold" : {
@@ -4181,6 +4209,9 @@
     "Favorite weather: %@" : {
 
     },
+    "Feeling well" : {
+
+    },
     "Filming a clip" : {
       "localizations" : {
         "zh-CN" : {
@@ -4523,6 +4554,9 @@
     "Get the full app" : {
 
     },
+    "Getting ready to listen…" : {
+
+    },
     "Getting ready…" : {
       "localizations" : {
         "zh-CN" : {
@@ -4555,7 +4589,16 @@
         }
       }
     },
+    "Give Medicine" : {
+
+    },
+    "Give Medicine?" : {
+
+    },
     "Give your sticker choices" : {
+
+    },
+    "Giving your pet its medicine…" : {
 
     },
     "Go Pro" : {
@@ -4573,6 +4616,9 @@
           }
         }
       }
+    },
+    "Good call!" : {
+
     },
     "Got it" : {
       "localizations" : {
@@ -4649,6 +4695,9 @@
     "Has controls" : {
 
     },
+    "Health" : {
+
+    },
     "Hello again! I missed you." : {
 
     },
@@ -4719,6 +4768,9 @@
         }
       }
     },
+    "Hmph. Fine, I'm listening." : {
+
+    },
     "Hmph. I've been bored. Play with me?" : {
 
     },
@@ -4776,6 +4828,12 @@
     "HP" : {
 
     },
+    "I hear you… I'm not feeling well, though." : {
+
+    },
+    "I love it when you talk to me." : {
+
+    },
     "I'm here with you. What shall we do?" : {
 
     },
@@ -4795,6 +4853,9 @@
           }
         }
       }
+    },
+    "Ill with %@" : {
+
     },
     "Image" : {
 
@@ -4912,6 +4973,9 @@
           }
         }
       }
+    },
+    "Items" : {
+
     },
     "Just an example of this sticker type — your own sticker won’t look like this." : {
 
@@ -5051,6 +5115,9 @@
       }
     },
     "Last finished: %@" : {
+
+    },
+    "Later" : {
 
     },
     "layer" : {
@@ -5215,6 +5282,12 @@
       }
     },
     "Likes" : {
+
+    },
+    "Listening…" : {
+
+    },
+    "Listening… tap to stop" : {
 
     },
     "Load earlier messages" : {
@@ -5776,6 +5849,9 @@
         }
       }
     },
+    "Medicine" : {
+
+    },
     "Medium" : {
       "localizations" : {
         "zh-CN" : {
@@ -5855,6 +5931,9 @@
           }
         }
       }
+    },
+    "Mm-hm… I'm listening… just so sleepy." : {
+
     },
     "Mood" : {
 
@@ -6006,7 +6085,13 @@
         }
       }
     },
+    "Needed you" : {
+
+    },
     "Needs %lld gold" : {
+
+    },
+    "Needs You" : {
 
     },
     "New layer" : {
@@ -6206,6 +6291,9 @@
           }
         }
       }
+    },
+    "No medicine. Help your pet with its daily moments to earn some." : {
+
     },
     "No motion yet." : {
 
@@ -6613,6 +6701,9 @@
     "Nothing written yet" : {
 
     },
+    "Objects your pet chose from its world today." : {
+
+    },
     "Ocean gradient" : {
       "localizations" : {
         "zh-CN" : {
@@ -6646,6 +6737,9 @@
       }
     },
     "Off means the sticker stays in one place — it can still breathe, blink and react." : {
+
+    },
+    "Oh no…" : {
 
     },
     "Oh, it's you… I'm so sleepy." : {
@@ -6747,9 +6841,6 @@
         }
       }
     },
-    "Only today's step count is read from Health. Nothing is written." : {
-
-    },
     "Only you can see this pack until you publish it." : {
       "localizations" : {
         "zh-CN" : {
@@ -6781,6 +6872,9 @@
           }
         }
       }
+    },
+    "Ooh, tell me more! I love your voice!" : {
+
     },
     "Open %@ from the Messages app drawer to send published stickers, or share the exported files anywhere." : {
       "localizations" : {
@@ -7870,6 +7964,9 @@
         }
       }
     },
+    "Read a share" : {
+
+    },
     "Read tutorials" : {
 
     },
@@ -8307,6 +8404,9 @@
           }
         }
       }
+    },
+    "Restores %lld energy" : {
+
     },
     "Restoring your sticker library…" : {
       "localizations" : {
@@ -8758,6 +8858,9 @@
         }
       }
     },
+    "Say something to your pet. Your words are written down on your iPhone and never leave it." : {
+
+    },
     "Say what is wrong and the assistant will draft a new plan right away. Leave it blank to just dismiss this one." : {
       "localizations" : {
         "zh-CN" : {
@@ -8846,6 +8949,9 @@
           }
         }
       }
+    },
+    "Seeing how it turns out…" : {
+
     },
     "Select" : {
       "localizations" : {
@@ -9066,6 +9172,9 @@
           }
         }
       }
+    },
+    "Shake" : {
+
     },
     "Share" : {
       "localizations" : {
@@ -9497,6 +9606,9 @@
         }
       }
     },
+    "Spend time" : {
+
+    },
     "Spend Time Together" : {
 
     },
@@ -9515,6 +9627,9 @@
           }
         }
       }
+    },
+    "Start Listening" : {
+
     },
     "Start over" : {
       "localizations" : {
@@ -9987,6 +10102,9 @@
         }
       }
     },
+    "Stop Listening" : {
+
+    },
     "Stopped" : {
       "localizations" : {
         "zh-CN" : {
@@ -10237,6 +10355,12 @@
         }
       }
     },
+    "Talk to Your Pet" : {
+
+    },
+    "Talking to your pet isn't available in your language on this iPhone yet." : {
+
+    },
     "Tap a photo you attached to cut its subject away from the background, so only the part you want reaches the sticker." : {
       "localizations" : {
         "zh-CN" : {
@@ -10254,6 +10378,12 @@
       }
     },
     "Tap the layer count or the timing to edit layers, motion and duration. Every change is saved as a version you can switch back to." : {
+
+    },
+    "Tap the microphone and start talking." : {
+
+    },
+    "Tap to talk" : {
 
     },
     "Tap to view" : {
@@ -10357,6 +10487,9 @@
           }
         }
       }
+    },
+    "Thanks for the walk! I had so much fun." : {
+
     },
     "That didn't finish. Try again." : {
 
@@ -12281,6 +12414,9 @@
         }
       }
     },
+    "Walking your pet gives back its energy and earns gold. Only today's step count is read from Health. Nothing is written." : {
+
+    },
     "We couldn’t verify this installation with the App Store. Check your connection and try again." : {
 
     },
@@ -12351,6 +12487,9 @@
           }
         }
       }
+    },
+    "What a walk! I feel full of energy again." : {
+
     },
     "What are we making?" : {
       "localizations" : {
@@ -12590,6 +12729,9 @@
     "You can prepare this export now. Install %@, then come back to add the pack." : {
 
     },
+    "You chose “%@”" : {
+
+    },
     "You created this pack" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -12799,16 +12941,28 @@
     "Your pet can feel the weather where you are and notice how much you walk. It changes their mood and energy — a rainy day might delight one pet and sulk another." : {
 
     },
+    "Your pet can't hear you. Allow the microphone in Settings to talk to your pet." : {
+
+    },
     "Your pet couldn't be reached. Check your connection, then try again." : {
 
     },
+    "Your pet fell ill. Medicine will cure it, or it gets better in a few days." : {
+
+    },
     "Your pet hasn't felt the outside world yet." : {
+
+    },
+    "Your pet is choosing and drawing some things…" : {
 
     },
     "Your pet is still thinking of something to do. Check back in a moment." : {
 
     },
     "Your pet picks these for how they feel right now. They change as their mood does." : {
+
+    },
+    "Your pet ran into something and needs you to decide" : {
 
     },
     "Your pet, on your wrist" : {

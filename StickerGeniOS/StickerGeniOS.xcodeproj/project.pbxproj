@@ -42,6 +42,7 @@
 		B00000000000000000000001 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000002 /* Kingfisher */; };
 		B47713E8475CA3990E4C3394 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3FB6529023D0F790FA2F9963 /* Assets.xcassets */; };
 		BEDA92EBF02EFB0893E0B42D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7FE3E61FCB0BE974B72CE94A /* Foundation.framework */; };
+		BEEF00000000000000000001 /* StickerPetShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BEEF00000000000000000002 /* StickerPetShare.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C119B001A001A001A001A001 /* ClipLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B001A001A001A001A002 /* ClipLibraryView.swift */; };
 		C119B002A002A002A002A001 /* ClipStickerViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B002A002A002A002A002 /* ClipStickerViewer.swift */; };
 		C119B003A003A003A003A001 /* ClipPlaybackLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B003A003A003A003A002 /* ClipPlaybackLoader.swift */; };
@@ -120,6 +121,13 @@
 			remoteGlobalIDString = A00000000000000000000010;
 			remoteInfo = StickerMessages;
 		};
+		BEEF00000000000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DF2A3E0D303C7709006910C8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BEEF00000000000000000008;
+			remoteInfo = StickerPetShare;
+		};
 		D73DE5872EB4366E321B06C1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = DF2A3E0D303C7709006910C8 /* Project object */;
@@ -184,6 +192,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				A00000000000000000000003 /* StickerMessages.appex in Embed App Extensions */,
+				BEEF00000000000000000001 /* StickerPetShare.appex in Embed App Extensions */,
 				C826AC8B3A0352D7DF1596E3 /* StickerGenerationActivity.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
@@ -219,6 +228,7 @@
 		A2997C443228C7650FAB2368 /* ClipURLValidationUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ClipURLValidationUITests.swift; sourceTree = "<group>"; };
 		ACAB735450F28ED42A568EF9 /* StickerGenerationActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StickerGenerationActivity.swift; sourceTree = "<group>"; };
 		BD46604BC03322FA69C32012 /* QuickModeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickModeView.swift; sourceTree = "<group>"; };
+		BEEF00000000000000000002 /* StickerPetShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StickerPetShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C119B001A001A001A001A002 /* ClipLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipLibraryView.swift; sourceTree = "<group>"; };
 		C119B002A002A002A002A002 /* ClipStickerViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipStickerViewer.swift; sourceTree = "<group>"; };
 		C119B003A003A003A003A002 /* ClipPlaybackLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipPlaybackLoader.swift; sourceTree = "<group>"; };
@@ -278,6 +288,13 @@
 			);
 			target = A00000000000000000000010 /* StickerMessages */;
 		};
+		BEEF00000000000000000009 /* Exceptions for "StickerPetShare" folder in "StickerPetShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BEEF00000000000000000008 /* StickerPetShare */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -310,6 +327,19 @@
 		A00000000000000000000022 /* StickerMessagesTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = StickerMessagesTests;
+			sourceTree = "<group>";
+		};
+		BEEF0000000000000000000A /* StickerPetShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BEEF00000000000000000009 /* Exceptions for "StickerPetShare" folder in "StickerPetShare" target */,
+			);
+			path = StickerPetShare;
+			sourceTree = "<group>";
+		};
+		BEEF00000000000000000012 /* StickerCreationShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = StickerCreationShared;
 			sourceTree = "<group>";
 		};
 		DF2A3E17303C7709006910C8 /* StickerGeniOS */ = {
@@ -386,6 +416,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				184B93A5F2B9931A54F84AFA /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BEEF0000000000000000000D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -528,6 +565,8 @@
 				DF2A3E17303C7709006910C8 /* StickerGeniOS */,
 				F50000000000000000000003 /* StickerPlaybackShared */,
 				A00000000000000000000008 /* StickerMessages */,
+				BEEF0000000000000000000A /* StickerPetShare */,
+				BEEF00000000000000000012 /* StickerCreationShared */,
 				A00000000000000000000022 /* StickerMessagesTests */,
 				DF2A3E27303C770A006910C8 /* StickerGeniOSTests */,
 				DF2A3E31303C770A006910C8 /* StickerGeniOSUITests */,
@@ -549,6 +588,7 @@
 			children = (
 				DF2A3E15303C7709006910C8 /* StickerGeniOS.app */,
 				A00000000000000000000005 /* StickerMessages.appex */,
+				BEEF00000000000000000002 /* StickerPetShare.appex */,
 				A00000000000000000000021 /* StickerMessagesTests.xctest */,
 				DF2A3E24303C770A006910C8 /* StickerGeniOSTests.xctest */,
 				DF2A3E2E303C770A006910C8 /* StickerGeniOSUITests.xctest */,
@@ -628,6 +668,7 @@
 			fileSystemSynchronizedGroups = (
 				7E7A00000000000000000020 /* StickerPetShared */,
 				7E7A00000000000000000021 /* WinkyWatch */,
+				BEEF00000000000000000012 /* StickerCreationShared */,
 			);
 			name = WinkyWatch;
 			productName = WinkyWatch;
@@ -739,6 +780,27 @@
 			productReference = DE4957B12E1D6999AC24F71E /* StickerGenerationActivity.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		BEEF00000000000000000008 /* StickerPetShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BEEF0000000000000000000B /* Build configuration list for PBXNativeTarget "StickerPetShare" */;
+			buildPhases = (
+				BEEF0000000000000000000C /* Sources */,
+				BEEF0000000000000000000D /* Frameworks */,
+				BEEF0000000000000000000E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BEEF0000000000000000000A /* StickerPetShare */,
+				BEEF00000000000000000012 /* StickerCreationShared */,
+			);
+			name = StickerPetShare;
+			productName = StickerPetShare;
+			productReference = BEEF00000000000000000002 /* StickerPetShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		DF2A3E14303C7709006910C8 /* StickerGeniOS */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DF2A3E38303C770A006910C8 /* Build configuration list for PBXNativeTarget "StickerGeniOS" */;
@@ -755,12 +817,14 @@
 			);
 			dependencies = (
 				A00000000000000000000017 /* PBXTargetDependency */,
+				BEEF0000000000000000000F /* PBXTargetDependency */,
 				B69EAF4E342A3808B3D76CB1 /* PBXTargetDependency */,
 				6F3627F795B1C58F12AC700B /* PBXTargetDependency */,
 				7E7A00000000000000000052 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				7E7A00000000000000000020 /* StickerPetShared */,
+				BEEF00000000000000000012 /* StickerCreationShared */,
 				DF2A3E17303C7709006910C8 /* StickerGeniOS */,
 				F50000000000000000000003 /* StickerPlaybackShared */,
 			);
@@ -894,6 +958,7 @@
 			projectRoot = "";
 			targets = (
 				DF2A3E14303C7709006910C8 /* StickerGeniOS */,
+				BEEF00000000000000000008 /* StickerPetShare */,
 				A00000000000000000000010 /* StickerMessages */,
 				A00000000000000000000026 /* StickerMessagesTests */,
 				DF2A3E23303C770A006910C8 /* StickerGeniOSTests */,
@@ -954,6 +1019,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A00000000000000000000025 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BEEF0000000000000000000E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1107,6 +1179,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BEEF0000000000000000000C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DF2A3E11303C7709006910C8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1168,6 +1247,11 @@
 			name = StickerAppClip;
 			target = 52C7DF7A6F60130331BEF5A0 /* StickerAppClip */;
 			targetProxy = 571A3AD6D42CDBA249D0E38F /* PBXContainerItemProxy */;
+		};
+		BEEF0000000000000000000F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BEEF00000000000000000008 /* StickerPetShare */;
+			targetProxy = BEEF00000000000000000007 /* PBXContainerItemProxy */;
 		};
 		DF2A3E26303C770A006910C8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1581,6 +1665,64 @@
 			};
 			name = Release;
 		};
+		BEEF00000000000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000033 /* Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = StickerPetShare/StickerPetShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = T7GYB573Y6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StickerPetShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "app.rxlab.stickerfactory.pet-share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BEEF00000000000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000034 /* Release.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = StickerPetShare/StickerPetShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = T7GYB573Y6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StickerPetShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "app.rxlab.stickerfactory.pet-share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		DF2A3E36303C770A006910C8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1970,6 +2112,15 @@
 			buildConfigurations = (
 				A00000000000000000000029 /* Debug */,
 				A00000000000000000000030 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BEEF0000000000000000000B /* Build configuration list for PBXNativeTarget "StickerPetShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BEEF00000000000000000010 /* Debug */,
+				BEEF00000000000000000011 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

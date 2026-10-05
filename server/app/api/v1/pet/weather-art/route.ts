@@ -14,7 +14,9 @@ export async function GET(request: Request) {
     const size = integerQuery(url.searchParams.get("size"), {
       name: "size", min: PET_WEATHER_ART_MIN_SIZE, max: PET_WEATHER_ART_MAX_SIZE, defaultValue: 256,
     })!;
-    const { etag, bytes } = await getPetWeatherArt(db, principal.sub, size, request.headers.get("if-none-match"));
+    const { etag, bytes } = await getPetWeatherArt(
+      db, principal.sub, size, request.headers.get("if-none-match"), url.searchParams.get("artKey"),
+    );
     const headers = { etag, "cache-control": "private, no-cache" };
     if (!bytes) return new Response(null, { status: 304, headers });
     return new Response(Buffer.from(bytes), { headers: { ...headers, "content-type": "image/png" } });

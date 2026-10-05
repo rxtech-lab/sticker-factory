@@ -121,7 +121,8 @@ describe("pets", () => {
 
       const other = await seedPublishedSticker(db, "owner", { title: "Bun", kind: "animated", controllable: true });
       await setPet(db, "owner", { stickerId: other.stickerId });
-      expect((await getPet(db, "owner")).pet?.stats).toEqual({ happiness: 80, hp: 100, energy: 80, gold: 20 });
+      // A fresh pet, but the owner's gold: what the first pet spent stays spent.
+      expect((await getPet(db, "owner")).pet?.stats).toEqual({ happiness: 80, hp: 100, energy: 80, gold: 15 });
       expect((await getPet(db, "owner")).pet?.status).toBeNull();
       await expect(interactWithPet(db, "owner", { actionId: first.pet!.actions[1].id }, notify))
         .rejects.toMatchObject({ code: "PET_ACTION_NOT_AVAILABLE" });
@@ -197,15 +198,17 @@ describe("pets", () => {
       expect(replied[0].location).toEqual({ latitude: 22.32, longitude: 114.17 });
       expect(replied[0].localTime).toMatch(/\d{2}:\d{2}/);
 
-      // A short walk waits for the next change; a long one pays as soon as the phone reports it.
-      await updatePetContext(db, "owner", { stepsToday: 1_000 });
+      // A short walk waits for the next change; a long one pays as soon as the phone reports it,
+      // giving back energy as well as gold, and says what it paid so the phone can react at once.
+      await updatePetContext(db, "owner", { stepsToday: 500 });
       expect((await getPet(db, "owner")).pet?.stats.gold).toBe(23);
-      await updatePetContext(db, "owner", { stepsToday: 4_400 });
+      await db.update(userPets).set({ statsJson: { ...pet.stats, energy: 20 } }).where(eq(userPets.userId, "owner"));
+      expect(await updatePetContext(db, "owner", { stepsToday: 4_400 })).toEqual({ stored: true, walk: { steps: 4_400, energy: 44, gold: 17 } });
       pet = PetResponseV1Schema.parse(await getPet(db, "owner")).pet!;
-      expect(pet.stats.gold).toBe(40);
+      expect(pet.stats).toMatchObject({ gold: 40, energy: 64 });
       // The same steps reported again are not paid twice.
-      await updatePetContext(db, "owner", { stepsToday: 4_400 });
-      expect((await getPet(db, "owner")).pet?.stats.gold).toBe(40);
+      expect(await updatePetContext(db, "owner", { stepsToday: 4_400 })).toEqual({ stored: true, walk: null });
+      expect((await getPet(db, "owner")).pet?.stats).toMatchObject({ gold: 40, energy: 64 });
 
       const bought = await interactWithPet(db, "owner", { actionId: pet.actions.find((action) => action.title === "Buy a cake")!.id }, async () => {});
       expect(bought.pet?.stats.gold).toBe(0);

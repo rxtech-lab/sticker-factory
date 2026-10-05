@@ -205,4 +205,27 @@ final class PetContractsTests: XCTestCase {
             #"{"values":{},"caption":"Hi","updatedAt":"2026-10-04T00:00:00Z","musings":[{"text":"Yo","afterMinutes":5}]}"#.utf8))
         XCTAssertEqual(decoded.musings, [PetMusing(text: "Yo", afterMinutes: 5)])
     }
+
+    func testDecodesWhatTheWalkPaidAndAnOlderServerThatSaysNothing() throws {
+        let paid = try JSONDecoder.api.decode(PetContextStoredResponse.self, from: Data(
+            #"{"stored":true,"walk":{"steps":4400,"energy":44,"gold":17}}"#.utf8))
+        XCTAssertEqual(paid.walk, PetWalkReward(steps: 4_400, energy: 44, gold: 17))
+        XCTAssertNil(try JSONDecoder.api.decode(PetContextStoredResponse.self, from: Data(#"{"stored":true,"walk":null}"#.utf8)).walk)
+        XCTAssertNil(try JSONDecoder.api.decode(PetContextStoredResponse.self, from: Data(#"{"stored":false}"#.utf8)).walk)
+    }
+
+    func testThePetThanksItsOwnerForTheEnergyAWalkGaveBack() {
+        var pet = Pet(sticker: PreviewFixtures.borrowedSticker, selectedAt: Date(timeIntervalSince1970: 0))
+        pet.stats.energy = 64
+        let walk = PetWalkReward(steps: 4_400, energy: 44, gold: 17)
+        let prompt = PetBrain.walkPrompt(walk, pet: pet)
+        XCTAssertTrue(prompt.contains("4400 steps"))
+        XCTAssertTrue(prompt.contains("44 energy"))
+        XCTAssertTrue(prompt.contains("64/100"))
+        XCTAssertTrue(prompt.contains("17 gold"))
+        // Already full: no energy to mention, only the fun of it.
+        let full = PetWalkReward(steps: 500, energy: 0, gold: 2)
+        XCTAssertFalse(PetBrain.walkPrompt(full, pet: pet).contains("energy"))
+        XCTAssertNotEqual(PetBrain.walkLine(walk), PetBrain.walkLine(full))
+    }
 }

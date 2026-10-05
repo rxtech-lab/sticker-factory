@@ -8,8 +8,11 @@ struct CreateStickerView: View {
     /// Generation always continues in the project's chat; the caller owns that navigation.
     var onCreated: (Sticker) -> Void
     var tutorialMode: TutorialAction?
+    /// A share extension can seed the idea; the user reviews and edits it in this app sheet.
+    var initialPrompt: String?
     var subscription: SubscriptionStore = .init()
     @State private var appliedTutorialMode = false
+    @State private var appliedInitialPrompt = false
     @State private var flow = CreationWizardState()
     @State private var loadingCatalog = false
     @State private var catalogError: String?
@@ -81,6 +84,10 @@ struct CreateStickerView: View {
             }
         }
         .task {
+            if let initialPrompt, !appliedInitialPrompt {
+                prompt = initialPrompt
+                appliedInitialPrompt = true
+            }
             await loadCatalog()
             restoreDraft()
         }

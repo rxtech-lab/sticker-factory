@@ -130,3 +130,58 @@ export async function notifyPetEvolved(
     console.error("[push] notifyPetEvolved failed", { userId, error });
   }
 }
+
+/** What the app reads to open the Pet tab, where the encounter's choices wait in a sheet. */
+export const PET_ENCOUNTER_PUSH_KIND = "pet-encounter";
+
+export function petEncounterPayload(alert: { title: string; body: string }, encounterId: string): Record<string, unknown> {
+  return {
+    aps: { alert, sound: "default", "content-available": 1, "thread-id": "pet" },
+    kind: PET_ENCOUNTER_PUSH_KIND,
+    encounterId,
+  };
+}
+
+/**
+ * Tells the owner their pet ran into something and needs them to decide. A banner, like growing:
+ * the pet is waiting on them, and the moment passes if nobody answers. Never throws.
+ */
+export async function notifyPetEncounter(
+  db: Database,
+  userId: string,
+  encounter: { id: string; title: string; prompt: string },
+  options: {
+    config?: ApnsConfig;
+    send?: (pushes: ApnsPush[], config: ApnsConfig) => Promise<ApnsResult[]>;
+  } = {},
+): Promise<void> {
+  try {
+    const config = options.config ?? getApnsConfig();
+    if (!config) {
+      traceEvent("push:skipped", { userId, kind: PET_ENCOUNTER_PUSH_KIND, reason: "APNS_NOT_CONFIGURED" });
+      return;
+    }
+    const devices = await listActiveDeviceTokens(db, userId);
+    if (devices.length === 0) return;
+    const payload = petEncounterPayload({ title: encounter.title, body: encounter.prompt }, encounter.id);
+    const results = await (options.send ?? sendPushes)(devices.map((device) => ({
+      token: device.token,
+      environment: device.environment,
+      payload,
+      collapseId: `pet-encounter-${userId}`,
+      pushType: "alert",
+      priority: "10",
+    })), config);
+    for (const result of results) {
+      if (result.permanentlyGone) await disableDeviceToken(db, result.token, result.reason ?? `HTTP ${result.status}`);
+    }
+    traceEvent("push:sent", {
+      userId,
+      kind: PET_ENCOUNTER_PUSH_KIND,
+      delivered: results.filter((result) => result.ok).length,
+      failed: results.filter((result) => !result.ok).map((result) => result.reason ?? result.status),
+    });
+  } catch (error) {
+    console.error("[push] notifyPetEncounter failed", { userId, error });
+  }
+}

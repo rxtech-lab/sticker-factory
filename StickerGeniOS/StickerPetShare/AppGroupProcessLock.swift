@@ -1,0 +1,1 @@
+../StickerGeniOS/Auth/AppGroupProcessLock.swift

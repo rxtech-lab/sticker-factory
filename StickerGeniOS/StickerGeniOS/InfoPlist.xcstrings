@@ -73,6 +73,18 @@
         }
       }
     },
+    "NSMicrophoneUsageDescription" : {
+      "comment" : "Privacy - Microphone Usage Description",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Talk to your pet out loud. What you say is written down on your iPhone and never leaves it."
+          }
+        }
+      }
+    },
     "NSPhotoLibraryAddUsageDescription" : {
       "comment" : "Explains why the app asks for add-only access when saving a plan image.",
       "extractionState" : "manual",
