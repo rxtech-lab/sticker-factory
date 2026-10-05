@@ -194,7 +194,7 @@ public struct AnimatedIconEditor: View {
                 AnimatedEditorStage(editor: editor, assets: assets, backdrop: backdrop)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(12)
-                transport
+                transport(scrubberOnOwnRow: true)
                 if editor.document.kind == .animated {
                     AnimatedEditorTimeline(editor: editor).frame(height: AnimatedEditorTimeline.preferredHeight)
                 }
@@ -248,6 +248,26 @@ public struct AnimatedIconEditor: View {
     // MARK: - Transport
 
     private var transport: some View {
+        transport(scrubberOnOwnRow: false)
+    }
+
+    /// - Parameter scrubberOnOwnRow: Puts the scrubber on a full-width row above the controls. The
+    ///   iPad canvas column is narrow enough that sharing a row squeezes the slider to a nub.
+    @ViewBuilder
+    private func transport(scrubberOnOwnRow: Bool) -> some View {
+        if scrubberOnOwnRow, editor.document.kind == .animated {
+            VStack(spacing: 0) {
+                scrubber
+                    .padding(.horizontal, 12)
+                    .frame(height: 36)
+                transportControls(includesScrubber: false)
+            }
+        } else {
+            transportControls(includesScrubber: true)
+        }
+    }
+
+    private func transportControls(includesScrubber: Bool) -> some View {
         HStack(spacing: 12) {
             Button {
                 editor.isPlaying.toggle()
@@ -258,17 +278,14 @@ public struct AnimatedIconEditor: View {
             .accessibilityLabel(editor.isPlaying ? "Pause" : "Play")
 
             if editor.document.kind == .animated {
-                Slider(
-                    value: $editor.scrubDocumentTime,
-                    in: 0...max(editor.document.durationSeconds, 0.01)
-                ) { isEditing in
-                    // Scrubbing means looking at one frame, so it takes over from playback.
-                    if isEditing { editor.isPlaying = false }
+                if includesScrubber {
+                    scrubber
                 }
                 Text(String(format: "%.2fs", editor.scrubDocumentTime))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
-                    .frame(width: 48, alignment: .trailing)
+                    .frame(width: 48, alignment: includesScrubber ? .trailing : .leading)
+                if !includesScrubber { Spacer() }
             } else {
                 Text("Still image").font(.caption).foregroundStyle(.secondary)
                 Spacer()
@@ -285,6 +302,16 @@ public struct AnimatedIconEditor: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 44)
+    }
+
+    private var scrubber: some View {
+        Slider(
+            value: $editor.scrubDocumentTime,
+            in: 0...max(editor.document.durationSeconds, 0.01)
+        ) { isEditing in
+            // Scrubbing means looking at one frame, so it takes over from playback.
+            if isEditing { editor.isPlaying = false }
+        }
     }
 
     private func symbol(for backdrop: AnimatedEditorBackdrop) -> String {

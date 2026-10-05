@@ -23,6 +23,14 @@ struct PetView: View {
     @State private var owesGreeting = true
     /// Whether the tab is on screen, so the pet only greets someone who can see it.
     @State private var isShown = false
+    /// The bar runs down the side, as on an opened iPhone Duo, which leaves the room wide enough
+    /// for the pet and everything else side by side, and the bar too narrow for the balance.
+    @State private var hasVerticalToolbar = false
+    /// An iPhone Duo opened all the way, the only time the pet and its stats sit in two columns.
+    @State private var isFullyOpen = false
+    /// Ties the pet, its weather and its stats across layouts, so opening or folding the phone
+    /// slides each to its new place rather than redrawing the page.
+    @Namespace private var layoutSpace
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -74,10 +82,13 @@ struct PetView: View {
                         .accessibilityHint(Text("Shows who your pet is and what it knows of the world"))
                         .accessibilityIdentifier("pet-identity-button")
                     }
-                    // The balance and the pet's options share one glass pill.
+                    // The balance and the pet's options share one glass pill. A vertical bar
+                    // clips the balance, so there it sits beside the stats instead.
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 6) {
-                            PetGoldBadge(gold: pet.stats.gold)
+                            if !hasVerticalToolbar {
+                                PetGoldBadge(gold: pet.stats.gold)
+                            }
                             Menu {
                                 Button {
                                     Haptics.tap(.light)
@@ -103,10 +114,13 @@ struct PetView: View {
                             .accessibilityIdentifier("change-pet-button")
                             .simultaneousGesture(TapGesture().onEnded { Haptics.tap(.light) })
                         }
-                        .padding(.leading, 4)
+                        .padding(.leading, hasVerticalToolbar ? 0 : 4)
                     }
                 }
             }
+            .detectsFoldableLayout(verticalToolbar: $hasVerticalToolbar, fullyOpen: $isFullyOpen)
+            // The page rearranging as the phone opens or folds is felt as well as seen.
+            .onChange(of: isTwoColumn) { _, _ in Haptics.tap(.soft) }
             .task {
                 await model.loadPet()
                 model.syncWorldInBackground()
@@ -249,6 +263,12 @@ struct PetView: View {
         }
     }
 
+    /// The pet and its stats sit side by side only on an iPhone Duo opened all the way.
+    private var isTwoColumn: Bool { hasVerticalToolbar && isFullyOpen }
+
+    /// The parts of the page that slide between layouts as the phone opens and folds.
+    private enum LayoutPiece { case pet, weather, stats, actions }
+
     /// A sheet shows its own errors and progress; the tab's would sit behind it, unseen.
     private var isPresentingSheet: Bool {
         showingPicker || showingActions || showingDiary || showingIdentity || showingTalk || presentedEncounter != nil
@@ -263,16 +283,45 @@ struct PetView: View {
             let motion = PetMotionProfile(pet: pet)
             ScrollView {
                 Group {
-                    // Landscape leaves too little height to stack everything, so the pet takes the
-                    // leading half at full height and its weather and stats sit beside it.
-                    if verticalSizeClass == .compact {
+                    // An iPhone Duo opened all the way is wide enough for two columns: the pet on
+                    // the left with its dialogue box just above it, and its weather, balance and
+                    // stats and actions on the right.
+                    if isTwoColumn {
+                        HStack(alignment: .center, spacing: 24) {
+                            petStage(pet, motion: motion, fillsHeight: false)
+                                .matchedGeometryEffect(id: LayoutPiece.pet, in: layoutSpace)
+                                .frame(maxWidth: .infinity)
+                            VStack(spacing: 20) {
+                                HStack(alignment: .center) {
+                                    weatherRow(pet)
+                                        .matchedGeometryEffect(id: LayoutPiece.weather, in: layoutSpace)
+                                    Spacer(minLength: 0)
+                                    // Leaves the toolbar for here as the phone opens.
+                                    PetGoldBadge(gold: pet.stats.gold)
+                                        .transition(.scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
+                                }
+                                statsCard(pet)
+                                    .matchedGeometryEffect(id: LayoutPiece.stats, in: layoutSpace)
+                                actionButtons
+                                    .matchedGeometryEffect(id: LayoutPiece.actions, in: layoutSpace)
+                            }
+                            .frame(maxWidth: 420)
+                        }
+                        .padding()
+                        .containerRelativeFrame(.vertical)
+                    } else if verticalSizeClass == .compact {
+                        // Landscape leaves too little height to stack everything, so the pet takes
+                        // the leading half at full height and its weather and stats sit beside it.
                         HStack(alignment: .top, spacing: 20) {
                             petStage(pet, motion: motion)
+                                .matchedGeometryEffect(id: LayoutPiece.pet, in: layoutSpace)
                                 .frame(maxWidth: .infinity)
                                 .containerRelativeFrame(.vertical) { length, _ in max(length - 32, 0) }
                             VStack(spacing: 20) {
                                 weatherRow(pet)
+                                    .matchedGeometryEffect(id: LayoutPiece.weather, in: layoutSpace)
                                 statsCard(pet)
+                                    .matchedGeometryEffect(id: LayoutPiece.stats, in: layoutSpace)
                             }
                             .frame(maxWidth: 360)
                         }
@@ -280,8 +329,11 @@ struct PetView: View {
                     } else {
                         VStack(spacing: 20) {
                             weatherRow(pet)
+                                .matchedGeometryEffect(id: LayoutPiece.weather, in: layoutSpace)
                             petStage(pet, motion: motion)
+                                .matchedGeometryEffect(id: LayoutPiece.pet, in: layoutSpace)
                             statsCard(pet)
+                                .matchedGeometryEffect(id: LayoutPiece.stats, in: layoutSpace)
                         }
                         .padding()
                         // Exactly one screen tall, so the pet grows into the room left over; the
@@ -291,42 +343,15 @@ struct PetView: View {
                 }
                 .animation(.snappy(duration: 0.4), value: pet.signals?.weather)
             }
-            // The actions stay put at the bottom, above the tab bar.
+            // The actions stay put at the bottom, above the tab bar, unless they sit in the
+            // right-hand column beside the pet.
             .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 12) {
-                    Button {
-                        Haptics.tap(.light)
-                        showingActions = true
-                    } label: {
-                        Label("Spend Time Together", systemImage: "pawprint.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.poster)
-                    .disabled(model.isAnswering)
-                    .accessibilityIdentifier("pet-actions-button")
-
-                    // Icon only, so it fits beside the main action without truncating either.
-                    PhotosPicker(selection: $photoItem, matching: .images) {
-                        Image(systemName: "photo.on.rectangle")
-                    }
-                    .buttonStyle(.posterSecondary)
-                    .disabled(model.isAnswering || model.activity != nil)
-                    .accessibilityLabel(Text("Show a Picture"))
-                    .accessibilityIdentifier("pet-photo-button")
-
-                    // Talking out loud: written down on the phone, answered by the pet on the tab.
-                    Button {
-                        showingTalk = true
-                    } label: {
-                        Image(systemName: "mic.fill")
-                    }
-                    .buttonStyle(.posterSecondary)
-                    .disabled(model.isAnswering || model.activity != nil)
-                    .accessibilityLabel(Text("Talk to Your Pet"))
-                    .accessibilityIdentifier("pet-talk-button")
+                if !isTwoColumn {
+                    actionButtons
+                        .matchedGeometryEffect(id: LayoutPiece.actions, in: layoutSpace)
+                        .padding(.horizontal)
+                        .padding(.bottom, 12)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 12)
             }
         } else {
             EmptyStateView(
@@ -337,6 +362,42 @@ struct PetView: View {
                     .buttonStyle(.poster)
                     .accessibilityIdentifier("choose-pet-button")
             }
+        }
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            Button {
+                Haptics.tap(.light)
+                showingActions = true
+            } label: {
+                Label("Spend Time Together", systemImage: "pawprint.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.poster)
+            .disabled(model.isAnswering)
+            .accessibilityIdentifier("pet-actions-button")
+
+            // Icon only, so it fits beside the main action without truncating either.
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Image(systemName: "photo.on.rectangle")
+            }
+            .buttonStyle(.posterSecondary)
+            .disabled(model.isAnswering || model.activity != nil)
+            .accessibilityLabel(Text("Show a Picture"))
+            .accessibilityIdentifier("pet-photo-button")
+
+            // Talking out loud: written down on the phone, answered by the pet on the tab.
+            Button {
+                Haptics.tap(.light)
+                showingTalk = true
+            } label: {
+                Image(systemName: "mic.fill")
+            }
+            .buttonStyle(.posterSecondary)
+            .disabled(model.isAnswering || model.activity != nil)
+            .accessibilityLabel(Text("Talk to Your Pet"))
+            .accessibilityIdentifier("pet-talk-button")
         }
     }
 
@@ -355,7 +416,9 @@ struct PetView: View {
         }
     }
 
-    private func petStage(_ pet: Pet, motion: PetMotionProfile) -> some View {
+    /// `fillsHeight` lets the pet take whatever height is left over; without it the pet and its
+    /// dialogue box stay together, centred in the room.
+    private func petStage(_ pet: Pet, motion: PetMotionProfile, fillsHeight: Bool = true) -> some View {
         // The pet stands on the page itself; only its stats sit in a card.
         // Negative spacing: sticker art carries a transparent margin, so the bubble's
         // tail reaches down into it to sit right over the pet.
@@ -453,7 +516,7 @@ struct PetView: View {
                 item: model.usedItem, isVisible: !showingActions && isShown && scenePhase == .active
             ))
             // Takes whatever height the stats card leaves over.
-            .frame(maxHeight: .infinity)
+            .frame(maxHeight: fillsHeight ? .infinity : nil)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

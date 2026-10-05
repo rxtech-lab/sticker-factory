@@ -203,6 +203,10 @@ struct MessageList<
         } action: { measurement in
             updateActiveTurnMeasurement(measurement)
         }
+        // The turn is a single child of the lazy stack, so ids inside it are invisible to
+        // `scrollTo` until the turn is laid out. Behind tall history (a plan card) it is not,
+        // and placement has to target the container itself.
+        .id(MessageListConstants.activeTurnAnchorID)
     }
 
     // MARK: - Sentinel rows
@@ -465,6 +469,9 @@ struct MessageList<
 
     private func apply(_ target: PlacementTarget, proxy: ScrollViewProxy) {
         switch target {
+        case .messageTop(let id) where id == activeTurnMessages.first?.messageID:
+            // The pinned message opens the active turn, so their tops coincide.
+            proxy.scrollTo(MessageListConstants.activeTurnAnchorID, anchor: .top)
         case .messageTop(let id):
             proxy.scrollTo(id, anchor: .top)
         case .transcriptEnd:
@@ -617,6 +624,7 @@ private nonisolated struct MessageListChangeToken<ID: Hashable & Sendable>: Equa
 
 private nonisolated enum MessageListConstants {
     static let bottomAnchorID = "message-list-bottom-anchor"
+    static let activeTurnAnchorID = "message-list-active-turn"
     static let coordinateSpaceName = "message-list-content"
     static let minimumPinnedTailSpacing: CGFloat = 16
     static let userScrollDelta: CGFloat = 4
