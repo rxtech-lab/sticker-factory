@@ -92,9 +92,12 @@ function describeSignals(signals: PetSignalsV1 | null | undefined): string {
   if (!signals) return "World: unknown";
   return [
     signals.weather ? `Weather: ${signals.weather.kind}, ${signals.weather.temperatureC}°C, ${signals.weather.isDay ? "day" : "night"}` : "Weather: unknown",
+    signals.tomorrow
+      ? `Tomorrow's forecast: ${signals.tomorrow.kind}, ${signals.tomorrow.minC}–${signals.tomorrow.maxC}°C${signals.tomorrow.precipitationChance !== null ? `, ${signals.tomorrow.precipitationChance}% chance of rain` : ""}`
+      : "",
     signals.stepsToday !== null ? `Owner's steps today: ${signals.stepsToday}` : "Owner's steps today: unknown",
     signals.headlines.length ? `Recent news:\n${signals.headlines.map((headline) => `- ${headline}`).join("\n")}` : "Recent news: none",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 /** The owner's time and place, as lines for the model; empty when the phone has told us neither. */
@@ -466,6 +469,8 @@ export async function narratePetEvent(input: AiPetEventContext): Promise<AiPetSt
       "sentence (at most 60 characters), in character and in the language of your name. Pose yourself to match",
       "by setting your controls. Answer only through respond-as-pet, exactly once. Use only listed control and",
       "option ids, and omit a control to keep its current value. Fit it to the owner's local time and place when given.",
+      "When the weather just changed, react to it dramatically, in character. When what happened is a reminder for your",
+      "owner — a coat, an umbrella for tomorrow — say the reminder to them plainly, as a caring friend would.",
       ANIMATION_GUIDANCE,
     ].join(" "),
     messages: userTurn([

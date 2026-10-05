@@ -10,12 +10,13 @@ import { pickEvent } from "@/lib/pets/events";
 import { petLog, petRandom } from "@/lib/pets/log";
 import { catchIllness, hasRecovered, ILLNESS_EFFECTS, illnessChance } from "@/lib/pets/illness";
 import { neglectEffects, neglectNote, withNeglect } from "@/lib/pets/neglect";
-import { localHour, resolveSignals, signalEffects } from "@/lib/pets/signals";
+import { localDate, localHour, resolveSignals, signalEffects } from "@/lib/pets/signals";
+import { forecastReminder, weatherChange } from "@/lib/pets/weather-news";
 import { addEffects, applyEffects, personalizeEffects, preferenceEffects, ZERO_EFFECTS } from "@/lib/pets/stats";
 import { ownerMoment, refreshActions } from "./pet-actions";
 import { maybeStartEncounter } from "./pet-encounters";
 import { refreshPetItems } from "./pet-items";
-import { commitPetChange, currentStats, ensurePetIdentity, lastAttendedAt, petRow, type PetChange } from "./pet-state";
+import { commitPetChange, currentStats, ensurePetIdentity, lastAttendedAt, lastFeltWeather, petRow, remindedForecastOn, type PetChange } from "./pet-state";
 import { readablePlayback } from "./playback";
 
 /** Time passing between visits: the pet rests, and misses its owner a little. */
@@ -84,8 +85,17 @@ export async function visitPet(
       context: row.contextJson, previous: row.signalsJson, previousAt: row.signalsUpdatedAt, identity, now, userId,
     });
     const eventContext = { identity, signals, hour: localHour(now, row.contextJson?.timeZone) };
-    const event = pickEvent(eventContext, { special: true }, petRandom)!;
-    const detail = event.detail(eventContext);
+    // The weather comes first: a dramatic change since the pet last felt it, or — in the evening, once
+    // a day — tomorrow's forecast read out to its owner, takes the place of a random event.
+    const reminderDate = localDate(now, row.contextJson?.timeZone);
+    const weatherNews = weatherChange(await lastFeltWeather(db, userId, lifeId), signals.weather, identity)
+      ?? forecastReminder({ signals, hour: eventContext.hour, date: reminderDate,
+        alreadyReminded: await remindedForecastOn(db, userId, lifeId, reminderDate) });
+    const picked = weatherNews ? null : pickEvent(eventContext, { special: true }, petRandom)!;
+    const event = weatherNews
+      ? { id: weatherNews.id, title: weatherNews.title, effects: weatherNews.effects, special: true, sickens: undefined }
+      : picked!;
+    const detail = weatherNews?.detail ?? picked!.detail(eventContext);
     const world = signalEffects(signals, identity);
     const preference = preferenceEffects(`${event.title} ${detail}`, identity);
     // An ill pet feels it on every visit until it is cured or gets over it; a well one may catch
@@ -162,6 +172,8 @@ export async function visitPet(
           source: "life-workflow",
           eventId: event.id,
           eventEffects: event.effects,
+          // `reminderDate` at the top level is what `remindedForecastOn` looks for.
+          ...(weatherNews ? { weather: weatherNews.debug, ...(weatherNews.id === "forecast-reminder" ? { reminderDate } : {}) } : {}),
           drift: VISIT_DRIFT,
           hoursAway: Math.round(hoursAway * 10) / 10,
           neglect,

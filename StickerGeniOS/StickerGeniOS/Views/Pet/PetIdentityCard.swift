@@ -199,6 +199,20 @@ struct PetWorldRow: View {
             .font(.system(size: 13, weight: .bold, design: .monospaced))
             .foregroundStyle(AppColors.ink)
 
+            if let tomorrow = signals?.tomorrow {
+                let low = temperature(tomorrow.minC)
+                let high = temperature(tomorrow.maxC)
+                let rain = tomorrow.precipitationChance.map { " · \($0)% rain" } ?? ""
+                Label {
+                    Text("Tomorrow \(low)–\(high)\(rain)")
+                } icon: {
+                    Image(systemName: tomorrow.kind.symbol(isDay: true)).symbolRenderingMode(.multicolor)
+                }
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(AppColors.muted)
+                .accessibilityLabel(Text("Tomorrow: \(tomorrow.kind.displayName), \(low) to \(high)"))
+                .accessibilityIdentifier("pet-tomorrow-forecast")
+            }
             if let headline = signals?.headlines.first {
                 Label(headline, systemImage: "newspaper.fill")
                     .font(.system(size: 13, weight: .medium, design: .rounded))

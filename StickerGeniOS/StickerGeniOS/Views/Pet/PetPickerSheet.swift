@@ -8,6 +8,8 @@ struct PetPickerSheet: View {
     @Bindable var model: PetModel
 
     @State private var query = ""
+    /// The sticker waiting on the owner's word before it replaces the current pet.
+    @State private var pendingReplacement: Sticker?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -37,8 +39,35 @@ struct PetPickerSheet: View {
                     if let activity = model.activity { PetActivityOverlay(activity: activity) }
                 }
                 .animation(.snappy(duration: 0.2), value: model.activity)
+                .confirmationDialog(
+                    "Change Pet?",
+                    isPresented: Binding(
+                        get: { pendingReplacement != nil },
+                        set: { if !$0 { pendingReplacement = nil } }
+                    ),
+                    titleVisibility: .visible,
+                    presenting: pendingReplacement
+                ) { sticker in
+                    Button("Adopt \(sticker.title)", role: .destructive) {
+                        Haptics.tap(.heavy)
+                        adopt(sticker)
+                    }
+                    .accessibilityIdentifier("pet-change-confirm")
+                    Button("Cancel", role: .cancel) { Haptics.tap(.light) }
+                } message: { sticker in
+                    let current = model.pet?.sticker.title ?? String(localized: "Your pet")
+                    let loss = String(localized: "Its stats, items and medicine are gone for good. Your gold stays with you.")
+                    Text("\(current) will be released for \(sticker.title). \(loss)")
+                }
         }
         .interactiveDismissDisabled(model.activity != nil)
+    }
+
+    /// Adopts `sticker` and closes the sheet once it worked.
+    private func adopt(_ sticker: Sticker) {
+        Task {
+            if await model.adopt(sticker) { dismiss() }
+        }
     }
 
     @ViewBuilder
@@ -76,9 +105,14 @@ struct PetPickerSheet: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], spacing: 12) {
                 ForEach(section.stickers) { sticker in
                     Button {
-                        Haptics.selection()
-                        Task {
-                            if await model.adopt(sticker) { dismiss() }
+                        // Replacing a pet ends its life, so that asks first; a first pet or the
+                        // current one goes straight through.
+                        if let current = model.pet, current.sticker.id != sticker.id {
+                            Haptics.warning()
+                            pendingReplacement = sticker
+                        } else {
+                            Haptics.selection()
+                            adopt(sticker)
                         }
                     } label: {
                         PickableSticker(sticker: sticker, api: model.api, isSelected: sticker.id == model.pet?.sticker.id)

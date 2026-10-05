@@ -247,6 +247,7 @@
 		DFD465E7304847DD007C420E /* InAppPurchaseConfiguration.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = InAppPurchaseConfiguration.storekit; path = Configuration/InAppPurchaseConfiguration.storekit; sourceTree = "<group>"; };
 		DFF2D5B7305AA4BC005B3245 /* AllTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = AllTests.xctestplan; sourceTree = "<group>"; };
 		DFF2D5B8305AA4BC005B3245 /* AppClipUITests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = AppClipUITests.xctestplan; sourceTree = "<group>"; };
+		DFF2D5BD305AA4BC005B3245 /* ScreenshotTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = ScreenshotTests.xctestplan; sourceTree = "<group>"; };
 		DFF2D5B9305AA4BC005B3245 /* TutorialUITests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = TutorialUITests.xctestplan; sourceTree = "<group>"; };
 		DFF2D5BA305AA4BC005B3245 /* UITests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = UITests.xctestplan; sourceTree = "<group>"; };
 		DFF2D5BB305AA4BC005B3245 /* UnitTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = UnitTests.xctestplan; sourceTree = "<group>"; };
@@ -606,6 +607,7 @@
 			children = (
 				DFF2D5B7305AA4BC005B3245 /* AllTests.xctestplan */,
 				DFF2D5B8305AA4BC005B3245 /* AppClipUITests.xctestplan */,
+				DFF2D5BD305AA4BC005B3245 /* ScreenshotTests.xctestplan */,
 				DFF2D5B9305AA4BC005B3245 /* TutorialUITests.xctestplan */,
 				DFF2D5BA305AA4BC005B3245 /* UITests.xctestplan */,
 				DFF2D5BB305AA4BC005B3245 /* UnitTests.xctestplan */,

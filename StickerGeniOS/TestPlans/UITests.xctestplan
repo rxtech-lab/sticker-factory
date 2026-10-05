@@ -23,6 +23,7 @@
     {
       "parallelizable" : true,
       "skippedTests" : [
+        "ScreenshotTests",
         "TutorialCaptureTests",
         "TutorialNativeReaderTests",
         "TutorialUITests"

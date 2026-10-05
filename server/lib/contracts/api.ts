@@ -760,6 +760,17 @@ export const PetSignalsV1Schema = z.object({
   }).strict().nullable(),
   stepsToday: z.number().int().min(0).nullable(),
   headlines: z.array(z.string().max(160)).max(3),
+  /**
+   * Tomorrow's forecast where the owner is, in their own time zone: the pet reads it in the evening
+   * to remind them to bring a coat or an umbrella. Optional so signals stored before it still parse.
+   */
+  tomorrow: z.object({
+    kind: z.enum(PET_WEATHER_KINDS),
+    minC: z.number(),
+    maxC: z.number(),
+    /** The day's highest chance of rain or snow, 0–100, or null when the forecast does not say. */
+    precipitationChance: z.number().int().min(0).max(100).nullable(),
+  }).strict().nullable().optional(),
 }).strict();
 
 /** Who this pet is. Fixed at adoption, so the same pet behaves the same way all its life. */

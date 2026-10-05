@@ -5,7 +5,7 @@ import type { StickerConfiguration } from "@/lib/contracts/configuration";
 import { PetEventsResponseV1Schema, PetResponseV1Schema, SharePetResponseV1Schema } from "@/lib/contracts/api";
 import { petEvents, userPets } from "@/lib/db/schema";
 import { setPetRandomForTests } from "@/lib/pets/log";
-import { setWeatherFetcherForTests } from "@/lib/pets/signals";
+import { setForecastFetcherForTests, setWeatherFetcherForTests } from "@/lib/pets/signals";
 import { planPetVisit, retirePetLife, visitPet } from "@/lib/services/pet-life";
 import { revivePetLives, setPetLifeStarterForTests } from "@/lib/services/pet-life-runner";
 import { listPetEvents } from "@/lib/services/pet-state";
@@ -34,6 +34,7 @@ describe("pet life", () => {
     setAiProviderForTests(undefined);
     setPetRandomForTests(undefined);
     setWeatherFetcherForTests(undefined);
+    setForecastFetcherForTests(undefined);
     setPetLifeStarterForTests(undefined);
   });
 
@@ -188,6 +189,39 @@ describe("pet life", () => {
 
       await clearPet(db, "owner");
       expect(await visitPet(db, "owner", lifeId, started[2].token, noNotify)).toBe(false);
+    } finally {
+      await close();
+    }
+  });
+
+  it("reacts to a dramatic weather change on a visit, and reads tomorrow's forecast once in the evening", async () => {
+    const { db, close, pet } = await setup();
+    try {
+      await setPet(db, "owner", { stickerId: pet.stickerId, context });
+      const { lifeId, token } = started[0];
+
+      // Adopted in the rain at 11.5°C; a visit finds it sunny and 25°C.
+      setWeatherFetcherForTests(async () => ({ kind: "sunny", temperatureC: 25, isDay: true }));
+      const noon = new Date("2026-10-05T12:00:00Z");
+      expect(await visitPet(db, "owner", lifeId, token, noNotify, noon)).toBe(true);
+      const [cleared] = (await listPetEvents(db, "owner", { limit: 1 })).events;
+      expect(cleared).toMatchObject({ kind: "special", title: "The sky cleared", debug: { eventId: "weather-cleared" } });
+      expect(cleared.detail).toContain("The sky cleared up (rainy → sunny). The temperature jumped from 12°C to 25°C.");
+      expect((await getPet(db, "owner")).pet?.status?.caption).toBe("About The sky cleared");
+
+      // The same weather again is nothing to remark on; in the evening, a cold wet tomorrow is.
+      setForecastFetcherForTests(async () => ({ kind: "rainy", minC: 3, maxC: 8, precipitationChance: 90 }));
+      const evening = new Date("2026-10-05T19:00:00Z");
+      expect(await visitPet(db, "owner", lifeId, token, noNotify, evening)).toBe(true);
+      const [reminder] = (await listPetEvents(db, "owner", { limit: 1 })).events;
+      expect(reminder).toMatchObject({ title: "Checked tomorrow's forecast", debug: { eventId: "forecast-reminder", reminderDate: "2026-10-05" } });
+      expect(reminder.detail).toContain("Remind your owner to bring a coat and an umbrella.");
+      expect(reminder.signals?.tomorrow).toEqual({ kind: "rainy", minC: 3, maxC: 8, precipitationChance: 90 });
+
+      // Once a day: the next evening visit rolls an ordinary event.
+      expect(await visitPet(db, "owner", lifeId, token, noNotify, new Date("2026-10-05T20:30:00Z"))).toBe(true);
+      const [next] = (await listPetEvents(db, "owner", { limit: 1 })).events;
+      expect(next.debug).not.toHaveProperty("weather");
     } finally {
       await close();
     }

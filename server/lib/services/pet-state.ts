@@ -65,6 +65,31 @@ export async function lastAttendedAt(db: Database, userId: string, lifeId: strin
   return latest?.createdAt ?? null;
 }
 
+/**
+ * The weather the pet last felt: the latest diary line in this life that knew the weather. Not the
+ * row's `signalsJson`, which a phone refresh rewrites between visits — the pet would never notice
+ * a change it was not there for.
+ */
+export async function lastFeltWeather(db: Database, userId: string, lifeId: string): Promise<PetSignalsV1["weather"]> {
+  const latest = await db.select({ signals: petEvents.signalsJson }).from(petEvents)
+    .where(and(eq(petEvents.userId, userId), eq(petEvents.lifeId, lifeId),
+      sql`jsonb_typeof(${petEvents.signalsJson}->'weather') = 'object'`))
+    .orderBy(desc(petEvents.createdAt))
+    .limit(1)
+    .then(firstRow);
+  return latest?.signals?.weather ?? null;
+}
+
+/** Whether the pet already read tomorrow's forecast to its owner on this local date. */
+export async function remindedForecastOn(db: Database, userId: string, lifeId: string, date: string): Promise<boolean> {
+  const found = await db.select({ id: petEvents.id }).from(petEvents)
+    .where(and(eq(petEvents.userId, userId), eq(petEvents.lifeId, lifeId),
+      sql`${petEvents.debugJson}->>'reminderDate' = ${date}`))
+    .limit(1)
+    .then(firstRow);
+  return !!found;
+}
+
 /** The pet's stats, with the owner's gold. */
 export function currentStats(row: PetRow): PetStats {
   return { ...withoutGold(row.statsJson ?? initialStats(row.identityJson)), gold: row.wallet?.gold ?? STARTING_GOLD };
