@@ -151,6 +151,51 @@ export async function renderStillPng(
   return rasterise(frameSvg(document, 0, size, fitted), size, options.palette ?? false);
 }
 
+/** Instants weighed when choosing an animated pose, and the edge they are weighed at. */
+const POSE_SAMPLES = 8;
+const POSE_SAMPLE_EDGE = 48;
+
+/**
+ * One transparent square PNG of the document *settled* — the still a pet is shown as.
+ *
+ * Not `renderStillPng`: that draws t=0, and an animated sticker whose layers fade or slide in is an
+ * empty square there. This weighs a handful of instants across the cycle and keeps the most covered
+ * one, the same rule the app's `StickerPosterFrame` picks a library still by — intros build up to
+ * that pose and outros decay from it. Quantised, because the watch and the widget only ever show it
+ * small and both carry it across a process boundary.
+ */
+export async function renderPosePng(document: StickerDocument, assets: RenderAssets, size: number): Promise<Uint8Array> {
+  document = resolveStickerConfiguration(document);
+  const times = document.kind === "animated" ? poseTimes(document) : [0];
+  const fitted = await prepareRenditionAssets(document, assets, size, times);
+  let best = times[0];
+  if (times.length > 1) {
+    let bestCoverage = -1;
+    // Sequential for the same memory reason `renderApng` gives; the samples are tiny anyway.
+    for (const time of times) {
+      const alpha = await sharp(Buffer.from(frameSvg(document, time, POSE_SAMPLE_EDGE, fitted)), { density: 72 })
+        .resize(POSE_SAMPLE_EDGE, POSE_SAMPLE_EDGE, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .ensureAlpha()
+        .extractChannel(3)
+        .raw()
+        .toBuffer();
+      const coverage = alpha.reduce((total, value) => total + value, 0);
+      if (coverage > bestCoverage) {
+        bestCoverage = coverage;
+        best = time;
+      }
+    }
+  }
+  return rasterise(frameSvg(document, best, size, fitted), size, true);
+}
+
+/** `POSE_SAMPLES` evenly spaced document-time instants across one play. */
+function poseTimes(document: Extract<StickerDocument, { kind: "animated" }>): number[] {
+  const { times } = animatedRenditionTiming(document, POSE_SAMPLES / Math.max(document.durationSeconds, 0.1));
+  if (times.length <= POSE_SAMPLES) return times;
+  return Array.from({ length: POSE_SAMPLES }, (_, index) => times[Math.floor((index * times.length) / POSE_SAMPLES)]);
+}
+
 /** A transparent square APNG of the document's whole cycle, plus its loop hold. */
 export async function renderApng(
   document: Extract<StickerDocument, { kind: "animated" }>,

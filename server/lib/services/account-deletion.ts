@@ -14,6 +14,8 @@ import {
   stickerPackItems,
   stickerPacks,
   stickers,
+  petEvents,
+  userPets,
   users,
 } from "@/lib/db/schema";
 import { purgeStickerMediaImmediately } from "@/lib/services/assets";
@@ -297,6 +299,8 @@ export async function finalizeAccountDeletion(
     // any that were never bound to one.
     await tx.delete(deviceTokens).where(eq(deviceTokens.userId, userId));
     await tx.delete(packInstalls).where(eq(packInstalls.userId, userId));
+    await tx.delete(userPets).where(eq(userPets.userId, userId));
+    await tx.delete(petEvents).where(eq(petEvents.userId, userId));
     await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.ownerId, userId));
     await tx.delete(chatMessages).where(eq(chatMessages.ownerId, userId));
     await tx.delete(chatThreads).where(eq(chatThreads.ownerId, userId));

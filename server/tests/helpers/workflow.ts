@@ -43,6 +43,17 @@ export const unusedAiProvider: AiProvider = {
   // that threw here would only prove the naming step swallows its errors. Keeping the current name
   // is a real provider answer, and it leaves each test's own title assertions alone.
   summarizeStickerTitle: async ({ currentTitle }) => currentTitle,
+  choosePetStatus: () => { throw new Error("Unexpected choosePetStatus"); },
+  generatePetActions: () => { throw new Error("Unexpected generatePetActions"); },
+  respondToPetInteraction: () => { throw new Error("Unexpected respondToPetInteraction"); },
+  reactToPetPhoto: () => { throw new Error("Unexpected reactToPetPhoto"); },
+  // Pet background reads fall back on failure — a persona to a balanced explorer, headlines to the
+  // last ones — so a stub that throws here leaves a test's own pet assertions alone.
+  generatePetPersona: () => { throw new Error("Unexpected generatePetPersona"); },
+  searchPetHeadlines: () => { throw new Error("Unexpected searchPetHeadlines"); },
+  narratePetEvent: () => { throw new Error("Unexpected narratePetEvent"); },
+  // Every finished turn shows the owner's pet the new sticker; the step swallows a failure.
+  noticePetSticker: () => { throw new Error("Unexpected noticePetSticker"); },
 };
 
 /**

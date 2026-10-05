@@ -1,10 +1,11 @@
 import { type LanguageModel } from "ai";
 import { animateSticker } from "./gateway-animate";
 import { reply, routeChatTurn, showSticker, summarizeStickerTitle } from "./gateway-chat";
-import type { AiAnimationContext, AiChatContext, AiEditContext, AiImageInput, AiLayoutContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AnimationDraftingSession, EditDraftingSession, LayoutDraftingSession, PlanDraftingSession } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatContext, AiEditContext, AiImageInput, AiLayoutContext, AiPetActionsContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetPersonaContext, AiPetStatusContext, AiPetStickerContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AnimationDraftingSession, EditDraftingSession, LayoutDraftingSession, PlanDraftingSession } from "./gateway-contracts";
 import { editSticker } from "./gateway-edit";
 import { generateConceptImage, generateStickerImage, generateStickerVideo, inspectSpriteSheet, selectImageReferences } from "./gateway-images";
 import { MockAiProvider } from "./gateway-mock";
+import { choosePetStatus, generatePetActions, generatePetPersona, narratePetEvent, noticePetSticker, reactToPetPhoto, respondToPetInteraction, searchPetHeadlines } from "./gateway-pet";
 import { planSticker, refineStickerLayout } from "./gateway-plan";
 
 export class GatewayAiProvider implements AiProvider {
@@ -31,6 +32,14 @@ export class GatewayAiProvider implements AiProvider {
   }
   reply(instruction: string, history: string) { return reply(instruction, history); }
   summarizeStickerTitle(input: AiTitleContext) { return summarizeStickerTitle(input); }
+  choosePetStatus(input: AiPetStatusContext) { return choosePetStatus(input); }
+  generatePetActions(input: AiPetActionsContext) { return generatePetActions(input); }
+  respondToPetInteraction(input: AiPetInteractionContext) { return respondToPetInteraction(input); }
+  reactToPetPhoto(input: AiPetPhotoContext) { return reactToPetPhoto(input); }
+  generatePetPersona(input: AiPetPersonaContext) { return generatePetPersona(input); }
+  searchPetHeadlines(input: AiPetHeadlinesContext) { return searchPetHeadlines(input); }
+  narratePetEvent(input: AiPetEventContext) { return narratePetEvent(input); }
+  noticePetSticker(input: AiPetStickerContext) { return noticePetSticker(input); }
 }
 
 let testProvider: AiProvider | undefined;
@@ -57,5 +66,5 @@ export function getAiProvider(): AiProvider {
 // The rest of the provider. Re-exported so every existing `@/lib/ai/gateway`
 // import keeps working.
 export { TurnAbort, describeToolError, resolveChatAction, summarizeDocument } from "./gateway-contracts";
-export type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiImageReferenceCandidate, AiLayoutContext, AiPlanContext, AiPlanVisual, AiProvider, AiReferenceImage, AiReferenceSelectionContext, AiSequenceAsset, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AiVideoOutput, AnimateTurnResult, AnimationDraftState, AnimationDraftingSession, EditDraftState, EditDraftingSession, EditTurnResult, LayoutDraftState, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult, RenderableSession, StickerRenderResult } from "./gateway-contracts";
+export type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiImageReferenceCandidate, AiLayoutContext, AiPetStatus, AiPetStatusContext, AiPlanContext, AiPlanVisual, AiProvider, AiReferenceImage, AiReferenceSelectionContext, AiSequenceAsset, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AiVideoOutput, AnimateTurnResult, AnimationDraftState, AnimationDraftingSession, EditDraftState, EditDraftingSession, EditTurnResult, LayoutDraftState, LayoutDraftingSession, LayoutTurnResult, PlanDraftingSession, PlanTurnResult, RenderableSession, StickerRenderResult } from "./gateway-contracts";
 export { animationOperationLayerId, validateEditOperation, validatePlannedAnimationOperation } from "./gateway-edit";

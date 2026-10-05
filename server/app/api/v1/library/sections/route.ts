@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     return noStoreJson(await listLibrarySections(db, principal.sub, {
       status: status === "all" ? "all" : "published",
       query: textQuery(searchParams.get("q"), { name: "q", maxLength: 100 }),
+      controllable: searchParams.get("controllable") === "1",
     }));
   });
 }

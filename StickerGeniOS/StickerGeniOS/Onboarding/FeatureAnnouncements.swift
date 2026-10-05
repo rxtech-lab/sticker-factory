@@ -65,6 +65,16 @@ struct FeatureAnnouncement: Identifiable, Equatable {
             message: TutorialCopy.text(
                 "Real app screenshots, little steps, and ideas to try. Learn to create, animate and share your stickers."
             )
+        ),
+        .init(
+            id: "pet-on-apple-watch",
+            icon: "🐾",
+            accent: AppColors.coral,
+            title: String(localized: "Your pet, on your wrist"),
+            message: String(localized: """
+                Choose a controllable sticker in the Pet tab. See it on your Apple Watch and widgets, \
+                and send stickers in Messages to let its mood change.
+                """)
         )
     ]
 }

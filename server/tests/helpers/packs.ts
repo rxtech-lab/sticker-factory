@@ -1,4 +1,6 @@
 import { eq } from "drizzle-orm";
+import type { StickerConfiguration } from "@/lib/contracts/configuration";
+import type { StickerDocument } from "@/lib/contracts/sticker";
 import type { Database } from "@/lib/db/client";
 import { assets, stickerRevisions, stickers, users } from "@/lib/db/schema";
 import { getObjectStore, objectKey } from "@/lib/storage/r2";
@@ -20,6 +22,13 @@ export async function seedPublishedSticker(
     attachments?: boolean;
     /** Seeds the two messenger renditions and binds them to the revision, as add-to-pack would. */
     messengerRenditions?: boolean;
+    /** Gives the revision a playback bundle, which is what makes the sticker controllable. */
+    controllable?: boolean;
+    /** The controls a controllable sticker's playback document declares. Only what pets read. */
+    configuration?: StickerConfiguration;
+    /** A whole, renderable playback document, for tests that draw the sticker. Implies controllable. */
+    playbackDocument?: StickerDocument;
+    messengerEmoji?: string;
   } = {},
 ) {
   const stickerId = crypto.randomUUID();
@@ -39,6 +48,7 @@ export async function seedPublishedSticker(
     title: options.title ?? "Seeded",
     kind: options.kind ?? "static",
     status: "published",
+    messengerEmoji: options.messengerEmoji ?? null,
     createdAt: now,
     updatedAt: now,
   });
@@ -131,6 +141,12 @@ export async function seedPublishedSticker(
     attachmentSmallAssetId: options.attachments ? attachmentSmallAssetId : null,
     whatsappAssetId: options.messengerRenditions ? whatsappAssetId : null,
     telegramAssetId: options.messengerRenditions ? telegramAssetId : null,
+    // Set here rather than by a later update: a trigger freezes `playback_json` once written.
+    playbackJson: options.playbackDocument
+      ? { version: 1, document: options.playbackDocument as never, assetIds: [] }
+      : options.controllable
+        ? { version: 1, document: (options.configuration ? { configuration: options.configuration } : {}) as never, assetIds: [] }
+        : null,
     createdAt: now,
     decidedAt: now,
   });

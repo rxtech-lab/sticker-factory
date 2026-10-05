@@ -8,6 +8,7 @@ import {
   executeAiJobStep,
   failJobStep,
   finalizeStickerPurgeStep,
+  noticePetStickerStep,
   publishExportsStep,
   purgeStickerStep,
   quickGenerationStep,
@@ -35,6 +36,7 @@ export async function stickerGenerationWorkflow(
       // Separate durable steps: publication retries never redraw or spend another allowance.
       await quickPublishStep(jobId);
       await completeJobStep(jobId, result);
+      await noticePetStickerStep(jobId, result.revisionId);
       return { workflowStatus: "succeeded" as const, result };
     } catch (error) {
       await failJobStep(jobId, error instanceof Error ? error.message : String(error));
@@ -43,7 +45,9 @@ export async function stickerGenerationWorkflow(
   }
   if (quick) {
     try {
-      return await quickGenerationStep(jobId);
+      const outcome = await quickGenerationStep(jobId);
+      if (outcome.workflowStatus === "succeeded") await noticePetStickerStep(jobId, outcome.result.revisionId);
+      return outcome;
     } catch (error) {
       console.error("[gen] stickerGenerationWorkflow:quickFailed", { jobId, error: describeError(error) });
       await failJobStep(jobId, error instanceof Error ? error.message : String(error));
@@ -58,6 +62,7 @@ export async function stickerGenerationWorkflow(
     // The step swallows its own failures, so it can only delay a turn, never fail one.
     await summarizeStickerTitleStep(jobId);
     await completeJobStep(jobId, result);
+    await noticePetStickerStep(jobId, result.revisionId);
     return { workflowStatus: "succeeded" as const, result };
   } catch (error) {
     // The message is all `failJobStep` stores, and a wrapped SDK error's message says nothing about

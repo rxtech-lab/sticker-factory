@@ -87,8 +87,8 @@ actor StickerAPIClient: StickerAPIClientProtocol {
     }
 
     private let baseURL: URL
-    private let tokenBroker: SharedTokenBroker
-    private let session: URLSession
+    let tokenBroker: SharedTokenBroker
+    let session: URLSession
     private let appVersion: String?
     private let acceptLanguage: String?
     private let appTransactionProvider: @Sendable () async -> String?
@@ -719,7 +719,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         return terminalHeader ? .terminal : .windowExpired
     }
 
-    private func send<Response: Decodable & Sendable>(
+    func send<Response: Decodable & Sendable>(
         path: String,
         method: String = "GET",
         query: [URLQueryItem] = [],
@@ -728,7 +728,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         try await send(path: path, method: method, query: query, bodyData: nil, idempotencyKey: idempotencyKey)
     }
 
-    private func send<Body: Encodable & Sendable, Response: Decodable & Sendable>(
+    func send<Body: Encodable & Sendable, Response: Decodable & Sendable>(
         path: String,
         method: String,
         query: [URLQueryItem] = [],
@@ -738,7 +738,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         try await send(path: path, method: method, query: query, bodyData: try encoder.encode(body), idempotencyKey: idempotencyKey)
     }
 
-    private func send<Response: Decodable & Sendable>(
+    func send<Response: Decodable & Sendable>(
         path: String,
         method: String,
         query: [URLQueryItem],
@@ -803,7 +803,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         return (try? JSONDecoder().decode(Refusal.self, from: data))?.error.code == "BILLING_ENVIRONMENT_REQUIRED"
     }
 
-    private func authorizedRequest(path: String, query: [URLQueryItem] = []) async throws -> URLRequest {
+    func authorizedRequest(path: String, query: [URLQueryItem] = []) async throws -> URLRequest {
         var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!)
@@ -842,7 +842,7 @@ actor StickerAPIClient: StickerAPIClientProtocol {
         }
     }
 
-    private func decode<Response: Decodable>(_ data: Data, response: URLResponse, context: String) throws -> Response {
+    func decode<Response: Decodable>(_ data: Data, response: URLResponse, context: String) throws -> Response {
         guard let response = response as? HTTPURLResponse else {
             Self.networkLog.error("\(context, privacy: .public): no HTTP response")
             throw StickerAPIError.invalidResponse

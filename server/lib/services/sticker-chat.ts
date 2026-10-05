@@ -24,6 +24,11 @@ export async function createChatTurn(
   request: PostChatMessageRequest,
   appClip = false,
   newSticker = false,
+  /**
+   * `pet`: the owner's pet asked for this turn on its own sticker while evolving. It is a planning
+   * turn whatever the intent says, it is free, and it spends none of the owner's daily allowance.
+   */
+  origin: "user" | "pet" = "user",
 ) {
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
   if (request.planPoseUpdate && (sticker.kind !== "animated" || request.quick)) {
@@ -121,12 +126,12 @@ export async function createChatTurn(
   const messageId = crypto.randomUUID();
   const jobId = crypto.randomUUID();
   const now = new Date();
-  const jobKind = intentToJobKind(request.intent);
+  const jobKind = origin === "pet" ? "plan" : intentToJobKind(request.intent);
   const creditHold = jobCreditHold(jobKind);
   const policy = appClip ? await quickGenerationPolicy(ownerId) : null;
   let reservationId: string | null = null;
   try {
-    reservationId = policy && !policy.chargesPoints ? null : await holdCreditsForJob({
+    reservationId = origin === "pet" || (policy && !policy.chargesPoints) ? null : await holdCreditsForJob({
       ownerId,
       amount: creditHold,
       idempotencyKey: `reserve:${jobId}`,
@@ -135,7 +140,8 @@ export async function createChatTurn(
     });
     // Check points before consuming an attempt. The existing usage API records
     // immediately; generation failures keep the attempt but release point holds.
-    if (appClip) await recordAppClipUsage(ownerId, jobId);
+    if (origin === "pet") { /* The pet's own turn spends nothing of the owner's. */ }
+    else if (appClip) await recordAppClipUsage(ownerId, jobId);
     // Every user message spends the daily message allowance; the one that opens a
     // new sticker spends the daily sticker allowance too.
     else await consumeDailyUsage(ownerId, newSticker
@@ -178,6 +184,7 @@ export async function createChatTurn(
           kind: jobKind,
           quick: request.quick ?? false,
           appClip,
+          origin,
           state: "queued",
           reservationId,
           billingEnvironment: await currentBillingEnvironment(),

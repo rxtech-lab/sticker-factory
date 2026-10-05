@@ -768,6 +768,19 @@ nonisolated enum JSONValue: Codable, Equatable, Sendable {
     }
 }
 
+nonisolated extension JSONValue {
+    /// Indented, key-sorted JSON for a person to read — the pet diary's debug section. Falls back
+    /// to a description rather than failing, since it is only ever shown, never parsed.
+    var prettyPrinted: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(self), let text = String(data: data, encoding: .utf8) else {
+            return String(describing: self)
+        }
+        return text
+    }
+}
+
 nonisolated struct CreateStickerRequest: Codable, Sendable {
     var presets: CreationPresetSubmission?
     var title: String

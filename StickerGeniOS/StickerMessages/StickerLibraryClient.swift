@@ -252,6 +252,77 @@ struct StickerLibraryClient: Sendable {
         }
     }
 
+    /// Tells the server a sticker was just sent, so the user's pet can react to it.
+    ///
+    /// The answer carries nothing the extension needs — the new pose reaches the watch and widget
+    /// through `GET /api/v1/pet` — so only the status is checked.
+    ///
+    /// `context` is left out of the body entirely when it has nothing in it: the server's schema
+    /// is strict, and an empty object says nothing an absent one does not.
+    func recordPetSend(stickerID: String, context: PetContextSnapshot? = nil, accessToken: String) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "api/v1/pet/sends"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            RecordPetSendBody(stickerId: stickerID, context: context?.isEmpty == false ? context : nil)
+        )
+        addClientHeaders(to: &request)
+        try Self.validate(try await transport.data(for: request))
+    }
+
+    /// The caller's pet, or `nil` when they have not adopted one.
+    func fetchPet(accessToken: String) async throws -> MessagesPet? {
+        var request = URLRequest(url: baseURL.appending(path: "api/v1/pet"))
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        addClientHeaders(to: &request)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let result = try await transport.data(for: request)
+        try Self.validate(result)
+        guard let payload = try? JSONDecoder().decode(MessagesPetEnvelope.self, from: result.data) else {
+            throw StickerLibraryError.invalidResponse
+        }
+        return payload.pet
+    }
+
+    /// The pet in its current pose, as the PNG the server draws for the widget and watch.
+    ///
+    /// `nil` on 404 — the pet was released between the listing and this request — so the card can
+    /// still render with a placeholder instead of failing outright.
+    func fetchPetPose(size: Int, accessToken: String) async throws -> Data? {
+        var components = URLComponents(
+            url: baseURL.appending(path: "api/v1/pet/pose"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [URLQueryItem(name: "size", value: String(size))]
+        guard let url = components?.url else { throw StickerLibraryError.invalidConfiguration }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("image/png", forHTTPHeaderField: "Accept")
+        addClientHeaders(to: &request)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let result = try await transport.data(for: request)
+        if result.response.statusCode == 404 { return nil }
+        try Self.validate(result)
+        return result.data.isEmpty ? nil : result.data
+    }
+
+    /// Records that the owner is showing their pet to someone, and answers with the pet to draw.
+    func sharePet(accessToken: String) async throws -> MessagesPetShare {
+        var request = URLRequest(url: baseURL.appending(path: "api/v1/pet/shares"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        addClientHeaders(to: &request)
+        let result = try await transport.data(for: request)
+        try Self.validate(result)
+        guard let payload = try? JSONDecoder().decode(MessagesPetShare.self, from: result.data) else {
+            throw StickerLibraryError.invalidResponse
+        }
+        return payload
+    }
+
     private static func decodingFailure(_ error: Error) -> String {
         let path: [any CodingKey]
         let reason: String
@@ -307,6 +378,11 @@ struct StickerLibraryClient: Sendable {
             )
         }
     }
+}
+
+private struct RecordPetSendBody: Encodable {
+    let stickerId: String
+    let context: PetContextSnapshot?
 }
 
 private struct StickerLibraryErrorEnvelope: Decodable {

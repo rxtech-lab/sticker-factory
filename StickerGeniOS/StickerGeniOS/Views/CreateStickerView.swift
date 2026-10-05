@@ -71,6 +71,15 @@ struct CreateStickerView: View {
         }
         .safeAreaInset(edge: .bottom) { navigation }
         .navigationTitle("Create")
+        .overlay {
+            if isGenerating {
+                ZStack {
+                    AppColors.ink.opacity(0.18).ignoresSafeArea()
+                    PosterProgress(message: String(localized: "Creating your sticker…"))
+                }
+                .accessibilityIdentifier("creation-progress-overlay")
+            }
+        }
         .task {
             await loadCatalog()
             restoreDraft()
@@ -92,6 +101,9 @@ struct CreateStickerView: View {
         .onChange(of: kind) { _, _ in
             if restoringKind { restoringKind = false; return }
             flow.animationReviewed = false
+            if kind == .static && petStyleSelected {
+                flow.selections["style"]?.remove("pet-companion")
+            }
         }
         .onChange(of: pickerItems) { _, items in Task { await loadReferences(items) } }
         .subjectLiftSheet(pending: $pendingLift, references: $references, basename: "capture")
@@ -153,6 +165,7 @@ struct CreateStickerView: View {
                 let valid = Set(group.options.map(\.id))
                 flow.selections[group.id] = Set(draft.selections[group.id] ?? []).intersection(valid)
             }
+            ensurePetReady()
             // Never land on an overview whose Generate button cannot be pressed: send the reader to
             // whatever it is still waiting on instead.
             if let invalid = flow.firstInvalidGroup {
@@ -182,6 +195,17 @@ struct CreateStickerView: View {
         }
     }
 
+    private var petStyleSelected: Bool { flow.selections["style"]?.contains("pet-companion") == true }
+
+    private func ensurePetReady() {
+        guard petStyleSelected else { return }
+        if kind != .animated {
+            kind = .animated
+            flow.animationReviewed = false
+        }
+        controllable = true
+    }
+
     @ViewBuilder private var page: some View {
         switch flow.step {
         case .idea: ideaPage
@@ -189,7 +213,11 @@ struct CreateStickerView: View {
         case .catalog: catalogPage
         case .preset(let id):
             if let group = flow.catalog?.groups.first(where: { $0.id == id }) {
-                CreationPresetPage(group: group, flow: $flow, animated: kind == .animated)
+                CreationPresetPage(group: group, flow: $flow, animated: kind == .animated) { optionID, selected in
+                    guard group.id == "style", optionID == "pet-companion", selected else { return }
+                    ensurePetReady()
+                    motion = false
+                }
             }
             if flow.requiresCatalogRefresh { catalogPage }
         case .references: referencesPage
@@ -367,7 +395,12 @@ struct CreateStickerView: View {
                         title: String(localized: "Switchable moods and poses"),
                         isOn: $controllable, identifier: "sticker-controllable-toggle"
                     )
+                    .disabled(petStyleSelected)
                     .onChange(of: controllable) { _, _ in ControllableCreationTip().invalidate(reason: .actionPerformed) }
+                    if petStyleSelected {
+                        Text("Pet Companion keeps moods and poses on so this sticker can become your pet after publishing.")
+                            .font(.footnote).foregroundStyle(AppColors.muted)
+                    }
                     if controllable {
                         Picker("Pose variety", selection: $posePreset) {
                             ForEach(PosePreset.allCases, id: \.self) { Text($0.creationLabel).tag($0) }
@@ -549,6 +582,7 @@ struct CreateStickerView: View {
         do {
             let catalog = try await store.api.creationPresets(refresh: force)
             flow.apply(catalog, review: force, kind: kind)
+            ensurePetReady()
             catalogError = nil
         } catch {
             catalogError = String(localized: "Couldn’t load sticker options. Your idea and photos are saved here. Try again.")

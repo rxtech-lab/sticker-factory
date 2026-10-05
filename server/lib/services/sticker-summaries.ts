@@ -2,7 +2,7 @@
 // pages with, and the shape of a summary. The ceilings on what may be handed to a model live
 // here too, because they are properties of an asset row rather than of any one operation.
 
-import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import { firstRow, type Database } from "@/lib/db/client";
 import { attachmentMediumAssets, attachmentSmallAssets, planConceptAssetIdSql, planConceptAssets, previewAssetIdSql, previewAssets, telegramAssets, webpAssets, whatsappAssets, systemAssets } from "@/lib/db/columns";
 import { assets, generationJobs, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -293,6 +293,8 @@ export interface ListStickersOptions {
   kind?: "static" | "animated";
   status?: "draft" | "published";
   query?: string | null;
+  /** Only stickers whose active revision carries playback controls — the ones that can be posed. */
+  controllable?: boolean;
 }
 
 /**
@@ -386,6 +388,7 @@ export function buildStickerListQuery(
   const conditions = [eq(stickers.ownerId, ownerId), ne(stickers.status, "deleting")];
   if (options.kind) conditions.push(eq(stickers.kind, options.kind));
   if (options.status) conditions.push(eq(stickers.status, options.status));
+  if (options.controllable) conditions.push(isNotNull(stickerRevisions.playbackJson));
   const query = options.query?.trim();
   if (query) conditions.push(sql`strpos(lower(${stickers.title}), lower(${query})) > 0`);
   if (cursor) conditions.push(or(

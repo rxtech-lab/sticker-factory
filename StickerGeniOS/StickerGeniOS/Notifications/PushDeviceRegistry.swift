@@ -115,4 +115,14 @@ final class PushApplicationDelegate: NSObject, UIApplicationDelegate {
     ) {
         Task { @MainActor in PushDeviceRegistry.shared.failed(with: error) }
     }
+
+    /// The server's silent "your pet moved" push, and the "your pet grew" banner that carries the same
+    /// wake-up: long enough to redraw the widget and the watch.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        guard ["pet-status", "pet-evolved"].contains(userInfo["kind"] as? String) else { return .noData }
+        return await PetCompanionSync.shared.refresh() ? .newData : .failed
+    }
 }

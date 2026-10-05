@@ -49,6 +49,6 @@ describe("generated creation previews", () => {
       expect(animations.size).toBe(option.preview!.variants.length);
       styles.add((await sharp(resolve(`public${option.preview!.url}`)).resize(32, 32).png().toBuffer()).toString("base64"));
     }
-    expect(styles.size).toBe(13);
+    expect(styles.size).toBe(14);
   }, 60000);
 });

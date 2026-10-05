@@ -891,7 +891,8 @@ function selectInstalledLibraryPackIds(db: Database, userId: string) {
 export async function listLibrarySections(
   db: Database,
   userId: string,
-  options: { status?: "published" | "all"; query?: string | null } = {},
+  /** `controllable` keeps only stickers that can be posed — the pet picker. Empty packs drop out. */
+  options: { status?: "published" | "all"; query?: string | null; controllable?: boolean } = {},
 ): Promise<{ sections: LibrarySectionV1[]; generatedAt: string }> {
   const status = options.status ?? "published";
   const query = options.query?.trim();
@@ -899,6 +900,7 @@ export async function listLibrarySections(
     limit: 100,
     status: status === "all" ? undefined : "published",
     query,
+    controllable: options.controllable,
   });
   const installedQuery = selectInstalledLibraryPacks(db, userId);
   const membersQuery = selectPackMemberRows(
@@ -934,7 +936,8 @@ export async function listLibrarySections(
   };
 
   const packSections = installed.map((row): LibrarySectionV1 => {
-    const packStickers = (members.get(row.pack.id) ?? []).map(serializeStickerSummary);
+    const packStickers = (members.get(row.pack.id) ?? []).map(serializeStickerSummary)
+      .filter((sticker) => !options.controllable || sticker.playbackRevisionId !== null);
     return {
       id: `pack:${row.pack.id}`,
       kind: "pack",
@@ -946,7 +949,7 @@ export async function listLibrarySections(
       updatedAt: latest(packStickers, row.pack.updatedAt.toISOString()),
       stickers: packStickers,
     };
-  }).filter((section) => !query || section.stickers.length > 0);
+  }).filter((section) => !(query || options.controllable) || section.stickers.length > 0);
 
   return { sections: [mineSection, ...packSections], generatedAt: new Date().toISOString() };
 }

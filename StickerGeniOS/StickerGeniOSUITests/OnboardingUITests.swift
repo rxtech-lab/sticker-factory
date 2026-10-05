@@ -72,6 +72,8 @@ final class OnboardingUITests: XCTestCase {
         waitForExpectations(timeout: 3)
         next.tap()
         XCTAssertTrue(app.staticTexts["Learn with tutorials"].waitForExistence(timeout: 15))
+        next.tap()
+        XCTAssertTrue(app.staticTexts["Your pet, on your wrist"].waitForExistence(timeout: 15))
         XCTAssertTrue(element("feature-read-tutorials").exists)
         XCTAssertTrue(app.buttons["Got it"].exists)
         app.buttons["Got it"].tap()
@@ -97,6 +99,7 @@ final class OnboardingUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Your packs, in WhatsApp"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.alerts["Couldn’t Complete Action"].exists)
+        element("feature-card-next-button").tap()
         element("feature-card-next-button").tap()
         element("feature-card-next-button").tap()
         element("feature-card-next-button").tap()

@@ -41,7 +41,7 @@ export interface ApnsPush {
   payload: Record<string, unknown>;
   /** APNs replaces an undelivered notification carrying the same id. Max 64 bytes. */
   collapseId?: string;
-  pushType?: "alert" | "liveactivity";
+  pushType?: "alert" | "liveactivity" | "background";
   priority?: "5" | "10";
 }
 

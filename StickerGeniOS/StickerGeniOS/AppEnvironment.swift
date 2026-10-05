@@ -19,6 +19,8 @@ final class AppEnvironment {
     /// banner. Held here rather than in a view so it survives whichever screen happens to be up;
     /// `StickerFactoryTabView` consumes it and clears it.
     var pendingStickerID: String?
+    /// Set by tapping a "your pet grew" banner; `ContentView` switches to the Pet tab and clears it.
+    var pendingOpenPet = false
     var pendingShareRoute: StickerShareRoute?
     var pendingTutorialLink: TutorialDeepLink?
     let tutorials: TutorialCoordinator
@@ -140,6 +142,7 @@ final class AppEnvironment {
             notifier: notifier
         )
         notifier?.onOpenSticker = { [weak environment] id in environment?.pendingStickerID = id }
+        notifier?.onOpenPet = { [weak environment] in environment?.pendingOpenPet = true }
         // Every 402 from the server, wherever it came from, raises the paywall. The error itself
         // still reaches whichever screen asked, so the user also reads the server's own words.
         if let live = api as? StickerAPIClient {
@@ -154,6 +157,9 @@ final class AppEnvironment {
         // Hand the registry a client to upload with. The device token may already be waiting — APNs
         // answers on its own schedule — or may arrive long after this; whichever lands second sends.
         if !isUITesting { PushDeviceRegistry.shared.attach(api: api) }
+        // The widget and the watch show the pet from what the phone writes for them; see
+        // `PetCompanionSync`. UI tests run on the mock and leave both alone.
+        if !isUITesting { PetCompanionSync.shared.attach(api: api) }
         #if DEBUG
         if isUITesting, let value = ProcessInfo.processInfo.environment["TUTORIAL_DEEP_LINK"], let url = URL(string: value) {
             environment.handleIncomingURL(url)
@@ -182,6 +188,7 @@ final class AppEnvironment {
         if authenticationState == .signedIn {
             store.liveActivities?.resume()
             subscription.refresh()
+            Task { await PetCompanionSync.shared.refresh() }
             await store.refresh()
         }
     }
@@ -195,12 +202,25 @@ final class AppEnvironment {
         guard authenticationState == .signedIn else { return }
         store.liveActivities?.resume()
         subscription.refresh()
+        // The pet reads stickers sent from Messages while the app is away; this is the moment the
+        // widget and the watch catch up even if the silent push never came.
+        Task { await PetCompanionSync.shared.refresh() }
+        // The pet's sense of the weather and the day's walking. Never prompts — only sources the
+        // user already connected in the Pet tab are read — and at most every half hour.
+        if !isUITesting {
+            let api = store.api
+            Task {
+                await PetContextProvider.shared.refreshPermissions()
+                await PetContextProvider.shared.syncIfNeeded(api: api)
+            }
+        }
     }
 
     func authenticationCompleted() {
         AppTelemetry.event("login", parameters: ["method": "rxlab"])
         synchronizeAuthenticationState()
         Task { await store.refresh() }
+        Task { await PetCompanionSync.shared.refresh() }
         subscription.reset()
         subscription.refresh()
     }
@@ -224,6 +244,7 @@ final class AppEnvironment {
         // left registered would announce the departing account's stickers to whoever signs in next.
         await store.liveActivities?.signedOut()
         await PushDeviceRegistry.shared.signedOut()
+        await PetCompanionSync.shared.signedOut()
         // A rejected broker refresh has already invalidated the shared bundle,
         // but RxAuth still owns its in-memory state and refresh timer. Drive
         // both stores through their normal logout paths before presenting the
@@ -243,6 +264,7 @@ final class AppEnvironment {
         AppTelemetry.event("logout")
         await store.liveActivities?.signedOut()
         await PushDeviceRegistry.shared.signedOut()
+        await PetCompanionSync.shared.signedOut()
         try? await tokenBroker.logout()
         await authManager.logout()
         SharedLogoutPurger.purge()

@@ -1,4 +1,5 @@
-import type { StickerControlValues } from "@/lib/contracts/configuration";
+import type { PET_CLASSES, PET_WEATHER_KINDS, PetIdentityV1, PetSignalsV1 } from "@/lib/contracts/api";
+import type { StickerControl, StickerControlValues } from "@/lib/contracts/configuration";
 // The shape of every AI turn: what a caller hands the provider, what the provider hands back,
 // and the drafting sessions a long turn streams its partial work through.
 
@@ -664,6 +665,152 @@ export interface AiTitleContext {
   stickerKind: "static" | "animated";
 }
 
+/**
+ * What the pet-status pass is shown: the pet's own controls, the pose it is holding now, and the
+ * sticker its owner just sent to someone.
+ *
+ * The sent sticker is the evidence, not the pet — it may be any sticker the user can send, posable
+ * or not, and its picture is there so a sticker titled "IMG 2041" can still be read for its mood.
+ */
+/** When and where the owner is right now, so the pet can tell a sleepy midnight from a sunny noon. */
+export interface AiOwnerMoment {
+  /** The owner's local date and time, e.g. "Sunday 5 October, 21:40". */
+  localTime?: string | null;
+  /** Roughly where the owner is, as rounded coordinates the model can place. */
+  location?: { latitude: number; longitude: number } | null;
+}
+
+export interface AiPetStatusContext extends AiOwnerMoment {
+  petTitle: string;
+  controls: StickerControl[];
+  current: StickerControlValues | null;
+  sent: { title: string; kind: "static" | "animated"; emoji: string | null; image: AiReferenceImage | null };
+  /** Who the pet is and what it knows of the world; absent on pets from before identities. */
+  identity?: PetIdentityV1 | null;
+  signals?: PetSignalsV1 | null;
+  stats?: { happiness: number; hp: number; energy: number };
+  /** A random event that happened alongside the send, for the pet to mention. */
+  event?: { title: string; detail: string } | null;
+}
+
+/** The pose the pet should take, and a few words for the watch face to say about it. */
+export interface AiPetStatus {
+  values: StickerControlValues;
+  caption: string;
+  /** How often the app plays the pet's animation through once. Omitted keeps the app's default. */
+  animateEverySeconds?: number;
+  /** Lines to say after the caption, each `afterMinutes` after the one before. Omitted says nothing more. */
+  musings?: { text: string; afterMinutes: number }[];
+  /** How the sent sticker's mood moves the stats, each -8 to 8. Omitted means no change. */
+  effects?: { happiness: number; hp: number; energy: number };
+  /**
+   * The pet decided this moment is worth growing from: a brief for the planner, asking for one new
+   * item, with a pose and movement to go with it, on its own sticker. `redrawWeather` asks for its
+   * weather to be drawn again once it has grown, for a growth that changes its whole look. Only ever
+   * set when the context allowed it.
+   */
+  evolve?: { brief: string; redrawWeather?: boolean };
+}
+
+/** Whether the pet may decide to grow from this moment; see `AiPetStatus.evolve`. */
+export interface AiPetEvolutionChoice {
+  canEvolve?: boolean;
+}
+
+/** A sticker its owner just made, for the pet to notice — or, as often, to let pass. */
+export interface AiPetStickerContext extends AiOwnerMoment {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  signals: PetSignalsV1 | null;
+  stats: { happiness: number; hp: number; energy: number };
+  controls: StickerControl[];
+  current: StickerControlValues | null;
+  made: { title: string; kind: "static" | "animated"; image: AiReferenceImage | null };
+}
+
+/** `react: false` leaves the pet as it was; otherwise a pose, a line and how it felt. */
+export type AiPetStickerReaction = { react: false } | ({ react: true } & AiPetStatus);
+
+/** What the model decides about a pet at adoption; the server turns it into numbers. */
+export interface AiPetPersona {
+  class: (typeof PET_CLASSES)[number];
+  personality: string;
+  likes: string[];
+  dislikes: string[];
+  favoriteWeather: (typeof PET_WEATHER_KINDS)[number];
+}
+
+export interface AiPetPersonaContext {
+  petTitle: string;
+  controls: StickerControl[];
+  image: AiReferenceImage | null;
+  /** The world the pet is born into, for flavour. */
+  birth: PetSignalsV1;
+}
+
+/** Where to look for news: the owner's rough place and day, and what the pet cares about. */
+export interface AiPetHeadlinesContext {
+  timeZone: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  interests: string[];
+  date: string;
+}
+
+/** Something that happened to the pet on its own — a life-workflow visit. */
+export interface AiPetEventContext extends AiOwnerMoment {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  signals: PetSignalsV1;
+  event: { title: string; detail: string };
+  stats: { happiness: number; hp: number; energy: number };
+  controls: StickerControl[];
+  current: StickerControlValues | null;
+}
+
+export interface AiPetInteractionContext extends AiOwnerMoment, AiPetEvolutionChoice {
+  petTitle: string;
+  action: Pick<PetAction, "title" | "description">;
+  stats: { happiness: number; hp: number; energy: number };
+  controls: StickerControl[];
+  current: StickerControlValues | null;
+}
+
+/** A picture the owner just showed their pet, for it to look at and react to. */
+export interface AiPetPhotoContext extends AiOwnerMoment, AiPetEvolutionChoice {
+  petTitle: string;
+  photo: AiReferenceImage;
+  identity: PetIdentityV1 | null;
+  signals: PetSignalsV1 | null;
+  stats: { happiness: number; hp: number; energy: number };
+  controls: StickerControl[];
+  current: StickerControlValues | null;
+}
+
+export type PetAction = {
+  id: string;
+  title: string;
+  description: string;
+  effects: { happiness: number; hp: number; energy: number; gold: number };
+};
+
+/**
+ * What the agent knows when it decides what the owner can do next. Everything but the pet itself
+ * is optional: a pet just adopted has no mood yet, and its first actions come from its look alone.
+ */
+export interface AiPetActionsContext extends AiOwnerMoment {
+  petTitle: string;
+  controls: StickerControl[];
+  image: AiReferenceImage | null;
+  identity?: PetIdentityV1 | null;
+  signals?: PetSignalsV1 | null;
+  stats?: { happiness: number; hp: number; energy: number; gold?: number };
+  /** What the pet is feeling or just went through, in a line. */
+  mood?: string | null;
+  /** The titles offered until now, so a refreshed list moves on instead of repeating itself. */
+  previous?: string[];
+}
+
 export interface AiProvider {
   /** Chooses which candidate images the image model needs for one concrete draw. */
   selectImageReferences(input: AiReferenceSelectionContext): Promise<number[]>;
@@ -745,6 +892,24 @@ export interface AiProvider {
    * still describes it should keep it rather than be renamed once per turn.
    */
   summarizeStickerTitle(input: AiTitleContext): Promise<string>;
+  /**
+   * Reads a sticker the user just sent and decides how their pet should look about it.
+   *
+   * Values the model invents are not trusted: the caller normalizes them against the pet's controls,
+   * so an unknown option falls back to that control's default rather than reaching the watch.
+   */
+  choosePetStatus(input: AiPetStatusContext): Promise<AiPetStatus>;
+  generatePetActions(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]>;
+  respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus>;
+  reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus>;
+  /** Chooses a new pet's class, personality and preferences. */
+  generatePetPersona(input: AiPetPersonaContext): Promise<AiPetPersona>;
+  /** Up to three short headlines from a web search, for the pet to have heard about. */
+  searchPetHeadlines(input: AiPetHeadlinesContext): Promise<string[]>;
+  /** The pet's line and pose about something that just happened to it. */
+  narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus>;
+  /** The pet decides whether a sticker its owner just made is worth reacting to, and how. */
+  noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction>;
 }
 
 /**

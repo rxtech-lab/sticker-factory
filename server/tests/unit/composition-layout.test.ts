@@ -67,6 +67,25 @@ describe("composition layout refinement", () => {
     })).toThrow(/Keep every complete layer box on canvas.*hero/);
   });
 
+  // Production: an edit retained a sprite that already overhung the canvas and locked it, so every
+  // adjustment of the additions was rejected on the locked layer and the review never finished.
+  it("does not blame an adjustment for a layer that was already off canvas and left alone", () => {
+    const hero = fixture().layers.find((layer) => layer.id === "hero")!;
+    const source = applyStickerOperationsV1(fixture(), [{
+      op: "setLayerAnimations",
+      layerId: "hero",
+      animations: hero.animations,
+      anchor: { ...hero.anchor, position: { x: 0.1, y: 0.5 } },
+    }]);
+    expect(layoutDiagnostics(source).offCanvasLayerIds).toEqual(["hero"]);
+    const spark = { layerId: "spark", x: 0.7, y: 0.5, scaleX: 0.2, scaleY: 0.2, rotationDegrees: 0 };
+
+    expect(() => applyLayoutAdjustment(source, { placements: [spark] })).not.toThrow();
+    expect(() => applyLayoutAdjustment(source, {
+      placements: [spark, { layerId: "hero", x: 0.05, y: 0.5, scaleX: 1, scaleY: 1, rotationDegrees: 0 }],
+    })).toThrow(/Keep every complete layer box on canvas.*hero/);
+  });
+
   // A reviewer looking at a caption the build already stretched reaches for a wider box, and
   // honouring that literally would stretch it further. The narrower dimension is the one the
   // artwork can actually fit inside, and shrinking a layer can never invalidate the off-canvas and

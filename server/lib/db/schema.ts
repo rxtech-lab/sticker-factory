@@ -18,6 +18,9 @@ import {
 import type { PlaybackBundle } from "@/lib/services/playback";
 import type { PlanV1 } from "@/lib/contracts/plan";
 import type { StickerDocument } from "@/lib/contracts/sticker";
+import type { StickerControlValues } from "@/lib/contracts/configuration";
+import type { PetAction } from "@/lib/ai/gateway-contracts";
+import { PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
 
 /**
  * Every instant is a `timestamptz`, read back as a `Date`.
@@ -43,6 +46,8 @@ const stickerKinds = ["static", "animated"] as const;
 const stickerStatuses = ["draft", "published", "deleting"] as const;
 const jobKinds = ["image", "edit", "animation", "chat", "plan", "compose", "export", "cleanup"] as const;
 const jobStates = ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] as const;
+/** Who asked for a job: the user, or their pet growing in the background. */
+const jobOrigins = ["user", "pet"] as const;
 const messageRoles = ["user", "assistant", "system"] as const;
 const messageKinds = [
   "text", "image", "image_edit", "animation", "device_edit", "plan", "export", "status",
@@ -169,6 +174,11 @@ export const generationJobs = pgTable("generation_jobs", {
    */
   quick: boolean("quick").notNull().default(false),
   appClip: boolean("app_clip").notNull().default(false),
+  /**
+   * `pet` for a turn the user's pet started on its own sticker while evolving. Those are free to
+   * the user and announce nothing: the pet says so itself once the new look is published.
+   */
+  origin: text("origin", { enum: jobOrigins }).notNull().default("user"),
   usageReservationId: text("usage_reservation_id"),
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
   state: text("state", { enum: jobStates }).notNull().default("queued"),
@@ -203,6 +213,7 @@ export const generationJobs = pgTable("generation_jobs", {
     .on(table.stickerId)
     .where(sql`${table.state} IN ('queued', 'running', 'waiting')`),
   check("generation_jobs_kind_check", sql`${table.kind} IN (${oneOf(jobKinds)})`),
+  check("generation_jobs_origin_check", sql`${table.origin} IN (${oneOf(jobOrigins)})`),
   check("generation_jobs_state_check", sql`${table.state} IN (${oneOf(jobStates)})`),
   check("generation_jobs_billing_environment_check", sql`${table.billingEnvironment} IN ('xcode', 'sandbox', 'production')`),
 ]);
@@ -578,3 +589,144 @@ export const generationLiveActivities = pgTable("generation_live_activities", {
   index("generation_live_activities_job_idx").on(table.jobId),
   check("generation_live_activities_environment_check", sql`${table.environment} IN ('sandbox', 'production')`),
 ]);
+
+/**
+ * The controllable sticker a user has adopted as their pet — what the watch and widget show.
+ *
+ * One row per user, keyed by the user, so choosing another pet replaces the row instead of adding
+ * one. The sticker need not be the user's own: a member of an installed pack is just as posable,
+ * and `lib/services/pets.ts` holds the pet to the same access rule playback is read under.
+ * Deleting the sticker takes the choice with it rather than leaving a pet with no artwork.
+ */
+export const userPets = pgTable("user_pets", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
+  /**
+   * The pose the pet holds and the caption under it, as the agent last read the user's sends.
+   *
+   * Null until the first send is read, and cleared when another pet is adopted: the values are ids
+   * of *this* pet's controls, and meaningless against another sticker's.
+   */
+  statusJson: jsonb("status_json").$type<PetStatus>(),
+  statusUpdatedAt: timestampColumn("status_updated_at"),
+  statsJson: jsonb("stats_json").$type<PetStatsValues>(),
+  actionsJson: jsonb("actions_json").$type<PetAction[]>(),
+  interactionId: text("interaction_id"),
+  /** Who this pet is: class, personality, preferences, and the world it was adopted into. */
+  identityJson: jsonb("identity_json").$type<PetIdentityV1>(),
+  /** The phone's last coarse context — rounded location, steps today, time zone. */
+  contextJson: jsonb("context_json").$type<PetStoredContext>(),
+  /** The signals last resolved from that context, headlines included, so a send can reuse them. */
+  signalsJson: jsonb("signals_json").$type<PetSignalsV1>(),
+  signalsUpdatedAt: timestampColumn("signals_updated_at"),
+  /**
+   * Names this pet's life. A new pet gets a new one, and a life workflow that wakes to find a
+   * different id knows it is no longer this pet's and ends.
+   */
+  lifeId: text("life_id"),
+  lifeRunId: text("life_run_id"),
+  lifeTickAt: timestampColumn("life_tick_at"),
+  nextEventAt: timestampColumn("next_event_at"),
+  lastShareAt: timestampColumn("last_share_at"),
+  /**
+   * The most recent send, written before the agent runs. A reading only lands if this is still the
+   * send it was asked about, so a slow answer about an old sticker never overwrites a newer one.
+   */
+  lastSentStickerId: text("last_sent_sticker_id").references(() => stickers.id, { onDelete: "set null" }),
+  lastSentAt: timestampColumn("last_sent_at"),
+  /**
+   * The pet growing a new mood, property or look on its own sticker, while it runs and after it
+   * ends. Only one at a time: a pet that is already evolving is not offered another.
+   */
+  evolutionJson: jsonb("evolution_json").$type<PetEvolution>(),
+  /** When the last evolution started, so a pet grows at most once per cooldown. */
+  lastEvolvedAt: timestampColumn("last_evolved_at"),
+  /** The steps already paid out as gold on the phone's local date, so a walk is only paid once. */
+  walkGoldJson: jsonb("walk_gold_json").$type<PetWalkGold>(),
+  createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
+  updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("user_pets_sticker_idx").on(table.stickerId),
+]);
+
+export type PetMusing = { text: string; afterMinutes: number };
+export type PetStatus = { values: StickerControlValues; caption: string; animateEverySeconds?: number; musings?: PetMusing[] };
+export type PetEvolution = {
+  id: string;
+  state: "planning" | "building" | "publishing" | "ready" | "failed";
+  /** What the pet decided to grow, as the brief the planner reads. */
+  brief: string;
+  trigger: string;
+  stickerId: string;
+  startedAt: string;
+  finishedAt?: string;
+  planJobId?: string;
+  composeJobId?: string;
+  /** The pet asked for its weather to be drawn again in its new look once it has grown. */
+  redrawWeather?: boolean;
+  error?: string;
+};
+export type PetStoredContext = {
+  latitude?: number;
+  longitude?: number;
+  stepsToday?: number;
+  /** The phone's local date the steps were counted on, so yesterday's walk is not today's. */
+  stepsDate?: string;
+  timeZone?: string;
+  updatedAt: string;
+};
+export type PetWalkGold = { date: string; steps: number };
+/** Stored stats and effects. `gold` came later: rows and diary lines from before it have none. */
+export type PetStatsValues = { happiness: number; hp: number; energy: number; gold?: number };
+
+/**
+ * The pet's diary. Every change to its stats lands here with what caused it, so "why is my pet
+ * sad?" has an answer. Kept per life: a new pet starts a fresh page, and the API reads only the
+ * current life's lines.
+ */
+export const petEvents = pgTable("pet_events", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  lifeId: text("life_id").notNull(),
+  stickerId: text("sticker_id"),
+  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "sticker", "evolved"] }).notNull(),
+  title: text("title").notNull(),
+  detail: text("detail").notNull(),
+  effectsJson: jsonb("effects_json").$type<PetStatsValues>().notNull(),
+  statsBeforeJson: jsonb("stats_before_json").$type<PetStatsValues>().notNull(),
+  statsAfterJson: jsonb("stats_after_json").$type<PetStatsValues>().notNull(),
+  signalsJson: jsonb("signals_json").$type<PetSignalsV1>(),
+  debugJson: jsonb("debug_json").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestampColumn("created_at").notNull(),
+}, (table) => [
+  index("pet_events_life_idx").on(table.userId, table.lifeId, table.createdAt),
+]);
+export type PetEventRow = typeof petEvents.$inferSelect;
+
+/**
+ * The weather drawn in a pet's own art style, for the Pet tab and the widget to stand it in.
+ *
+ * Keyed by the revision the pet plays rather than by owner: everyone whose pet is the same sticker
+ * sees the same rain, so each look is drawn once, and a pet that grows a new revision gets its
+ * weather redrawn to match. A row is claimed (`drawing`) before the model is asked, so two reads of
+ * the same pet in the same weather draw it once.
+ */
+export const petWeatherArt = pgTable("pet_weather_art", {
+  id: text("id").primaryKey(),
+  /** The sticker the weather belongs to. A new revision keeps it; only a restyle draws it again. */
+  stickerId: text("sticker_id").notNull().references(() => stickers.id, { onDelete: "cascade" }),
+  /** The revision whose art style it was drawn from. */
+  revisionId: text("revision_id").notNull().references(() => stickerRevisions.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: PET_WEATHER_KINDS }).notNull(),
+  isDay: boolean("is_day").notNull(),
+  state: text("state", { enum: ["drawing", "ready", "failed"] }).notNull(),
+  r2Key: text("r2_key"),
+  claimedAt: timestampColumn("claimed_at").notNull(),
+  readyAt: timestampColumn("ready_at"),
+}, (table) => [
+  uniqueIndex("pet_weather_art_look_idx").on(table.stickerId, table.kind, table.isDay),
+  check("pet_weather_art_kind_check", sql`${table.kind} IN (${oneOf(PET_WEATHER_KINDS)})`),
+  check("pet_weather_art_state_check", sql`${table.state} IN ('drawing', 'ready', 'failed')`),
+]);
+export type PetWeatherArtRow = typeof petWeatherArt.$inferSelect;
+export type UserPetRow = typeof userPets.$inferSelect;

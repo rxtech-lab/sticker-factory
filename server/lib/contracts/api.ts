@@ -731,6 +731,228 @@ export const AccountDeletionStateV1Schema = z.object({
   deletionRequestedAt: z.string().datetime().nullable(),
 }).strict();
 
+/** The classes a pet can be. Each sets its HP ceiling and how much its activities tire it. */
+export const PET_CLASSES = ["guardian", "explorer", "dreamer", "trickster", "scholar", "athlete"] as const;
+export const PET_WEATHER_KINDS = ["sunny", "cloudy", "rainy", "snowy", "stormy", "foggy", "windy"] as const;
+
+const PetEffectsV1Schema = z.object({ happiness: z.number().int(), hp: z.number().int(), energy: z.number().int(), gold: z.number().int() }).strict();
+const PetStatsV1Schema = z.object({
+  happiness: z.number().int().min(0).max(100),
+  hp: z.number().int().min(0).max(200),
+  energy: z.number().int().min(0).max(100),
+  /** What the pet has to spend on actions that cost gold. Earned by some actions and events; never negative. */
+  gold: z.number().int().min(0),
+}).strict();
+
+/**
+ * What the outside world looked like at one moment, as far as the pet can tell: the weather where
+ * its owner is, how far they have walked today, and a few headlines. Every part is optional — a
+ * user who shares no location still has a pet, it just never feels the rain.
+ */
+export const PetSignalsV1Schema = z.object({
+  weather: z.object({
+    kind: z.enum(PET_WEATHER_KINDS),
+    temperatureC: z.number(),
+    isDay: z.boolean(),
+  }).strict().nullable(),
+  stepsToday: z.number().int().min(0).nullable(),
+  headlines: z.array(z.string().max(160)).max(3),
+}).strict();
+
+/** Who this pet is. Fixed at adoption, so the same pet behaves the same way all its life. */
+export const PetIdentityV1Schema = z.object({
+  class: z.enum(PET_CLASSES),
+  personality: z.string().min(1).max(80),
+  likes: z.array(z.string().min(1).max(32)).max(4),
+  dislikes: z.array(z.string().min(1).max(32)).max(4),
+  favoriteWeather: z.enum(PET_WEATHER_KINDS),
+  maxHp: z.number().int().min(50).max(200),
+  /** Multiplies the energy every activity costs. Below 1 is tireless, above 1 tires easily. */
+  energyMultiplier: z.number().min(0.5).max(2),
+  /** The world on the day it was adopted. */
+  birth: PetSignalsV1Schema.extend({ at: z.string().datetime() }).strict(),
+}).strict();
+
+/**
+ * Coarse context the phone hands over: where (rounded on the server before it is stored), how many
+ * steps today, and which time zone "today" is in. All optional; a field left out stays unknown.
+ */
+export const PetContextV1Schema = z.object({
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  stepsToday: z.number().int().min(0).max(200_000).optional(),
+  timeZone: z.string().min(1).max(64).optional(),
+}).strict().refine((value) => (value.latitude === undefined) === (value.longitude === undefined), {
+  message: "latitude and longitude come together",
+});
+export type PetContextV1 = z.infer<typeof PetContextV1Schema>;
+
+/**
+ * Adopts a controllable sticker as the caller's pet. Only the id: whether it is controllable, and
+ * whether the caller may pose it, are the server's to decide.
+ */
+export const SetPetRequestSchema = z.object({
+  stickerId: z.string().uuid(),
+  /** Recorded as the world the pet was born into. */
+  context: PetContextV1Schema.optional(),
+}).strict();
+
+/**
+ * The caller's pet, or null when none is chosen.
+ *
+ * The sticker is the same summary the library lists, so a client draws it with the thumbnail it
+ * already has, and reads `playbackRevisionId` to fetch the controls it is posed from.
+ */
+/**
+ * The agent offers at most 5 actions at a time; older pets may still hold up to 12 from when owners
+ * could add their own, until their next mood change replaces them.
+ */
+export const PET_ACTIONS_MAX = 12;
+/** The most gold one action may cost or earn. */
+export const PET_ACTION_GOLD_MAX = 50;
+/** Gold comes mostly from walking: the most a freshly offered action may earn, and only one may. */
+export const PET_ACTION_GOLD_EARN_MAX = 3;
+/** The bounds on how often, in seconds, the pet's agent may have the app play its animation. */
+export const PET_ANIMATE_EVERY_MIN = 8;
+export const PET_ANIMATE_EVERY_MAX = 600;
+/**
+ * The lines the pet's agent queues up to say after its caption, so the widget, watch and app keep
+ * talking between moods without asking the server: at most this many, each this many minutes apart.
+ */
+export const PET_MUSINGS_MAX = 3;
+export const PET_MUSING_AFTER_MIN = 5;
+export const PET_MUSING_AFTER_MAX = 30;
+
+export const PetActionV1Schema = z.object({
+  id: z.string().uuid(),
+  title: z.string().min(1).max(32),
+  description: z.string().min(1).max(120),
+  effects: z.object({
+    happiness: z.number().int().min(-20).max(20),
+    hp: z.number().int().min(-20).max(20),
+    energy: z.number().int().min(-20).max(20),
+    /** Negative costs gold, and the action is refused while the pet has less; positive earns it. */
+    gold: z.number().int().min(-PET_ACTION_GOLD_MAX).max(PET_ACTION_GOLD_MAX),
+  }).strict(),
+}).strict();
+
+
+export const PET_EVOLUTION_STATES = ["planning", "building", "publishing", "ready", "failed"] as const;
+
+export const PetEvolutionV1Schema = z.object({
+  state: z.enum(PET_EVOLUTION_STATES),
+  startedAt: z.string().datetime(),
+  finishedAt: z.string().datetime().nullable(),
+}).strict();
+
+export const PetResponseV1Schema = z.object({
+  pet: z.object({
+    sticker: StickerSummaryV1Schema,
+    selectedAt: z.string().datetime(),
+    /**
+     * How the pet looks right now, read from the stickers its owner sends. `values` are control
+     * values for the pet's own playback document, already normalized to it: every control has one.
+     * Null until a send has been read since this pet was chosen; draw the defaults until then.
+     */
+    status: z.object({
+      values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
+      caption: z.string(),
+      /**
+       * How often the app plays the pet's animation through once, holding the pose in between —
+       * chosen by the pet's agent with each pose. Absent from statuses written before it existed.
+       */
+      animateEverySeconds: z.number().int().positive().optional(),
+      /**
+       * What the pet says next, in order: each line replaces the one before `afterMinutes` after it,
+       * the first counting from `updatedAt`. Absent from statuses written before it existed.
+       */
+      musings: z.array(z.object({ text: z.string(), afterMinutes: z.number().int().positive() }).strict()).optional(),
+      updatedAt: z.string().datetime(),
+    }).strict().nullable(),
+    stats: PetStatsV1Schema,
+    actions: z.array(PetActionV1Schema).max(PET_ACTIONS_MAX),
+    /** Null only for a moment after adoption on an older pet, until its identity is written. */
+    identity: PetIdentityV1Schema.nullable(),
+    /** The latest signals the pet has read, and when the life workflow will next visit it. */
+    signals: PetSignalsV1Schema.nullable(),
+    nextEventAt: z.string().datetime().nullable(),
+    /**
+     * The pet growing a new mood, property or look in the background, or how its last growth
+     * ended. Null when it has never evolved. Optional so responses from before evolution decode.
+     */
+    evolution: PetEvolutionV1Schema.nullable().optional(),
+    /**
+     * The weather in `signals`, drawn in the pet's own art style, fetched as a PNG from
+     * `GET /api/v1/pet/weather-art`. `key` changes whenever the drawing does. Null while there is
+     * no weather or it is still being drawn; optional so responses from before it decode.
+     */
+    weatherArt: z.object({
+      kind: z.enum(PET_WEATHER_KINDS),
+      isDay: z.boolean(),
+      key: z.string().min(1),
+    }).strict().nullable().optional(),
+  }).strict().nullable(),
+}).strict();
+
+export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "sticker", "evolved"] as const;
+
+/**
+ * One line of the pet's diary: what happened, what it did to the stats, and what the server knew
+ * at the time. `debug` is free-form and exists to answer "why did my pet do that?".
+ */
+export const PetEventV1Schema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(PET_EVENT_KINDS),
+  title: z.string(),
+  detail: z.string(),
+  effects: PetEffectsV1Schema,
+  statsBefore: PetStatsV1Schema,
+  statsAfter: PetStatsV1Schema,
+  signals: PetSignalsV1Schema.nullable(),
+  debug: z.record(z.string(), z.unknown()),
+  createdAt: z.string().datetime(),
+}).strict();
+
+export const PetEventsResponseV1Schema = z.object({
+  events: z.array(PetEventV1Schema),
+  nextCursor: z.string().nullable(),
+}).strict();
+
+/** The pet card handed to someone in Messages, and whether sharing it moved the stats. */
+export const SharePetResponseV1Schema = z.object({
+  accepted: z.boolean(),
+  pet: PetResponseV1Schema.shape.pet,
+}).strict();
+
+export const PetInteractionRequestSchema = z.object({
+  actionId: z.string().uuid(),
+}).strict();
+export type PetInteractionRequest = z.infer<typeof PetInteractionRequestSchema>;
+
+/** A picture the owner shows their pet: an image uploaded through `/uploads` first, unbound to any sticker. */
+export const SendPetPhotoRequestSchema = z.object({
+  assetId: z.string().uuid(),
+}).strict();
+export type SendPetPhotoRequest = z.infer<typeof SendPetPhotoRequestSchema>;
+
+
+/**
+ * Tells the server the caller just sent one of their stickers to someone, so the pet can react.
+ *
+ * Fire-and-forget from the client's side: the answer only says whether the send will be read, and
+ * the new status arrives on the next `GET /api/v1/pet`.
+ */
+export const RecordPetSendRequestSchema = z.object({
+  stickerId: z.string().uuid(),
+  /** The phone's latest context, cached by the app for the extension to attach. */
+  context: PetContextV1Schema.optional(),
+}).strict();
+
+export const RecordPetSendResponseV1Schema = z.object({
+  /** False when there is nothing to react: no pet, an unreachable sticker, or a repeated tap. */
+  accepted: z.boolean(),
+}).strict();
+
 export type CreateStickerRequest = z.infer<typeof CreateStickerRequestSchema>;
 export type ImportStickerRequest = z.infer<typeof ImportStickerRequestSchema>;
 export type UpdateStickerRequest = z.infer<typeof UpdateStickerRequestSchema>;
@@ -741,6 +963,12 @@ export type AddPackItemRequest = z.infer<typeof AddPackItemRequestSchema>;
 export type ReorderPackItemsRequest = z.infer<typeof ReorderPackItemsRequestSchema>;
 export type UnpublishPackRequest = z.infer<typeof UnpublishPackRequestSchema>;
 export type AccountDeletionStateV1 = z.infer<typeof AccountDeletionStateV1Schema>;
+export type SetPetRequest = z.infer<typeof SetPetRequestSchema>;
+export type PetResponseV1 = z.infer<typeof PetResponseV1Schema>;
+export type RecordPetSendRequest = z.infer<typeof RecordPetSendRequestSchema>;
+export type PetIdentityV1 = z.infer<typeof PetIdentityV1Schema>;
+export type PetSignalsV1 = z.infer<typeof PetSignalsV1Schema>;
+export type PetEventV1 = z.infer<typeof PetEventV1Schema>;
 export type PostChatMessageRequest = z.infer<typeof PostChatMessageRequestSchema>;
 export type CreateUploadRequest = z.infer<typeof CreateUploadRequestSchema>;
 export type PublishExportsRequest = z.infer<typeof PublishExportsRequestSchema>;

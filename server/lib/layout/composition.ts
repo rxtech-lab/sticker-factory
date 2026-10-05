@@ -224,11 +224,15 @@ export function applyLayoutAdjustment(
   }
 
   const parsed = StickerDocumentSchema.parse(document);
-  const diagnostics = layoutDiagnostics(parsed);
-  if (diagnostics.offCanvasLayerIds.length > 0) {
-    throw new Error(
-      `Keep every complete layer box on canvas. Fix: ${diagnostics.offCanvasLayerIds.join(", ")}`,
-    );
+  // Only what this adjustment placed, or pushed off, is its fault. A layer already off canvas and
+  // left alone may be one the caller forbids touching (an edit's retained layers); rejecting on it
+  // would fail every adjustment and leave the reviewer no way out.
+  const alreadyOff = new Set(layoutDiagnostics(source).offCanvasLayerIds);
+  const placed = new Set((value.placements ?? []).map((placement) => placement.layerId));
+  const offCanvas = layoutDiagnostics(parsed).offCanvasLayerIds
+    .filter((id) => placed.has(id) || !alreadyOff.has(id));
+  if (offCanvas.length > 0) {
+    throw new Error(`Keep every complete layer box on canvas. Fix: ${offCanvas.join(", ")}`);
   }
   return parsed;
 }

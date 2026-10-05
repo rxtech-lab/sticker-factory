@@ -4,12 +4,54 @@
     "" : {
 
     },
+    "%lld of %lld" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld / %2$lld"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld / %2$lld"
+          }
+        }
+      }
+    },
     "%lld px · arrives about %lld pt wide" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$lld px · arrives about %2$lld pt wide"
+          }
+        }
+      }
+    },
+    "%lld steps today" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今天 %lld 步"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今日 %lld 步"
+          }
+        }
+      }
+    },
+    "%lld/%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld/%2$lld"
           }
         }
       }
@@ -58,6 +100,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法上載參考影像（HTTP %lld）。"
+          }
+        }
+      }
+    },
+    "A snapshot of their pet when it was sent." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是对方宠物在发送时的样子。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這是對方寵物在傳送時的樣子。"
           }
         }
       }
@@ -154,6 +212,22 @@
         }
       }
     },
+    "Adopt a pet in the Winky app, then send it to friends from here." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Winky App 中领养一只宠物，然后就能在这里把它发给朋友。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Winky App 中領養一隻寵物，然後就能在這裡把牠傳給朋友。"
+          }
+        }
+      }
+    },
     "Almost there…" : {
       "localizations" : {
         "zh-CN" : {
@@ -229,6 +303,22 @@
     },
     "Assembling the layers" : {
 
+    },
+    "Athlete" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运动健将"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "運動健將"
+          }
+        }
+      }
     },
     "Building plan" : {
       "localizations" : {
@@ -521,6 +611,22 @@
         }
       }
     },
+    "Dreamer" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "梦想家"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "夢想家"
+          }
+        }
+      }
+    },
     "Editing layers" : {
       "localizations" : {
         "zh-CN" : {
@@ -566,6 +672,38 @@
     "Encoding GIF at %lld px" : {
 
     },
+    "Energy" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "能量"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "能量"
+          }
+        }
+      }
+    },
+    "Explorer" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "探险家"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "探險家"
+          }
+        }
+      }
+    },
     "Exported at %lld px to stay under Apple's 500 KB sticker limit." : {
 
     },
@@ -581,6 +719,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在拍攝片段"
+          }
+        }
+      }
+    },
+    "Finding your pet…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在寻找你的宠物…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在尋找你的寵物…"
           }
         }
       }
@@ -696,6 +850,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "生成"
+          }
+        }
+      }
+    },
+    "Guardian" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "守护者"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "守護者"
+          }
+        }
+      }
+    },
+    "Happiness" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快乐值"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快樂值"
+          }
+        }
+      }
+    },
+    "HP" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HP"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HP"
           }
         }
       }
@@ -827,6 +1029,22 @@
         }
       }
     },
+    "No Pet Yet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有宠物"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "還沒有寵物"
+          }
+        }
+      }
+    },
     "Offline · cached" : {
       "localizations" : {
         "zh-CN" : {
@@ -874,6 +1092,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟對話以傳送完整尺寸影像。"
+          }
+        }
+      }
+    },
+    "Open a conversation to send your pet." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开一个对话来发送你的宠物。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開一個對話來傳送你的寵物。"
+          }
+        }
+      }
+    },
+    "Open App" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 App"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開 App"
           }
         }
       }
@@ -974,8 +1224,72 @@
         }
       }
     },
+    "Open Winky from the Home Screen to adopt a pet." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请从主屏幕打开 Winky 来领养宠物。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請從主畫面打開 Winky 來領養寵物。"
+          }
+        }
+      }
+    },
     "Opens controls for posing this sticker" : {
 
+    },
+    "Pet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "宠物"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "寵物"
+          }
+        }
+      }
+    },
+    "Pet Card" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "宠物卡片"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "寵物卡片"
+          }
+        }
+      }
+    },
+    "Pet Unavailable" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "宠物不可用"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "寵物無法使用"
+          }
+        }
+      }
     },
     "Planning it…" : {
       "localizations" : {
@@ -1256,6 +1570,22 @@
         }
       }
     },
+    "Scholar" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "学者"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "學者"
+          }
+        }
+      }
+    },
     "Selected photos are uploaded privately as generation references. New stickers are added to your library so you can send them straight away." : {
       "localizations" : {
         "zh-CN" : {
@@ -1307,8 +1637,56 @@
     "Send Image" : {
 
     },
+    "Send Pet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送宠物"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送寵物"
+          }
+        }
+      }
+    },
+    "Sending your pet…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在发送你的宠物…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在傳送你的寵物…"
+          }
+        }
+      }
+    },
     "Sending…" : {
 
+    },
+    "Sent a pet card: %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送了宠物卡片：%@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送了寵物卡片：%@"
+          }
+        }
+      }
     },
     "Shared credentials could not be read (Keychain status %d)." : {
       "localizations" : {
@@ -1960,6 +2338,38 @@
         }
       }
     },
+    "Trickster" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捣蛋鬼"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搗蛋鬼"
+          }
+        }
+      }
+    },
+    "Try Again" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重試"
+          }
+        }
+      }
+    },
     "Trying %lld px" : {
 
     },
@@ -2042,6 +2452,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你最多可以附加八張參考影像。"
+          }
+        }
+      }
+    },
+    "You don't have a pet right now. Adopt one in the Winky app." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你现在还没有宠物。请在 Winky App 中领养一只。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你現在還沒有寵物。請在 Winky App 中領養一隻。"
+          }
+        }
+      }
+    },
+    "Your Pet" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的宠物"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的寵物"
+          }
+        }
+      }
+    },
+    "Your pet couldn't be loaded. Try again." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载你的宠物，请重试。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入你的寵物，請重試。"
+          }
+        }
+      }
+    },
+    "Your pet needs a connection." : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的宠物需要网络连接。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的寵物需要網絡連線。"
           }
         }
       }
