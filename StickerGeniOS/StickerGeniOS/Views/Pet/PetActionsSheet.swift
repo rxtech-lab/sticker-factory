@@ -2,7 +2,8 @@ import SwiftUI
 
 /// What the owner can do with the pet right now: the actions its agent offers for its mood, and the
 /// four objects it chose from its world. Picking one closes the sheet; the pet answers on the tab.
-/// The Rooms tab is where the owner buys the pet a room to live in, and moves it between them.
+/// The Rooms tab is where the owner buys the pet a room to live in, and moves it between them; the
+/// Places tab is where the owner takes it to the places its agent discovered, or brings it home.
 struct PetActionsSheet: View {
     @Bindable var model: PetModel
     @Environment(\.dismiss) private var dismiss
@@ -11,12 +12,14 @@ struct PetActionsSheet: View {
         case actions
         case items
         case rooms
+        case places
 
         var title: LocalizedStringKey {
             switch self {
             case .actions: "Actions"
             case .items: "Items"
             case .rooms: "Rooms"
+            case .places: "Places"
             }
         }
     }
@@ -24,6 +27,14 @@ struct PetActionsSheet: View {
     @State private var itemImages: [Int: UIImage] = [:]
     @State private var loadedArtKey: String?
     @State private var presentedRoom: PresentedRoom?
+    @State private var presentedTheme: PresentedTheme?
+
+    /// A place opened from the Places tab, with the thumbnail it showed there.
+    private struct PresentedTheme: Identifiable {
+        let theme: PetTheme
+        let preview: UIImage?
+        var id: String { theme.id }
+    }
 
     /// A room opened from the Rooms tab, with the thumbnail it showed there.
     private struct PresentedRoom: Identifiable {
@@ -54,6 +65,10 @@ struct PetActionsSheet: View {
                     case .rooms:
                         PetRoomsList(model: model) { room, preview in
                             presentedRoom = PresentedRoom(room: room, preview: preview)
+                        }
+                    case .places:
+                        PetThemesList(model: model) { theme, preview in
+                            presentedTheme = PresentedTheme(theme: theme, preview: preview)
                         }
                     }
                 }
@@ -97,6 +112,9 @@ struct PetActionsSheet: View {
         // ScrollView lost its confirmation's action on iOS 27, so buying a room did nothing.
         .sheet(item: $presentedRoom) { presented in
             PetRoomDetailSheet(model: model, roomID: presented.room.id, preview: presented.preview)
+        }
+        .sheet(item: $presentedTheme) { presented in
+            PetThemeDetailSheet(model: model, themeID: presented.theme.id, preview: presented.preview)
         }
     }
 

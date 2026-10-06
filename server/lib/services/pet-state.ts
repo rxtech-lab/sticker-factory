@@ -3,7 +3,7 @@ import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetEventV1, PetSignalsV1 } from "@/lib/contracts/api";
 import { firstRow, type Database } from "@/lib/db/client";
-import { petEvents, petRooms, userPets, userWalletGrants, userWallets, type PetRoomRow, type PetStatsValues, type UserPetRow, type UserWalletRow } from "@/lib/db/schema";
+import { petEvents, petRooms, petThemes, userPets, userWalletGrants, userWallets, type PetRoomRow, type PetStatsValues, type PetThemeRow, type UserPetRow, type UserWalletRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { describeError } from "@/lib/observability/trace";
 import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
@@ -32,17 +32,18 @@ export type PetChange = {
 
 /**
  * The caller's pet, read with the owner's wallet and gold — theirs, shared by every pet they have,
- * kept in RxSubscription — and the room it lives in.
+ * kept in RxSubscription — the room it lives in, and the place it has gone.
  */
-export type PetRow = UserPetRow & { wallet: UserWalletRow | null; room: PetRoomRow | null; gold: number };
+export type PetRow = UserPetRow & { wallet: UserWalletRow | null; room: PetRoomRow | null; theme: PetThemeRow | null; gold: number };
 
 export async function petRow(db: Database, userId: string): Promise<PetRow | undefined> {
-  const row = await db.select({ pet: userPets, wallet: userWallets, room: petRooms }).from(userPets)
+  const row = await db.select({ pet: userPets, wallet: userWallets, room: petRooms, theme: petThemes }).from(userPets)
     .leftJoin(userWallets, eq(userWallets.userId, userPets.userId))
     .leftJoin(petRooms, and(eq(petRooms.id, userPets.roomId), eq(petRooms.state, "owned")))
+    .leftJoin(petThemes, eq(petThemes.id, userPets.themeId))
     .where(eq(userPets.userId, userId))
     .then(firstRow);
-  return row && { ...row.pet, wallet: row.wallet, room: row.room, gold: await goldBalance(db, userId) };
+  return row && { ...row.pet, wallet: row.wallet, room: row.room, theme: row.theme, gold: await goldBalance(db, userId) };
 }
 
 /**

@@ -6,6 +6,10 @@
 // Tuesday costs nothing if it already rained on Monday. Each look belongs to the sticker's current
 // playback revision; updating the sticker invalidates it. Drawing happens after a response is out; until it lands the
 // client shows the weather as a symbol.
+//
+// A pet living in a room with windows also gets the weather outside them: a 2×2 sheet of sky pieces
+// in the same style — the sun or moon, a wide cloud, a small cloud and one falling particle — that the
+// app moves live behind the window glass. Until that lands the app paints the sky itself.
 
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -13,7 +17,7 @@ import sharp from "sharp";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetSignalsV1 } from "@/lib/contracts/api";
 import { firstRow, type Database } from "@/lib/db/client";
-import { petWeatherArt, type PetWeatherArtRow } from "@/lib/db/schema";
+import { petWeatherArt, type PetWeatherArtLayer, type PetWeatherArtRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { describeError } from "@/lib/observability/trace";
 import { petLog } from "@/lib/pets/log";
@@ -27,6 +31,12 @@ type Weather = NonNullable<PetSignalsV1["weather"]>;
 /** Edges the weather may be drawn at: a widget's corner up to the Pet tab at 3x. */
 export const PET_WEATHER_ART_MIN_SIZE = 64;
 export const PET_WEATHER_ART_MAX_SIZE = 512;
+/** The window sheet is four pieces, so it may be fetched at twice the edge. */
+export const PET_WINDOW_WEATHER_ART_MAX_SIZE = 1024;
+/** Each of the window sheet's four cells, stored at this edge with its piece fitted inside. */
+const WINDOW_CELL_SIZE = 512;
+/** Room each piece keeps from its cell's edge, so a resize never bleeds one piece into the next. */
+const WINDOW_CELL_MARGIN = 16;
 
 /** A claim older than this belongs to a draw that died; the next read may draw it again. */
 const DRAWING_STALE_MS = 10 * 60 * 1000;
@@ -65,6 +75,71 @@ const LOOKS: Record<Weather["kind"], { day: string; night: string }> = {
   },
 };
 
+/**
+ * The four pieces of the sky outside a window, in the cells the app reads them from: the sky's body
+ * (left alone, pulsing or flashing), a wide cloud and a small cloud (drifting), and one particle the
+ * app repeats many times (falling, tumbling or twinkling).
+ */
+const WINDOW_LOOKS: Record<Weather["kind"], { day: WindowPieces; night: WindowPieces }> = {
+  sunny: {
+    day: ["a big round sun with short chunky rays", "a wide, flat, fluffy fair-weather cloud",
+      "a small round puffy cloud", "one small bird in flight seen from the side, wings raised"],
+    night: ["a glowing crescent moon", "a long thin wisp of pale night cloud",
+      "a small wisp of pale night cloud", "one small four-pointed twinkling star"],
+  },
+  cloudy: {
+    day: ["a soft pale sun with no rays", "a big wide heavy white-grey cumulus cloud",
+      "a medium puffy white-grey cloud", "a tiny round puff of cloud"],
+    night: ["a faint pale crescent moon", "a big wide dusky blue cloud",
+      "a medium puffy dusky blue cloud", "a tiny round puff of dusky cloud"],
+  },
+  rainy: {
+    day: ["a very wide, heavy grey rain cloud with a flat underside", "a medium grey rain cloud",
+      "a small grey cloud", "one single fat teardrop-shaped raindrop"],
+    night: ["a very wide, heavy dusky blue rain cloud with a flat underside", "a medium dusky blue rain cloud",
+      "a small dusky blue cloud", "one single fat teardrop-shaped raindrop"],
+  },
+  snowy: {
+    day: ["a very wide, soft pale snow cloud with a flat underside", "a medium soft snow cloud",
+      "a small soft snow cloud", "one single big simple six-pointed snowflake"],
+    night: ["a very wide, soft dusky snow cloud with a flat underside", "a medium dusky snow cloud",
+      "a small dusky snow cloud", "one single big simple six-pointed snowflake"],
+  },
+  stormy: {
+    day: ["one tall bright yellow zig-zag lightning bolt", "a huge, wide, dark grumpy storm cloud",
+      "a medium dark storm cloud", "one single slanted raindrop"],
+    night: ["one tall bright yellow zig-zag lightning bolt", "a huge, wide, very dark night storm cloud",
+      "a medium very dark night storm cloud", "one single slanted raindrop"],
+  },
+  foggy: {
+    day: ["a pale hazy sun disc with no rays", "a long, low, wavy band of white mist",
+      "a shorter wavy band of white mist", "one small soft curl of mist"],
+    night: ["a pale hazy moon disc", "a long, low, wavy band of bluish night mist",
+      "a shorter wavy band of bluish night mist", "one small soft curl of bluish mist"],
+  },
+  windy: {
+    day: ["a round sun with short chunky rays", "a long cloud stretched thin by the wind",
+      "one curling swirl of wind drawn as a line", "one single green leaf"],
+    night: ["a glowing crescent moon", "a long night cloud stretched thin by the wind",
+      "one curling swirl of night wind drawn as a line", "one single dark green leaf"],
+  },
+};
+type WindowPieces = [body: string, wideCloud: string, smallCloud: string, particle: string];
+
+function windowPrompt(weather: Pick<Weather, "kind" | "isDay">): string {
+  const pieces = WINDOW_LOOKS[weather.kind][weather.isDay ? "day" : "night"];
+  return [
+    "A single transparent 2 by 2 contact sheet of four separate weather elements for an animated sky.",
+    "One element centred in each equal square cell, in reading order:",
+    ...pieces.map((piece, index) => `${index + 1}. ${piece}.`),
+    "Draw each element whole and on its own, entirely within its cell with generous empty margins.",
+    "Draw them in exactly the art style of the reference character — the same outline weight and colour,",
+    "palette, shading, texture and level of detail — so they look like they belong on the same sticker sheet.",
+    "Do not draw the character itself or any part of it, and no faces.",
+    "No words, letters, numbers, borders, ground, sky colour or background. Leave transparent gaps between cells.",
+  ].join(" ");
+}
+
 function drawingPrompt(weather: Pick<Weather, "kind" | "isDay">): string {
   const look = LOOKS[weather.kind][weather.isDay ? "day" : "night"];
   return [
@@ -82,44 +157,65 @@ function artKey(row: PetWeatherArtRow): string {
   return createHash("sha256").update(`${row.id}:${row.revisionId}:${row.readyAt?.toISOString() ?? ""}`).digest("hex").slice(0, 24);
 }
 
-async function lookRow(db: Database, stickerId: string, weather: Pick<Weather, "kind" | "isDay">) {
+async function lookRow(db: Database, stickerId: string, weather: Pick<Weather, "kind" | "isDay">, layer: PetWeatherArtLayer) {
   return db.select().from(petWeatherArt)
-    .where(and(eq(petWeatherArt.stickerId, stickerId), eq(petWeatherArt.kind, weather.kind), eq(petWeatherArt.isDay, weather.isDay)))
+    .where(and(eq(petWeatherArt.stickerId, stickerId), eq(petWeatherArt.kind, weather.kind),
+      eq(petWeatherArt.isDay, weather.isDay), eq(petWeatherArt.layer, layer)))
     .then(firstRow);
 }
 
-/** `PetResponseV1.pet.weatherArt`: the drawn look for the weather now, or null until it is drawn. */
-export async function serializePetWeatherArt(db: Database, stickerId: string, signals: PetSignalsV1 | null, revisionId: string) {
+/**
+ * `PetResponseV1.pet.weatherArt` (`sticker`) and `.windowWeatherArt` (`window`): the drawn look for
+ * the weather now, or null until it is drawn.
+ */
+export async function serializePetWeatherArt(
+  db: Database, stickerId: string, signals: PetSignalsV1 | null, revisionId: string, layer: PetWeatherArtLayer = "sticker",
+) {
   const weather = signals?.weather;
   if (!weather) return null;
-  const row = await lookRow(db, stickerId, weather);
+  const row = await lookRow(db, stickerId, weather, layer);
   if (row?.state !== "ready" || !row.r2Key || row.revisionId !== revisionId) return null;
   return { kind: weather.kind, isDay: weather.isDay, key: artKey(row) };
 }
 
 /**
- * Draws the weather the caller's pet is in now, unless that look is already drawn or being drawn.
+ * Draws the weather the caller's pet is in now, unless that look is already drawn or being drawn —
+ * and, while the pet lives in a room, the sky outside its window too.
  *
  * Runs after a response, so it never throws: a pet without its weather drawn still has the symbol.
  */
 export async function drawPetWeatherArt(db: Database, userId: string, now = new Date()): Promise<void> {
+  const pet = await petRow(db, userId).catch(() => undefined);
+  await Promise.all([
+    drawLook(db, userId, "sticker", now),
+    // Only a pet in a room has a window to look out of; the sky waits until it moves in.
+    pet?.roomId ? drawLook(db, userId, "window", now) : undefined,
+  ]);
+}
+
+/** Draws one layer of the weather now. Never throws. */
+async function drawLook(db: Database, userId: string, layer: PetWeatherArtLayer, now: Date): Promise<void> {
   let claimed: PetWeatherArtRow | undefined;
   try {
     const pet = await petRow(db, userId);
     const weather = pet?.signalsJson?.weather;
     if (!pet || !weather) return;
     const { revision } = await readablePlayback(db, userId, pet.stickerId);
-    claimed = await claimLook(db, pet.stickerId, revision.id, weather, now);
+    claimed = await claimLook(db, pet.stickerId, revision.id, weather, layer, now);
     if (!claimed) return;
     const style = await sentStickerImage(db, revision.pngAssetId ?? revision.systemAssetId);
-    const drawn = await getAiProvider().generateStickerImage({
-      prompt: drawingPrompt(weather),
-      references: style ? [{ ...style, label: "the pet character, for its art style only" }] : [],
-      mode: "generate",
-      isolatedLayer: true,
-    });
-    const r2Key = `private/pet-weather/${pet.stickerId}/${weather.kind}-${weather.isDay ? "day" : "night"}-${crypto.randomUUID()}.png`;
-    await getObjectStore().put(r2Key, { bytes: drawn.bytes, contentType: "image/png" });
+    const references = style ? [{ ...style, label: "the pet character, for its art style only" }] : [];
+    const bytes = layer === "window"
+      ? await windowSheet((await getAiProvider().generateStickerImage({
+        prompt: windowPrompt(weather), references, mode: "generate",
+        sheet: { columns: 2, rows: 2, count: 4, independentCells: true }, keepFrame: true, quality: "high",
+      })).bytes)
+      : (await getAiProvider().generateStickerImage({
+        prompt: drawingPrompt(weather), references, mode: "generate", isolatedLayer: true,
+      })).bytes;
+    const folder = layer === "window" ? "pet-window-weather" : "pet-weather";
+    const r2Key = `private/${folder}/${pet.stickerId}/${weather.kind}-${weather.isDay ? "day" : "night"}-${crypto.randomUUID()}.png`;
+    await getObjectStore().put(r2Key, { bytes, contentType: "image/png" });
     const published = await db.update(petWeatherArt).set({ state: "ready", r2Key, readyAt: new Date() })
       .where(and(eq(petWeatherArt.id, claimed.id), eq(petWeatherArt.claimedAt, claimed.claimedAt),
         eq(petWeatherArt.revisionId, revision.id)))
@@ -129,9 +225,9 @@ export async function drawPetWeatherArt(db: Database, userId: string, now = new 
       return;
     }
     if (claimed.r2Key) await getObjectStore().delete(claimed.r2Key).catch(() => undefined);
-    petLog("weather-art:drawn", { userId, stickerId: pet.stickerId, revisionId: revision.id, kind: weather.kind, isDay: weather.isDay });
+    petLog("weather-art:drawn", { userId, stickerId: pet.stickerId, revisionId: revision.id, kind: weather.kind, isDay: weather.isDay, layer });
   } catch (error) {
-    petLog("weather-art:failed", { userId, error: describeError(error) });
+    petLog("weather-art:failed", { userId, layer, error: describeError(error) });
     if (claimed) {
       await db.update(petWeatherArt).set({ state: "failed" })
         .where(and(eq(petWeatherArt.id, claimed.id), eq(petWeatherArt.claimedAt, claimed.claimedAt),
@@ -142,14 +238,46 @@ export async function drawPetWeatherArt(db: Database, userId: string, now = new 
 }
 
 /**
+ * Fits each of the sheet's four pieces snugly into its own cell of an even square sheet, so the app
+ * can cut the cells apart and size each piece by its cell without guessing at the model's margins.
+ */
+async function windowSheet(drawn: Uint8Array): Promise<Uint8Array> {
+  const sheet = await sharp(drawn).resize(WINDOW_CELL_SIZE * 2, WINDOW_CELL_SIZE * 2, { fit: "fill" }).png().toBuffer();
+  const inner = WINDOW_CELL_SIZE - WINDOW_CELL_MARGIN * 2;
+  const cells = await Promise.all([0, 1, 2, 3].map(async (index) => {
+    const cell = await sharp(sheet).extract({
+      left: (index % 2) * WINDOW_CELL_SIZE, top: Math.floor(index / 2) * WINDOW_CELL_SIZE,
+      width: WINDOW_CELL_SIZE, height: WINDOW_CELL_SIZE,
+    }).png().toBuffer();
+    // An empty cell has nothing to trim to; it stays as drawn.
+    const trimmed = await sharp(cell).trim({ threshold: 1 }).png().toBuffer().catch(() => cell);
+    const fitted = await sharp(trimmed)
+      .resize(inner, inner, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toBuffer();
+    return {
+      input: fitted,
+      left: (index % 2) * WINDOW_CELL_SIZE + WINDOW_CELL_MARGIN,
+      top: Math.floor(index / 2) * WINDOW_CELL_SIZE + WINDOW_CELL_MARGIN,
+    };
+  }));
+  const composed = await sharp({
+    create: { width: WINDOW_CELL_SIZE * 2, height: WINDOW_CELL_SIZE * 2, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  }).composite(cells).png().toBuffer();
+  return new Uint8Array(composed);
+}
+
+/**
  * Takes the right to draw one look, or nothing when it is drawn, being drawn, or failed recently.
  * The claim is conditional on the row as it was read, so two reads at once draw it once.
  */
-async function claimLook(db: Database, stickerId: string, revisionId: string, weather: Weather, now: Date) {
-  const existing = await lookRow(db, stickerId, weather);
+async function claimLook(
+  db: Database, stickerId: string, revisionId: string, weather: Weather, layer: PetWeatherArtLayer, now: Date,
+) {
+  const existing = await lookRow(db, stickerId, weather, layer);
   if (!existing) {
     return db.insert(petWeatherArt)
-      .values({ id: crypto.randomUUID(), stickerId, revisionId, kind: weather.kind, isDay: weather.isDay, state: "drawing", claimedAt: now })
+      .values({ id: crypto.randomUUID(), stickerId, revisionId, kind: weather.kind, isDay: weather.isDay, layer, state: "drawing", claimedAt: now })
       .onConflictDoNothing()
       .returning()
       .then(firstRow);
@@ -166,7 +294,8 @@ async function claimLook(db: Database, stickerId: string, revisionId: string, we
 }
 
 /**
- * The weather the caller's pet is in, drawn in its style, as a transparent PNG `size` pixels square.
+ * The weather the caller's pet is in, drawn in its style, as a transparent PNG `size` pixels square:
+ * the sticker, or for `window` the 2×2 sheet of sky pieces.
  * The ETag names the drawing and the size, so a client holding this exact one gets `bytes: null`.
  */
 export async function getPetWeatherArt(
@@ -175,6 +304,7 @@ export async function getPetWeatherArt(
   size: number,
   ifNoneMatch?: string | null,
   expectedArtKey?: string | null,
+  layer: PetWeatherArtLayer = "sticker",
 ): Promise<{ etag: string; bytes: Uint8Array | null }> {
   const pet = await petRow(db, userId);
   if (!pet) throw new ApiError(404, "PET_NOT_FOUND", "You have not chosen a pet.");
@@ -186,7 +316,7 @@ export async function getPetWeatherArt(
     throw error;
   }
   const weather = pet.signalsJson?.weather;
-  const row = weather ? await lookRow(db, pet.stickerId, weather) : undefined;
+  const row = weather ? await lookRow(db, pet.stickerId, weather, layer) : undefined;
   if (row?.state !== "ready" || !row.r2Key || row.revisionId !== playback.revision.id) {
     throw new ApiError(404, "PET_WEATHER_ART_NOT_READY", "Your pet's weather has not been drawn yet.");
   }
@@ -194,7 +324,7 @@ export async function getPetWeatherArt(
   if (expectedArtKey && expectedArtKey !== key) {
     throw new ApiError(409, "PET_WEATHER_ART_CHANGED", "Your pet's weather has changed. Refresh to see it.");
   }
-  const etag = `"${key}-${size}"`;
+  const etag = layer === "sticker" ? `"${key}-${size}"` : `"${key}-${layer}-${size}"`;
   if (ifNoneMatch?.split(",").some((candidate) => candidate.trim() === etag)) return { etag, bytes: null };
   const stored = await getObjectStore().get(row.r2Key);
   const bytes = await sharp(stored.bytes)

@@ -31,6 +31,7 @@ import { commitPetChange, currentStats, ensurePetIdentity, ensureWallet, petRow,
 import { startPetLife } from "./pet-life-runner";
 import { refreshPetItems } from "./pet-items";
 import { serializePetRoom } from "./pet-rooms";
+import { refreshPetThemes, serializePetTheme } from "./pet-themes";
 import { loadPlaybackPayload, readablePlayback } from "./playback";
 import { selectStickerSummaries, serializeStickerSummary } from "./sticker-summaries";
 
@@ -50,10 +51,12 @@ export type PetResponse = {
     nextEventAt: string | null;
     evolution: ReturnType<typeof serializePetEvolution>;
     weatherArt: Awaited<ReturnType<typeof serializePetWeatherArt>>;
+    windowWeatherArt: Awaited<ReturnType<typeof serializePetWeatherArt>>;
     encounter: ReturnType<typeof serializeEncounter>;
     illness: { name: string; since: string } | null;
     medicine: number;
     room: ReturnType<typeof serializePetRoom>;
+    theme: ReturnType<typeof serializePetTheme>;
   } | null;
 };
 
@@ -146,8 +149,9 @@ async function serializePet(
     identity: row.identityJson, signals: row.signalsJson,
     nextEventAt: row.nextEventAt?.toISOString() ?? null, evolution: serializePetEvolution(row.evolutionJson),
     weatherArt: await serializePetWeatherArt(db, row.stickerId, row.signalsJson, playback.revision.id),
+    windowWeatherArt: await serializePetWeatherArt(db, row.stickerId, row.signalsJson, playback.revision.id, "window"),
     encounter: serializeEncounter(row.lifeId ? await openEncounter(db, userId, row.lifeId) : undefined),
-    illness: row.illnessJson, medicine: row.medicine, room: serializePetRoom(row) } };
+    illness: row.illnessJson, medicine: row.medicine, room: serializePetRoom(row), theme: serializePetTheme(row) } };
 }
 
 /**
@@ -803,6 +807,8 @@ export async function updatePetContext(
     }
   }
   schedule(() => refreshPetSignals(db, userId));
+  // A phone far from home starts the pet looking for a place on the trip, in the background.
+  schedule(() => refreshPetThemes(db, userId));
   return { stored: true, walk: paid };
 }
 

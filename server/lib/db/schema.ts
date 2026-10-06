@@ -20,7 +20,8 @@ import type { PlanV1 } from "@/lib/contracts/plan";
 import type { StickerDocument } from "@/lib/contracts/sticker";
 import type { StickerControlValues } from "@/lib/contracts/configuration";
 import type { PetAction } from "@/lib/ai/gateway-contracts";
-import { PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
+import { PET_THEME_CATEGORIES, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
+type PetWeatherKind = (typeof PET_WEATHER_KINDS)[number];
 
 /**
  * Every instant is a `timestamptz`, read back as a `Date`.
@@ -660,6 +661,16 @@ export const userPets = pgTable("user_pets", {
   /** When the room shop last put new rooms up, and a refresh in flight, like the items'. */
   roomsOfferedAt: timestampColumn("rooms_offered_at"),
   roomsClaimedAt: timestampColumn("rooms_claimed_at"),
+  /**
+   * The place the pet has gone, drawn behind it in place of its room; null while it is at home.
+   * Its agent moves it on the life workflow's visits, and the owner may too, as its rules allow.
+   */
+  themeId: text("theme_id").references((): AnyPgColumn => petThemes.id, { onDelete: "set null" }),
+  /** The minutes the pet spent at each place on the owner's local date, for places that limit them. */
+  themeUsageJson: jsonb("theme_usage_json").$type<PetThemeUsage>(),
+  /** When the pet's agent last went looking for new places, and a search in flight, like the rooms'. */
+  themesDiscoveredAt: timestampColumn("themes_discovered_at"),
+  themesClaimedAt: timestampColumn("themes_claimed_at"),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
 }, (table) => [
@@ -718,6 +729,25 @@ export const userWalletGrants = pgTable("user_wallet_grants", {
 export type UserWalletGrantRow = typeof userWalletGrants.$inferSelect;
 
 /**
+ * A place drawn into a room for the app to write on: a 0–1 box in the room's drawing, its outline,
+ * the blank surface the server painted there, and the ink that reads on it, both `#RRGGBB`.
+ */
+export type PetRoomFixture = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  shape: "round" | "rect";
+  face: string;
+  ink: string;
+};
+/**
+ * Where a room or place shows the time, the weather and the pet's stats. Any is null when the drawing
+ * has no place for it; `status` is absent from rooms drawn before status boards.
+ */
+export type PetRoomFixtures = { clock: PetRoomFixture | null; weather: PetRoomFixture | null; status?: PetRoomFixture | null };
+
+/**
  * A room the owner's pets can live in, drawn by the pet's agent: offered in the room shop until it
  * is bought or the shop moves on, then the owner's for good, whichever pet they have.
  */
@@ -731,6 +761,8 @@ export const petRooms = pgTable("pet_rooms", {
   price: integer("price").notNull(),
   /** Names the drawing in storage; a room is drawn once and never changes. */
   artKey: text("art_key").notNull(),
+  /** Its clock face, weather board and status board. Null for rooms drawn before rooms had them. */
+  fixturesJson: jsonb("fixtures_json").$type<PetRoomFixtures>(),
   state: text("state", { enum: ["offered", "owned"] }).notNull(),
   createdAt: timestampColumn("created_at").notNull(),
   purchasedAt: timestampColumn("purchased_at"),
@@ -740,6 +772,43 @@ export const petRooms = pgTable("pet_rooms", {
   check("pet_rooms_price_check", sql`${table.price} >= 0`),
 ]);
 export type PetRoomRow = typeof petRooms.$inferSelect;
+
+/**
+ * A place the owner's pets can go, discovered and drawn by the pet's agent from the owner's world:
+ * a café round the corner, the park in the rain, the city they flew to. A limited one — a trip, a
+ * special event, an accident — has `expiresAt`, and once past it is `expired` for good.
+ */
+export const petThemes = pgTable("pet_themes", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: text("category", { enum: PET_THEME_CATEGORIES }).notNull(),
+  /** What being here does to the pet on each of its visits. Gold is never one of them. */
+  effectsJson: jsonb("effects_json").$type<{ happiness: number; hp: number; energy: number }>().notNull(),
+  /** When, where and in what weather the pet may be here, and for how long a day. */
+  rulesJson: jsonb("rules_json").$type<PetThemeRules>().notNull(),
+  /** Names the drawing in storage; a place is drawn once and never changes. */
+  artKey: text("art_key").notNull(),
+  /** Its clock, weather board and status board. Null for places drawn before places had them. */
+  fixturesJson: jsonb("fixtures_json").$type<PetRoomFixtures>(),
+  state: text("state", { enum: ["available", "expired"] }).notNull(),
+  expiresAt: timestampColumn("expires_at"),
+  createdAt: timestampColumn("created_at").notNull(),
+}, (table) => [
+  index("pet_themes_user_idx").on(table.userId, table.state, table.createdAt),
+  check("pet_themes_state_check", sql`${table.state} IN ('available', 'expired')`),
+  check("pet_themes_category_check", sql`${table.category} IN (${oneOf(PET_THEME_CATEGORIES)})`),
+]);
+export type PetThemeRow = typeof petThemes.$inferSelect;
+export type PetThemeRules = {
+  dailyMinutes: number | null;
+  hours: { from: number; to: number } | null;
+  weather: PetWeatherKind[] | null;
+  place: { label: string; latitude: number; longitude: number; radiusKm: number } | null;
+};
+/** Minutes spent at each place on `date`, the owner's local date, counted up to `accruedAt`. */
+export type PetThemeUsage = { date: string; accruedAt: string; minutes: Record<string, number> };
 
 export type PetMusing = { text: string; afterMinutes: number };
 export type PetStatus = { values: StickerControlValues; caption: string; animateEverySeconds?: number; musings?: PetMusing[] };
@@ -765,6 +834,13 @@ export type PetStoredContext = {
   /** The phone's local date the steps were counted on, so yesterday's walk is not today's. */
   stepsDate?: string;
   timeZone?: string;
+  /**
+   * Where the owner usually is, learned from where they keep being: the first place they are seen,
+   * moved once they have been somewhere else for weeks. Far from it, they are on a trip.
+   */
+  home?: { latitude: number; longitude: number };
+  /** When the owner was first seen far from home on this trip; cleared once they are back. */
+  awaySince?: string;
   updatedAt: string;
 };
 export type PetWalkGold = { date: string; steps: number };
@@ -785,7 +861,7 @@ export const petEvents = pgTable("pet_events", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   lifeId: text("life_id").notNull(),
   stickerId: text("sticker_id"),
-  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room"] }).notNull(),
+  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room", "theme"] }).notNull(),
   title: text("title").notNull(),
   detail: text("detail").notNull(),
   effectsJson: jsonb("effects_json").$type<PetStatsValues>().notNull(),
@@ -844,6 +920,9 @@ export type PetEncounterRow = typeof petEncounters.$inferSelect;
  * weather redrawn to match. A row is claimed (`drawing`) before the model is asked, so two reads of
  * the same pet in the same weather draw it once.
  */
+export const PET_WEATHER_ART_LAYERS = ["sticker", "window"] as const;
+export type PetWeatherArtLayer = (typeof PET_WEATHER_ART_LAYERS)[number];
+
 export const petWeatherArt = pgTable("pet_weather_art", {
   id: text("id").primaryKey(),
   /** The sticker the weather belongs to. A new revision keeps it; only a restyle draws it again. */
@@ -852,12 +931,18 @@ export const petWeatherArt = pgTable("pet_weather_art", {
   revisionId: text("revision_id").notNull().references(() => stickerRevisions.id, { onDelete: "cascade" }),
   kind: text("kind", { enum: PET_WEATHER_KINDS }).notNull(),
   isDay: boolean("is_day").notNull(),
+  /**
+   * `sticker`: one weather element shown beside the pet. `window`: a 2×2 sheet of sky pieces — sun or
+   * moon, two clouds and a falling particle — that the app animates behind a room's window glass.
+   */
+  layer: text("layer", { enum: PET_WEATHER_ART_LAYERS }).notNull().default("sticker"),
   state: text("state", { enum: ["drawing", "ready", "failed"] }).notNull(),
   r2Key: text("r2_key"),
   claimedAt: timestampColumn("claimed_at").notNull(),
   readyAt: timestampColumn("ready_at"),
 }, (table) => [
-  uniqueIndex("pet_weather_art_look_idx").on(table.stickerId, table.kind, table.isDay),
+  uniqueIndex("pet_weather_art_look_idx").on(table.stickerId, table.kind, table.isDay, table.layer),
+  check("pet_weather_art_layer_check", sql`${table.layer} IN (${oneOf(PET_WEATHER_ART_LAYERS)})`),
   check("pet_weather_art_kind_check", sql`${table.kind} IN (${oneOf(PET_WEATHER_KINDS)})`),
   check("pet_weather_art_state_check", sql`${table.state} IN ('drawing', 'ready', 'failed')`),
 ]);

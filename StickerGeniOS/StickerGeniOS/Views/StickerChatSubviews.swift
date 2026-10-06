@@ -205,14 +205,6 @@ private struct ToolCallRow: View {
     @State private var previewFinished = false
     @State private var showingDetails = false
 
-    private var color: Color {
-        switch message.status {
-        case .streaming: AppColors.sky
-        case .complete: AppColors.mint
-        case .failed: AppColors.coral
-        }
-    }
-
     var body: some View {
         Button {
             showingDetails = true
@@ -318,6 +310,135 @@ private struct ToolCallRow: View {
     }
 
     private var chip: some View {
+        ToolStatusChip(
+            status: message.status,
+            title: message.content,
+            subtitle: message.status == .streaming ? String(localized: "Running…") : nil
+        )
+        .accessibilityLabel("Tool \(message.content), \(message.status.label)")
+    }
+}
+
+/// A run of back-to-back tool calls, folded into one row.
+///
+/// A turn that retries a tool — `finalize_plan` failing and the agent revising before trying again —
+/// leaves a column of near-identical rows that pushes the reply off screen. Folded, the run reads as
+/// one piece of work with its outcome; expanded, every call is still there to open.
+struct ToolCallGroup: View {
+    let messages: [ChatMessage]
+    let api: (any StickerAPIClientProtocol)?
+    @State private var isExpanded = false
+    /// How many calls are on screen. Counts up one card at a time on opening and back down on
+    /// folding, so the run unfolds as a sequence instead of dropping in as one block.
+    @State private var revealed = 0
+    @State private var revealTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Still running while any call is; otherwise the last call decides, because a run that failed
+    /// twice and then succeeded did succeed.
+    private var status: ChatMessageStatus {
+        if messages.contains(where: { $0.status == .streaming }) { return .streaming }
+        return messages.last?.status ?? .complete
+    }
+
+    /// The distinct tools in the order they were first called, without the `#2` retry suffixes.
+    private var title: String {
+        var seen = Set<String>()
+        return messages
+            .map { $0.content.replacingOccurrences(of: #"\s+#\d+$"#, with: "", options: .regularExpression) }
+            .filter { seen.insert($0).inserted }
+            .joined(separator: ", ")
+    }
+
+    private var subtitle: String {
+        let failed = messages.filter { $0.status == .failed }.count
+        if status == .streaming, let running = messages.last(where: { $0.status == .streaming }) {
+            return String(localized: "\(messages.count) tool calls · Running \(running.content)…")
+        }
+        if failed > 0 {
+            return String(localized: "\(messages.count) tool calls · \(failed) failed")
+        }
+        return String(localized: "\(messages.count) tool calls")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                setExpanded(!isExpanded)
+            } label: {
+                ToolStatusChip(
+                    status: status,
+                    title: title,
+                    subtitle: subtitle,
+                    isExpanded: isExpanded
+                )
+            }
+            .buttonStyle(.posterPlain)
+            .accessibilityLabel("\(title), \(subtitle)")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(isExpanded ? "Folds the tool calls" : "Shows each tool call")
+            .accessibilityIdentifier("tool-call-group")
+
+            if revealed > 0 {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(messages.prefix(revealed)) { message in
+                        ToolCallRow(message: message, api: api)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .offset(y: -10)).combined(with: .scale(scale: 0.96, anchor: .top)),
+                                removal: .opacity
+                            ))
+                    }
+                }
+                .padding(.leading, 16)
+            }
+        }
+        // A call that arrives while the run is open joins it like the ones before it did.
+        .onChange(of: messages.count) { _, count in
+            guard isExpanded, revealed < count else { return }
+            withAnimation(.snappy(duration: 0.25)) { revealed = count }
+        }
+        .onDisappear { revealTask?.cancel() }
+    }
+
+    private func setExpanded(_ expand: Bool) {
+        Haptics.tap(.light)
+        revealTask?.cancel()
+        withAnimation(.snappy(duration: 0.25)) { isExpanded = expand }
+
+        if reduceMotion {
+            revealed = expand ? messages.count : 0
+            return
+        }
+        revealTask = Task { @MainActor in
+            // Folding runs bottom-up and quicker than opening: the reader is done with these.
+            let step: Duration = expand ? .milliseconds(70) : .milliseconds(35)
+            while !Task.isCancelled {
+                let target = expand ? messages.count : 0
+                guard revealed != target else { break }
+                withAnimation(.snappy(duration: 0.25)) { revealed += expand ? 1 : -1 }
+                try? await Task.sleep(for: step)
+            }
+        }
+    }
+}
+
+/// The stripe-and-badge chip a tool call is drawn as, shared by a single call and a folded run.
+private struct ToolStatusChip: View {
+    let status: ChatMessageStatus
+    let title: String
+    var subtitle: String?
+    /// Set for a row that folds: draws a disclosure arrow that turns down when open.
+    var isExpanded: Bool?
+
+    private var color: Color {
+        switch status {
+        case .streaming: AppColors.sky
+        case .complete: AppColors.mint
+        case .failed: AppColors.coral
+        }
+    }
+
+    var body: some View {
         HStack(spacing: 0) {
             UnevenRoundedRectangle(
                 topLeadingRadius: Poster.chipRadius - 2,
@@ -333,7 +454,7 @@ private struct ToolCallRow: View {
                         .fill(color)
                         .overlay(Circle().strokeBorder(AppColors.ink, lineWidth: 1.5))
                         .frame(width: 26, height: 26)
-                    switch message.status {
+                    switch status {
                     case .streaming:
                         PosterSpinner(color: AppColors.ink, size: 15, lineWidth: 2.5)
                     case .complete:
@@ -344,14 +465,23 @@ private struct ToolCallRow: View {
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(message.content)
+                    Text(title)
                         .font(.caption.weight(.bold).monospaced())
                         .foregroundStyle(AppColors.ink)
-                    if message.status == .streaming {
-                        Text("Running…").posterLabelStyle(9, color: AppColors.muted)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle).posterLabelStyle(9, color: AppColors.muted)
                     }
                 }
                 Spacer(minLength: 0)
+
+                if let isExpanded {
+                    PosterSymbol("chevron.right")
+                        .font(.title3.weight(.black))
+                        .foregroundStyle(AppColors.ink)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: 20, height: 20)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
@@ -359,7 +489,29 @@ private struct ToolCallRow: View {
         .frame(maxWidth: 460, alignment: .leading)
         .posterSurface(cornerRadius: Poster.chipRadius, lineWidth: Poster.hairline, offset: CGSize(width: 2, height: 2))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel("Tool \(message.content), \(message.status.label)")
+    }
+}
+
+/// The transcript with each run of consecutive tool calls folded under its first call.
+///
+/// The first call keeps its place (and its id) in the list, so the row stays put as the run grows
+/// during a turn; the calls after it are taken out of the list and handed to that row instead.
+nonisolated struct FoldedToolCalls {
+    var messages: [ChatMessage] = []
+    /// Keyed by the id of a run's first call. Only runs of two or more are here.
+    var runs: [String: [ChatMessage]] = [:]
+
+    init(_ source: [ChatMessage]) {
+        var runStart: ChatMessage?
+        for message in source {
+            let isToolCall = message.role == .system && message.kind == .status && message.plan == nil
+            if isToolCall, let runStart {
+                runs[runStart.id, default: [runStart]].append(message)
+                continue
+            }
+            messages.append(message)
+            runStart = isToolCall ? message : nil
+        }
     }
 }
 

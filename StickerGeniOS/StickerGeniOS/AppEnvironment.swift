@@ -161,6 +161,9 @@ final class AppEnvironment {
         // The widget and the watch show the pet from what the phone writes for them; see
         // `PetCompanionSync`. UI tests run on the mock and leave both alone.
         if !isUITesting { PetCompanionSync.shared.attach(api: api) }
+        // With Location Tracking on and "Always" allowed, iOS wakes the app as the owner travels;
+        // those moves go to the pet from here, even when the app was not running.
+        if !isUITesting { PetContextProvider.shared.attachBackgroundUploads(api: api) }
         #if DEBUG
         if isUITesting, let value = ProcessInfo.processInfo.environment["TUTORIAL_DEEP_LINK"], let url = URL(string: value) {
             environment.handleIncomingURL(url)

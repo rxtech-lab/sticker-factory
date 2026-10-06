@@ -101,7 +101,8 @@ extension MockStickerAPIClient {
             identity: Self.sampleIdentity,
             signals: Self.sampleSignals,
             nextEventAt: Date().addingTimeInterval(3 * 60 * 60),
-            weatherArt: PetWeatherArt(kind: .rainy, isDay: true, key: "mock-rainy-day")
+            weatherArt: PetWeatherArt(kind: .rainy, isDay: true, key: "mock-rainy-day"),
+            windowWeatherArt: PetWeatherArt(kind: .rainy, isDay: true, key: "mock-rainy-day-window")
         )
         return adoptedPet
     }
@@ -193,11 +194,14 @@ extension MockStickerAPIClient {
 
     static let sampleRooms: [PetRoom] = [
         PetRoom(id: "mock-room-burrow", title: "Moss Burrow", description: "A soft, quiet den for long naps.",
-                effects: .init(happiness: 1, hp: 0, energy: 5), price: 15, artKey: "mock-room-burrow", owned: false),
+                effects: .init(happiness: 1, hp: 0, energy: 5), price: 15, artKey: "mock-room-burrow", owned: false,
+                fixtures: mockRoomFixtures(hue: 0.3)),
         PetRoom(id: "mock-room-garden", title: "Rooftop Garden", description: "Sun, flowers and a breeze.",
-                effects: .init(happiness: 6, hp: 0, energy: -2), price: 90, artKey: "mock-room-garden", owned: false),
+                effects: .init(happiness: 6, hp: 0, energy: -2), price: 90, artKey: "mock-room-garden", owned: false,
+                fixtures: mockRoomFixtures(hue: 0.12)),
         PetRoom(id: "mock-room-spring", title: "Crystal Spring", description: "Healing water to soak in.",
-                effects: .init(happiness: 0, hp: 6, energy: 1), price: 120, artKey: "mock-room-spring", owned: false)
+                effects: .init(happiness: 0, hp: 6, energy: 1), price: 120, artKey: "mock-room-spring", owned: false,
+                fixtures: mockRoomFixtures(hue: 0.55))
     ]
 
     private var mockRooms: PetRooms {
@@ -261,6 +265,64 @@ extension MockStickerAPIClient {
             context.fill(bounds)
             UIColor(hue: hue, saturation: 0.4, brightness: 0.7, alpha: 1).setFill()
             context.fill(CGRect(x: 0, y: bounds.height * 0.66, width: bounds.width, height: bounds.height * 0.34))
+            // A clock and a weather board, blank as the server leaves them, where `mockRoomFixtures` says.
+            let rim = UIColor(hue: hue, saturation: 0.5, brightness: 0.35, alpha: 1)
+            let face = UIColor(red: 0.95, green: 0.92, blue: 0.86, alpha: 1)
+            rim.setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 53, y: 95, width: 53, height: 55))
+            context.fill(CGRect(x: 291, y: 190, width: 76, height: 59))
+            context.fill(CGRect(x: 82, y: 339, width: 220, height: 104))
+            face.setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 59, y: 101, width: 41, height: 43))
+            context.fill(CGRect(x: 297, y: 196, width: 64, height: 47))
+            context.fill(CGRect(x: 88, y: 345, width: 208, height: 92))
+        }
+    }
+
+    /// Where `petRoomArt` and `petThemeArt` draw each mock room's and place's clock face, weather
+    /// board and status board.
+    static func mockRoomFixtures(hue: CGFloat) -> PetRoomFixtures {
+        let ink = UIColor(hue: hue, saturation: 0.5, brightness: 0.35, alpha: 1)
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0
+        ink.getRed(&red, green: &green, blue: &blue, alpha: nil)
+        let inkHex = String(format: "#%02X%02X%02X", Int(red * 255), Int(green * 255), Int(blue * 255))
+        return PetRoomFixtures(
+            clock: PetRoomFixture(x: 59 / 384, y: 101 / 576, width: 41 / 384, height: 43 / 576,
+                                  shape: .round, face: "#F2EBDB", ink: inkHex),
+            weather: PetRoomFixture(x: 297 / 384, y: 196 / 576, width: 64 / 384, height: 47 / 576,
+                                    shape: .rect, face: "#F2EBDB", ink: inkHex),
+            status: PetRoomFixture(x: 88 / 384, y: 345 / 576, width: 208 / 384, height: 92 / 576,
+                                   shape: .rect, face: "#F2EBDB", ink: inkHex)
+        )
+    }
+
+    /// Four symbols in a 2×2 grid, standing in for the server's sheet of sky pieces in the pet's style.
+    func petWindowWeatherArt(size: Int, artKey: String) async throws -> Data {
+        guard let weather = adoptedPet?.signals?.weather, adoptedPet?.windowWeatherArt?.key == artKey else {
+            throw APIErrorEnvelope(error: .init(
+                code: "PET_WEATHER_ART_NOT_READY",
+                message: "Your pet's weather has not been drawn yet.",
+                requestId: "mock-pet",
+                details: nil
+            ))
+        }
+        let particle = switch weather.kind {
+        case .snowy: "snowflake"
+        case .windy: "leaf.fill"
+        case .rainy, .stormy: "drop.fill"
+        case .sunny: weather.isDay ? "bird.fill" : "sparkle"
+        default: "circle.fill"
+        }
+        let names = [weather.kind.symbol(isDay: weather.isDay), "cloud.fill", "cloud.fill", particle]
+        let cell = CGFloat(size) / 2
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let configuration = UIImage.SymbolConfiguration(paletteColors: [.white, .systemBlue])
+        return UIGraphicsImageRenderer(bounds: CGRect(x: 0, y: 0, width: size, height: size), format: format).pngData { _ in
+            for (index, name) in names.enumerated() {
+                let frame = CGRect(x: CGFloat(index % 2) * cell, y: CGFloat(index / 2) * cell, width: cell, height: cell)
+                UIImage(systemName: name, withConfiguration: configuration)?.draw(in: frame.insetBy(dx: cell * 0.1, dy: cell * 0.1))
+            }
         }
     }
 

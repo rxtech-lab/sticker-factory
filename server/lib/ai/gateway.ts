@@ -1,11 +1,11 @@
 import { type LanguageModel } from "ai";
 import { animateSticker } from "./gateway-animate";
 import { reply, routeChatTurn, showSticker, summarizeStickerTitle } from "./gateway-chat";
-import type { AiAnimationContext, AiChatContext, AiEditContext, AiImageInput, AiLayoutContext, AiPetActionsContext, AiPetEncounterContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetRoomArtInput, AiPetSharedContentContext, AiPetPersonaContext, AiPetStatusContext, AiPetStickerContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AnimationDraftingSession, EditDraftingSession, LayoutDraftingSession, PlanDraftingSession } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatContext, AiEditContext, AiImageInput, AiLayoutContext, AiPetActionsContext, AiPetEncounterContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetRoomArtInput, AiPetThemeArtInput, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, AiPetSharedContentContext, AiPetPersonaContext, AiPetStatusContext, AiPetStickerContext, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspectionContext, AiTitleContext, AiVideoInput, AnimationDraftingSession, EditDraftingSession, LayoutDraftingSession, PlanDraftingSession } from "./gateway-contracts";
 import { editSticker } from "./gateway-edit";
-import { generateConceptImage, generatePetRoomArt, generateStickerImage, generateStickerVideo, inspectSpriteSheet, selectImageReferences } from "./gateway-images";
+import { generateConceptImage, generatePetRoomArt, generatePetThemeArt, generateStickerImage, generateStickerVideo, inspectSpriteSheet, selectImageReferences } from "./gateway-images";
 import { MockAiProvider } from "./gateway-mock";
-import { choosePetStatus, generatePetActions, generatePetEncounter, generatePetItems, generatePetPersona, generatePetRooms, narratePetEvent, noticePetSticker, reactToPetPhoto, reactToPetSharedContent, respondToPetInteraction, searchPetHeadlines } from "./gateway-pet";
+import { choosePetStatus, choosePetTheme, discoverPetThemes, generatePetActions, generatePetEncounter, generatePetItems, generatePetPersona, generatePetRooms, narratePetEvent, noticePetSticker, reactToPetPhoto, reactToPetSharedContent, respondToPetInteraction, searchPetHeadlines } from "./gateway-pet";
 import { planSticker, refineStickerLayout } from "./gateway-plan";
 
 export class GatewayAiProvider implements AiProvider {
@@ -37,6 +37,9 @@ export class GatewayAiProvider implements AiProvider {
   generatePetItems(input: AiPetActionsContext) { return generatePetItems(input); }
   generatePetRooms(input: AiPetActionsContext) { return generatePetRooms(input); }
   generatePetRoomArt(input: AiPetRoomArtInput) { return generatePetRoomArt(input); }
+  discoverPetThemes(input: AiPetThemeDiscoveryContext) { return discoverPetThemes(input); }
+  choosePetTheme(input: AiPetThemeChoiceContext) { return choosePetTheme(input); }
+  generatePetThemeArt(input: AiPetThemeArtInput) { return generatePetThemeArt(input); }
   respondToPetInteraction(input: AiPetInteractionContext) { return respondToPetInteraction(input); }
   reactToPetPhoto(input: AiPetPhotoContext) { return reactToPetPhoto(input); }
   reactToPetSharedContent(input: AiPetSharedContentContext) { return reactToPetSharedContent(input); }

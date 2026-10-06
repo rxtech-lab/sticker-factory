@@ -10,7 +10,7 @@ import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetRoom, AiPetRoomArtInput, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetRoom, AiPetRoomArtInput, AiPetSharedContentContext, AiPetTheme, AiPetThemeArtInput, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -475,7 +475,37 @@ export class MockAiProvider implements AiProvider {
   async generatePetRoomArt(input: AiPetRoomArtInput): Promise<AiImageOutput> {
     const label = input.scene.replace(/[<&>]/g, "").slice(0, 24) || "Room";
     const bytes = await sharp(Buffer.from(
-      `<svg width="1024" height="1536" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1536" fill="#e6f2e0"/><rect x="312" y="160" width="400" height="360" fill="${input.windowKey.hex}"/><rect y="1000" width="1024" height="536" fill="#c9a77c"/><text x="512" y="720" text-anchor="middle" font-family="system-ui" font-size="56" fill="#3b2a5a">${label}</text></svg>`,
+      `<svg width="1024" height="1536" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1536" fill="#e6f2e0"/><rect x="312" y="160" width="400" height="360" fill="${input.windowKey.hex}"/><rect y="1000" width="1024" height="536" fill="#c9a77c"/><circle cx="170" cy="300" r="90" fill="#6b4a2f"/><circle cx="170" cy="300" r="78" fill="#FF00FF"/><rect x="770" y="600" width="200" height="140" fill="#3b2a1a"/><rect x="782" y="612" width="176" height="116" fill="#00FFFF"/><rect x="232" y="900" width="560" height="270" fill="#3b2a1a"/><rect x="246" y="914" width="532" height="242" fill="#FFFF00"/><text x="512" y="720" text-anchor="middle" font-family="system-ui" font-size="56" fill="#3b2a5a">${label}</text></svg>`,
+    )).png().toBuffer();
+    return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
+  }
+  async discoverPetThemes(input: AiPetThemeDiscoveryContext): Promise<AiPetTheme[]> {
+    const none = { hours: null, weather: null, placeLabel: null, lastsHours: null };
+    const everyday: AiPetTheme[] = [
+      { ...none, title: "Corner Café", description: `A warm café where ${input.petTitle} gets a treat.`, scene: "A cosy corner café.",
+        category: "restaurant", effects: { happiness: 2, hp: 1, energy: 3 }, dailyMinutes: 90 },
+      { ...none, title: "Sunny Park", description: `Grass and puddles for ${input.petTitle}.`, scene: "A park with a pond.",
+        category: "nature", effects: { happiness: 3, hp: 0, energy: -1 }, dailyMinutes: null },
+    ];
+    const needed: AiPetTheme[] = [
+      ...(input.needs.includes("travel") ? [{ ...none, title: "Faraway Streets", description: `${input.petTitle} explores the trip.`,
+        scene: "A bright street in a faraway town.", category: "travel" as const, effects: { happiness: 4, hp: 0, energy: -2 },
+        dailyMinutes: null, placeLabel: "the trip", lastsHours: 72 }] : []),
+      ...(input.needs.includes("accident") ? [{ ...none, title: "Pet Clinic", description: `Where ${input.petTitle} gets patched up.`,
+        scene: "A clean little vet clinic.", category: "accident" as const, effects: { happiness: -1, hp: 5, energy: 1 },
+        dailyMinutes: null, lastsHours: 24 }] : []),
+    ];
+    const known = new Set(input.known.map((theme) => theme.title));
+    return [...needed, ...everyday.filter((theme) => !known.has(theme.title))].slice(0, input.max);
+  }
+  async choosePetTheme(input: AiPetThemeChoiceContext): Promise<AiPetThemeChoice> {
+    const trip = input.candidates.find((candidate) => candidate.category === "travel");
+    return trip && input.current?.id !== trip.id ? { move: true, themeId: trip.id, reason: "Off to see the trip!" } : { move: false };
+  }
+  async generatePetThemeArt(input: AiPetThemeArtInput): Promise<AiImageOutput> {
+    const label = input.scene.replace(/[<&>]/g, "").slice(0, 24) || "Place";
+    const bytes = await sharp(Buffer.from(
+      `<svg width="1024" height="1536" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1536" fill="#cfe8f7"/><rect y="1000" width="1024" height="536" fill="#8fbf73"/><circle cx="300" cy="380" r="90" fill="#4a5a6b"/><circle cx="300" cy="380" r="78" fill="#FF00FF"/><rect x="640" y="560" width="200" height="140" fill="#3b2a1a"/><rect x="652" y="572" width="176" height="116" fill="#00FFFF"/><rect x="232" y="900" width="560" height="270" fill="#3b2a1a"/><rect x="246" y="914" width="532" height="242" fill="#FFFF00"/><text x="512" y="720" text-anchor="middle" font-family="system-ui" font-size="56" fill="#3b2a5a">${label}</text></svg>`,
     )).png().toBuffer();
     return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
   }

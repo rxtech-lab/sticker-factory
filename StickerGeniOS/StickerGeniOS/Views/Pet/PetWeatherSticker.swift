@@ -192,6 +192,30 @@ struct PetWeatherChip: View {
     }
 }
 
+/// The owner's time, in the same badge as the weather, for the plain page and rooms drawn without a clock.
+struct PetClockChip: View {
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            HStack(spacing: 4) {
+                Image(systemName: "clock.fill")
+                    .symbolRenderingMode(.hierarchical)
+                Text(context.date, format: .dateTime.hour().minute())
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            .font(.system(size: 13, weight: .heavy, design: .monospaced))
+            .foregroundStyle(AppColors.ink)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(AppColors.card, in: .capsule)
+            .overlay { Capsule().strokeBorder(AppColors.ink, lineWidth: 2) }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Time: \(context.date.formatted(date: .omitted, time: .shortened))"))
+        }
+        .accessibilityIdentifier("pet-clock")
+    }
+}
+
 #Preview {
     VStack(spacing: 24) {
         ForEach([PetWeatherKind.sunny, .rainy, .snowy, .stormy], id: \.self) { kind in

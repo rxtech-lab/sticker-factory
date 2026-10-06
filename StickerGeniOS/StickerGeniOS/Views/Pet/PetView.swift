@@ -32,6 +32,14 @@ struct PetView: View {
     /// Ties the pet, its weather and its stats across layouts, so opening or folding the phone
     /// slides each to its new place rather than redrawing the page.
     @Namespace private var layoutSpace
+    /// The room's clock and weather board that show behind the tab, as the backdrop measured them.
+    @State private var shownFixtures: PetRoomFixtures?
+    /// Where the room's status board shows, in global points, as the backdrop measured it.
+    @State private var statusFrame: CGRect?
+    /// The one-screen page in portrait, in global points, to fit the pet above the status board.
+    @State private var portraitFrame: CGRect?
+    @State private var dialogueObstacles: [CGRect] = []
+    @State private var dialogueSize = CGSize(width: 260, height: 72)
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -41,7 +49,19 @@ struct PetView: View {
 
     var body: some View {
         content
-            .background { PetRoomBackdrop(image: model.pet == nil ? nil : model.roomArt, weather: model.pet?.signals?.weather) }
+            .background {
+                // A place the pet has gone stands in for its room; it has its own sky.
+                PetRoomBackdrop(image: model.pet == nil ? nil : model.themeArt ?? model.roomArt, weather: model.pet?.signals?.weather,
+                                fixtures: model.pet == nil ? nil : roomFixtures,
+                                stats: model.pet.map { PetRoomStats(happiness: $0.stats.happiness, hp: $0.stats.hp,
+                                                                    maxHp: $0.maxHp, energy: $0.stats.energy) },
+                                sky: model.themeArt == nil ? model.windowSky : nil, weatherArt: model.weatherArt,
+                                onVisibleFixturesChange: { shownFixtures = $0 },
+                                onStatusFrameChange: { statusFrame = $0 },
+                                onDialogueObstaclesChange: { dialogueObstacles = $0 })
+            }
+            // The pet's agent takes it places on its own; whichever way the pet arrives, its place follows.
+            .task(id: model.pet?.theme?.artKey) { await model.refreshThemeArt() }
             .safeAreaInset(edge: .top) {
                 // The picker shows its own errors while it is up; this is for the tab's.
                 if let errorMessage = model.errorMessage, !isPresentingSheet {
@@ -82,6 +102,26 @@ struct PetView: View {
                         }
                         .accessibilityHint(Text("Shows who your pet is and what it knows of the world"))
                         .accessibilityIdentifier("pet-identity-button")
+                    }
+                    if pet.theme != nil {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                Haptics.tap(.medium)
+                                Task { await model.goTo(nil) }
+                            } label: {
+                                Image("PetExitHome")
+                                    .resizable()
+                                    .renderingMode(.original)
+                                    .scaledToFit()
+                                    .frame(width: 36, height: 36)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(.rect)
+                            }
+                            .disabled(model.activity != nil || model.isAnswering)
+                            .accessibilityLabel(Text("Bring Home"))
+                            .accessibilityHint(Text("Brings your pet back from this place to its home"))
+                            .accessibilityIdentifier("pet-bring-home-button")
+                        }
                     }
                     // The balance and the pet's options share one glass pill. A vertical bar
                     // clips the balance, so there it sits beside the stats instead.
@@ -169,10 +209,11 @@ struct PetView: View {
                     await model.loadPet()
                 }
             }
-            // The weather is drawn in the pet's style after the pet is read; look again until it lands.
+            // The weather — and the sky outside the room's window — is drawn in the pet's style after the
+            // pet is read; look again until it lands. The window's sheet takes the longer of the two.
             .task(id: model.isWeatherArtPending) {
                 guard model.isWeatherArtPending else { return }
-                for _ in 0..<4 {
+                for _ in 0..<8 {
                     try? await Task.sleep(for: .seconds(25))
                     guard !Task.isCancelled else { return }
                     await model.loadPet()
@@ -280,6 +321,12 @@ struct PetView: View {
     /// The pet and its stats sit side by side only on an iPhone Duo opened all the way.
     private var isTwoColumn: Bool { hasVerticalToolbar && isFullyOpen }
 
+    /// A phone on its side: too short to stack the page, so it splits into three columns.
+    private var isLandscape: Bool { !isTwoColumn && verticalSizeClass == .compact }
+
+    /// The width of each side column in landscape, beside the centred pet.
+    private static let landscapeSideWidth: CGFloat = 240
+
     /// The parts of the page that slide between layouts as the phone opens and folds.
     private enum LayoutPiece { case pet, weather, stats, actions }
 
@@ -302,7 +349,7 @@ struct PetView: View {
                     // stats and actions on the right.
                     if isTwoColumn {
                         HStack(alignment: .center, spacing: 24) {
-                            petStage(pet, motion: motion, fillsHeight: false)
+                            petStage(pet, motion: motion)
                                 .matchedGeometryEffect(id: LayoutPiece.pet, in: layoutSpace)
                                 .frame(maxWidth: .infinity)
                             VStack(spacing: 20) {
@@ -324,43 +371,67 @@ struct PetView: View {
                         .padding()
                         .containerRelativeFrame(.vertical)
                     } else if verticalSizeClass == .compact {
-                        // Landscape leaves too little height to stack everything, so the pet takes
-                        // the leading half at full height and its weather and stats sit beside it.
-                        HStack(alignment: .top, spacing: 20) {
+                        // Landscape leaves too little height to stack everything, so the page splits
+                        // into three columns that fit on one screen: the weather and actions on the
+                        // leading side, the pet centred in the room, and its stats on the trailing
+                        // side. Both side columns share one width, so the pet stays in the middle.
+                        HStack(alignment: .center, spacing: 20) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                weatherRow(pet, stacked: true)
+                                    .matchedGeometryEffect(id: LayoutPiece.weather, in: layoutSpace)
+                                Spacer(minLength: 0)
+                                actionButtons
+                                    .matchedGeometryEffect(id: LayoutPiece.actions, in: layoutSpace)
+                            }
+                            .frame(maxWidth: Self.landscapeSideWidth, maxHeight: .infinity, alignment: .topLeading)
                             petStage(pet, motion: motion)
                                 .matchedGeometryEffect(id: LayoutPiece.pet, in: layoutSpace)
                                 .frame(maxWidth: .infinity)
-                                .containerRelativeFrame(.vertical) { length, _ in max(length - 32, 0) }
-                            VStack(spacing: 20) {
-                                weatherRow(pet)
-                                    .matchedGeometryEffect(id: LayoutPiece.weather, in: layoutSpace)
-                                statsCard(pet)
-                                    .matchedGeometryEffect(id: LayoutPiece.stats, in: layoutSpace)
-                            }
-                            .frame(maxWidth: 360)
+                            statsCard(pet)
+                                .matchedGeometryEffect(id: LayoutPiece.stats, in: layoutSpace)
+                                .frame(maxWidth: Self.landscapeSideWidth, maxHeight: .infinity, alignment: .top)
                         }
-                        .padding()
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        // Exactly one screen tall, so nothing has to be scrolled into view.
+                        .containerRelativeFrame(.vertical)
                     } else {
+                        // A room or place with a status board shows the stats on it, so the pet
+                        // stands above the board, in the space the card took, rather than on it.
+                        let boardSpace = statusBoardSpace
                         VStack(spacing: 20) {
                             weatherRow(pet)
                                 .matchedGeometryEffect(id: LayoutPiece.weather, in: layoutSpace)
+                            if boardSpace != nil, hasHealthRow(pet) {
+                                PosterCard(padding: 16) { healthRow(pet) }
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
                             petStage(pet, motion: motion)
                                 .matchedGeometryEffect(id: LayoutPiece.pet, in: layoutSpace)
-                            statsCard(pet)
-                                .matchedGeometryEffect(id: LayoutPiece.stats, in: layoutSpace)
+                            if let boardSpace {
+                                Color.clear
+                                    .frame(height: boardSpace)
+                                    .matchedGeometryEffect(id: LayoutPiece.stats, in: layoutSpace)
+                            } else {
+                                statsCard(pet)
+                                    .matchedGeometryEffect(id: LayoutPiece.stats, in: layoutSpace)
+                                    .transition(.opacity)
+                            }
                         }
                         .padding()
+                        .animation(.snappy(duration: 0.35), value: boardSpace == nil)
                         // Exactly one screen tall, so the pet grows into the room left over; the
                         // scroll view stays for pull to refresh.
                         .containerRelativeFrame(.vertical)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { portraitFrame = $0 }
                     }
                 }
                 .animation(.snappy(duration: 0.4), value: pet.signals?.weather)
             }
-            // The actions stay put at the bottom, above the tab bar, unless they sit in the
-            // right-hand column beside the pet.
+            // The actions stay put at the bottom, above the tab bar, unless they sit in a
+            // column beside the pet.
             .safeAreaInset(edge: .bottom) {
-                if !isTwoColumn {
+                if !isTwoColumn && !isLandscape {
                     actionButtons
                         .matchedGeometryEffect(id: LayoutPiece.actions, in: layoutSpace)
                         .padding(.horizontal)
@@ -379,8 +450,13 @@ struct PetView: View {
         }
     }
 
+    /// In landscape the actions share a narrow column, so the picture and talk buttons drop
+    /// below the main action instead of sitting beside it.
     private var actionButtons: some View {
-        HStack(spacing: 12) {
+        let layout = isLandscape
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
             Button {
                 Haptics.tap(.light)
                 showingActions = true
@@ -392,145 +468,195 @@ struct PetView: View {
             .disabled(model.isAnswering)
             .accessibilityIdentifier("pet-actions-button")
 
-            // Icon only, so it fits beside the main action without truncating either.
-            PhotosPicker(selection: $photoItem, matching: .images) {
-                Image(systemName: "photo.on.rectangle")
-            }
-            .buttonStyle(.posterSecondary)
-            .disabled(model.isAnswering || model.activity != nil)
-            .accessibilityLabel(Text("Show a Picture"))
-            .accessibilityIdentifier("pet-photo-button")
+            HStack(spacing: 12) {
+                // Icon only, so it fits beside the main action without truncating either.
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Image(systemName: "photo.on.rectangle")
+                        .frame(maxWidth: isLandscape ? .infinity : nil)
+                }
+                .buttonStyle(.posterSecondary)
+                .disabled(model.isAnswering || model.activity != nil)
+                .accessibilityLabel(Text("Show a Picture"))
+                .accessibilityIdentifier("pet-photo-button")
 
-            // Talking out loud: written down on the phone, answered by the pet on the tab.
-            Button {
-                Haptics.tap(.light)
-                showingTalk = true
-            } label: {
-                Image(systemName: "mic.fill")
+                // Talking out loud: written down on the phone, answered by the pet on the tab.
+                Button {
+                    Haptics.tap(.light)
+                    showingTalk = true
+                } label: {
+                    Image(systemName: "mic.fill")
+                        .frame(maxWidth: isLandscape ? .infinity : nil)
+                }
+                .buttonStyle(.posterSecondary)
+                .disabled(model.isAnswering || model.activity != nil)
+                .accessibilityLabel(Text("Talk to Your Pet"))
+                .accessibilityIdentifier("pet-talk-button")
             }
-            .buttonStyle(.posterSecondary)
-            .disabled(model.isAnswering || model.activity != nil)
-            .accessibilityLabel(Text("Talk to Your Pet"))
-            .accessibilityIdentifier("pet-talk-button")
         }
     }
+
+    /// The clock, weather board and status board drawn into the room or place on screen.
+    private var roomFixtures: PetRoomFixtures? { model.roomFixtures }
+
+    /// How much of the bottom of the portrait page the room's status board takes, from just above
+    /// its top edge down; nil when there is no board in view, or it sits where the pet would have
+    /// too little room above it or the actions would cover it, so the stats card shows instead.
+    private var statusBoardSpace: CGFloat? {
+        guard roomFixtures?.status != nil, let board = statusFrame, let page = portraitFrame else { return nil }
+        // The page's padding and the stack's spacing above the space, and a gap over the board.
+        let inner = page.insetBy(dx: 16, dy: 16)
+        let space = inner.maxY - board.minY + 8 - 20
+        guard board.minY >= inner.minY + inner.height * 0.4, board.minY < inner.maxY else { return nil }
+        return max(0, space)
+    }
+
+    /// Those of them that show on screen; the tab keeps whichever is missing or cropped off
+    /// in its own chips.
+    private var visibleRoomFixtures: PetRoomFixtures? { roomFixtures == nil ? nil : shownFixtures }
 
     @ViewBuilder
-    private func weatherRow(_ pet: Pet) -> some View {
+    /// `stacked` puts the chips under the weather sticker, for a narrow column.
+    private func weatherRow(_ pet: Pet, stacked: Bool = false) -> some View {
         // The weather where you are, drawn in the pet's style, sits above the dialogue
-        // box with its temperature beside it, clear of the pet and the picture it is shown.
-        if let weather = pet.signals?.weather {
-            HStack(spacing: 8) {
+        // box with its temperature and the time beside it, clear of the pet and the picture
+        // it is shown. A room with a clock and weather board drawn in shows them there instead.
+        let fixtures = visibleRoomFixtures
+        let showsTime = fixtures?.clock == nil
+        if let weather = pet.signals?.weather, fixtures?.weather == nil {
+            let layout = stacked
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(spacing: 8))
+            layout {
                 PetWeatherSticker(weather: weather, art: model.weatherArt)
                     .frame(width: 72, height: 72)
-                PetWeatherChip(weather: weather)
-                Spacer(minLength: 0)
-            }
-            .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
-        }
-    }
-
-    /// `fillsHeight` lets the pet take whatever height is left over; without it the pet and its
-    /// dialogue box stay together, centred in the room.
-    private func petStage(_ pet: Pet, motion: PetMotionProfile, fillsHeight: Bool = true) -> some View {
-        // The pet stands on the page itself; only its stats sit in a card.
-        // Negative spacing: sticker art carries a transparent margin, so the bubble's
-        // tail reaches down into it to sit right over the pet.
-        VStack(spacing: -18) {
-            Group {
-                if model.isAnswering {
-                    // The pet's first reaction, thought of on the phone, stands in
-                    // for the thinking line while its agent answers.
-                    PetThinkingBubble(reaction: model.brain.localLine?.text)
-                } else {
-                    // The pet growing something new in the background is said in the
-                    // dialogue box, under its line. Between moods it moves on to each
-                    // line its agent queued, at the pause the agent chose.
-                    // A touch the on-device model answered shows its reply for a while.
-                    TimelineView(.explicit(pet.status?.captionDates ?? [.now])) { context in
-                        PetSpeechBubble(
-                            text: model.brain.localLine?.text
-                                ?? pet.status?.caption(at: context.date)
-                                ?? String(localized: "I'm here with you. What shall we do?"),
-                            isGrowing: pet.evolution?.isGrowing == true
-                        )
-                    }
-                }
-            }
-            .animation(.snappy(duration: 0.3), value: pet.evolution?.isGrowing)
-            .accessibilityIdentifier("pet-dialogue")
-            // Drawn over the sticker's margin rather than under it.
-            .zIndex(1)
-            // The pose the pet struck for its last interaction, or its sticker until
-            // it has struck one. A new pose fades in over the old one. Every so often,
-            // as often as its agent chose, the pet plays its own animation in that pose.
-            PetAnimatedPose(
-                animation: model.animation,
-                interval: model.animationInterval,
-                playRequest: model.brain.playRequest
-            ) {
-                ZStack {
-                    if let pose = model.pose {
-                        Image(uiImage: pose)
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFit()
-                            .id(model.poseKey)
-                            .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottom)))
-                    } else {
-                        StickerThumbnail(sticker: pet.sticker, api: model.api, detail: .preview)
+                HStack(spacing: 8) {
+                    PetWeatherChip(weather: weather)
+                    if showsTime {
+                        PetClockChip()
                             .transition(.opacity)
                     }
                 }
-                .animation(.snappy(duration: 0.35), value: model.poseKey)
+                .fixedSize()
+                if !stacked { Spacer(minLength: 0) }
             }
-                .aspectRatio(1, contentMode: .fit)
-                // As big as the page allows, but narrow enough that a picture held up
-                // at its side still fits on screen.
-                .frame(maxWidth: 260)
-                // Breathes and sways while nothing else is going on, so a still pose
-                // still reads as alive: bouncy when happy, slow and slumped when tired.
-                .modifier(PetIdleMotion(profile: motion))
-                // The picture the pet was just shown, held up at its side, clear of the
-                // dialogue box above. It starts a gap past the sticker's trailing edge,
-                // since some art fills its frame and would be covered otherwise.
-                .overlay(alignment: .trailing) {
-                    if let photo = model.shownPhoto {
-                        PetPhotoBubble(image: photo)
-                            // Pushed wholly past the trailing edge, then a wide gap on top.
-                            .offset(x: PetPhotoBubble.width + PetPhotoBubble.gap)
-                            .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
+            .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
+        } else if showsTime {
+            HStack {
+                PetClockChip()
+                Spacer(minLength: 0)
+            }
+            .transition(.opacity)
+        }
+    }
+
+    /// Choose the clearer side of the pet, leaving the room's window and boards visible.
+    private func petStage(_ pet: Pet, motion: PetMotionProfile) -> some View {
+        GeometryReader { proxy in
+            let placement = PetDialoguePlacement.preferred(
+                in: proxy.frame(in: .global),
+                bubbleSize: CGSize(width: min(dialogueSize.width, proxy.size.width), height: dialogueSize.height),
+                avoiding: dialogueObstacles
+            )
+            PetDialogueLayout(placement: placement) {
+                // The pose the pet struck for its last interaction, or its sticker until
+                // it has struck one. A new pose fades in over the old one. Every so often,
+                // as often as its agent chose, the pet plays its own animation in that pose.
+                PetAnimatedPose(
+                    animation: model.animation,
+                    interval: model.animationInterval,
+                    playRequest: model.brain.playRequest
+                ) {
+                    ZStack {
+                        if let pose = model.pose {
+                            Image(uiImage: pose)
+                                .resizable()
+                                .interpolation(.high)
+                                .scaledToFit()
+                                .id(model.poseKey)
+                                .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottom)))
+                        } else {
+                            StickerThumbnail(sticker: pet.sticker, api: model.api, detail: .preview)
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(.snappy(duration: 0.35), value: model.poseKey)
+                }
+                    .aspectRatio(1, contentMode: .fit)
+                    // As big as the page allows, but narrow enough that a picture held up
+                    // at its side still fits on screen.
+                    .frame(maxWidth: 260)
+                    // Breathes and sways while nothing else is going on, so a still pose
+                    // still reads as alive: bouncy when happy, slow and slumped when tired.
+                    .modifier(PetIdleMotion(profile: motion))
+                    // The picture the pet was just shown, held up at its side, clear of the
+                    // dialogue box. It starts a gap past the sticker's trailing edge,
+                    // since some art fills its frame and would be covered otherwise.
+                    .overlay(alignment: .trailing) {
+                        if let photo = model.shownPhoto {
+                            PetPhotoBubble(image: photo)
+                                // Pushed wholly past the trailing edge, then a wide gap on top.
+                                .offset(x: PetPhotoBubble.width + PetPhotoBubble.gap)
+                                .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
+                        }
+                    }
+                    // The pet steps aside to make room, so pet and picture sit side by side,
+                    // centred together, instead of the picture running off the edge.
+                    .offset(x: model.shownPhoto == nil ? 0 : -(PetPhotoBubble.width + PetPhotoBubble.gap) / 2)
+                    .animation(.snappy(duration: 0.3), value: model.shownPhoto)
+                // The title is no longer drawn, but VoiceOver still names the pet.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(pet.sticker.title))
+                .accessibilityIdentifier("current-pet")
+                // Taps, holds, swipes and too many taps each get their own reaction, shaped
+                // by the pet's mood and nature; nothing is sent. Striking a new pose replays
+                // a hop, so the change reads as the pet moving. Shaking the phone rattles it too. With Apple Intelligence the pet
+                // also says something back, and may play its animation, thought of on the phone.
+                .modifier(PetTouchReactions(
+                    profile: motion,
+                    replayKey: model.poseKey,
+                    greetKey: model.greetCount,
+                    onTouch: {
+                        // Touching the pet is a new interaction, so the picture is put away.
+                        if !model.isAnswering { model.dismissPhoto() }
+                    },
+                    onReaction: { model.touched($0) },
+                    acceptsShakes: isShown && scenePhase == .active && !isPresentingSheet
+                        && !confirmingMedicine && model.activity == nil
+                ))
+                .modifier(PetItemPresentation(
+                    item: model.usedItem, isVisible: !showingActions && isShown && scenePhase == .active
+                ))
+
+                Group {
+                    if model.isAnswering {
+                        // The pet's first reaction, thought of on the phone, stands in
+                        // for the thinking line while its agent answers.
+                        PetThinkingBubble(reaction: model.brain.localLine?.text, placement: placement)
+                    } else {
+                        // The pet growing something new in the background is said in the
+                        // dialogue box, under its line. Between moods it moves on to each
+                        // line its agent queued, at the pause the agent chose.
+                        // A touch the on-device model answered shows its reply for a while.
+                        TimelineView(.explicit(pet.status?.captionDates ?? [.now])) { context in
+                            PetSpeechBubble(
+                                text: model.brain.localLine?.text
+                                    ?? pet.status?.caption(at: context.date)
+                                    ?? String(localized: "I'm here with you. What shall we do?"),
+                                isGrowing: pet.evolution?.isGrowing == true,
+                                placement: placement
+                            )
+                        }
                     }
                 }
-                // The pet steps aside to make room, so pet and picture sit side by side,
-                // centred together, instead of the picture running off the edge.
-                .offset(x: model.shownPhoto == nil ? 0 : -(PetPhotoBubble.width + PetPhotoBubble.gap) / 2)
-                .animation(.snappy(duration: 0.3), value: model.shownPhoto)
-            // The title is no longer drawn, but VoiceOver still names the pet.
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(pet.sticker.title))
-            .accessibilityIdentifier("current-pet")
-            // Taps, holds, swipes and too many taps each get their own reaction, shaped
-            // by the pet's mood and nature; nothing is sent. Striking a new pose replays
-            // a hop, so the change reads as the pet moving. Shaking the phone rattles it too. With Apple Intelligence the pet
-            // also says something back, and may play its animation, thought of on the phone.
-            .modifier(PetTouchReactions(
-                profile: motion,
-                replayKey: model.poseKey,
-                greetKey: model.greetCount,
-                onTouch: {
-                    // Touching the pet is a new interaction, so the picture is put away.
-                    if !model.isAnswering { model.dismissPhoto() }
-                },
-                onReaction: { model.touched($0) },
-                acceptsShakes: isShown && scenePhase == .active && !isPresentingSheet
-                    && !confirmingMedicine && model.activity == nil
-            ))
-            .modifier(PetItemPresentation(
-                item: model.usedItem, isVisible: !showingActions && isShown && scenePhase == .active
-            ))
-            // Takes whatever height the stats card leaves over.
-            .frame(maxHeight: fillsHeight ? .infinity : nil)
+                .animation(.snappy(duration: 0.3), value: pet.evolution?.isGrowing)
+                .accessibilityIdentifier("pet-dialogue")
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { dialogueSize = $0 }
+                // Drawn over the sticker's transparent margin on either side.
+                .zIndex(1)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .animation(.snappy(duration: 0.3), value: placement)
+            .onChange(of: placement) { _, _ in Haptics.tap(.soft) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -552,27 +678,36 @@ struct PetView: View {
                 .accessibilityIdentifier("pet-stats")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // Kept apart from the combined stats, so its button stays reachable.
-                if pet.illness != nil || pet.medicine > 0 {
-                    PetHealthRow(
-                        illness: pet.illness, medicine: pet.medicine,
-                        isBusy: model.activity != nil || model.isAnswering
-                    ) { confirmingMedicine = true }
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                if hasHealthRow(pet) {
+                    healthRow(pet)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
             .animation(.snappy(duration: 0.3), value: pet.illness)
         }
     }
+
+    private func hasHealthRow(_ pet: Pet) -> Bool { pet.illness != nil || pet.medicine > 0 }
+
+    /// The pet's illness and medicine, with the button to give it a dose.
+    private func healthRow(_ pet: Pet) -> some View {
+        PetHealthRow(
+            illness: pet.illness, medicine: pet.medicine,
+            isBusy: model.activity != nil || model.isAnswering
+        ) { confirmingMedicine = true }
+    }
 }
 
-/// The pet's latest line, framed like an RPG dialogue box with a tail pointing down at the sticker.
+/// The pet's latest line, with its tail pointing toward the sticker.
 private struct PetSpeechBubble: View {
     let text: String
     /// Adds a "growing something new" line under the text while the pet evolves.
     var isGrowing = false
+    var placement: PetDialoguePlacement = .below
 
     var body: some View {
         VStack(spacing: -2) {
+            if placement == .below { tail.rotationEffect(.degrees(180)) }
             VStack(alignment: .leading, spacing: 8) {
                 Text(text)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
@@ -604,13 +739,17 @@ private struct PetSpeechBubble: View {
                         .padding(8)
                         .accessibilityHidden(true)
                 }
-            BubbleTail()
-                .fill(AppColors.card)
-                .overlay { BubbleTail().stroke(AppColors.ink, style: StrokeStyle(lineWidth: 3, lineJoin: .round)) }
-                .frame(width: 18, height: 12)
-                .accessibilityHidden(true)
+            if placement == .above { tail }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var tail: some View {
+        BubbleTail()
+            .fill(AppColors.card)
+            .overlay { BubbleTail().stroke(AppColors.ink, style: StrokeStyle(lineWidth: 3, lineJoin: .round)) }
+            .frame(width: 18, height: 12)
+            .accessibilityHidden(true)
     }
 }
 
@@ -618,6 +757,7 @@ private struct PetSpeechBubble: View {
 /// or a predefined line until it has one or without the model.
 private struct PetThinkingBubble: View {
     var reaction: String?
+    var placement: PetDialoguePlacement = .below
 
     private static let lines: [LocalizedStringResource] = [
         "Hmm, let me think…",
@@ -628,7 +768,7 @@ private struct PetThinkingBubble: View {
     @State private var line = PetThinkingBubble.lines.randomElement()!
 
     var body: some View {
-        PetSpeechBubble(text: reaction ?? String(localized: line))
+        PetSpeechBubble(text: reaction ?? String(localized: line), placement: placement)
             .accessibilityLabel(Text(reaction ?? String(localized: line)))
         // A slow pulse while the pet thinks, so the wait is felt and not just watched. Spaced well
         // apart so a long reply reads as patience, not a buzz; it stops when the bubble goes.
@@ -650,125 +790,6 @@ private struct BubbleTail: Shape {
         path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         return path
-    }
-}
-
-/// One stat drawn like an RPG status window: a monospaced label and a framed, segmented gauge.
-struct PetStatRow: View {
-    let title: LocalizedStringKey
-    let value: Int
-    /// The gauge's ceiling: 100 for happiness and energy, the class's own for HP.
-    var maximum: Int = 100
-    let symbol: String
-    let color: Color
-
-    private static let segments = 20
-    /// How long a change stays marked after it lands.
-    private static let highlightDuration: Duration = .seconds(3)
-
-    /// The net change still on show, or nil once it has faded. Changes that land while one is
-    /// still showing add up, so two quick actions read as their total.
-    @State private var delta: Int?
-    /// Bumped by every change, restarting the fade-out timer.
-    @State private var changeCount = 0
-
-    private var deltaTint: Color { (delta ?? 0) > 0 ? AppColors.mint : AppColors.coral }
-
-    var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Label(title, systemImage: symbol)
-                    .labelStyle(PetStatLabelStyle(color: color))
-                Spacer()
-                if let delta {
-                    PetStatDeltaChip(delta: delta, tint: deltaTint)
-                        .transition(.scale(scale: 0.5, anchor: .trailing).combined(with: .opacity))
-                }
-                Text(verbatim: "\(value)/\(maximum)")
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: Double(value)))
-            }
-            .font(.system(size: 14, weight: .bold, design: .monospaced))
-            .foregroundStyle(AppColors.ink)
-            gauge
-        }
-        // A wash behind the whole row, drawn past its edges so marking it never shifts the layout.
-        .background {
-            if delta != nil {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(deltaTint.opacity(0.22))
-                    .padding(-6)
-                    .transition(.opacity)
-            }
-        }
-        .onChange(of: value) { old, new in
-            guard new != old else { return }
-            withAnimation(.snappy(duration: 0.3)) { delta = (delta ?? 0) + (new - old) }
-            if delta == 0 { withAnimation(.easeOut(duration: 0.3)) { delta = nil } }
-            changeCount += 1
-        }
-        .task(id: changeCount) {
-            guard delta != nil else { return }
-            try? await Task.sleep(for: Self.highlightDuration)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.5)) { delta = nil }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var gauge: some View {
-        let ceiling = max(maximum, 1)
-        let filled = Int((Double(min(max(value, 0), ceiling)) / Double(ceiling) * Double(Self.segments)).rounded())
-        return HStack(spacing: 2) {
-            ForEach(0..<Self.segments, id: \.self) { index in
-                Rectangle()
-                    .fill(index < filled ? color : AppColors.ink.opacity(0.08))
-                    // A lighter top edge gives each block the bevel of a pixel-art gauge.
-                    .overlay(alignment: .top) {
-                        if index < filled { Rectangle().fill(.white.opacity(0.35)).frame(height: 3) }
-                    }
-            }
-        }
-        .frame(height: 12)
-        .padding(3)
-        .background(AppColors.card)
-        .overlay { Rectangle().strokeBorder(AppColors.ink, lineWidth: 2.5) }
-        .accessibilityHidden(true)
-    }
-}
-
-/// How much a stat just moved: a filled, outlined chip with an arrow, mint for a gain, coral for a loss.
-private struct PetStatDeltaChip: View {
-    let delta: Int
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: 2) {
-            Image(systemName: delta > 0 ? "arrow.up" : "arrow.down")
-            Text(verbatim: delta > 0 ? "+\(delta)" : "\(delta)")
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(delta)))
-        }
-        .font(.system(size: 12, weight: .heavy, design: .monospaced))
-        .foregroundStyle(AppColors.ink)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(tint, in: .capsule)
-        .overlay { Capsule().strokeBorder(AppColors.ink, lineWidth: 2) }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(delta > 0 ? Text("Up \(delta)") : Text("Down \(-delta)"))
-    }
-}
-
-/// Puts the stat's icon in its colour, so each row reads at a glance like a game HUD.
-struct PetStatLabelStyle: LabelStyle {
-    let color: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 6) {
-            configuration.icon.foregroundStyle(color)
-            configuration.title
-        }
     }
 }
 
@@ -898,6 +919,9 @@ struct PetActivityOverlay: View {
                     case .givingMedicine: Text("Giving your pet its medicine…")
                     case .buyingRoom(let title): Text("Moving into \(title)…")
                     case .movingRoom: Text("Moving your pet…")
+                    case .goingTo(let title): Text("Heading to \(title)…")
+                    case .comingHome: Text("Bringing your pet home…")
+                    case .settingTracking(let on): Text(on ? "Turning on Location Tracking…" : "Turning off Location Tracking…")
                     }
                 }
                 .font(.footnote)

@@ -3,14 +3,20 @@ import Foundation
 import HealthKit
 import Observation
 import OSLog
+import UIKit
 
 /// Gathers the little the pet knows about its owner's world — steps today, roughly where, and which
 /// time zone "today" is in — and hands it to the server and to the Messages extension.
 ///
 /// Nothing here ever asks for a permission on its own. Health and location are requested only from
 /// `PetWorldSheet`, when the user taps the button for each; until then, and whenever one is
-/// refused, its field is simply left out. Location is the coarse, when-in-use kind and is rounded
-/// before it leaves this class: the pet needs the weather, not the street.
+/// refused, its field is simply left out. Location is the coarse kind and is rounded before it
+/// leaves this class: the pet needs the weather, not the street.
+///
+/// Location Tracking is the owner's switch over all of it. On, the phone's place is sent when the app
+/// comes forward and — once "Always" is allowed — as the owner travels, from iOS's significant-change
+/// service, so the pet notices a trip and finds places on it. Off, no location is sent at all, and
+/// every upload tells the server to forget the last one.
 ///
 /// Like `PetCompanionSync`, it is a process-wide seam: the Pet tab, adoption and the app coming
 /// forward all go through `shared`, so two triggers at once share one collection.
@@ -29,12 +35,21 @@ final class PetContextProvider {
     /// the server pays energy back for every 100 steps and on its own once 10 points are owed.
     static let walkUploadSteps = 1_000
     private static let healthRequestedKey = "PetContextProvider.healthRequested"
+    nonisolated static let locationTrackingKey = "PetContextProvider.locationTracking"
+    /// Where the last accepted upload said the phone was, so a move this far uploads at once.
+    private static let lastUploadLatitudeKey = "PetContextProvider.lastUploadLatitude"
+    private static let lastUploadLongitudeKey = "PetContextProvider.lastUploadLongitude"
+    /// A move this far since the last upload is news — maybe a trip — and skips the half-hour wait.
+    static let travelUploadMeters: CLLocationDistance = 20_000
     private static let log = Logger(subsystem: "app.rxlab.sticker-factory", category: "pet")
 
     /// Whether the user has been asked for each source — what decides if the Pet tab offers to
     /// connect them. Health never says whether reading was allowed, only whether it was asked.
     private(set) var locationStatus: CLAuthorizationStatus
     private(set) var healthRequested: Bool
+    /// The owner's Location Tracking switch. On by default, so nothing changes for an owner who
+    /// already allowed location; off sends no location and has the server forget it.
+    private(set) var isLocationTrackingEnabled: Bool
     /// What the owner's walk paid the pet on the latest upload, until the Pet tab has the pet react.
     /// Whoever uploaded — the tab or the app coming forward — the pet thanks its owner once.
     private(set) var pendingWalk: PetWalkReward?
@@ -45,6 +60,8 @@ final class PetContextProvider {
     @ObservationIgnored private let location: PetLocationFetcher
     /// The collection in flight, so the tab loading and the app coming forward share one.
     @ObservationIgnored private var collecting: Task<PetContextPayload, Never>?
+    /// Where background location updates are uploaded to; set once the app is signed in.
+    @ObservationIgnored private var backgroundAPI: (any StickerAPIClientProtocol)?
 
     init(defaults: UserDefaults = .standard, cache: PetContextCache = PetContextCache()) {
         self.defaults = defaults
@@ -53,10 +70,22 @@ final class PetContextProvider {
         location = PetLocationFetcher()
         locationStatus = location.authorizationStatus
         healthRequested = defaults.bool(forKey: Self.healthRequestedKey)
-        location.onAuthorizationChange = { [weak self] status in self?.locationStatus = status }
+        isLocationTrackingEnabled = defaults.object(forKey: Self.locationTrackingKey) as? Bool ?? true
+        location.onAuthorizationChange = { [weak self] status in
+            self?.locationStatus = status
+            self?.updateBackgroundTracking()
+        }
+        location.onSignificantChange = { [weak self] fix in self?.significantChange(fix) }
+        // Relaunched in the background by a significant change, iOS delivers it only once
+        // monitoring is started again.
+        updateBackgroundTracking()
     }
 
     var hasLocationAccess: Bool { locationStatus == .authorizedWhenInUse || locationStatus == .authorizedAlways }
+    /// Whether the phone may tell the pet where it is as the owner moves, not only in the app.
+    var hasBackgroundLocationAccess: Bool { locationStatus == .authorizedAlways }
+    /// Whether location is both allowed and wanted.
+    private var sendsLocation: Bool { hasLocationAccess && isLocationTrackingEnabled }
     var canAskForLocation: Bool { locationStatus == .notDetermined }
     var isHealthAvailable: Bool { health != nil }
     /// A source not yet granted — the Pet tab's cue to offer the sheet. A refused location still
@@ -89,6 +118,54 @@ final class PetContextProvider {
         locationStatus = status
         Self.log.info("pet context: location authorization \(status.rawValue, privacy: .public)")
         return hasLocationAccess
+    }
+
+    /// Turns Location Tracking on or off from the owner's switch. On asks for location if it was
+    /// never asked, then offers "Always" so trips are noticed in the background; off stops the
+    /// background updates. Either way the server hears at once — off, that it should forget.
+    @discardableResult
+    func setLocationTracking(_ enabled: Bool, api: any StickerAPIClientProtocol) async -> Bool {
+        isLocationTrackingEnabled = enabled
+        defaults.set(enabled, forKey: Self.locationTrackingKey)
+        if enabled {
+            if canAskForLocation { await requestLocationAccess() }
+            if locationStatus == .authorizedWhenInUse { locationStatus = await location.requestAlwaysAuthorization() }
+        } else {
+            cache.forgetLocation()
+            defaults.removeObject(forKey: Self.lastUploadLatitudeKey)
+            defaults.removeObject(forKey: Self.lastUploadLongitudeKey)
+        }
+        updateBackgroundTracking()
+        Self.log.info("pet context: location tracking \(enabled ? "on" : "off", privacy: .public)")
+        return await upload(api: api).stored
+    }
+
+    /// Where background updates go. Called once signed in; the updates themselves only start when
+    /// tracking is on and "Always" is allowed.
+    func attachBackgroundUploads(api: any StickerAPIClientProtocol) {
+        backgroundAPI = api
+    }
+
+    /// Starts or stops iOS's significant-change updates to match the switch and the permission.
+    private func updateBackgroundTracking() {
+        location.monitorSignificantChanges(isLocationTrackingEnabled && hasBackgroundLocationAccess)
+    }
+
+    /// The owner moved a good way, maybe while the app was not even running. A long way since the
+    /// last upload goes up at once — the pet may need a place on a trip — and a short one waits out
+    /// the usual half hour. The app gets a little time in the background to finish.
+    private func significantChange(_ fix: CLLocation) {
+        guard sendsLocation, let api = backgroundAPI else { return }
+        let lastLatitude = defaults.object(forKey: Self.lastUploadLatitudeKey) as? Double
+        let lastLongitude = defaults.object(forKey: Self.lastUploadLongitudeKey) as? Double
+        let movedFar = lastLatitude.flatMap { latitude in
+            lastLongitude.map { CLLocation(latitude: latitude, longitude: $0).distance(from: fix) >= Self.travelUploadMeters }
+        } ?? true
+        Task {
+            let background = UIApplication.shared.beginBackgroundTask(withName: "pet-location")
+            defer { UIApplication.shared.endBackgroundTask(background) }
+            await syncIfNeeded(api: api, force: movedFar)
+        }
     }
 
     /// Re-reads both, for when the user may have changed them in Settings while away.
@@ -164,9 +241,13 @@ final class PetContextProvider {
             // Only a kept upload counts: with no pet yet, the next foreground should try again. So
             // does one whose location fix timed out while location is allowed — without it the pet
             // has no weather, and half an hour is too long to go without trying again.
-            if stored, payload.hasLocation || !hasLocationAccess {
+            if stored, payload.hasLocation || !sendsLocation {
                 defaults.set(Date(), forKey: Self.lastUploadKey)
                 defaults.set(payload.stepsToday ?? 0, forKey: Self.lastUploadStepsKey)
+                if let latitude = payload.latitude, let longitude = payload.longitude {
+                    defaults.set(latitude, forKey: Self.lastUploadLatitudeKey)
+                    defaults.set(longitude, forKey: Self.lastUploadLongitudeKey)
+                }
             }
             if let walk = response.walk, walk.energy > 0 || walk.gold > 0 { pendingWalk = walk }
             Self.log.info(
@@ -186,6 +267,8 @@ final class PetContextProvider {
 
     private func gather(locationTimeout: Duration) async -> PetContextPayload {
         var payload = PetContextPayload(timeZone: TimeZone.current.identifier)
+        // Tracking off: nothing of where the owner is goes anywhere, and the server forgets it.
+        if !isLocationTrackingEnabled { payload.trackLocation = false }
         async let steps = stepsToday()
         async let coordinate = coarseCoordinate(timeout: locationTimeout)
         payload.stepsToday = await steps
@@ -228,7 +311,7 @@ final class PetContextProvider {
     /// Where the phone is, to about a kilometre: two decimal places, the same coarseness the server
     /// rounds to before storing it. Nil without permission or without a fix in time.
     private func coarseCoordinate(timeout: Duration) async -> CLLocationCoordinate2D? {
-        guard hasLocationAccess, let fix = await location.currentLocation(timeout: timeout) else { return nil }
+        guard sendsLocation, let fix = await location.currentLocation(timeout: timeout) else { return nil }
         func rounded(_ value: Double) -> Double { (value * 100).rounded() / 100 }
         return CLLocationCoordinate2D(latitude: rounded(fix.coordinate.latitude), longitude: rounded(fix.coordinate.longitude))
     }
@@ -244,6 +327,9 @@ final class PetLocationFetcher: NSObject {
     private var fixWaiters: [CheckedContinuation<CLLocation?, Never>] = []
     private var authorizationWaiters: [CheckedContinuation<CLAuthorizationStatus, Never>] = []
     var onAuthorizationChange: ((CLAuthorizationStatus) -> Void)?
+    /// Called with each significant-change update while monitoring.
+    var onSignificantChange: ((CLLocation) -> Void)?
+    private var isMonitoringSignificantChanges = false
 
     override init() {
         super.init()
@@ -260,6 +346,33 @@ final class PetLocationFetcher: NSObject {
         return await withCheckedContinuation { continuation in
             authorizationWaiters.append(continuation)
             manager.requestWhenInUseAuthorization()
+        }
+    }
+
+    /// Offers to upgrade when-in-use to "Always" — iOS asks once — and returns the answer, or the
+    /// status as it is when there is nothing to ask.
+    func requestAlwaysAuthorization() async -> CLAuthorizationStatus {
+        guard manager.authorizationStatus == .authorizedWhenInUse else { return manager.authorizationStatus }
+        return await withCheckedContinuation { continuation in
+            authorizationWaiters.append(continuation)
+            manager.requestAlwaysAuthorization()
+            // Declining the upgrade sends no callback; the status then stands as it was.
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(30))
+                self?.resolveAuthorization(self?.manager.authorizationStatus ?? .authorizedWhenInUse)
+            }
+        }
+    }
+
+    /// Starts or stops the low-power updates iOS sends after a move of roughly half a kilometre or
+    /// more, even with the app closed. Needs "Always".
+    func monitorSignificantChanges(_ enabled: Bool) {
+        guard enabled != isMonitoringSignificantChanges, CLLocationManager.significantLocationChangeMonitoringAvailable() else { return }
+        isMonitoringSignificantChanges = enabled
+        if enabled {
+            manager.startMonitoringSignificantLocationChanges()
+        } else {
+            manager.stopMonitoringSignificantLocationChanges()
         }
     }
 
@@ -286,6 +399,10 @@ final class PetLocationFetcher: NSObject {
         onAuthorizationChange?(status)
         // The first callback arrives on creation with the current status; only a decided one answers.
         guard status != .notDetermined else { return }
+        resolveAuthorization(status)
+    }
+
+    private func resolveAuthorization(_ status: CLAuthorizationStatus) {
         let waiters = authorizationWaiters
         authorizationWaiters = []
         for waiter in waiters { waiter.resume(returning: status) }
@@ -295,7 +412,10 @@ final class PetLocationFetcher: NSObject {
 extension PetLocationFetcher: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         let last = locations.last
-        Task { @MainActor in self.resolveFix(last) }
+        Task { @MainActor in
+            self.resolveFix(last)
+            if self.isMonitoringSignificantChanges, let last { self.onSignificantChange?(last) }
+        }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -371,7 +491,8 @@ nonisolated struct PetContextCache: Sendable {
     func write(_ payload: PetContextPayload, previous: Snapshot?, capturedAt: Date = Date()) {
         var merged = payload
         if let previous {
-            if !merged.hasLocation, previous.payload.hasLocation {
+            // A fix that timed out keeps the last one; tracking turned off keeps none.
+            if !merged.hasLocation, merged.trackLocation != false, previous.payload.hasLocation {
                 merged.latitude = previous.payload.latitude
                 merged.longitude = previous.payload.longitude
             }
@@ -385,6 +506,16 @@ nonisolated struct PetContextCache: Sendable {
 
     func read() -> Snapshot? {
         defaults?.data(forKey: Self.key).flatMap(Self.decode)
+    }
+
+    /// Tracking off: the Messages extension must not keep sending where the owner last was.
+    func forgetLocation() {
+        guard let snapshot = read() else { return }
+        var payload = snapshot.payload
+        payload.latitude = nil
+        payload.longitude = nil
+        guard let data = try? Self.encode(payload, capturedAt: snapshot.capturedAt) else { return }
+        defaults?.set(data, forKey: Self.key)
     }
 
     /// Signing out: the next account must not inherit where the last one was.

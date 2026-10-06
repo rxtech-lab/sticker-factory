@@ -47,6 +47,9 @@ describe("pet rooms", () => {
       expect(rooms.offers).toHaveLength(ROOM_OFFER_COUNT);
       for (const offer of rooms.offers) {
         const { min, max } = roomPriceRange(offer.effects);
+        // The mock room's blank clock face and weather board are found, for the app to write on.
+        expect(offer.fixtures?.clock?.shape).toBe("round");
+        expect(offer.fixtures?.weather?.shape).toBe("rect");
         expect(offer.price).toBeGreaterThanOrEqual(min);
         expect(offer.price).toBeLessThanOrEqual(max);
         const art = await getPetRoomArt(db, "owner", offer.id);
@@ -82,7 +85,7 @@ describe("pet rooms", () => {
 
       // Reading the pet lands today's comfort from its new room, once.
       const pet = PetResponseV1Schema.parse(await getPet(db, "owner")).pet!;
-      expect(pet.room).toEqual({ id: room.id, title: room.title, artKey: room.artKey });
+      expect(pet.room).toEqual({ id: room.id, title: room.title, artKey: room.artKey, fixtures: room.fixtures });
       expect(pet.stats.gold).toBe(500 - room.price);
       expect(pet.stats.energy).toBe(Math.min(100, before.energy + room.effects.energy));
       expect(pet.stats.happiness).toBe(Math.min(100, before.happiness + room.effects.happiness));

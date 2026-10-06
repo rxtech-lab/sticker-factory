@@ -2,7 +2,7 @@ import { and, asc, desc, eq, isNull, lt, lte, or } from "drizzle-orm";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetRoomsV1, PetRoomV1 } from "@/lib/contracts/api";
 import { firstRow, type Database } from "@/lib/db/client";
-import { petRooms, userPets, type PetRoomRow } from "@/lib/db/schema";
+import { petRooms, userPets, type PetRoomFixtures, type PetRoomRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { notifyPetStatusChanged } from "@/lib/notifications/pet";
 import { describeError } from "@/lib/observability/trace";
@@ -16,6 +16,8 @@ import { readablePlayback } from "./playback";
 
 /** A refresh that has not published within this long is taken to have died, and may be tried again. */
 const RETRY_AFTER_MS = 10 * 60 * 1000;
+/** A refresh that failed and said so may be tried again this soon, rather than waiting out the claim. */
+const RETRY_AFTER_FAILURE_MS = 60 * 1000;
 
 function artPath(userId: string, artKey: string): string {
   return `private/pet-rooms/${userId}/${artKey}.webp`;
@@ -28,13 +30,17 @@ async function deleteArt(userId: string, artKeys: string[]): Promise<void> {
 function serializeRoom(row: PetRoomRow): PetRoomV1 {
   return {
     id: row.id, title: row.title, description: row.description, effects: row.effectsJson,
-    price: row.price, artKey: row.artKey, owned: row.state === "owned",
+    price: row.price, artKey: row.artKey, owned: row.state === "owned", fixtures: row.fixturesJson ?? null,
   };
 }
 
 /** The room the pet lives in, as `GET /api/v1/pet` names it. */
-export function serializePetRoom(row: Pick<PetRow, "room">): { id: string; title: string; artKey: string } | null {
-  return row.room ? { id: row.room.id, title: row.room.title, artKey: row.room.artKey } : null;
+export function serializePetRoom(
+  row: Pick<PetRow, "room">,
+): { id: string; title: string; artKey: string; fixtures: PetRoomFixtures | null } | null {
+  return row.room
+    ? { id: row.room.id, title: row.room.title, artKey: row.room.artKey, fixtures: row.room.fixturesJson ?? null }
+    : null;
 }
 
 /** The owner's rooms, the shop's offers, and which room the pet lives in. */
@@ -73,7 +79,14 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
       or(isNull(userPets.roomsOfferedAt), lte(userPets.roomsOfferedAt, staleBefore)),
       or(isNull(userPets.roomsClaimedAt), lt(userPets.roomsClaimedAt, new Date(now.getTime() - RETRY_AFTER_MS)))))
     .returning({ userId: userPets.userId });
-  if (!claimed) return;
+  if (!claimed) {
+    // Due, but another request holds the claim: its rooms are still being drawn.
+    petLog("rooms:still-drawing", { userId });
+    return;
+  }
+  const started = Date.now();
+  const elapsedMs = () => Date.now() - started;
+  petLog("rooms:generating", { userId, lifeId: pet.lifeId, lastOfferedAt: pet.roomsOfferedAt?.toISOString() ?? null });
   const drawn: string[] = [];
   try {
     const { sticker, revision } = await readablePlayback(db, userId, pet.stickerId);
@@ -91,18 +104,28 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
       previous: earlier.map((room) => room.title),
       ...ownerMoment(pet.contextJson, now),
     })).map(sanitizeRoom);
+    petLog("rooms:designed", { userId, elapsedMs: elapsedMs(), rooms: designed.map((room) => room.title) });
     // Drawn side by side; a room that could not be drawn is left out rather than shown blank.
     const rooms = (await Promise.all(designed.map(async (room) => {
       try {
         const windowKey = roomWindowKey(room.scene);
+        petLog("rooms:drawing", { userId, title: room.title, windowKey: windowKey.name, scene: room.scene });
         const art = await getAiProvider().generatePetRoomArt({ scene: room.scene, reference: style, windowKey });
-        // Its windows become see-through, so the app can show the owner's weather behind the glass.
-        const { bytes, windowFraction } = await renderRoomArt(art.bytes, windowKey);
+        // Its windows become see-through, so the app can show the owner's weather behind the glass,
+        // and its blank clock face, weather board and status board become places the app writes the
+        // time, weather and the pet's stats on.
+        const { bytes, windowFraction, fixtures } = await renderRoomArt(art.bytes, windowKey);
         if (!windowFraction) petLog("rooms:no-window", { userId, title: room.title, key: windowKey.name });
+        if (!fixtures.clock || !fixtures.weather || !fixtures.status) {
+          petLog("rooms:missing-fixture", {
+            userId, title: room.title, clock: !!fixtures.clock, weather: !!fixtures.weather, status: !!fixtures.status,
+          });
+        }
         const artKey = crypto.randomUUID();
         await getObjectStore().put(artPath(userId, artKey), { bytes, contentType: "image/webp" });
         drawn.push(artKey);
-        return { ...room, artKey };
+        petLog("rooms:drawn", { userId, title: room.title, elapsedMs: elapsedMs(), windowFraction, fixtures });
+        return { ...room, artKey, fixtures };
       } catch (error) {
         petLog("rooms:draw-failed", { userId, title: room.title, error: describeError(error) });
         return null;
@@ -120,21 +143,26 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
         .returning({ artKey: petRooms.artKey });
       await tx.insert(petRooms).values(rooms.map((room) => ({
         id: crypto.randomUUID(), userId, title: room.title.slice(0, 32), description: room.description.slice(0, 140),
-        effectsJson: room.effects, price: room.price, artKey: room.artKey, state: "offered" as const, createdAt: now,
+        effectsJson: room.effects, price: room.price, artKey: room.artKey, fixturesJson: room.fixtures, state: "offered" as const, createdAt: now,
       })));
       return removed.map((row) => row.artKey);
     });
     if (!stale) {
+      petLog("rooms:superseded", { userId, elapsedMs: elapsedMs() });
       await deleteArt(userId, drawn);
       return;
     }
     await deleteArt(userId, stale);
-    petLog("rooms:offered", { userId, lifeId: pet.lifeId,
+    petLog("rooms:offered", { userId, lifeId: pet.lifeId, elapsedMs: elapsedMs(),
       rooms: rooms.map((room) => ({ title: room.title, price: room.price, effects: room.effects })) });
   } catch (error) {
     await deleteArt(userId, drawn);
-    // The claim is kept: the next read tries again once it cools down, not on every poll.
-    petLog("rooms:refresh-failed", { userId, error: describeError(error) });
+    // The claim is shortened, not dropped: the next read a minute on tries again, not every poll.
+    await db.update(userPets)
+      .set({ roomsClaimedAt: new Date(Date.now() - RETRY_AFTER_MS + RETRY_AFTER_FAILURE_MS) })
+      .where(and(eq(userPets.userId, userId), eq(userPets.roomsClaimedAt, now)))
+      .catch(() => undefined);
+    petLog("rooms:refresh-failed", { userId, elapsedMs: elapsedMs(), error: describeError(error) });
   }
 }
 

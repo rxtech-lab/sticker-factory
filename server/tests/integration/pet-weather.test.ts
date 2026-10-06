@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import { setAiProviderForTests } from "@/lib/ai/gateway";
 import { PetResponseV1Schema } from "@/lib/contracts/api";
-import { petWeatherArt, stickerRevisions, stickers, userPets } from "@/lib/db/schema";
+import { petRooms, petWeatherArt, stickerRevisions, stickers, userPets } from "@/lib/db/schema";
 import { setPetRandomForTests } from "@/lib/pets/log";
 import { drawPetWeatherArt, forgetPetWeatherArt, getPetWeatherArt } from "@/lib/services/pet-weather";
 import { getPet, setPet } from "@/lib/services/pets";
@@ -130,6 +130,42 @@ describe("pet weather art", () => {
       expect(prompts).toHaveLength(3);
       expect((await db.select().from(petWeatherArt))[0]).toMatchObject({ stickerId: pet.stickerId, revisionId: grownId, state: "ready" });
       expect((await getPet(db, "owner")).pet?.weatherArt?.key).not.toBe(updated?.key);
+    } finally {
+      await close();
+    }
+  });
+
+  it("draws the sky outside the window as four pieces once the pet lives in a room", async () => {
+    const { db, close } = await setup();
+    try {
+      const prompts: string[] = [];
+      setAiProviderForTests(drawer(prompts));
+      // On the plain page there is no window, so only the sticker is drawn.
+      await drawPetWeatherArt(db, "owner");
+      expect(prompts).toHaveLength(1);
+      expect((await getPet(db, "owner")).pet?.windowWeatherArt).toBeNull();
+
+      const roomId = crypto.randomUUID();
+      await db.insert(petRooms).values({
+        id: roomId, userId: "owner", title: "Attic", description: "A cosy attic.", price: 40,
+        effectsJson: { happiness: 1, hp: 0, energy: 0 }, artKey: crypto.randomUUID(), state: "owned", createdAt: new Date(),
+      });
+      await db.update(userPets).set({ roomId }).where(eq(userPets.userId, "owner"));
+      await drawPetWeatherArt(db, "owner");
+      await drawPetWeatherArt(db, "owner");
+      expect(prompts).toHaveLength(2);
+      expect(prompts[1]).toContain("2 by 2");
+      expect(prompts[1]).toContain("raindrop");
+
+      const pet = PetResponseV1Schema.parse(await getPet(db, "owner")).pet;
+      expect(pet?.windowWeatherArt).toMatchObject({ kind: "rainy", isDay: true });
+      expect(pet?.windowWeatherArt?.key).not.toBe(pet?.weatherArt?.key);
+
+      const sheet = await getPetWeatherArt(db, "owner", 1024, null, pet?.windowWeatherArt?.key, "window");
+      expect(await sharp(sheet.bytes!).metadata()).toMatchObject({ width: 1024, height: 1024, format: "png", hasAlpha: true });
+      expect((await getPetWeatherArt(db, "owner", 1024, sheet.etag, null, "window")).bytes).toBeNull();
+      // The sticker is still its own drawing.
+      expect((await getPetWeatherArt(db, "owner", 128, sheet.etag)).bytes).not.toBeNull();
     } finally {
       await close();
     }

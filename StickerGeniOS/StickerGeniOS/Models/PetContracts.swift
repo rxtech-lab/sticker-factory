@@ -37,6 +37,13 @@ nonisolated struct Pet: Codable, Equatable, Sendable {
     var medicine: Int = 0
     /// The room the pet lives in, drawn behind it on the tab. Nil on the plain page, and from older servers.
     var room: PetRoomRef?
+    /// The sky outside the room's window for the weather in `signals`, drawn by the server in the
+    /// pet's style as a 2×2 sheet of pieces the tab animates: sun or moon, wide cloud, small cloud and
+    /// one particle. Nil with no weather or room, while it is drawn, and from older servers.
+    var windowWeatherArt: PetWeatherArt?
+    /// The place the pet has gone, drawn behind it in place of its room. Nil while it is at home,
+    /// and from older servers.
+    var theme: PetThemeRef?
 
     /// The HP gauge's ceiling: the class sets it, and a pet without an identity yet uses the old 100.
     var maxHp: Int { identity?.maxHp ?? 100 }
@@ -62,6 +69,8 @@ nonisolated extension Pet {
         illness = try container.decodeIfPresent(PetIllness.self, forKey: .illness)
         medicine = try container.decodeIfPresent(Int.self, forKey: .medicine) ?? 0
         room = try container.decodeIfPresent(PetRoomRef.self, forKey: .room)
+        windowWeatherArt = try container.decodeIfPresent(PetWeatherArt.self, forKey: .windowWeatherArt)
+        theme = try container.decodeIfPresent(PetThemeRef.self, forKey: .theme)
     }
 }
 
@@ -70,6 +79,36 @@ nonisolated struct PetRoomRef: Codable, Equatable, Sendable {
     var id: String
     var title: String
     var artKey: String
+    /// Where its drawing shows the time and the weather. Nil for rooms drawn before they had places for them.
+    var fixtures: PetRoomFixtures?
+}
+
+/// Where a room's or place's drawing has a clock face, a weather board and a status board for the
+/// app to write on. Any is nil when the drawing has no place for it, and the tab keeps that one in
+/// its own chip or card.
+nonisolated struct PetRoomFixtures: Codable, Equatable, Sendable {
+    var clock: PetRoomFixture?
+    var weather: PetRoomFixture?
+    /// Where the pet's stats are written. Nil for drawings made before status boards.
+    var status: PetRoomFixture?
+}
+
+/// A blank surface drawn into a room: a box as fractions of the room's drawing, its outline, the
+/// colour the server painted it, and the ink that reads on it.
+nonisolated struct PetRoomFixture: Codable, Equatable, Sendable {
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+    var shape: Shape
+    /// `#RRGGBB`.
+    var face: String
+    /// `#RRGGBB`.
+    var ink: String
+
+    nonisolated enum Shape: String, Codable, Sendable {
+        case round, rect
+    }
 }
 
 /// A room the owner's pets can live in, drawn by the pet's agent. Living there does `effects` to
@@ -82,6 +121,7 @@ nonisolated struct PetRoom: Codable, Equatable, Identifiable, Sendable {
     var price: Int
     var artKey: String
     var owned: Bool
+    var fixtures: PetRoomFixtures?
 
     nonisolated struct Effects: Codable, Equatable, Sendable {
         var happiness: Int
@@ -89,7 +129,7 @@ nonisolated struct PetRoom: Codable, Equatable, Identifiable, Sendable {
         var energy: Int
     }
 
-    var ref: PetRoomRef { PetRoomRef(id: id, title: title, artKey: artKey) }
+    var ref: PetRoomRef { PetRoomRef(id: id, title: title, artKey: artKey, fixtures: fixtures) }
 }
 
 /// The rooms the owner has, the shop's offers, and the room the pet lives in.
@@ -104,6 +144,135 @@ nonisolated struct PetRooms: Codable, Equatable, Sendable {
 }
 
 nonisolated struct PetRoomsResponse: Codable, Sendable { var rooms: PetRooms }
+
+/// Names the place the pet has gone; its drawing is fetched with `petThemeArt(themeID:)`.
+nonisolated struct PetThemeRef: Codable, Equatable, Sendable {
+    var id: String
+    var title: String
+    var artKey: String
+    var category: PetThemeCategory
+    /// Where its drawing shows the time, weather and stats. Nil for places drawn before they had them.
+    var fixtures: PetRoomFixtures?
+}
+
+/// The kinds of place a pet can go. Unknown kinds from a newer server still decode.
+nonisolated struct PetThemeCategory: RawRepresentable, Codable, Hashable, Sendable {
+    var rawValue: String
+
+    static let indoor = PetThemeCategory(rawValue: "indoor")
+    static let outdoor = PetThemeCategory(rawValue: "outdoor")
+    static let restaurant = PetThemeCategory(rawValue: "restaurant")
+    static let nature = PetThemeCategory(rawValue: "nature")
+    static let travel = PetThemeCategory(rawValue: "travel")
+    static let event = PetThemeCategory(rawValue: "event")
+    static let accident = PetThemeCategory(rawValue: "accident")
+
+    var displayName: String {
+        switch self {
+        case .indoor: String(localized: "Indoor")
+        case .outdoor: String(localized: "Outdoor")
+        case .restaurant: String(localized: "Restaurant")
+        case .nature: String(localized: "Nature")
+        case .travel: String(localized: "Trip")
+        case .event: String(localized: "Special Event")
+        case .accident: String(localized: "Accident")
+        default: rawValue.capitalized
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .indoor: "sofa.fill"
+        case .outdoor: "building.2.fill"
+        case .restaurant: "fork.knife"
+        case .nature: "leaf.fill"
+        case .travel: "airplane"
+        case .event: "party.popper.fill"
+        case .accident: "cross.case.fill"
+        default: "mappin"
+        }
+    }
+}
+
+/// A place the pet can go, discovered by its agent from its owner's world. Being there does
+/// `effects` on each of the pet's visits. A `limited` place — a trip, an event, an accident — is
+/// gone for good once `expired`; the others can be gone back to whenever their rules allow.
+nonisolated struct PetTheme: Codable, Equatable, Identifiable, Sendable {
+    var id: String
+    var title: String
+    var description: String
+    var category: PetThemeCategory
+    var limited: Bool
+    var effects: PetRoom.Effects
+    var rules: Rules
+    var artKey: String
+    var expiresAt: Date?
+    var expired: Bool
+    var available: Bool
+    /// Why the pet cannot go right now, in a sentence. Nil when it can.
+    var unavailableReason: String?
+    /// Minutes the pet may still spend here today, when the place limits them.
+    var minutesLeftToday: Int?
+    var discoveredAt: Date
+    /// Where its drawing shows the time, weather and stats. Nil for places drawn before they had them.
+    var fixtures: PetRoomFixtures?
+
+    nonisolated struct Rules: Codable, Equatable, Sendable {
+        /// The most minutes a day the pet may spend here. Nil for no limit.
+        var dailyMinutes: Int?
+        /// The owner's local hours it is open, `to` exclusive; may run through midnight.
+        var hours: Hours?
+        /// Only in these kinds of weather.
+        var weather: [String]?
+        /// Only while the owner is near this place.
+        var place: Place?
+
+        nonisolated struct Hours: Codable, Equatable, Sendable {
+            var from: Int
+            var to: Int
+        }
+
+        nonisolated struct Place: Codable, Equatable, Sendable {
+            var label: String
+            var radiusKm: Double
+        }
+
+        var isEmpty: Bool { dailyMinutes == nil && hours == nil && (weather ?? []).isEmpty && place == nil }
+    }
+
+    var ref: PetThemeRef { PetThemeRef(id: id, title: title, artKey: artKey, category: category, fixtures: fixtures) }
+}
+
+/// The places the pet knows, which one it is at, and whether its agent is finding more.
+nonisolated struct PetThemes: Codable, Equatable, Sendable {
+    /// Nil while the pet is at home.
+    var activeThemeId: String?
+    var themes: [PetTheme]
+    /// True while the pet's agent is discovering and drawing new places.
+    var discovering: Bool
+    /// True while the owner is far from home.
+    var traveling: Bool
+    /// False when the server has no location for the owner.
+    var hasLocation: Bool
+}
+
+nonisolated struct PetThemesResponse: Codable, Sendable { var themes: PetThemes }
+
+/// A trip somewhere or back home: the pet after it, and its places as they now stand.
+nonisolated struct PetThemeChangeResponse: Codable, Sendable {
+    var pet: Pet?
+    var themes: PetThemes
+}
+
+/// `themeId` nil brings the pet home; it is sent as JSON `null`, not left out.
+nonisolated struct SetPetThemeRequest: Codable, Sendable {
+    var themeId: String?
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(themeId, forKey: .themeId)
+    }
+}
 
 /// A purchase or a move: the pet after it, and the rooms as they now stand.
 nonisolated struct PetRoomChangeResponse: Codable, Sendable {
@@ -385,6 +554,7 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
     static let illness = PetEventKind(rawValue: "illness")
     static let medicine = PetEventKind(rawValue: "medicine")
     static let room = PetEventKind(rawValue: "room")
+    static let theme = PetEventKind(rawValue: "theme")
 
     var displayName: String {
         switch self {
@@ -402,6 +572,7 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
         case .illness: String(localized: "Health")
         case .medicine: String(localized: "Medicine")
         case .room: String(localized: "Room")
+        case .theme: String(localized: "Places")
         default: rawValue.capitalized
         }
     }
@@ -421,6 +592,7 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
         case .encounter: "exclamationmark.bubble.fill"
         case .illness: "thermometer.medium"
         case .medicine: "pills.fill"
+        case .theme: "map.fill"
         default: "circle.fill"
         }
     }
@@ -486,9 +658,12 @@ nonisolated struct PetContextPayload: Codable, Equatable, Sendable {
     var longitude: Double?
     var stepsToday: Int?
     var timeZone: String?
+    /// False when the owner turned location tracking off: the server forgets where they were. Never
+    /// sent together with a location; left out while tracking is on.
+    var trackLocation: Bool?
 
     var hasLocation: Bool { latitude != nil && longitude != nil }
-    var isEmpty: Bool { !hasLocation && stepsToday == nil && timeZone == nil }
+    var isEmpty: Bool { !hasLocation && stepsToday == nil && timeZone == nil && trackLocation == nil }
 }
 
 /// Whether the server kept the context — false when there is no pet to keep it for — and what the

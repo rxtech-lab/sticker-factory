@@ -513,6 +513,29 @@
         }
       }
     },
+    "%lld tool calls" : {
+
+    },
+    "%lld tool calls · %lld failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld tool calls · %2$lld failed"
+          }
+        }
+      }
+    },
+    "%lld tool calls · Running %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld tool calls · Running %2$@…"
+          }
+        }
+      }
+    },
     "%lld." : {
       "localizations" : {
         "zh-CN" : {
@@ -775,6 +798,12 @@
           }
         }
       }
+    },
+    "A one-time place that has passed. Your pet can't go back." : {
+
+    },
+    "A one-time place, gone for good %@ from now." : {
+
     },
     "A one-time purchase that leaves your plan unchanged." : {
       "localizations" : {
@@ -1056,6 +1085,9 @@
           }
         }
       }
+    },
+    "Accident" : {
+
     },
     "Account" : {
       "localizations" : {
@@ -1366,6 +1398,9 @@
       }
     },
     "Allow" : {
+
+    },
+    "Allow location above to let your pet notice when you travel." : {
 
     },
     "Allow photo-library access in Settings to save this image." : {
@@ -1774,6 +1809,9 @@
         }
       }
     },
+    "Bring Home" : {
+
+    },
     "Bring your sticker to life with looping motion." : {
       "localizations" : {
         "zh-CN" : {
@@ -1789,6 +1827,12 @@
           }
         }
       }
+    },
+    "Bringing your pet home…" : {
+
+    },
+    "Brings your pet back from this place to its home" : {
+
     },
     "Browse" : {
       "localizations" : {
@@ -2405,6 +2449,9 @@
       }
     },
     "Cloudy" : {
+
+    },
+    "Collapsed" : {
 
     },
     "Compare revisions" : {
@@ -3571,6 +3618,9 @@
     "Each sticker is encoded once per messenger and saved with the pack, so nobody who adds it has to do this again. Keep the app open; stop now and the rest is prepared the next time you save this pack." : {
 
     },
+    "Each visit while your pet is here" : {
+
+    },
     "Earned %lld medicine" : {
 
     },
@@ -3838,6 +3888,9 @@
         }
       }
     },
+    "Ends %@ from now" : {
+
+    },
     "Energy" : {
 
     },
@@ -3993,6 +4046,9 @@
       }
     },
     "Existing layers and controls are kept. This plan adds or updates the items below." : {
+
+    },
+    "Expanded" : {
 
     },
     "Explorer" : {
@@ -4278,6 +4334,9 @@
     "Finding your pet…" : {
 
     },
+    "Finding your pet's places…" : {
+
+    },
     "Finishing animation" : {
       "localizations" : {
         "zh-CN" : {
@@ -4378,6 +4437,9 @@
       }
     },
     "Foggy" : {
+
+    },
+    "Folds the tool calls" : {
 
     },
     "For %@s" : {
@@ -4626,6 +4688,9 @@
     "Giving your pet its medicine…" : {
 
     },
+    "Go Here" : {
+
+    },
     "Go Pro" : {
       "localizations" : {
         "zh-CN" : {
@@ -4718,6 +4783,9 @@
       }
     },
     "Has controls" : {
+
+    },
+    "Heading to %@…" : {
 
     },
     "Health" : {
@@ -4948,6 +5016,9 @@
           }
         }
       }
+    },
+    "Indoor" : {
+
     },
     "Interactive sticker preview" : {
       "extractionState" : "stale",
@@ -5611,6 +5682,9 @@
     "Location is on for Winky, but your phone hasn't found where you are yet, so your pet can't feel the weather." : {
 
     },
+    "Location Tracking" : {
+
+    },
     "Looking for subjects…" : {
       "localizations" : {
         "zh-CN" : {
@@ -6128,6 +6202,9 @@
         }
       }
     },
+    "Nature" : {
+
+    },
     "Needed you" : {
 
     },
@@ -6288,6 +6365,9 @@
       }
     },
     "No layers" : {
+
+    },
+    "No limits. Your pet can go any time." : {
 
     },
     "No matches" : {
@@ -6785,6 +6865,9 @@
     "Off means the sticker stays in one place — it can still breathe, blink and react." : {
 
     },
+    "Off. Your location isn't sent, and your pet forgets where you were. It won't feel your weather or find places on your trips." : {
+
+    },
     "Oh no…" : {
 
     },
@@ -6823,6 +6906,12 @@
         }
       }
     },
+    "On while you use the app. Allow \"Always\" in Settings for your pet to notice trips while the app is closed." : {
+
+    },
+    "On, even while the app is closed. Your pet notices when you travel and finds places on your trip. Only big moves are noticed, to save battery." : {
+
+    },
     "Once" : {
       "localizations" : {
         "zh-CN" : {
@@ -6855,6 +6944,9 @@
         }
       }
     },
+    "One-time" : {
+
+    },
     "One-time purchase" : {
       "localizations" : {
         "zh-CN" : {
@@ -6886,6 +6978,12 @@
           }
         }
       }
+    },
+    "Only when it's %@ where you are" : {
+
+    },
+    "Only while you're near %@" : {
+
     },
     "Only you can see this pack until you publish it." : {
       "localizations" : {
@@ -6950,6 +7048,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在“訊息”的 App 列表中打開 %@ 以發送此貼圖。你也可以分享下方的導出檔案。"
+          }
+        }
+      }
+    },
+    "Open %@–%@ your time" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open %1$@–%2$@ your time"
           }
         }
       }
@@ -7102,6 +7210,9 @@
         }
       }
     },
+    "Outdoor" : {
+
+    },
     "Pack" : {
       "localizations" : {
         "zh-CN" : {
@@ -7151,6 +7262,9 @@
       }
     },
     "Pack unavailable" : {
+
+    },
+    "Passed" : {
 
     },
     "Personal photos are uploaded privately to create or edit this sticker. Sources, chat, and revisions remain until you delete the project." : {
@@ -7260,6 +7374,15 @@
           }
         }
       }
+    },
+    "Place Unavailable" : {
+
+    },
+    "Places" : {
+
+    },
+    "Places your pet found from where you are and what is going on. It goes on its own when it feels like it, or you can take it." : {
+
     },
     "Plan" : {
       "localizations" : {
@@ -8428,6 +8551,9 @@
     "Resets %@" : {
 
     },
+    "Restaurant" : {
+
+    },
     "Restore Purchases" : {
       "localizations" : {
         "zh-CN" : {
@@ -8731,6 +8857,9 @@
 
     },
     "Rooms your pet dreamed up. Each is good for your pet in its own way, every day it lives there." : {
+
+    },
+    "Rules" : {
 
     },
     "Running…" : {
@@ -9363,6 +9492,9 @@
         }
       }
     },
+    "Shows each tool call" : {
+
+    },
     "Shows the tool result or error" : {
       "localizations" : {
         "zh-CN" : {
@@ -9623,6 +9755,9 @@
           }
         }
       }
+    },
+    "Special Event" : {
+
     },
     "Special visit" : {
 
@@ -11609,6 +11744,9 @@
     "Time together" : {
 
     },
+    "Time: %@" : {
+
+    },
     "Timing" : {
 
     },
@@ -11816,6 +11954,9 @@
     "Trickster" : {
 
     },
+    "Trip" : {
+
+    },
     "Try “a happy cat riding a skateboard”" : {
 
     },
@@ -11959,6 +12100,15 @@
         }
       }
     },
+    "Turn on Location Tracking in Weather & Steps to find places near you and on trips." : {
+
+    },
+    "Turning off Location Tracking…" : {
+
+    },
+    "Turning on Location Tracking…" : {
+
+    },
     "Tutorials" : {
 
     },
@@ -12069,6 +12219,19 @@
     },
     "Up %lld" : {
 
+    },
+    "Up to %lld minutes a day" : {
+
+    },
+    "Up to %lld minutes a day · %lld left today" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Up to %1$lld minutes a day · %2$lld left today"
+          }
+        }
+      }
     },
     "Update plan" : {
       "extractionState" : "stale",
@@ -12536,6 +12699,9 @@
     "Weather & Steps" : {
 
     },
+    "Weather unknown" : {
+
+    },
     "Weather: %@, %@" : {
       "localizations" : {
         "en" : {
@@ -12874,6 +13040,9 @@
     "You're back… I don't feel so good. Look after me?" : {
 
     },
+    "You're far from home, so your pet is looking for places on your trip." : {
+
+    },
     "Your %@ plan is active. Top up whenever you need more credits." : {
       "localizations" : {
         "zh-CN" : {
@@ -13058,16 +13227,28 @@
     "Your pet hasn't felt the outside world yet." : {
 
     },
+    "Your pet hasn't found any places yet. New ones turn up every day." : {
+
+    },
     "Your pet is choosing and drawing some things…" : {
 
     },
     "Your pet is dreaming up and drawing some rooms…" : {
 
     },
+    "Your pet is finding and drawing new places…" : {
+
+    },
+    "Your pet is here" : {
+
+    },
     "Your pet is still thinking of something to do. Check back in a moment." : {
 
     },
     "Your pet moves into %@ right away. You keep the room, and can move back any time." : {
+
+    },
+    "Your pet no longer knows this place." : {
 
     },
     "Your pet picks these for how they feel right now. They change as their mood does." : {

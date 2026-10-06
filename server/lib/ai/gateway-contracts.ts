@@ -1,4 +1,5 @@
-import type { PET_CLASSES, PET_WEATHER_KINDS, PetIdentityV1, PetSignalsV1 } from "@/lib/contracts/api";
+import type { PET_CLASSES, PET_WEATHER_KINDS, PetIdentityV1, PetSignalsV1, PetThemeCategory } from "@/lib/contracts/api";
+import type { DesignedTheme } from "@/lib/pets/themes";
 import type { StickerControl, StickerControlValues } from "@/lib/contracts/configuration";
 // The shape of every AI turn: what a caller hands the provider, what the provider hands back,
 // and the drafting sessions a long turn streams its partial work through.
@@ -848,6 +849,48 @@ export interface AiPetRoomArtInput {
   windowKey: ChromaKeyColor;
 }
 
+/** A place the pet's agent discovered for it, before the server holds it to the rules. */
+export type AiPetTheme = DesignedTheme;
+
+/** What the pet's agent knows when it goes looking for new places. */
+export interface AiPetThemeDiscoveryContext extends AiPetActionsContext {
+  /** Places already known, so new ones are new. */
+  known: Array<{ title: string; category: PetThemeCategory }>;
+  /** Kinds of limited place the moment calls for, which must be among those found. */
+  needs: Array<"travel" | "accident">;
+  /** How many places to find, at most. */
+  max: number;
+  /** Whether the owner is far from home, and how far. */
+  traveling: { distanceKm: number } | null;
+  /** Whether the server knows where the owner is: a place pinned there is impossible without it. */
+  hasLocation: boolean;
+  illness?: string | null;
+}
+
+/** What the pet's agent weighs when it decides whether the pet should go somewhere else. */
+export interface AiPetThemeChoiceContext extends AiOwnerMoment {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  signals: PetSignalsV1 | null;
+  stats: { happiness: number; hp: number; energy: number };
+  illness: string | null;
+  traveling: boolean;
+  /** Where the pet is now, and for how long; null at home. */
+  current: { id: string; title: string; category: PetThemeCategory; minutesHere: number } | null;
+  /** The places it could go right now. */
+  candidates: Array<{ id: string; title: string; description: string; category: PetThemeCategory;
+    effects: { happiness: number; hp: number; energy: number }; minutesLeftToday: number | null; expiresInHours: number | null }>;
+}
+
+/** Stay where it is, or go: to a place by id, or home with null. */
+export type AiPetThemeChoice = { move: false } | { move: true; themeId: string | null; reason: string };
+
+/** One place drawn as a full portrait background, in the pet's own art style. */
+export interface AiPetThemeArtInput {
+  scene: string;
+  reference: AiReferenceImage | null;
+}
+
 export type PetAction = {
   id: string;
   title: string;
@@ -966,6 +1009,12 @@ export interface AiProvider {
   generatePetRooms(input: AiPetActionsContext): Promise<AiPetRoom[]>;
   /** Draws one room as the background the pet stands in. */
   generatePetRoomArt(input: AiPetRoomArtInput): Promise<AiImageOutput>;
+  /** Looks for new places the pet could go, from its owner's world and what the moment calls for. */
+  discoverPetThemes(input: AiPetThemeDiscoveryContext): Promise<AiPetTheme[]>;
+  /** Decides whether the pet should go somewhere else now, or home. */
+  choosePetTheme(input: AiPetThemeChoiceContext): Promise<AiPetThemeChoice>;
+  /** Draws one place as the background the pet stands in. */
+  generatePetThemeArt(input: AiPetThemeArtInput): Promise<AiImageOutput>;
   respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus>;
   reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus>;
   reactToPetSharedContent(input: AiPetSharedContentContext): Promise<AiPetStatus>;

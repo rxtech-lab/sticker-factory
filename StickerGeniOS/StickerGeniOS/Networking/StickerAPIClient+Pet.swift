@@ -56,6 +56,31 @@ extension StickerAPIClient {
         return data
     }
 
+    func petThemes() async throws -> PetThemes {
+        let response: PetThemesResponse = try await send(path: "api/v1/pet/themes")
+        return response.themes
+    }
+
+    func setPetTheme(themeID: String?) async throws -> PetThemeChangeResponse {
+        try await send(path: "api/v1/pet/themes/active", method: "PUT", body: SetPetThemeRequest(themeId: themeID))
+    }
+
+    func petThemeArt(themeID: String) async throws -> Data {
+        var request = try await authorizedRequest(path: "api/v1/pet/themes/art", query: [URLQueryItem(name: "id", value: themeID)])
+        request.setValue("image/webp", forHTTPHeaderField: "Accept")
+        var (data, response) = try await session.data(for: request)
+        if (response as? HTTPURLResponse)?.statusCode == 401 {
+            request.setValue("Bearer \(try await tokenBroker.validAccessToken(forceRefresh: true))", forHTTPHeaderField: "Authorization")
+            (data, response) = try await session.data(for: request)
+        }
+        guard let http = response as? HTTPURLResponse else { throw StickerAPIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else {
+            let _: PetResponse = try decode(data, response: response, context: "GET api/v1/pet/themes/art")
+            throw StickerAPIError.invalidResponse
+        }
+        return data
+    }
+
     func sendPetPhoto(jpeg: Data) async throws -> Pet? {
         // Unbound to any sticker, so the server's sweep of stale uploads clears it within a day.
         let assetID = try await upload(
@@ -108,6 +133,10 @@ extension StickerAPIClient {
         try await petImage(path: "api/v1/pet/weather-art", size: size, artKey: artKey)
     }
 
+    func petWindowWeatherArt(size: Int, artKey: String) async throws -> Data {
+        try await petImage(path: "api/v1/pet/weather-art", size: size, artKey: artKey, layer: "window")
+    }
+
     func petItemArt(index: Int, size: Int) async throws -> Data {
         try await petImage(path: "api/v1/pet/items/art", size: size, index: index, mimeType: "image/webp")
     }
@@ -118,9 +147,10 @@ extension StickerAPIClient {
 
     /// Artwork the server draws for the pet, `size` pixels square.
     private func petImage(
-        path: String, size: Int, index: Int? = nil, artKey: String? = nil, mimeType: String = "image/png"
+        path: String, size: Int, index: Int? = nil, artKey: String? = nil, layer: String? = nil, mimeType: String = "image/png"
     ) async throws -> Data {
         var query = [URLQueryItem(name: "size", value: String(size))]
+        if let layer { query.append(URLQueryItem(name: "layer", value: layer)) }
         if let index { query.append(URLQueryItem(name: "index", value: String(index))) }
         if let artKey { query.append(URLQueryItem(name: "artKey", value: artKey)) }
         var request = try await authorizedRequest(path: path, query: query)

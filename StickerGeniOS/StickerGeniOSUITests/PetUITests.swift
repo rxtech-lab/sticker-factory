@@ -125,6 +125,8 @@ final class PetUITests: StickerGeniOSUITestCase {
         XCTAssertTrue(element("current-pet").waitForExistence(timeout: 15))
         XCTAssertEqual(element("pet-gold").label, "20 gold")
         XCTAssertTrue(element("pet-room-backdrop-plain").exists)
+        // The plain page keeps the time in its own chip.
+        XCTAssertTrue(element("pet-clock").exists)
 
         element("pet-stats").swipeUp()
         element("pet-actions-button").tap()
@@ -157,6 +159,22 @@ final class PetUITests: StickerGeniOSUITestCase {
         let spent = NSPredicate(format: "label == %@", "5 gold")
         XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: spent, evaluatedWith: element("pet-gold"))], timeout: 15), .completed)
         XCTAssertTrue(element("pet-room-backdrop").waitForExistence(timeout: 15))
+        // The room has a clock and a weather board drawn in; the time and weather move onto them.
+        XCTAssertTrue(element("pet-room-clock").waitForExistence(timeout: 15))
+        XCTAssertTrue(element("pet-room-weather").exists)
+        XCTAssertTrue(element("pet-clock").waitForNonExistence(timeout: 5))
+        // So do the stats: the room's status board shows them, in place of the card.
+        XCTAssertTrue(element("pet-room-status").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("pet-stats").waitForNonExistence(timeout: 5))
+        // Still on the board after leaving the tab and coming back.
+        app.tabBars.buttons["Library"].tap()
+        app.tabBars.buttons["Pet"].tap()
+        XCTAssertTrue(element("pet-room-status").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("pet-stats").waitForNonExistence(timeout: 5))
+        let furnished = XCTAttachment(screenshot: app.screenshot())
+        furnished.name = "pet-room-fixtures"
+        furnished.lifetime = .keepAlways
+        add(furnished)
 
         element("pet-actions-button").tap()
         app.buttons["Rooms"].firstMatch.tap()
