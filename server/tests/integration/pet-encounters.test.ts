@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { setAiProviderForTests } from "@/lib/ai/gateway";
 import type { AiPetEncounter } from "@/lib/ai/gateway-contracts";
 import { PetResponseV1Schema, ResolvePetEncounterResponseV1Schema } from "@/lib/contracts/api";
@@ -37,6 +37,7 @@ const written: AiPetEncounter = {
 
 describe("pet encounters", () => {
   afterEach(() => {
+    vi.useRealTimers();
     setObjectStoreForTests(undefined);
     setAiProviderForTests(undefined);
     setPetRandomForTests(undefined);
@@ -71,6 +72,9 @@ describe("pet encounters", () => {
   }
 
   it("writes one encounter a day once its hour has come, notifies, and hides the outcomes", async () => {
+    // Reads use the system clock; keep them on the same day as the encounter fixture.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T21:00:00.000Z"));
     const { db, close, lifeId, encounters } = await setup();
     try {
       const hour = encounterHour("owner", lifeId, "2026-10-05");
@@ -154,11 +158,15 @@ describe("pet encounters", () => {
   });
 
   it("refuses an expired encounter", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T21:00:00.000Z"));
     const { db, close } = await setup();
     try {
       const encounter = (await maybeStartEncounter(db, "owner", new Date("2026-10-05T21:00:00.000Z"), noNotify))!;
       const later = new Date("2026-10-06T10:00:00.000Z");
       expect(PetResponseV1Schema.parse(await getPet(db, "owner")).pet!.encounter).toBeTruthy();
+      vi.setSystemTime(later);
+      expect(PetResponseV1Schema.parse(await getPet(db, "owner")).pet!.encounter).toBeNull();
       await expect(resolvePetEncounter(db, "owner", { encounterId: encounter.id, choiceId: encounter.choicesJson[0].id }, later, noNotify))
         .rejects.toMatchObject({ status: 410 });
       const stored = (await db.select().from(petEncounters).where(eq(petEncounters.id, encounter.id)))[0];
