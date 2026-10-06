@@ -2,6 +2,7 @@ import SwiftUI
 
 /// What the owner can do with the pet right now: the actions its agent offers for its mood, and the
 /// four objects it chose from its world. Picking one closes the sheet; the pet answers on the tab.
+/// The Rooms tab is where the owner buys the pet a room to live in, and moves it between them.
 struct PetActionsSheet: View {
     @Bindable var model: PetModel
     @Environment(\.dismiss) private var dismiss
@@ -9,17 +10,27 @@ struct PetActionsSheet: View {
     private enum Tab: Hashable, CaseIterable {
         case actions
         case items
+        case rooms
 
         var title: LocalizedStringKey {
             switch self {
             case .actions: "Actions"
             case .items: "Items"
+            case .rooms: "Rooms"
             }
         }
     }
     @State private var selectedTab: Tab = .actions
     @State private var itemImages: [Int: UIImage] = [:]
     @State private var loadedArtKey: String?
+    @State private var presentedRoom: PresentedRoom?
+
+    /// A room opened from the Rooms tab, with the thumbnail it showed there.
+    private struct PresentedRoom: Identifiable {
+        let room: PetRoom
+        let preview: UIImage?
+        var id: String { room.id }
+    }
 
     private var actions: [PetAction] { model.pet?.actions ?? [] }
 
@@ -29,6 +40,7 @@ struct PetActionsSheet: View {
                 Picker("Spend time", selection: $selectedTab) {
                     ForEach(Tab.allCases, id: \.self) { tab in
                         Text(tab.title).tag(tab)
+                        .accessibilityIdentifier("pet-sheet-tab-\(tab)")
                     }
                 }
                 .pickerStyle(.segmented)
@@ -36,7 +48,14 @@ struct PetActionsSheet: View {
                 .padding(.top, 12)
                 .onChange(of: selectedTab) { _, _ in Haptics.tap(.light) }
                 ScrollView {
-                    if selectedTab == .actions { actionList } else { itemList }
+                    switch selectedTab {
+                    case .actions: actionList
+                    case .items: itemList
+                    case .rooms:
+                        PetRoomsList(model: model) { room, preview in
+                            presentedRoom = PresentedRoom(room: room, preview: preview)
+                        }
+                    }
                 }
             }
             .task(id: selectedTab) {
@@ -74,6 +93,11 @@ struct PetActionsSheet: View {
         }
         .animation(.snappy(duration: 0.2), value: model.activity)
         .interactiveDismissDisabled(model.activity != nil)
+        // Presented from here rather than from the Rooms tab: a sheet hosted inside the tab's
+        // ScrollView lost its confirmation's action on iOS 27, so buying a room did nothing.
+        .sheet(item: $presentedRoom) { presented in
+            PetRoomDetailSheet(model: model, roomID: presented.room.id, preview: presented.preview)
+        }
     }
 
     private var actionList: some View {
@@ -164,9 +188,8 @@ struct PetActionsSheet: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(.vertical, 8)
                     }
-                    .buttonStyle(.posterSecondary)
+                    .buttonStyle(.posterCard)
                     .disabled(model.activity != nil || model.isAnswering || !affordable)
                     .accessibilityIdentifier("pet-item-\(index)")
                 }

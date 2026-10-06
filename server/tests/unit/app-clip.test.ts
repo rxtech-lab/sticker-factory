@@ -132,7 +132,9 @@ it("runs generation and publication as one free operation, including revisions",
       { text: "Make it wave", intent: "edit", attachments: [], imagePlacement: "replace", quick: true, useQuickModeAllowance: true });
     expect((await stickerGenerationWorkflow(revise.jobId, true, true)).workflowStatus).toBe("succeeded");
     expect(calls.filter(call => call.path.endsWith("/usage"))).toHaveLength(2);
-    expect(calls.some(call => call.path.includes("balances"))).toBe(false);
+    // No points are held or charged. The only balance moved is the owner's pet gold for the sticker.
+    expect(calls.filter(call => call.path.includes("balances"))
+      .every(call => call.path === "/api/v1/balances" && (!call.body.unit || call.body.unit === "gold"))).toBe(true);
   } finally { setDatabaseForTests(undefined); setAiProviderForTests(undefined); }
 });
 

@@ -35,6 +35,8 @@ nonisolated struct Pet: Codable, Equatable, Sendable {
     var illness: PetIllness?
     /// Doses of medicine the pet has, won from its encounters. One cures an illness.
     var medicine: Int = 0
+    /// The room the pet lives in, drawn behind it on the tab. Nil on the plain page, and from older servers.
+    var room: PetRoomRef?
 
     /// The HP gauge's ceiling: the class sets it, and a pet without an identity yet uses the old 100.
     var maxHp: Int { identity?.maxHp ?? 100 }
@@ -59,6 +61,65 @@ nonisolated extension Pet {
         encounter = try container.decodeIfPresent(PetEncounter.self, forKey: .encounter)
         illness = try container.decodeIfPresent(PetIllness.self, forKey: .illness)
         medicine = try container.decodeIfPresent(Int.self, forKey: .medicine) ?? 0
+        room = try container.decodeIfPresent(PetRoomRef.self, forKey: .room)
+    }
+}
+
+/// Names the room the pet lives in; its drawing is fetched with `petRoomArt(roomID:)`.
+nonisolated struct PetRoomRef: Codable, Equatable, Sendable {
+    var id: String
+    var title: String
+    var artKey: String
+}
+
+/// A room the owner's pets can live in, drawn by the pet's agent. Living there does `effects` to
+/// the pet once a day; `price` is what it cost, or costs while it is still in the shop.
+nonisolated struct PetRoom: Codable, Equatable, Identifiable, Sendable {
+    var id: String
+    var title: String
+    var description: String
+    var effects: Effects
+    var price: Int
+    var artKey: String
+    var owned: Bool
+
+    nonisolated struct Effects: Codable, Equatable, Sendable {
+        var happiness: Int
+        var hp: Int
+        var energy: Int
+    }
+
+    var ref: PetRoomRef { PetRoomRef(id: id, title: title, artKey: artKey) }
+}
+
+/// The rooms the owner has, the shop's offers, and the room the pet lives in.
+nonisolated struct PetRooms: Codable, Equatable, Sendable {
+    var activeRoomId: String?
+    var owned: [PetRoom]
+    var offers: [PetRoom]
+    /// When the shop puts up new rooms. Nil before it has offered any.
+    var offersRefreshAt: Date?
+    /// True while the pet's agent is designing and drawing the shop's next rooms.
+    var drawing: Bool
+}
+
+nonisolated struct PetRoomsResponse: Codable, Sendable { var rooms: PetRooms }
+
+/// A purchase or a move: the pet after it, and the rooms as they now stand.
+nonisolated struct PetRoomChangeResponse: Codable, Sendable {
+    var pet: Pet?
+    var rooms: PetRooms
+}
+
+nonisolated struct PurchasePetRoomRequest: Codable, Sendable { var roomId: String }
+
+/// `roomId` nil moves the pet back onto the plain page; it is sent as JSON `null`, not left out.
+nonisolated struct SetPetRoomRequest: Codable, Sendable {
+    var roomId: String?
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(roomId, forKey: .roomId)
     }
 }
 
@@ -323,6 +384,7 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
     static let encounter = PetEventKind(rawValue: "encounter")
     static let illness = PetEventKind(rawValue: "illness")
     static let medicine = PetEventKind(rawValue: "medicine")
+    static let room = PetEventKind(rawValue: "room")
 
     var displayName: String {
         switch self {
@@ -339,6 +401,7 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
         case .encounter: String(localized: "Needed you")
         case .illness: String(localized: "Health")
         case .medicine: String(localized: "Medicine")
+        case .room: String(localized: "Room")
         default: rawValue.capitalized
         }
     }

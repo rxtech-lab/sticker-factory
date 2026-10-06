@@ -438,6 +438,44 @@ extension ButtonStyle where Self == PosterButtonStyle {
     }
 }
 
+/// A square-cornered card row — the pill's press and shadow, for content too tall for a capsule.
+struct PosterCardButtonStyle: ButtonStyle {
+    var feedback: UIImpactFeedbackGenerator.FeedbackStyle = .light
+
+    func makeBody(configuration: Configuration) -> some View {
+        Card(configuration: configuration, feedback: feedback)
+    }
+
+    private struct Card: View {
+        let configuration: Configuration
+        let feedback: UIImpactFeedbackGenerator.FeedbackStyle
+        @Environment(\.isEnabled) private var isEnabled
+
+        private var pressed: Bool { configuration.isPressed }
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(isEnabled ? AppColors.ink : AppColors.faint)
+                .padding(14)
+                .posterSurface(
+                    cornerRadius: 0,
+                    fill: isEnabled ? AppColors.card : AppColors.paper,
+                    stroke: isEnabled ? AppColors.ink : AppColors.faint,
+                    offset: !isEnabled ? .zero : (pressed ? CGSize(width: 1, height: 1) : CGSize(width: 4, height: 5))
+                )
+                .offset(x: pressed ? 3 : 0, y: pressed ? 4 : 0)
+                .animation(.easeOut(duration: 0.12), value: pressed)
+                .contentShape(.rect)
+                .hapticPress(isEnabled && pressed, style: feedback)
+        }
+    }
+}
+
+extension ButtonStyle where Self == PosterCardButtonStyle {
+    /// A tappable card with square corners.
+    static var posterCard: PosterCardButtonStyle { .init() }
+}
+
 /// The undecorated button — a sticker tile, a thumbnail, a chevron that draws its own chrome.
 ///
 /// Stands in for `.plain` everywhere the app used it. It renders the label exactly as `.plain`

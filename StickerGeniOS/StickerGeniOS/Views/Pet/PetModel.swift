@@ -23,6 +23,10 @@ final class PetModel {
         case deciding
         /// Giving the ill pet its medicine.
         case givingMedicine
+        /// Buying a room from the shop and moving the pet in.
+        case buyingRoom(String)
+        /// Moving the pet into another room it has, or back onto the plain page.
+        case movingRoom
     }
 
     private(set) var pet: Pet?
@@ -61,6 +65,13 @@ final class PetModel {
     /// The pet's sticker in the pose it holds now, ready to play through. Nil until it has loaded,
     /// and for a sticker with nothing that moves; the still pose stands in between plays either way.
     private(set) var animation: PetAnimation?
+    /// The owner's rooms and the room shop. Nil until the Rooms tab has loaded them.
+    private(set) var rooms: PetRooms?
+    /// The drawing of the room the pet lives in, filling the tab behind it. Nil on the plain page,
+    /// and until it has loaded.
+    private(set) var roomArt: UIImage?
+    /// Names exactly what `roomArt` shows: `PetRoomRef.artKey`.
+    private(set) var roomArtKey: String?
     var errorMessage: String?
 
     let api: any StickerAPIClientProtocol
@@ -160,6 +171,7 @@ final class PetModel {
             publishToCompanions()
             Task { await refreshPose() }
             Task { await refreshWeatherArt() }
+            Task { await refreshRoomArt() }
         } catch {
             guard !StickerStore.isCancellation(error) else { return }
             hasLoadedPet = true
@@ -418,6 +430,7 @@ final class PetModel {
             brain.forgetLocalLine()
             await refreshPose()
             await refreshWeatherArt()
+            await refreshRoomArt()
             dismissPhoto()
             dismissItem()
             errorMessage = nil
@@ -490,6 +503,84 @@ final class PetModel {
         } catch {
             errorMessage = error.localizedDescription
             Haptics.failure()
+        }
+    }
+
+    /// Reads the owner's rooms and the shop; the shop may still be drawing its next rooms, which a
+    /// later call picks up. A failure keeps what was shown.
+    func refreshRooms() async {
+        do {
+            rooms = try await api.petRooms()
+        } catch {
+            guard !StickerStore.isCancellation(error) else { return }
+            if rooms == nil { errorMessage = error.localizedDescription }
+        }
+    }
+
+    /// Whether the owner has the gold `room` costs.
+    func canAfford(_ room: PetRoom) -> Bool { room.price <= (pet?.stats.gold ?? 0) }
+
+    /// Buys `room` and moves the pet in, covering the screen while it lands. Returns whether it did.
+    func purchaseRoom(_ room: PetRoom) async -> Bool {
+        guard activity == nil, !room.owned, canAfford(room) else { return false }
+        activity = .buyingRoom(room.title)
+        defer { activity = nil }
+        do {
+            apply(try await api.purchasePetRoom(roomID: room.id))
+            Haptics.success()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            Haptics.failure()
+            await refreshRooms()
+            return false
+        }
+    }
+
+    /// Moves the pet into `room`, one the owner has, or back onto the plain page with nil.
+    func moveIntoRoom(_ room: PetRoom?) async -> Bool {
+        guard activity == nil else { return false }
+        activity = .movingRoom
+        defer { activity = nil }
+        do {
+            apply(try await api.setPetRoom(roomID: room?.id))
+            Haptics.success()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            Haptics.failure()
+            return false
+        }
+    }
+
+    private func apply(_ change: PetRoomChangeResponse) {
+        pet = change.pet
+        rooms = change.rooms
+        errorMessage = nil
+        publishToCompanions()
+        // The pet notices its new home.
+        greetCount &+= 1
+        Task { await refreshRoomArt() }
+    }
+
+    /// Fetches the drawing of the pet's room when it changed. Off the plain page it clears at once;
+    /// a failed fetch keeps whatever room is up rather than flashing back to paper.
+    private func refreshRoomArt() async {
+        guard let room = pet?.room else {
+            roomArt = nil
+            roomArtKey = nil
+            return
+        }
+        guard room.artKey != roomArtKey || roomArt == nil else { return }
+        do {
+            let image = try await PetArtworkImageCache.shared.loadRoom(roomID: room.id, artKey: room.artKey, api: api)
+            // The pet moved again while this one loaded; that move's fetch will land it.
+            guard pet?.room?.artKey == room.artKey else { return }
+            roomArt = image
+            roomArtKey = room.artKey
+        } catch {
+            guard !StickerStore.isCancellation(error) else { return }
+            Self.log.error("pet room art failed to load: \(error.localizedDescription, privacy: .public)")
         }
     }
 
