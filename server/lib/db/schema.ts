@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  vector,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { PlaybackBundle } from "@/lib/services/playback";
@@ -20,7 +21,7 @@ import type { PlanV1 } from "@/lib/contracts/plan";
 import type { StickerDocument } from "@/lib/contracts/sticker";
 import type { StickerControlValues } from "@/lib/contracts/configuration";
 import type { PetAction } from "@/lib/ai/gateway-contracts";
-import { PET_THEME_CATEGORIES, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
+import { PET_MEMORY_CATEGORIES, PET_MEMORY_DIMENSIONS, PET_THEME_CATEGORIES, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
 type PetWeatherKind = (typeof PET_WEATHER_KINDS)[number];
 
 /**
@@ -617,6 +618,10 @@ export const userPets = pgTable("user_pets", {
   itemsContextKey: text("items_context_key"),
   itemsUpdatedAt: timestampColumn("items_updated_at"),
   itemsClaimedAt: timestampColumn("items_claimed_at"),
+  /** The owner's local date the shop last restocked on; it restocks once a day. */
+  itemsDate: text("items_date"),
+  /** Things bought from the item shop to use later, one row each, kept for this life until they expire. */
+  bagJson: jsonb("bag_json").$type<PetBagUnit[]>().notNull().default([]),
   interactionId: text("interaction_id"),
   /** Who this pet is: class, personality, preferences, and the world it was adopted into. */
   identityJson: jsonb("identity_json").$type<PetIdentityV1>(),
@@ -649,7 +654,7 @@ export const userPets = pgTable("user_pets", {
   lastEvolvedAt: timestampColumn("last_evolved_at"),
   /** What the pet is ill with, and since when. Null while it is well. */
   illnessJson: jsonb("illness_json").$type<PetIllness>(),
-  /** Doses of medicine the pet has, won from its daily encounters. One cures an illness. */
+  /** Doses of medicine the pet has, won from its daily encounters or bought. One cures an illness. */
   medicine: integer("medicine").notNull().default(0),
   /**
    * The room the pet lives in, bought from its shop: drawn behind it on the tab, and good for it
@@ -845,6 +850,8 @@ export type PetStoredContext = {
 };
 export type PetWalkGold = { date: string; steps: number };
 export type PetIllness = { name: string; since: string };
+/** One thing in the bag: the item as it was bought, and when it expires — null when it never does. */
+export type PetBagUnit = { id: string; item: PetAction; boughtAt: string; expiresAt: string | null };
 /**
  * Stored stats and effects. `gold` came later: diary lines from before it have none, and a pet's
  * own stats never do — gold is the owner's, in `user_wallets`.
@@ -861,7 +868,7 @@ export const petEvents = pgTable("pet_events", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   lifeId: text("life_id").notNull(),
   stickerId: text("sticker_id"),
-  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room", "theme"] }).notNull(),
+  kind: text("kind", { enum: ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room", "theme", "purchase", "friend"] }).notNull(),
   title: text("title").notNull(),
   detail: text("detail").notNull(),
   effectsJson: jsonb("effects_json").$type<PetStatsValues>().notNull(),
@@ -913,6 +920,43 @@ export type PetEncounterChoice = {
 export type PetEncounterRow = typeof petEncounters.$inferSelect;
 
 /**
+ * A friend the pet made on its own: a new controllable sticker its agent dreamed up from the
+ * weather, where its owner is, what it remembers and how it feels, then planned, built and
+ * published in the owner's library without them. Only one is being made at a time, and the owner
+ * is welcomed to each ready one once, when `seenAt` is still empty.
+ */
+export const PET_FRIEND_STATES = ["planning", "building", "publishing", "ready", "failed"] as const;
+export type PetFriendState = (typeof PET_FRIEND_STATES)[number];
+
+export const petFriends = pgTable("pet_friends", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  lifeId: text("life_id").notNull(),
+  /** The friend's sticker, written once the planning turn has a sticker to plan on. */
+  stickerId: text("sticker_id").references(() => stickers.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** What the friend looks like and how it moves, as the planner reads it. */
+  brief: text("brief").notNull(),
+  /** How the two met, in the pet's words. */
+  story: text("story").notNull(),
+  /** What the pet says when it introduces its friend. */
+  greeting: text("greeting").notNull(),
+  state: text("state", { enum: PET_FRIEND_STATES }).notNull(),
+  planJobId: text("plan_job_id"),
+  composeJobId: text("compose_job_id"),
+  error: text("error"),
+  seenAt: timestampColumn("seen_at"),
+  createdAt: timestampColumn("created_at").notNull(),
+  finishedAt: timestampColumn("finished_at"),
+}, (table) => [
+  index("pet_friends_user_idx").on(table.userId, table.createdAt),
+  uniqueIndex("pet_friends_active_idx").on(table.userId)
+    .where(sql`${table.state} IN ('planning', 'building', 'publishing')`),
+  check("pet_friends_state_check", sql`${table.state} IN (${oneOf(PET_FRIEND_STATES)})`),
+]);
+export type PetFriendRow = typeof petFriends.$inferSelect;
+
+/**
  * The weather drawn in a pet's own art style, for the Pet tab and the widget to stand it in.
  *
  * Keyed by the revision the pet plays rather than by owner: everyone whose pet is the same sticker
@@ -947,4 +991,33 @@ export const petWeatherArt = pgTable("pet_weather_art", {
   check("pet_weather_art_state_check", sql`${table.state} IN ('drawing', 'ready', 'failed')`),
 ]);
 export type PetWeatherArtRow = typeof petWeatherArt.$inferSelect;
+
+/**
+ * What a pet remembers. Its memory agent reads every moment with its owner — a talk, a gift, an
+ * action, a move — beside the memories nearest to it, and adds, rewrites or forgets notes here, so
+ * the pet keeps a small, current picture of its owner and its life rather than a log. Kept per
+ * life, like the diary: a new pet remembers nothing of the last one.
+ */
+/** The diary lines and talks a memory was drawn from, newest last, for "why does it think that?". */
+export type PetMemorySource = { kind: string; title: string; at: string };
+
+export const petMemories = pgTable("pet_memories", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  lifeId: text("life_id").notNull(),
+  content: text("content").notNull(),
+  category: text("category", { enum: PET_MEMORY_CATEGORIES }).notNull(),
+  /** 1 a passing detail, 5 something the pet should never forget; the least important go first. */
+  importance: integer("importance").notNull(),
+  embedding: vector("embedding", { dimensions: PET_MEMORY_DIMENSIONS }).notNull(),
+  sourcesJson: jsonb("sources_json").$type<PetMemorySource[]>().notNull(),
+  createdAt: timestampColumn("created_at").notNull(),
+  updatedAt: timestampColumn("updated_at").notNull(),
+}, (table) => [
+  index("pet_memories_life_idx").on(table.userId, table.lifeId, table.updatedAt),
+  index("pet_memories_embedding_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
+  check("pet_memories_category_check", sql`${table.category} IN (${oneOf(PET_MEMORY_CATEGORIES)})`),
+  check("pet_memories_importance_check", sql`${table.importance} BETWEEN 1 AND 5`),
+]);
+export type PetMemoryRow = typeof petMemories.$inferSelect;
 export type UserPetRow = typeof userPets.$inferSelect;

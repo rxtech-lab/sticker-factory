@@ -11,14 +11,20 @@ struct PetView: View {
     @State private var showingActions = false
     @State private var showingDiary = false
     @State private var showingIdentity = false
-    @State private var showingTalk = false
+    /// The talk popover is up: from the first tap on the mic until the words are sent or dropped.
+    @State private var isTalking = false
     /// The encounter on show in its half-height sheet.
     @State private var presentedEncounter: PetEncounter?
     /// The last encounter opened by itself, so one the owner put off is not pushed on them again;
     /// the toolbar's "Needs You" button brings it back.
     @State private var autoPresentedEncounterID: String?
+    /// The friend the pet made on its own, welcomed full screen with the rest of the tab put away.
+    @State private var welcomedFriend: PetFriend?
     @State private var confirmingMedicine = false
     @State private var confirmingRelease = false
+    @State private var healthStatusVisible = false
+    @State private var lastHealthStatus: HealthStatus?
+    @State private var healthStatusDismissalDate: Date?
     @State private var photoItem: PhotosPickerItem?
     /// The owner opened the app and the pet has not said hello yet.
     @State private var owesGreeting = true
@@ -166,17 +172,29 @@ struct PetView: View {
                 await model.loadPet()
                 model.syncWorldInBackground()
                 greetIfOwed()
+                presentFriendIfOwed()
                 presentEncounterIfOwed()
             }
-            .refreshable { await model.loadPet() }
             .onAppear {
                 isShown = true
                 greetIfOwed()
+                presentFriendIfOwed()
                 presentEncounterIfOwed()
+            }
+            // A new friend arrived — from its banner, a refresh, or the tab coming forward.
+            .onChange(of: model.pet?.friend?.id) { _, _ in presentFriendIfOwed() }
+            // A friend that arrived while a sheet or a change was up is welcomed once it is done.
+            .onChange(of: isPresentingSheet || model.activity != nil) { _, busy in
+                if !busy { presentFriendIfOwed() }
             }
             // A new encounter arrived — from its banner, a refresh, or the tab coming forward.
             .onChange(of: model.pet?.encounter?.id) { _, _ in presentEncounterIfOwed() }
-            .onDisappear { isShown = false }
+            .onDisappear {
+                isShown = false
+                healthStatusVisible = false
+            }
+            // Health changes get thirty seconds; tab visits and routine refreshes keep the deadline.
+            .task(id: healthStatus) { await showHealthStatusIfNeeded() }
             // A walk paid out by an upload the app made coming forward: the pet thanks its owner
             // for it while they are looking. Off screen, the next greeting picks it up.
             .onChange(of: model.context.pendingWalk) { _, walk in
@@ -243,10 +261,20 @@ struct PetView: View {
             .sheet(isPresented: $showingIdentity) {
                 PetIdentitySheet(model: model)
             }
-            .sheet(isPresented: $showingTalk) {
-                PetTalkSheet(model: model)
-                    .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
+            .fullScreenCover(item: $welcomedFriend) { friend in
+                PetFriendWelcomeView(
+                    friend: friend,
+                    petTitle: model.pet?.sticker.title ?? String(localized: "Your Pet"),
+                    onDone: {
+                        welcomedFriend = nil
+                        Task {
+                            await model.finishWelcoming(friend)
+                            presentEncounterIfOwed()
+                        }
+                    },
+                    petArt: { welcomePetArt },
+                    friendArt: { StickerThumbnail(sticker: friend.sticker, api: model.api, detail: .preview) }
+                )
             }
             .sheet(item: $presentedEncounter) { encounter in
                 PetEncounterSheet(model: model, encounter: encounter)
@@ -302,6 +330,29 @@ struct PetView: View {
         }
     }
 
+    /// The pet as the welcome shows it: the pose it holds now, or its sticker until it has one.
+    @ViewBuilder
+    private var welcomePetArt: some View {
+        if let pose = model.pose {
+            Image(uiImage: pose).resizable().interpolation(.high).scaledToFit()
+        } else if let pet = model.pet {
+            StickerThumbnail(sticker: pet.sticker, api: model.api, detail: .preview)
+        }
+    }
+
+    /// Welcomes the pet's new friend full screen once, when the tab is up and no sheet or change is
+    /// in the way. It covers the pet's hello rather than waiting on it, and comes before the day's
+    /// encounter, which waits until the welcome is closed.
+    private func presentFriendIfOwed() {
+        guard let friend = model.pet?.friend, welcomedFriend == nil, isShown, scenePhase == .active else { return }
+        Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            guard model.pet?.friend?.id == friend.id, welcomedFriend == nil, isShown, scenePhase == .active,
+                  !isPresentingSheet, model.activity == nil else { return }
+            welcomedFriend = friend
+        }
+    }
+
     /// Opens today's encounter at half height once per encounter, when the tab is up and nothing
     /// else is in the way. Waits a beat so the pet's hello lands first.
     private func presentEncounterIfOwed() {
@@ -310,7 +361,7 @@ struct PetView: View {
         Task {
             try? await Task.sleep(for: .milliseconds(900))
             guard model.pet?.encounter?.id == encounter.id, encounter.id != autoPresentedEncounterID,
-                  isShown, scenePhase == .active, !isPresentingSheet,
+                  isShown, scenePhase == .active, !isPresentingSheet, model.pet?.friend == nil,
                   model.activity == nil, !model.isAnswering else { return }
             autoPresentedEncounterID = encounter.id
             Haptics.warning()
@@ -332,7 +383,8 @@ struct PetView: View {
 
     /// A sheet shows its own errors and progress; the tab's would sit behind it, unseen.
     private var isPresentingSheet: Bool {
-        showingPicker || showingActions || showingDiary || showingIdentity || showingTalk || presentedEncounter != nil
+        showingPicker || showingActions || showingDiary || showingIdentity || isTalking || presentedEncounter != nil
+            || welcomedFriend != nil
     }
 
     @ViewBuilder
@@ -420,14 +472,14 @@ struct PetView: View {
                         }
                         .padding()
                         .animation(.snappy(duration: 0.35), value: boardSpace == nil)
-                        // Exactly one screen tall, so the pet grows into the room left over; the
-                        // scroll view stays for pull to refresh.
+                        // Exactly one screen tall, so the pet grows into the room left over.
                         .containerRelativeFrame(.vertical)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { portraitFrame = $0 }
                     }
                 }
                 .animation(.snappy(duration: 0.4), value: pet.signals?.weather)
             }
+            .scrollDisabled(true)
             // The actions stay put at the bottom, above the tab bar, unless they sit in a
             // column beside the pet.
             .safeAreaInset(edge: .bottom) {
@@ -457,42 +509,42 @@ struct PetView: View {
             ? AnyLayout(VStackLayout(spacing: 12))
             : AnyLayout(HStackLayout(spacing: 12))
         return layout {
-            Button {
-                Haptics.tap(.light)
-                showingActions = true
-            } label: {
-                Label("Spend Time Together", systemImage: "pawprint.fill")
-                    .frame(maxWidth: .infinity)
+            // Talking takes the whole row: Cancel and a full-width Send.
+            if !isTalking {
+                Button {
+                    Haptics.tap(.light)
+                    showingActions = true
+                } label: {
+                    Label("Spend Time Together", systemImage: "pawprint.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.poster)
+                .disabled(model.isAnswering)
+                .accessibilityIdentifier("pet-actions-button")
+                .transition(.opacity)
             }
-            .buttonStyle(.poster)
-            .disabled(model.isAnswering)
-            .accessibilityIdentifier("pet-actions-button")
 
             HStack(spacing: 12) {
                 // Icon only, so it fits beside the main action without truncating either.
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    Image(systemName: "photo.on.rectangle")
-                        .frame(maxWidth: isLandscape ? .infinity : nil)
+                if !isTalking {
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        Image(systemName: "photo.on.rectangle")
+                            .frame(maxWidth: isLandscape ? .infinity : nil)
+                    }
+                    .buttonStyle(.posterSecondary)
+                    .disabled(model.isAnswering || model.activity != nil)
+                    .accessibilityLabel(Text("Show a Picture"))
+                    .accessibilityIdentifier("pet-photo-button")
+                    .transition(.opacity)
                 }
-                .buttonStyle(.posterSecondary)
-                .disabled(model.isAnswering || model.activity != nil)
-                .accessibilityLabel(Text("Show a Picture"))
-                .accessibilityIdentifier("pet-photo-button")
 
-                // Talking out loud: written down on the phone, answered by the pet on the tab.
-                Button {
-                    Haptics.tap(.light)
-                    showingTalk = true
-                } label: {
-                    Image(systemName: "mic.fill")
-                        .frame(maxWidth: isLandscape ? .infinity : nil)
-                }
-                .buttonStyle(.posterSecondary)
-                .disabled(model.isAnswering || model.activity != nil)
-                .accessibilityLabel(Text("Talk to Your Pet"))
-                .accessibilityIdentifier("pet-talk-button")
+                // Talking out loud: written down on the phone, answered by the pet on the tab. The
+                // popover hangs above the mic; the same button stops listening and sends.
+                PetTalkButton(model: model, isTalking: $isTalking, fillsWidth: isLandscape)
+                    .zIndex(1)
             }
         }
+        .animation(.snappy(duration: 0.25), value: isTalking)
     }
 
     /// The clock, weather board and status board drawn into the room or place on screen.
@@ -687,7 +739,39 @@ struct PetView: View {
         }
     }
 
-    private func hasHealthRow(_ pet: Pet) -> Bool { pet.illness != nil || pet.medicine > 0 }
+    private struct HealthStatus: Equatable {
+        let stickerID: String
+        let illness: PetIllness?
+        let medicine: Int
+    }
+
+    private var healthStatus: HealthStatus? {
+        guard let pet = model.pet, pet.illness != nil || pet.medicine > 0 else { return nil }
+        // selectedAt is the server row's updatedAt, so context updates must not replay this card.
+        return HealthStatus(stickerID: pet.sticker.id, illness: pet.illness, medicine: pet.medicine)
+    }
+
+    private func showHealthStatusIfNeeded() async {
+        if healthStatus != lastHealthStatus {
+            lastHealthStatus = healthStatus
+            healthStatusDismissalDate = healthStatus == nil ? nil : Date.now.addingTimeInterval(30)
+        }
+        let remaining = healthStatusDismissalDate?.timeIntervalSinceNow ?? 0
+        setHealthStatusVisible(remaining > 0)
+        guard remaining > 0 else { return }
+        do { try await Task.sleep(for: .seconds(remaining)) } catch { return }
+        withAnimation(.snappy(duration: 0.3)) { setHealthStatusVisible(false) }
+    }
+
+    private func setHealthStatusVisible(_ visible: Bool) {
+        guard healthStatusVisible != visible else { return }
+        healthStatusVisible = visible
+        if isShown, !isPresentingSheet { Haptics.tap(.soft) }
+    }
+
+    private func hasHealthRow(_ pet: Pet) -> Bool {
+        healthStatusVisible && (pet.illness != nil || pet.medicine > 0)
+    }
 
     /// The pet's illness and medicine, with the button to give it a dose.
     private func healthRow(_ pet: Pet) -> some View {
@@ -793,79 +877,6 @@ private struct BubbleTail: Shape {
     }
 }
 
-/// How much gold the pet has, as a coin and a number. Sits beside the pet and atop its actions.
-struct PetGoldBadge: View {
-    let gold: Int
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "dollarsign.circle.fill").foregroundStyle(.yellow)
-            Text(verbatim: "\(gold)")
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(gold)))
-        }
-        .font(.system(size: 15, weight: .heavy, design: .monospaced))
-        .foregroundStyle(AppColors.ink)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color.yellow.opacity(0.18), in: .capsule)
-        .overlay { Capsule().strokeBorder(AppColors.ink, lineWidth: 2) }
-        .animation(.snappy(duration: 0.45), value: gold)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(gold) gold"))
-        .accessibilityIdentifier("pet-gold")
-    }
-}
-
-/// What an action costs or earns in gold, as a small signed chip.
-struct PetGoldChip: View {
-    let change: Int
-
-    var body: some View {
-        HStack(spacing: 2) {
-            Image(systemName: "dollarsign.circle.fill").foregroundStyle(.yellow)
-            Text(verbatim: change > 0 ? "+\(change)" : "\(change)")
-        }
-        .font(.system(size: 12, weight: .bold, design: .monospaced))
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color.yellow.opacity(0.18), in: .capsule)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(change > 0 ? Text("Earns \(change) gold") : Text("Costs \(-change) gold"))
-    }
-}
-
-/// How one change moves each stat, as small signed chips. Unchanged stats are left out. The diary
-/// shows every number; the actions sheet shows only gold.
-struct PetEffectsRow: View {
-    let effects: PetActionEffects
-
-    var body: some View {
-        HStack(spacing: 6) {
-            chip(effects.happiness, symbol: "heart.fill", color: .pink, name: "Happiness")
-            chip(effects.hp, symbol: "cross.vial.fill", color: .red, name: "HP")
-            chip(effects.energy, symbol: "bolt.fill", color: .orange, name: "Energy")
-            if effects.gold != 0 { PetGoldChip(change: effects.gold) }
-        }
-        .font(.system(size: 12, weight: .bold, design: .monospaced))
-    }
-
-    @ViewBuilder
-    private func chip(_ value: Int, symbol: String, color: Color, name: LocalizedStringKey) -> some View {
-        if value != 0 {
-            HStack(spacing: 2) {
-                Image(systemName: symbol).foregroundStyle(color)
-                Text(value > 0 ? "+\(value)" : "\(value)")
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.12), in: .capsule)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(name) + Text(verbatim: " \(value > 0 ? "+" : "")\(value)"))
-        }
-    }
-}
-
 /// The picture the pet was just shown, in a framed bubble with a tail pointing left at the pet.
 private struct PetPhotoBubble: View {
     /// The framed picture's width: the photo plus its padding.
@@ -917,6 +928,8 @@ struct PetActivityOverlay: View {
                     case .findingWeather: Text("Finding the weather where you are…")
                     case .deciding: Text("Seeing how it turns out…")
                     case .givingMedicine: Text("Giving your pet its medicine…")
+                    case .buyingMedicine: Text("Buying medicine…")
+                    case .buyingItem(let title): Text("Buying \(title)…")
                     case .buyingRoom(let title): Text("Moving into \(title)…")
                     case .movingRoom: Text("Moving your pet…")
                     case .goingTo(let title): Text("Heading to \(title)…")

@@ -185,3 +185,58 @@ export async function notifyPetEncounter(
     console.error("[push] notifyPetEncounter failed", { userId, error });
   }
 }
+
+/** What the app reads to open the Pet tab, where the new friend is welcomed full screen. */
+export const PET_FRIEND_PUSH_KIND = "pet-friend";
+
+export function petFriendPayload(alert: { title: string; body: string }, friendId: string): Record<string, unknown> {
+  return {
+    aps: { alert, sound: "default", "content-available": 1, "thread-id": "pet" },
+    kind: PET_FRIEND_PUSH_KIND,
+    friendId,
+  };
+}
+
+/**
+ * Tells the owner their pet made a new friend, in the pet's own words. A banner, like growing: it
+ * happened while they were away, and there is someone new waiting to be met. Never throws.
+ */
+export async function notifyPetFriend(
+  db: Database,
+  userId: string,
+  friend: { id: string; title: string; body: string },
+  options: {
+    config?: ApnsConfig;
+    send?: (pushes: ApnsPush[], config: ApnsConfig) => Promise<ApnsResult[]>;
+  } = {},
+): Promise<void> {
+  try {
+    const config = options.config ?? getApnsConfig();
+    if (!config) {
+      traceEvent("push:skipped", { userId, kind: PET_FRIEND_PUSH_KIND, reason: "APNS_NOT_CONFIGURED" });
+      return;
+    }
+    const devices = await listActiveDeviceTokens(db, userId);
+    if (devices.length === 0) return;
+    const payload = petFriendPayload({ title: friend.title, body: friend.body }, friend.id);
+    const results = await (options.send ?? sendPushes)(devices.map((device) => ({
+      token: device.token,
+      environment: device.environment,
+      payload,
+      collapseId: `pet-friend-${userId}`,
+      pushType: "alert",
+      priority: "10",
+    })), config);
+    for (const result of results) {
+      if (result.permanentlyGone) await disableDeviceToken(db, result.token, result.reason ?? `HTTP ${result.status}`);
+    }
+    traceEvent("push:sent", {
+      userId,
+      kind: PET_FRIEND_PUSH_KIND,
+      delivered: results.filter((result) => result.ok).length,
+      failed: results.filter((result) => !result.ok).map((result) => result.reason ?? result.status),
+    });
+  } catch (error) {
+    console.error("[push] notifyPetFriend failed", { userId, error });
+  }
+}

@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/http/errors";
 import { describeError } from "@/lib/observability/trace";
 import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
 import { petLog, petRandom } from "@/lib/pets/log";
+import { isMemorable, queuePetMemory } from "@/lib/services/pet-memory";
 import { ATTENTION_KINDS } from "@/lib/pets/neglect";
 import { EMPTY_SIGNALS, localDate } from "@/lib/pets/signals";
 import { dailyGold } from "@/lib/pets/daily-gold";
@@ -257,6 +258,9 @@ export async function commitPetChange(
         createdAt: new Date(at + index),
       })));
     }
+    // Whatever happened, the pet's memory agent reads it once the owner has their answer.
+    queuePetMemory(db, userId, input.lifeId, lines.flatMap(({ change }, index) => isMemorable(change)
+      ? [{ kind: change.kind, title: change.title, detail: change.detail, at: new Date(at + index).toISOString() }] : []));
     for (const { change, statsBefore, statsAfter } of lines) {
       petLog("stats:changed", { userId, lifeId: input.lifeId, kind: change.kind, title: change.title,
         effects: change.effects, before: statsBefore, after: statsAfter, attempt });

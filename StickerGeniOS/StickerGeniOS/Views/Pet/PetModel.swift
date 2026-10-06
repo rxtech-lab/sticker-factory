@@ -23,6 +23,10 @@ final class PetModel {
         case deciding
         /// Giving the ill pet its medicine.
         case givingMedicine
+        /// Buying a dose of medicine from the item shop.
+        case buyingMedicine
+        /// Buying food or a ticket from the item shop into the bag.
+        case buyingItem(String)
         /// Buying a room from the shop and moving the pet in.
         case buyingRoom(String)
         /// Moving the pet into another room it has, or back onto the plain page.
@@ -525,8 +529,9 @@ final class PetModel {
     var isAnswering: Bool { pendingAction != nil || isLookingAtPhoto || isHearingOwner }
 
     /// Has the pet answer `words` its owner said aloud, without waiting for the reply, so the talk
-    /// sheet can close at once. The answer is thought of on the phone and changes nothing on the
-    /// server. Returns whether the pet is answering.
+    /// sheet can close at once. The answer is thought of on the phone, reminded of what the pet
+    /// remembers that bears on the words; the server hears of the talk only for the pet to remember
+    /// it. Returns whether the pet is answering.
     @discardableResult
     func talk(_ words: String) -> Bool {
         let words = words.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -537,10 +542,36 @@ final class PetModel {
         dismissItem()
         Task {
             defer { isHearingOwner = false }
-            await brain.hear(words, pet: pet)
+            let memories = await recall(about: words)
+            let reply = await brain.hear(words, pet: pet, memories: memories)
             Haptics.success()
+            // Remembering is the server's business; a talk it never hears of is only forgotten.
+            let api = api, log = Self.log
+            Task.detached {
+                do {
+                    try await api.rememberPetTalk(words: words, reply: reply)
+                } catch {
+                    log.error("Could not tell the pet's memory about a talk: \(error.localizedDescription, privacy: .public)")
+                }
+            }
         }
         return true
+    }
+
+    /// What the pet remembers that bears on `words`, or nothing when the server is slow or away:
+    /// the pet would rather answer at once than remember.
+    private func recall(about words: String) async -> [PetMemory] {
+        let api = api
+        return await withTaskGroup(of: [PetMemory]?.self) { group in
+            group.addTask { try? await api.petMemories(about: words) }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(2.5))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? []
+        }
     }
 
     /// Picks `choice` for the pet's open encounter, covering the screen while the server decides what
@@ -568,6 +599,18 @@ final class PetModel {
         }
     }
 
+    /// The owner has met the pet's new friend, so it is not welcomed again. Cleared on the tab at
+    /// once — the welcome is already closing — and a call that fails only means the friend says
+    /// hello once more next time.
+    func finishWelcoming(_ friend: PetFriend) async {
+        if pet?.friend?.id == friend.id { pet?.friend = nil }
+        do {
+            if let updated = try await api.markPetFriendSeen(friendID: friend.id) { pet = updated }
+        } catch {
+            Self.log.error("Could not mark friend \(friend.id, privacy: .public) seen: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Gives the ill pet a dose of medicine, covering the screen while it lands.
     func giveMedicine() async {
         guard activity == nil, !isAnswering, pet?.illness != nil, (pet?.medicine ?? 0) > 0 else { return }
@@ -583,6 +626,57 @@ final class PetModel {
             errorMessage = error.localizedDescription
             Haptics.failure()
         }
+    }
+
+    /// Whether the owner has the gold a dose of medicine costs. False when the server does not sell it.
+    var canAffordMedicine: Bool {
+        guard let price = pet?.medicinePrice else { return false }
+        return price <= (pet?.stats.gold ?? 0)
+    }
+
+    /// Buys a dose of medicine from the item shop, covering the screen while it lands. It is kept
+    /// whether or not the pet is ill. Returns whether it was bought.
+    @discardableResult
+    func buyMedicine() async -> Bool {
+        guard activity == nil, !isAnswering, canAffordMedicine else { return false }
+        activity = .buyingMedicine
+        defer { activity = nil }
+        do {
+            pet = try await api.purchasePetMedicine()
+            errorMessage = nil
+            publishToCompanions()
+            Haptics.success()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            Haptics.failure()
+            return false
+        }
+    }
+
+    /// Buys `item` from the shop into the bag to use later, covering the screen while it lands.
+    /// Returns whether it was bought.
+    @discardableResult
+    func buyItem(_ item: PetAction) async -> Bool {
+        guard activity == nil, !isAnswering, canAfford(item) else { return false }
+        activity = .buyingItem(item.title)
+        defer { activity = nil }
+        do {
+            pet = try await api.purchasePetItem(itemID: item.id)
+            errorMessage = nil
+            publishToCompanions()
+            Haptics.success()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            Haptics.failure()
+            return false
+        }
+    }
+
+    /// How many of `item` the bag holds.
+    func bagCount(of item: PetAction) -> Int {
+        pet?.bag.first { $0.id == item.id }?.count ?? 0
     }
 
     /// Reads the owner's rooms and the shop; the shop may still be drawing its next rooms, which a
@@ -731,20 +825,17 @@ final class PetModel {
         pet = latest
     }
 
-    /// Carries the selected artwork out of the sheet, even when the pet's next reply changes its items.
+    /// Uses `item` — bought from the shop and used at once, or one from the bag, already paid for —
+    /// holding its picture up on the tab while the pet answers. The picture is fetched by the item's
+    /// id, so it survives the shelf changing under the reply. Returns whether it was sent.
     @discardableResult
-    func useItem(at index: Int, image: UIImage?) -> Bool {
-        guard let items = pet?.items, items.actions.indices.contains(index) else { return false }
-        let item = UsedItem(title: items.actions[index].title, image: image)
-        guard interact(items.actions[index], item: item) else { return false }
-        if image == nil {
-            Task {
-                guard let image = try? await PetArtworkImageCache.shared.load(
-                    artKey: items.artKey, index: index, size: 256, api: api
-                ), usedItem?.id == item.id,
-                      pet?.items?.artKey == items.artKey else { return }
-                usedItem?.image = image
-            }
+    func useItem(_ item: PetAction, fromBag: Bool = false) -> Bool {
+        let used = UsedItem(title: item.title, image: nil)
+        guard interact(item, item: used, fromBag: fromBag) else { return false }
+        Task {
+            guard let image = try? await PetArtworkImageCache.shared.loadItem(itemID: item.id, size: 256, api: api),
+                  usedItem?.id == used.id else { return }
+            usedItem?.image = image
         }
         return true
     }
@@ -834,8 +925,9 @@ final class PetModel {
     /// Sends `action` without waiting for the reply, so the actions sheet can close at once.
     /// Returns whether the action was started.
     @discardableResult
-    func interact(_ action: PetAction, item: UsedItem? = nil) -> Bool {
-        guard activity == nil, !isAnswering, pet != nil, canAfford(action) else { return false }
+    func interact(_ action: PetAction, item: UsedItem? = nil, fromBag: Bool = false) -> Bool {
+        // Something from the bag is already paid for.
+        guard activity == nil, !isAnswering, pet != nil, fromBag || canAfford(action) else { return false }
         pendingAction = action
         dismissItem()
         usedItem = item
@@ -849,7 +941,7 @@ final class PetModel {
                 expireItem(item)
             }
             do {
-                pet = try await brain.answer(action)
+                pet = try await brain.answer(action, fromBag: fromBag)
                 errorMessage = nil
                 publishToCompanions()
                 // The thinking bubble stays up until the new pose is in, so line and pose land together.

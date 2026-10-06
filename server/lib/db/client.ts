@@ -115,8 +115,10 @@ async function configureWebSockets(): Promise<void> {
  * server starts.
  */
 async function createPgliteDatabase(url: string): Promise<DatabaseHandle> {
-  const [{ PGlite }, { drizzle: drizzlePglite }, { migrate }] = await Promise.all([
+  const [{ PGlite }, { vector }, { drizzle: drizzlePglite }, { migrate }] = await Promise.all([
     import("@electric-sql/pglite"),
+    // pgvector, which Neon has built in, for the pet's memories.
+    import("@electric-sql/pglite-pgvector"),
     import("drizzle-orm/pglite"),
     import("drizzle-orm/pglite/migrator"),
   ]);
@@ -130,7 +132,7 @@ async function createPgliteDatabase(url: string): Promise<DatabaseHandle> {
   const clients = globalPglite.stickerFactoryPglite ??= new Map<string, InstanceType<typeof PGlite>>();
   const client = dataDir && clients.has(dataDir)
     ? clients.get(dataDir)!
-    : instrumentQuery(new PGlite(dataDir || undefined));
+    : instrumentQuery(new PGlite({ dataDir: dataDir || undefined, extensions: { vector } }));
   if (dataDir) clients.set(dataDir, client);
   const db = drizzlePglite(client, { schema });
   return {

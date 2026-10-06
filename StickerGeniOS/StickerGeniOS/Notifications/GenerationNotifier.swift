@@ -104,7 +104,8 @@ extension GenerationNotifier: UNUserNotificationCenterDelegate {
     ) {
         // Read the payload out here: `userInfo` is not `Sendable`, but the id inside it is.
         let stickerID = response.notification.request.content.userInfo[Self.stickerIDKey] as? String
-        let isPet = ["pet-evolved", "pet-encounter"].contains(response.notification.request.content.userInfo["kind"] as? String)
+        let kind = response.notification.request.content.userInfo["kind"] as? String
+        let isPet = ["pet-evolved", "pet-encounter", "pet-friend"].contains(kind)
         let completion = NotificationResponseCompletion(completionHandler)
         Task { @MainActor [weak self] in
             if isPet { self?.onOpenPet?() } else if let stickerID { self?.onOpenSticker?(stickerID) }

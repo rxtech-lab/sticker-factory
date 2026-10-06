@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
    * than bundled. PGlite is only reached when `DATABASE_URL` names a `pglite:` database, which in
    * practice means the Playwright run.
    */
-  serverExternalPackages: ["@electric-sql/pglite", "ws"],
+  serverExternalPackages: ["@electric-sql/pglite", "@electric-sql/pglite-pgvector", "ws"],
   outputFileTracingIncludes: { "/*": ["./lib/subscription/certificates/*.cer", "./public/images/creation/**/*.webp"] },
 };
 

@@ -89,6 +89,13 @@ actor PetArtworkImageCache {
         }
     }
 
+    /// The picture of an item on the shelf or in the bag. Keyed by the item's id, whose picture never changes.
+    func loadItem(itemID: String, size: Int, api: StickerAPIClientProtocol) async throws -> UIImage {
+        try await load(key: "item.\(itemID).\(size)", cache: cache, options: options) {
+            try await api.petItemArt(itemID: itemID, size: size)
+        }
+    }
+
     func loadWeather(pet: Pet, artKey: String, size: Int, api: StickerAPIClientProtocol) async throws -> UIImage {
         await prepareWeather(for: pet)
         let scope = Self.scope(pet)

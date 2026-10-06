@@ -8,9 +8,10 @@ import { configurationReviewSelections } from "@/lib/contracts/configuration";
 import { PlanV1Schema, reusableAssetIds, type PlanV1 } from "@/lib/contracts/plan";
 import { type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { normalizeTransparentPng } from "@/lib/storage/r2";
+import { PET_MEMORY_DIMENSIONS } from "@/lib/contracts/api";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetRoom, AiPetRoomArtInput, AiPetSharedContentContext, AiPetTheme, AiPetThemeArtInput, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEncounter, AiPetItem, AiPetItemsContext, AiPetEncounterContext, AiPetEventContext, AiPetFriend, AiPetFriendContext, AiPetInteractionContext, AiPetMemoryContext, AiPetMemoryOperation, AiPetPhotoContext, AiPetRoom, AiPetRoomArtInput, AiPetSharedContentContext, AiPetTheme, AiPetThemeArtInput, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -456,11 +457,21 @@ export class MockAiProvider implements AiProvider {
       { title: `Rest with ${input.petTitle}`, description: `Take a break beside ${input.petTitle}.`, effects: { happiness: 2, hp: 8, energy: 20, gold: 0 } },
     ];
   }
-  async generatePetItems(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]> {
-    return (await this.generatePetActions(input)).slice(0, 2).concat(
-      { title: `Weather gift for ${input.petTitle}`, description: "A gift inspired by today's weather.", effects: { happiness: 4, hp: 0, energy: -3, gold: -1 } },
-      { title: `Star tonic for ${input.petTitle}`, description: "A sparkling tonic that wakes a tired pet right up.", effects: { happiness: 3, hp: 0, energy: 40, gold: -35 } },
-    );
+  async generatePetItems(input: AiPetItemsContext): Promise<AiPetItem[]> {
+    const items: AiPetItem[] = [
+      { title: `Bubble wand for ${input.petTitle}`, description: `Blow bubbles for ${input.petTitle} to chase.`,
+        effects: { happiness: 8, hp: 0, energy: -3, gold: 0 }, kind: "toy", shelfHours: 30, keepsHours: 36 },
+      { title: `Rubber ball for ${input.petTitle}`, description: `A bouncy ball to play fetch with ${input.petTitle}.`,
+        effects: { happiness: 10, hp: 0, energy: -8, gold: -5 }, kind: "toy", shelfHours: 96, keepsHours: null },
+      { title: `Weather snack for ${input.petTitle}`, description: "A treat inspired by today's weather.",
+        effects: { happiness: 4, hp: 2, energy: -3, gold: -4 }, kind: "food", shelfHours: 20, keepsHours: 10 },
+      { title: `Star tonic for ${input.petTitle}`, description: "A sparkling tonic that wakes a tired pet right up.",
+        effects: { happiness: 3, hp: 0, energy: 40, gold: -35 }, kind: "food", shelfHours: 72, keepsHours: 240 },
+      { title: `Day ticket for ${input.petTitle}`, description: `A ticket for an outing with ${input.petTitle}.`,
+        effects: { happiness: 8, hp: 0, energy: -6, gold: -10 }, kind: "ticket", shelfHours: 48, keepsHours: 120 },
+    ];
+    const kept = new Set(input.keeping.map((item) => item.title));
+    return items.filter((item) => !kept.has(item.title)).slice(0, input.maxCount);
   }
   async generatePetRooms(input: AiPetActionsContext): Promise<AiPetRoom[]> {
     return [
@@ -521,7 +532,7 @@ export class MockAiProvider implements AiProvider {
   async generatePetPersona(input: AiPetPersonaContext): Promise<AiPetPersona> {
     return { class: "explorer", personality: `Curious ${input.petTitle}`, likes: ["walks"], dislikes: ["thunder"], favoriteWeather: "sunny" };
   }
-  async searchPetHeadlines(_input: AiPetHeadlinesContext): Promise<string[]> {
+  async searchPetHeadlines(): Promise<string[]> {
     return ["Local park opens a new dog run"];
   }
   async narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus> {
@@ -541,7 +552,43 @@ export class MockAiProvider implements AiProvider {
       ],
     };
   }
+  async meetPetFriend(input: AiPetFriendContext): Promise<AiPetFriend> {
+    return {
+      name: "Puddle",
+      brief: "A round little raindrop sprite with big shiny eyes and a tiny leaf umbrella, who bounces when happy.",
+      story: `${input.petTitle} met Puddle splashing by the window.`,
+      greeting: "This is Puddle! We splashed together all afternoon.",
+    };
+  }
   async noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction> {
     return { react: true, values: {}, caption: `${input.petTitle} likes ${input.made.title}`, effects: { happiness: 2, hp: 0, energy: 0 } };
   }
+  /**
+   * A bag of words, hashed into the embedding's width and normalized: texts sharing words land
+   * close together, so finding memories by meaning works in tests without a model.
+   */
+  async embedPetMemories(values: string[]): Promise<number[][]> {
+    return values.map((value) => {
+      const vector = new Array<number>(PET_MEMORY_DIMENSIONS).fill(0);
+      for (const word of value.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) {
+        let hash = 0;
+        for (const char of word) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
+        vector[hash % PET_MEMORY_DIMENSIONS] += 1;
+      }
+      const length = Math.hypot(...vector);
+      // A text with no words still needs a direction for cosine distance to be defined.
+      return length ? vector.map((entry) => entry / length) : vector.map((_, index) => (index === 0 ? 1 : 0));
+    });
+  }
+  /** One memory per moment; a moment it already remembers word for word becomes more important instead. */
+  async updatePetMemory(input: AiPetMemoryContext): Promise<AiPetMemoryOperation[]> {
+    return input.moments.map((moment): AiPetMemoryOperation => {
+      const content = `${moment.title}: ${moment.detail}`.slice(0, 200);
+      const known = input.memories.find((memory) => memory.content === content);
+      return known
+        ? { op: "update", id: known.id, content, category: known.category, importance: Math.min(5, known.importance + 1) }
+        : { op: "add", content, category: moment.kind === "talk" ? "owner" : "experience", importance: 2 };
+    });
+  }
+
 }

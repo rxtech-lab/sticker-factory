@@ -52,9 +52,10 @@ final class PetBrain {
 
     // MARK: Remote: the pet's agent
 
-    /// Has the pet's agent answer `action`. Returns the pet as it is afterwards.
-    func answer(_ action: PetAction) async throws -> Pet? {
-        let pet = try await api.interactWithPet(action)
+    /// Has the pet's agent answer `action`, or one of it used from the bag when `fromBag`. Returns
+    /// the pet as it is afterwards.
+    func answer(_ action: PetAction, fromBag: Bool = false) async throws -> Pet? {
+        let pet = fromBag ? try await api.useBagItem(action) : try await api.interactWithPet(action)
         forgetLocalLine()
         return pet
     }
@@ -157,28 +158,33 @@ final class PetBrain {
     /// Has the pet answer `words` its owner said aloud, thought of on the phone, and waits for the
     /// answer so the thinking bubble can stay up until it lands. Without the on-device model, or when
     /// it fails, the pet answers from its mood instead: it always says something back.
-    func hear(_ words: String, pet: Pet) async {
+    /// Answers `words`, reminded of `memories` the pet has that bear on them, and returns what it said.
+    @discardableResult
+    func hear(_ words: String, pet: Pet, memories: [PetMemory] = []) async -> String {
         thinking?.cancel()
         thinking = nil
         lastReplyAt = .now
         let fallback = Self.heardLine(for: PetMood(stats: pet.stats, maxHp: pet.maxHp))
         guard canThinkOnDevice else {
             show(LocalLine(text: fallback))
-            return
+            return fallback
         }
         do {
-            let session = LanguageModelSession(model: model, instructions: Self.instructions(for: pet))
+            let session = LanguageModelSession(model: model, instructions: Self.instructions(for: pet, memories: memories))
             let reply = try await session.respond(
                 to: Self.hearingPrompt(words),
                 generating: PetTouchReply.self,
                 options: GenerationOptions(temperature: 0.9, maximumResponseTokens: 80)
             ).content
             let line = reply.line.trimmingCharacters(in: .whitespacesAndNewlines)
-            show(LocalLine(text: line.isEmpty ? fallback : line))
+            let said = line.isEmpty ? fallback : line
+            show(LocalLine(text: said))
             if reply.playsAnimation { playRequest &+= 1 }
+            return said
         } catch {
             Self.log.error("On-device reply to speech failed: \(error.localizedDescription, privacy: .public)")
             show(LocalLine(text: fallback))
+            return fallback
         }
     }
 
@@ -317,7 +323,7 @@ final class PetBrain {
 
     // MARK: Prompts
 
-    static func instructions(for pet: Pet) -> String {
+    static func instructions(for pet: Pet, memories: [PetMemory] = []) -> String {
         let mood = PetMood(stats: pet.stats, maxHp: pet.maxHp)
         var lines = [
             "You are \(pet.sticker.title), a small virtual pet living in a sticker app.",
@@ -334,6 +340,10 @@ final class PetBrain {
         if let caption = pet.status?.caption(at: .now), !caption.isEmpty {
             lines.append("The last thing you said was: \(caption)")
             lines.append("Reply in the same language as that line.")
+        }
+        if !memories.isEmpty {
+            lines.append("Things you remember about your owner and your life together; bring one up when it fits, never invent more:")
+            lines.append(contentsOf: memories.map { "- \($0.content)" })
         }
         return lines.joined(separator: "\n")
     }

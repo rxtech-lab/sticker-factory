@@ -860,6 +860,24 @@ export const PET_ITEM_RESTORE_ENERGY_MIN = 30;
 export const PET_ITEM_RESTORE_ENERGY_MAX = 50;
 export const PET_ITEM_RESTORE_PRICE_MIN = 30;
 export const PET_ITEM_RESTORE_PRICE_MAX = PET_ACTION_GOLD_MAX;
+/** What an item is. It guides how long the agent lets it keep. Items drawn before kinds existed are toys. */
+export const PET_ITEM_KINDS = ["food", "ticket", "toy"] as const;
+/** The most items the shop holds at once. */
+export const PET_SHOP_MAX = 8;
+/** How many items the first stock brings, and the most a daily restock adds. */
+export const PET_SHOP_FIRST_STOCK_MIN = 3;
+export const PET_SHOP_FIRST_STOCK_MAX = 4;
+export const PET_SHOP_RESTOCK_MAX = 3;
+/** How long, in hours, the agent may leave an item on the shelf before it goes. */
+export const PET_ITEM_SHELF_HOURS_MIN = 12;
+export const PET_ITEM_SHELF_HOURS_MAX = 168;
+/** How long, in hours, a bought item may keep in the bag before it expires, when it expires at all. */
+export const PET_ITEM_KEEP_HOURS_MIN = 6;
+export const PET_ITEM_KEEP_HOURS_MAX = 720;
+/** The most of any one thing, medicine included, the bag holds. */
+export const PET_STOCK_MAX = 9;
+/** What a dose of medicine costs in the item shop, which always has some. */
+export const PET_MEDICINE_PRICE = 25;
 /** Gold comes mostly from walking: the most a freshly offered action may earn, and only one may. */
 export const PET_ACTION_GOLD_EARN_MAX = 3;
 /** The bounds on how often, in seconds, the pet's agent may have the app play its animation. */
@@ -885,6 +903,26 @@ export const PetActionV1Schema = z.object({
     /** Negative costs gold, and the action is refused while the pet has less; positive earns it. */
     gold: z.number().int().min(-PET_ACTION_GOLD_MAX).max(PET_ACTION_GOLD_MAX),
   }).strict(),
+  /** Items only: what kind of thing it is. Absent on actions and older items. */
+  kind: z.enum(PET_ITEM_KINDS).optional(),
+  /** Shop items only: when it leaves the shelf. Absent on items stocked before items left. */
+  leavesAt: z.string().datetime().optional(),
+  /**
+   * Items only: how many hours one keeps in the bag after it is bought, or null when it never
+   * expires. Absent on actions and older items.
+   */
+  keepsHours: z.number().int().positive().nullable().optional(),
+}).strict();
+
+/**
+ * Something kept in the pet's bag, bought from the item shop to use later: the item as it was
+ * bought, how many are left, and when the first of them expires — null when none of them ever do.
+ * Using one uses the one expiring soonest. Its picture is `GET /api/v1/pet/items/art?item=<item.id>`.
+ */
+export const PetBagEntryV1Schema = z.object({
+  item: PetActionV1Schema,
+  count: z.number().int().min(1).max(PET_STOCK_MAX),
+  expiresAt: z.string().datetime().nullable(),
 }).strict();
 
 
@@ -960,9 +998,13 @@ export const PetResponseV1Schema = z.object({
     }).strict().nullable(),
     stats: PetStatsV1Schema,
     actions: z.array(PetActionV1Schema).max(PET_ACTIONS_MAX),
-    /** Four agent-chosen objects drawn together in one sheet. Null until the first drawing lands. */
+    /**
+     * The item shop: agent-chosen objects, each leaving the shelf at its own `leavesAt`. The agent
+     * restocks it once a day in the owner's time zone. `artKey` changes whenever the shelf does;
+     * each item's picture is `GET /api/v1/pet/items/art?item=<id>`. Null until the first stock lands.
+     */
     items: z.object({
-      actions: z.array(PetActionV1Schema).length(4),
+      actions: z.array(PetActionV1Schema).max(PET_SHOP_MAX),
       artKey: z.string().uuid(),
     }).strict().nullable().optional(),
     /** Null only for a moment after adoption on an older pet, until its identity is written. */
@@ -997,10 +1039,27 @@ export const PetResponseV1Schema = z.object({
     }).strict().nullable().optional(),
     /** Today's encounter while it waits for the owner's choice; null once chosen, expired, or none. */
     encounter: PetEncounterV1Schema.nullable().optional(),
+    /**
+     * A friend the pet made on its own, now a controllable sticker in the owner's library, until the
+     * owner has been welcomed to it (`POST /api/v1/pet/friends/seen`). Null when there is none;
+     * optional so responses from before friends decode.
+     */
+    friend: z.object({
+      id: z.string().uuid(),
+      name: z.string(),
+      story: z.string(),
+      greeting: z.string(),
+      sticker: StickerSummaryV1Schema,
+      metAt: z.string().datetime(),
+    }).strict().nullable().optional(),
     /** What the pet is ill with. Null while it is well. */
     illness: PetIllnessV1Schema.nullable().optional(),
     /** Doses of medicine the pet has; one cures an illness. */
     medicine: z.number().int().min(0).optional(),
+    /** What a dose costs in the item shop. Optional so responses from before the shop sold it decode. */
+    medicinePrice: z.number().int().positive().optional(),
+    /** Things bought to use later, until they expire. Optional so responses from before the bag decode. */
+    bag: z.array(PetBagEntryV1Schema).optional(),
     /**
      * The room the pet lives in, drawn behind it: fetched from `GET /api/v1/pet/rooms/art`. Null on
      * the plain page; optional so responses from before rooms decode.
@@ -1123,7 +1182,16 @@ export const PetThemeChangeResponseV1Schema = z.object({
   themes: PetThemesV1Schema,
 }).strict();
 
-export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room", "theme"] as const;
+/**
+ * What a pet's memory is about: its owner (names, likes, habits), the two of them together, things
+ * that happened to it, places it has lived or been, and how it has come to feel about things.
+ */
+export const PET_MEMORY_CATEGORIES = ["owner", "bond", "experience", "place", "feeling"] as const;
+export type PetMemoryCategory = (typeof PET_MEMORY_CATEGORIES)[number];
+/** The width of `openai/text-embedding-3-small`, which every memory is embedded with. */
+export const PET_MEMORY_DIMENSIONS = 1536;
+
+export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room", "theme", "purchase", "friend"] as const;
 
 /**
  * One line of the pet's diary: what happened, what it did to the stats, and what the server knew
@@ -1147,6 +1215,27 @@ export const PetEventsResponseV1Schema = z.object({
   nextCursor: z.string().nullable(),
 }).strict();
 
+/** One thing the pet remembers, kept up to date by its memory agent. */
+export const PetMemoryV1Schema = z.object({
+  id: z.string(),
+  content: z.string(),
+  category: z.enum(PET_MEMORY_CATEGORIES),
+  importance: z.number().int().min(1).max(5),
+  updatedAt: z.string().datetime(),
+}).strict();
+
+export const PetMemoriesResponseV1Schema = z.object({
+  memories: z.array(PetMemoryV1Schema),
+}).strict();
+export type PetMemoriesResponseV1 = z.infer<typeof PetMemoriesResponseV1Schema>;
+
+/** What the owner said to their pet aloud, and its on-device answer, for it to remember. */
+export const RememberPetTalkRequestSchema = z.object({
+  words: z.string().trim().min(1).max(500),
+  reply: z.string().trim().max(300).nullable().optional(),
+}).strict();
+export type RememberPetTalkRequest = z.infer<typeof RememberPetTalkRequestSchema>;
+
 /** The pet card handed to someone in Messages, and whether sharing it moved the stats. */
 export const SharePetResponseV1Schema = z.object({
   accepted: z.boolean(),
@@ -1159,6 +1248,10 @@ export const ResolvePetEncounterRequestSchema = z.object({
   choiceId: z.string().uuid(),
 }).strict();
 export type ResolvePetEncounterRequest = z.infer<typeof ResolvePetEncounterRequestSchema>;
+
+/** The owner was welcomed to the friend their pet made, so it is not shown again. */
+export const MarkPetFriendSeenRequestSchema = z.object({ friendId: z.string().uuid() }).strict();
+export type MarkPetFriendSeenRequest = z.infer<typeof MarkPetFriendSeenRequestSchema>;
 
 /** What the pick did: whether it was right, what the pet says happened, and what it won or lost. */
 export const ResolvePetEncounterResponseV1Schema = z.object({
@@ -1175,7 +1268,13 @@ export const ResolvePetEncounterResponseV1Schema = z.object({
 
 export const PetInteractionRequestSchema = z.object({
   actionId: z.string().uuid(),
+  /** Uses one of the item from the bag, already paid for, rather than buying it from the shop. */
+  fromBag: z.boolean().optional(),
 }).strict();
+
+/** Buys one of the shop's items into the bag, to use later. */
+export const PurchasePetItemRequestSchema = z.object({ itemId: z.string().uuid() }).strict();
+export type PurchasePetItemRequest = z.infer<typeof PurchasePetItemRequestSchema>;
 export type PetInteractionRequest = z.infer<typeof PetInteractionRequestSchema>;
 
 /** A picture the owner shows their pet: an image uploaded through `/uploads` first, unbound to any sticker. */

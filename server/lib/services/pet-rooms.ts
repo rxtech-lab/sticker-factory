@@ -12,6 +12,7 @@ import { describeRoomEffects, ROOM_OFFER_LIFETIME_MS, sanitizeRoom } from "@/lib
 import { getObjectStore } from "@/lib/storage/r2";
 import { ownerMoment, sentStickerImage } from "./pet-actions";
 import { commitPetChange, currentStats, petRow, type PetRow } from "./pet-state";
+import { queuePetMemory } from "./pet-memory";
 import { readablePlayback } from "./playback";
 
 /** A refresh that has not published within this long is taken to have died, and may be tried again. */
@@ -232,6 +233,18 @@ export async function movePetToRoom(db: Database, userId: string, roomId: string
     if (!owned) throw new ApiError(404, "PET_ROOM_NOT_FOUND", "Buy this room before moving your pet in.");
   }
   await db.update(userPets).set({ roomId }).where(eq(userPets.userId, userId));
+  // Moving costs and changes nothing, so it writes no diary line; the pet still remembers it.
+  if (roomId !== pet.roomId) {
+    const room = roomId
+      ? await db.select({ title: petRooms.title, description: petRooms.description }).from(petRooms).where(eq(petRooms.id, roomId)).then(firstRow)
+      : undefined;
+    queuePetMemory(db, userId, pet.lifeId, [{
+      kind: "room",
+      title: room ? `Moved to ${room.title}` : "Moved out of its room",
+      detail: room ? `Its owner moved it into ${room.title}: ${room.description}` : "Its owner moved it back onto the plain page.",
+      at: new Date().toISOString(),
+    }]);
+  }
   petLog("rooms:moved", { userId, lifeId: pet.lifeId, from: pet.roomId, to: roomId });
 }
 

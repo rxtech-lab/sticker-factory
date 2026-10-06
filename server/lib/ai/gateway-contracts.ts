@@ -1,4 +1,4 @@
-import type { PET_CLASSES, PET_WEATHER_KINDS, PetIdentityV1, PetSignalsV1, PetThemeCategory } from "@/lib/contracts/api";
+import type { PET_CLASSES, PET_WEATHER_KINDS, PetIdentityV1, PetMemoryCategory, PetSignalsV1, PetThemeCategory } from "@/lib/contracts/api";
 import type { DesignedTheme } from "@/lib/pets/themes";
 import type { StickerControl, StickerControlValues } from "@/lib/contracts/configuration";
 // The shape of every AI turn: what a caller hands the provider, what the provider hands back,
@@ -681,7 +681,7 @@ export interface AiOwnerMoment {
   location?: { latitude: number; longitude: number } | null;
 }
 
-export interface AiPetStatusContext extends AiOwnerMoment {
+export interface AiPetStatusContext extends AiOwnerMoment, AiPetRecall {
   petTitle: string;
   controls: StickerControl[];
   current: StickerControlValues | null;
@@ -693,6 +693,42 @@ export interface AiPetStatusContext extends AiOwnerMoment {
   /** A random event that happened alongside the send, for the pet to mention. */
   event?: { title: string; detail: string } | null;
 }
+
+/** What the pet remembers that bears on the moment it is answering, most relevant first. */
+export interface AiPetRecall {
+  memories?: string[];
+}
+
+/** One thing that just happened between a pet and its owner, as its memory agent reads it. */
+export interface AiPetMoment {
+  kind: string;
+  title: string;
+  detail: string;
+  /** ISO instant. */
+  at: string;
+}
+
+/** A memory the pet already has, offered to its memory agent to keep, rewrite or forget. */
+export interface AiPetMemory {
+  id: string;
+  content: string;
+  category: PetMemoryCategory;
+  importance: number;
+}
+
+export interface AiPetMemoryContext {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  moments: AiPetMoment[];
+  /** The memories nearest to the moments by meaning; the only ones it may rewrite or forget. */
+  memories: AiPetMemory[];
+}
+
+/** What the memory agent decided: a new note, a rewritten one, or one that is no longer true. */
+export type AiPetMemoryOperation =
+  | { op: "add"; content: string; category: PetMemoryCategory; importance: number }
+  | { op: "update"; id: string; content: string; category: PetMemoryCategory; importance: number }
+  | { op: "delete"; id: string };
 
 /** The pose the pet should take, and a few words for the watch face to say about it. */
 export interface AiPetStatus {
@@ -759,7 +795,7 @@ export interface AiPetHeadlinesContext {
 }
 
 /** Something that happened to the pet on its own — a life-workflow visit. */
-export interface AiPetEventContext extends AiOwnerMoment {
+export interface AiPetEventContext extends AiOwnerMoment, AiPetRecall {
   petTitle: string;
   identity: PetIdentityV1 | null;
   signals: PetSignalsV1;
@@ -769,7 +805,7 @@ export interface AiPetEventContext extends AiOwnerMoment {
   current: StickerControlValues | null;
 }
 
-export interface AiPetInteractionContext extends AiOwnerMoment, AiPetEvolutionChoice {
+export interface AiPetInteractionContext extends AiOwnerMoment, AiPetEvolutionChoice, AiPetRecall {
   petTitle: string;
   action: Pick<PetAction, "title" | "description">;
   stats: { happiness: number; hp: number; energy: number };
@@ -778,7 +814,7 @@ export interface AiPetInteractionContext extends AiOwnerMoment, AiPetEvolutionCh
 }
 
 /** A picture the owner just showed their pet, for it to look at and react to. */
-export interface AiPetPhotoContext extends AiOwnerMoment, AiPetEvolutionChoice {
+export interface AiPetPhotoContext extends AiOwnerMoment, AiPetEvolutionChoice, AiPetRecall {
   petTitle: string;
   photo: AiReferenceImage;
   identity: PetIdentityV1 | null;
@@ -827,6 +863,30 @@ export type AiPetEncounter = {
     medicine: number;
     sickens: boolean;
   }>;
+};
+
+/**
+ * What the pet's agent knows when it decides who the pet just met: the weather and where its owner
+ * is, what it remembers, and how it feels. The friend should come out of that moment.
+ */
+export interface AiPetFriendContext extends AiOwnerMoment, AiPetRecall {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  signals: PetSignalsV1 | null;
+  stats: { happiness: number; hp: number; energy: number };
+  mood: string | null;
+  /** What just happened on the visit the friend turned up on, when anything did. */
+  happening?: string | null;
+  /** The names of friends it already made, so a new one is someone new. */
+  previous: string[];
+}
+
+/** A friend the pet just met: who they are, how they look for the artist, and how the pet introduces them. */
+export type AiPetFriend = {
+  name: string;
+  brief: string;
+  story: string;
+  greeting: string;
 };
 
 /** A room the pet's agent dreamed up for its shop: what it is, what living there does, and its price. */
@@ -896,6 +956,19 @@ export type PetAction = {
   title: string;
   description: string;
   effects: { happiness: number; hp: number; energy: number; gold: number };
+  /** Items only: what kind of thing it is. */
+  kind?: "food" | "ticket" | "toy";
+  /** Shop items only: when it leaves the shelf. */
+  leavesAt?: string;
+  /** Items only: hours one keeps in the bag once bought, or null when it never expires. */
+  keepsHours?: number | null;
+};
+
+/** An item the agent stocks the shop with: how long it stays on the shelf, and keeps once bought. */
+export type AiPetItem = Omit<PetAction, "id" | "leavesAt" | "keepsHours"> & {
+  kind: "food" | "ticket" | "toy";
+  shelfHours: number;
+  keepsHours: number | null;
 };
 
 /**
@@ -913,6 +986,17 @@ export interface AiPetActionsContext extends AiOwnerMoment {
   mood?: string | null;
   /** The titles offered until now, so a refreshed list moves on instead of repeating itself. */
   previous?: string[];
+}
+
+/**
+ * What the agent knows when it restocks the item shop: how many new things it may add — it picks
+ * the number — and what is still on the shelf.
+ */
+export interface AiPetItemsContext extends AiPetActionsContext {
+  minCount: number;
+  maxCount: number;
+  /** Items still on the shelf, which the new ones must differ from. */
+  keeping: Omit<PetAction, "id">[];
 }
 
 export interface AiProvider {
@@ -1004,7 +1088,7 @@ export interface AiProvider {
    */
   choosePetStatus(input: AiPetStatusContext): Promise<AiPetStatus>;
   generatePetActions(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]>;
-  generatePetItems(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]>;
+  generatePetItems(input: AiPetItemsContext): Promise<AiPetItem[]>;
   /** Dreams up the rooms the pet's shop offers, each with its own daily effect and price. */
   generatePetRooms(input: AiPetActionsContext): Promise<AiPetRoom[]>;
   /** Draws one room as the background the pet stands in. */
@@ -1026,8 +1110,14 @@ export interface AiProvider {
   narratePetEvent(input: AiPetEventContext): Promise<AiPetStatus>;
   /** Writes the day's encounter: a situation the owner decides, with right and wrong choices. */
   generatePetEncounter(input: AiPetEncounterContext): Promise<AiPetEncounter>;
+  /** Decides who the pet just met, from the weather, the place, its memories and its mood. */
+  meetPetFriend(input: AiPetFriendContext): Promise<AiPetFriend>;
   /** The pet decides whether a sticker its owner just made is worth reacting to, and how. */
   noticePetSticker(input: AiPetStickerContext): Promise<AiPetStickerReaction>;
+  /** One embedding per text, `PET_MEMORY_DIMENSIONS` wide, for storing and finding memories. */
+  embedPetMemories(values: string[]): Promise<number[][]>;
+  /** Reads what just happened beside what the pet remembers, and decides what to remember now. */
+  updatePetMemory(input: AiPetMemoryContext): Promise<AiPetMemoryOperation[]>;
 }
 
 /**

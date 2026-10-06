@@ -199,7 +199,7 @@ export async function givePetMedicine(
   const pet = await petRow(db, userId);
   if (!pet?.lifeId) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
   if (!pet.illnessJson) throw new ApiError(422, "PET_NOT_ILL", "Your pet is well and doesn't need medicine.");
-  if (pet.medicine < 1) throw new ApiError(422, "PET_NO_MEDICINE", "Your pet has no medicine. Help it with its daily events to earn some.");
+  if (pet.medicine < 1) throw new ApiError(422, "PET_NO_MEDICINE", "Your pet has no medicine. Buy some in the item shop, or help it with its daily events to earn some.");
   const illness = pet.illnessJson;
   const committed = await commitPetChange(db, userId, {
     lifeId: pet.lifeId,

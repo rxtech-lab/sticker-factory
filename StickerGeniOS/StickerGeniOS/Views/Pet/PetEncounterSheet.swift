@@ -176,7 +176,7 @@ struct PetHealthRow: View {
                         .foregroundStyle(AppColors.ink)
                 }
                 Text(medicine == 0 && illness != nil
-                     ? String(localized: "No medicine. Help your pet with its daily moments to earn some.")
+                     ? String(localized: "No medicine. Buy some in the item shop, or help your pet with its daily moments to earn some.")
                      : String(localized: "\(medicine) medicine"))
                     .font(.caption)
                     .foregroundStyle(AppColors.muted)

@@ -38,6 +38,13 @@ nonisolated struct PetSnapshot: Codable, Equatable, Sendable {
         snapshot.caption = caption(at: date)
         return snapshot
     }
+
+    /// What the server draws the pose from: the revision it plays, and the reading that posed it.
+    /// The app and the widget both name a pose this way, so either can tell the other's is current.
+    static func poseKey(stickerID: String, revisionID: String?, statusUpdatedAt: Date?) -> String {
+        [stickerID, revisionID ?? "", statusUpdatedAt.map { String($0.timeIntervalSince1970) } ?? "default"]
+            .joined(separator: "|")
+    }
 }
 
 /// A line the pet's agent queued to say on its own after its caption, `afterMinutes` after the line
@@ -72,6 +79,20 @@ nonisolated struct PetSnapshotWeather: Codable, Equatable, Sendable {
     var isDay: Bool
     /// Names the drawing in the pet's style written beside the pose. Nil until the server drew it.
     var artKey: String?
+
+    /// The symbol for weather of `kind`; a clear night draws the moon rather than the sun.
+    static func symbol(kind: String, isDay: Bool) -> String {
+        switch kind {
+        case "sunny": isDay ? "sun.max.fill" : "moon.stars.fill"
+        case "cloudy": "cloud.fill"
+        case "rainy": "cloud.rain.fill"
+        case "snowy": "cloud.snow.fill"
+        case "stormy": "cloud.bolt.rain.fill"
+        case "foggy": "cloud.fog.fill"
+        case "windy": "wind"
+        default: "cloud.sun.fill"
+        }
+    }
 }
 
 /// What the phone last said about the pet, including that there is none.

@@ -5,9 +5,10 @@ import WidgetKit
 
 /// Keeps the widget and the watch showing the pet the account has now.
 ///
-/// Neither can ask the server itself — the widget has no credentials and the watch has no account —
-/// so the phone does it for them: fetch the pet, fetch the server's drawing of its pose when that
-/// changed, write both to the app group for the widget, and hand them to the watch.
+/// The watch cannot ask the server itself — it has no account — and the widget only does between
+/// the app's visits (`PetWidgetRefresh`), so the phone does it for them: fetch the pet, fetch the
+/// server's drawing of its pose when that changed, write both to the app group for the widget, and
+/// hand them to the watch.
 ///
 /// It runs whenever the app learns something new about the pet: the Pet tab loading or changing
 /// it, the app coming forward, the server's silent "your pet moved" push, and the watch asking.
@@ -84,7 +85,9 @@ final class PetCompanionSync {
                     if weatherArt == nil { snapshot?.weather?.artKey = nil }
                 }
                 if let current, current.pet == snapshot, pose == nil, weatherArt == nil {
-                    if resendToWatch { watch.send(current, poseURL: current.pet == nil ? nil : store.poseURL) }
+                    // The widget may have written this one itself while the app was away, and the
+                    // watch has not been sent it yet.
+                    watch.send(current, poseURL: current.pet == nil ? nil : store.poseURL, onlyIfNew: !resendToWatch)
                     return true
                 }
                 let envelope = PetSnapshotEnvelope(pet: snapshot, writtenAt: .now)
@@ -138,12 +141,11 @@ extension PetSnapshot {
             caption: pet.status?.caption,
             statusUpdatedAt: pet.status?.updatedAt,
             selectedAt: pet.selectedAt,
-            // What the server draws from: the revision it plays, and the reading that posed it.
-            poseKey: [
-                sticker.id,
-                sticker.playbackRevisionId ?? sticker.activeRevisionId ?? "",
-                pet.status.map { String($0.updatedAt.timeIntervalSince1970) } ?? "default"
-            ].joined(separator: "|"),
+            poseKey: PetSnapshot.poseKey(
+                stickerID: sticker.id,
+                revisionID: sticker.playbackRevisionId ?? sticker.activeRevisionId,
+                statusUpdatedAt: pet.status?.updatedAt
+            ),
             weather: pet.signals?.weather.map { weather in
                 PetSnapshotWeather(
                     kind: weather.kind.rawValue,

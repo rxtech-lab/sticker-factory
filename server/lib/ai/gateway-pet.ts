@@ -8,8 +8,8 @@ import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { ENCOUNTER_PENALTY_MAX, ENCOUNTER_REWARD_MAX } from "@/lib/pets/encounters";
 import { ROOM_EFFECT_MAX, ROOM_EFFECT_MIN, ROOM_OFFER_COUNT, ROOM_PRICE_MAX, ROOM_PRICE_MIN } from "@/lib/pets/rooms";
 import { THEME_DAILY_MINUTES_MAX, THEME_DAILY_MINUTES_MIN, THEME_EFFECT_MAX, THEME_EFFECT_MIN } from "@/lib/pets/themes";
-import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_ITEM_RESTORE_ENERGY_MAX, PET_ITEM_RESTORE_ENERGY_MIN, PET_ITEM_RESTORE_PRICE_MAX, PET_ITEM_RESTORE_PRICE_MIN, PET_ANIMATE_EVERY_MAX, PET_ANIMATE_EVERY_MIN, PET_CLASSES, PET_THEME_CATEGORIES, PET_MUSING_AFTER_MAX, PET_MUSING_AFTER_MIN, PET_MUSINGS_MAX, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
-import type { AiOwnerMoment, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEvolutionChoice, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetRoom, AiPetStatus, AiPetStatusContext, AiPetTheme, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, PetAction } from "./gateway-contracts";
+import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_ANIMATE_EVERY_MAX, PET_ANIMATE_EVERY_MIN, PET_CLASSES, PET_THEME_CATEGORIES, PET_MUSING_AFTER_MAX, PET_MUSING_AFTER_MIN, PET_MUSINGS_MAX, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
+import type { AiOwnerMoment, AiPetRecall, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEvolutionChoice, AiPetFriend, AiPetFriendContext, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetRoom, AiPetStatus, AiPetStatusContext, AiPetTheme, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, PetAction } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
 
 const PetStatusInputSchema = z.object({
@@ -78,7 +78,7 @@ function evolutionGuidance(input: AiPetEvolutionChoice): string {
 const PetHeadlinesInputSchema = z.object({ headlines: z.array(z.string().trim().min(1).max(160)).max(3) }).strict();
 
 /** Who the pet is, in the words the model reads it in. */
-function describeIdentity(identity: PetIdentityV1 | null | undefined): string {
+export function describeIdentity(identity: PetIdentityV1 | null | undefined): string {
   if (!identity) return "Identity: not yet known";
   return [
     `Class: ${identity.class}`,
@@ -90,7 +90,7 @@ function describeIdentity(identity: PetIdentityV1 | null | undefined): string {
 }
 
 /** The owner's world right now, or a line saying the pet does not know. */
-function describeSignals(signals: PetSignalsV1 | null | undefined): string {
+export function describeSignals(signals: PetSignalsV1 | null | undefined): string {
   if (!signals) return "World: unknown";
   return [
     signals.weather ? `Weather: ${signals.weather.kind}, ${signals.weather.temperatureC}°C, ${signals.weather.isDay ? "day" : "night"}` : "Weather: unknown",
@@ -102,15 +102,28 @@ function describeSignals(signals: PetSignalsV1 | null | undefined): string {
   ].filter(Boolean).join("\n");
 }
 
+/** What the pet remembers that bears on this moment; empty when it remembers nothing yet. */
+function describeMemories(input: AiPetRecall): string {
+  if (!input.memories?.length) return "";
+  return `What you remember:\n${input.memories.map((memory) => `- ${memory}`).join("\n")}`;
+}
+
+/** Tells a replying pet how to use what it remembers, when it remembers anything. */
+function memoryGuidance(input: AiPetRecall): string {
+  if (!input.memories?.length) return "";
+  return "You remember some things about your owner and your life together; let them colour what you say when"
+    + " they fit — a callback to a shared moment, a name, a favourite thing — but never invent memories.";
+}
+
 /** The owner's time and place, as lines for the model; empty when the phone has told us neither. */
-function describeMoment(input: AiOwnerMoment): string {
+export function describeMoment(input: AiOwnerMoment): string {
   return [
     input.localTime ? `Owner's local time: ${input.localTime}` : "",
     input.location ? `Owner's rough location: latitude ${input.location.latitude}, longitude ${input.location.longitude}` : "",
   ].filter(Boolean).join("\n");
 }
 
-const PetEffectsInputSchema = z.object({
+export const PetEffectsInputSchema = z.object({
   happiness: z.number().int().min(-20).max(20),
   hp: z.number().int().min(-20).max(20),
   energy: z.number().int().min(-20).max(20),
@@ -372,56 +385,6 @@ export async function choosePetTheme(input: AiPetThemeChoiceContext): Promise<Ai
 }
 
 /** Four objects the pet chooses from its current place, weather, mood and news. */
-export async function generatePetItems(input: AiPetActionsContext): Promise<Omit<PetAction, "id">[]> {
-  const schema = z.object({ actions: z.array(z.object({
-    title: z.string().trim().min(1).max(32),
-    description: z.string().trim().min(1).max(120),
-    effects: PetEffectsInputSchema.extend({
-      energy: z.number().int().min(-20).max(PET_ITEM_RESTORE_ENERGY_MAX),
-      gold: z.number().int().min(-PET_ACTION_GOLD_MAX).max(PET_ACTION_GOLD_EARN_MAX),
-    }).strict(),
-  }).strict()).length(4) }).strict();
-  const result = await generateText({
-    onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_SUMMARY_MODEL ?? process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
-    system: [
-      "Choose exactly four distinct physical objects for this pet to play with or use now.",
-      "Base the choices on its location, weather, current mood, personality and recent news.",
-      "Use only the context provided; do not invent a specific place, forecast or headline when unknown.",
-      "Each object needs a short name, a description of using it with this pet, and plausible small stat effects.",
-      "Gold is the cost of obtaining the object: use zero for found or free objects, otherwise a negative number.",
-      "At least one object must be free. Most uses cost at least 3 energy, and none of these restores more than 20.",
-      `Exactly one object is a precious energy restorer — a tonic, a feast, a magic charm, whatever fits the pet —`,
-      `that restores ${PET_ITEM_RESTORE_ENERGY_MIN} to ${PET_ITEM_RESTORE_ENERGY_MAX} energy and costs ${PET_ITEM_RESTORE_PRICE_MIN} to`,
-      `${PET_ITEM_RESTORE_PRICE_MAX} gold (gold -${PET_ITEM_RESTORE_PRICE_MIN} to -${PET_ITEM_RESTORE_PRICE_MAX}); make it look and sound special.`,
-      "The object names must describe visually distinct things an artist can draw. Return only through set-pet-items.",
-    ].join(" "),
-    messages: userTurn([
-      `Pet: ${input.petTitle}`,
-      describeIdentity(input.identity),
-      input.stats ? `Stats: ${JSON.stringify(input.stats)}` : "",
-      input.mood ? `Mood: ${input.mood}` : "",
-      describeMoment(input),
-      describeSignals(input.signals),
-      input.previous?.length ? `Previous items: ${input.previous.join(", ")}` : "",
-      input.image ? "The attached picture is the pet; use its visual style." : "",
-    ].filter(Boolean).join("\n\n"), input.image ? [input.image] : []),
-    tools: { "set-pet-items": tool({ description: "Choose four objects for this pet.", inputSchema: schema, execute: async (value) => value }) },
-    toolChoice: "required",
-    stopWhen: [hasToolCall("set-pet-items"), stepCountIs(2)],
-    maxRetries: 1,
-    abortSignal: AbortSignal.timeout(30_000),
-  });
-  await recordTextApiCost(result);
-  const call = result.toolCalls.find((candidate) => candidate?.toolName === "set-pet-items");
-  if (!call) throw new Error("Pet agent did not generate items");
-  const items = schema.parse(call.input).actions;
-  if (new Set(items.map((item) => item.title.toLocaleLowerCase())).size !== 4) {
-    throw new Error("Pet agent generated duplicate items");
-  }
-  return items;
-}
-
 export async function choosePetStatus(input: AiPetStatusContext): Promise<AiPetStatus> {
   const tools = {
     "set-pet-status": tool({
@@ -455,7 +418,8 @@ export async function choosePetStatus(input: AiPetStatusContext): Promise<AiPetS
       "Let the owner's local time and place colour it too: sleepy late at night, bright in the morning.",
       "Set effects from -8 to 8 for how the sticker's mood moves happiness, HP and energy; mostly small.",
       ANIMATION_GUIDANCE,
-    ].join(" "),
+      memoryGuidance(input),
+    ].filter(Boolean).join(" "),
     messages: userTurn([
       `Pet: ${input.petTitle}`,
       describeIdentity(input.identity),
@@ -463,6 +427,7 @@ export async function choosePetStatus(input: AiPetStatusContext): Promise<AiPetS
       describeSignals(input.signals),
       describeMoment(input),
       input.event ? `Just happened: ${input.event.title} — ${input.event.detail}` : "",
+      describeMemories(input),
       `Controls:\n${describeControls(input)}`,
       `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
       `Sticker sent:\n${sent}`,
@@ -493,6 +458,7 @@ export async function respondToPetInteraction(input: AiPetInteractionContext): P
       "Omit a control to keep its current value. Never claim an action happened if it did not.",
       "Fit the reply to the owner's local time and place when they are given.",
       ANIMATION_GUIDANCE,
+      memoryGuidance(input),
       evolutionGuidance(input),
     ].filter(Boolean).join(" "),
     messages: userTurn([
@@ -500,6 +466,7 @@ export async function respondToPetInteraction(input: AiPetInteractionContext): P
       `Action: ${input.action.title} — ${input.action.description}`,
       `Stats after action: ${JSON.stringify(input.stats)}`,
       describeMoment(input),
+      describeMemories(input),
       `Controls:\n${describeControls(input)}`,
       `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
     ].filter(Boolean).join("\n\n"), []),
@@ -535,6 +502,7 @@ export async function reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetSt
       "listed control and option ids, and omit a control to keep its current value. The owner's local time and",
       "place, when given, may colour your reaction.",
       ANIMATION_GUIDANCE,
+      memoryGuidance(input),
       evolutionGuidance(input),
     ].filter(Boolean).join(" "),
     messages: userTurn([
@@ -543,6 +511,7 @@ export async function reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetSt
       `Stats now: ${JSON.stringify(input.stats)}`,
       describeSignals(input.signals),
       describeMoment(input),
+      describeMemories(input),
       `Controls:\n${describeControls(input)}`,
       `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
       "The attached picture is what your owner just showed you.",
@@ -654,7 +623,8 @@ export async function narratePetEvent(input: AiPetEventContext): Promise<AiPetSt
       "When the weather just changed, react to it dramatically, in character. When what happened is a reminder for your",
       "owner — a coat, an umbrella for tomorrow — say the reminder to them plainly, as a caring friend would.",
       ANIMATION_GUIDANCE,
-    ].join(" "),
+      memoryGuidance(input),
+    ].filter(Boolean).join(" "),
     messages: userTurn([
       `Pet: ${input.petTitle}`,
       describeIdentity(input.identity),
@@ -662,6 +632,7 @@ export async function narratePetEvent(input: AiPetEventContext): Promise<AiPetSt
       describeSignals(input.signals),
       describeMoment(input),
       `What happened: ${input.event.title} — ${input.event.detail}`,
+      describeMemories(input),
       `Controls:\n${describeControls(input)}`,
       `Current pose: ${input.current ? JSON.stringify(input.current) : "defaults"}`,
     ].filter(Boolean).join("\n\n"), []),
@@ -747,6 +718,64 @@ export async function generatePetEncounter(input: AiPetEncounterContext): Promis
   const call = result.toolCalls.find((candidate) => candidate?.toolName === "set-pet-encounter");
   if (!call) throw new Error("Pet agent did not write an encounter");
   return PetEncounterInputSchema.parse(call.input);
+}
+
+const PetFriendInputSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  brief: z.string().trim().min(1).max(600),
+  story: z.string().trim().min(1).max(160),
+  greeting: z.string().trim().min(1).max(80),
+}).strict();
+
+/**
+ * Who the pet just met while its owner was away. The friend comes out of the moment — a puddle
+ * creature on a rainy day, a pigeon in a busy city, someone from a memory the two share — and
+ * becomes a controllable sticker of its own, so the brief is written for the sticker's artist.
+ */
+export async function meetPetFriend(input: AiPetFriendContext): Promise<AiPetFriend> {
+  const result = await generateText({
+    onLanguageModelCallEnd: reportAiStepUsage,
+    model: gateway(process.env.AI_SUMMARY_MODEL ?? process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    system: [
+      "You are a virtual pet, and you just made a new friend while your owner was away. Decide who they are.",
+      "The friend must grow out of this exact moment: the weather now, the time of day, roughly where your owner",
+      "is (a city, the coast, the countryside — never name a street or a specific place you were not told), how",
+      "you feel, and when they fit, something you remember about your owner or your life together. A small cute",
+      "character — an animal, a creature, a living object — never a real person or a known brand or character.",
+      "Write name: the friend's short name, in the language of your own name. Write brief, in English, for the",
+      "artist who will draw the friend as an animated sticker with switchable moods and poses: its species or kind,",
+      "body shape, colours, one signature accessory, its personality and how it moves; one character alone on a",
+      "plain background, cute and cartoonish, in the same spirit as you. Write story: one line on how you met, and",
+      "greeting: what you say to introduce your friend to your owner, at most 80 characters, both in character and",
+      "in the language of your name. Make each friend different from the ones you already have.",
+      memoryGuidance(input),
+      "Return only through set-pet-friend, exactly once.",
+    ].filter(Boolean).join(" "),
+    messages: userTurn([
+      `Pet: ${input.petTitle}`,
+      describeIdentity(input.identity),
+      `Stats: ${JSON.stringify(input.stats)}`,
+      input.mood ? `Mood: ${input.mood}` : "",
+      input.happening ? `What just happened: ${input.happening}` : "",
+      describeMoment(input),
+      describeSignals(input.signals),
+      describeMemories(input),
+      input.previous.length ? `Friends you already have (meet someone new): ${input.previous.join(", ")}` : "",
+    ].filter(Boolean).join("\n\n"), []),
+    tools: { "set-pet-friend": tool({
+      description: "Save the friend the pet just met.",
+      inputSchema: PetFriendInputSchema,
+      execute: async (value) => value,
+    }) },
+    toolChoice: "required",
+    stopWhen: [hasToolCall("set-pet-friend"), stepCountIs(2)],
+    maxRetries: 1,
+    abortSignal: AbortSignal.timeout(45_000),
+  });
+  await recordTextApiCost(result);
+  const call = result.toolCalls.find((candidate) => candidate?.toolName === "set-pet-friend");
+  if (!call) throw new Error("Pet agent did not meet a friend");
+  return PetFriendInputSchema.parse(call.input);
 }
 
 /** The pet reads only material the owner shared, then speaks and poses in response. */

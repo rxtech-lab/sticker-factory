@@ -96,8 +96,19 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func sendPetPhoto(jpeg: Data) async throws -> Pet?
     /// Picks `choiceID` for the pet's open encounter. Returns what it led to and the pet after it.
     func resolvePetEncounter(encounterID: String, choiceID: String) async throws -> ResolvePetEncounterResponse
+    /// The owner has been welcomed to the friend their pet made, so it is not shown again. Returns the pet after it.
+    func markPetFriendSeen(friendID: String) async throws -> Pet?
     /// Gives the ill pet one dose of medicine, curing it. Refused while it is well or has none.
     func givePetMedicine() async throws -> Pet?
+    /// Buys a dose of medicine from the item shop. It is kept until the pet needs it, ill or not.
+    func purchasePetMedicine() async throws -> Pet?
+    /// Buys one of today's food or tickets into the bag, to use later.
+    func purchasePetItem(itemID: String) async throws -> Pet?
+    /// Uses one of `item` from the bag. Already paid for, so it costs no gold; the pet answers like
+    /// any other action.
+    func useBagItem(_ item: PetAction) async throws -> Pet?
+    /// The picture of an item on the shelf or in the bag, as WebP image data.
+    func petItemArt(itemID: String, size: Int) async throws -> Data
     /// The owner's rooms, the room shop's offers, and the room the pet lives in. A shop that is due
     /// new rooms starts drawing them; `drawing` says so, and a later call carries them.
     func petRooms() async throws -> PetRooms
@@ -121,6 +132,10 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func updatePetContext(_ context: PetContextPayload) async throws -> PetContextStoredResponse
     /// One page of the pet's diary, newest first. Pass the previous page's `nextCursor` for more.
     func petEvents(cursor: String?) async throws -> PetEventsResponse
+    /// What the pet remembers, nearest by meaning to `query` when given, otherwise most important first.
+    func petMemories(about query: String?) async throws -> [PetMemory]
+    /// Tells the server what the owner said and what the pet answered on the phone, for it to remember.
+    func rememberPetTalk(words: String, reply: String?) async throws
 
     // Marketplace
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
@@ -150,6 +165,8 @@ extension StickerAPIClientProtocol {
         PetContextStoredResponse(stored: false)
     }
     func petEvents(cursor: String?) async throws -> PetEventsResponse { PetEventsResponse(events: [], nextCursor: nil) }
+    func petMemories(about query: String?) async throws -> [PetMemory] { [] }
+    func rememberPetTalk(words: String, reply: String?) async throws {}
     func clearPet() async throws {}
     func petCandidates(query: String?) async throws -> LibrarySectionsResponse { throw StickerAPIError.invalidResponse }
     func petPose(size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
@@ -167,7 +184,12 @@ extension StickerAPIClientProtocol {
     func resolvePetEncounter(encounterID: String, choiceID: String) async throws -> ResolvePetEncounterResponse {
         throw StickerAPIError.invalidResponse
     }
+    func markPetFriendSeen(friendID: String) async throws -> Pet? { throw StickerAPIError.invalidResponse }
     func givePetMedicine() async throws -> Pet? { throw StickerAPIError.invalidResponse }
+    func purchasePetMedicine() async throws -> Pet? { throw StickerAPIError.invalidResponse }
+    func purchasePetItem(itemID: String) async throws -> Pet? { throw StickerAPIError.invalidResponse }
+    func useBagItem(_ item: PetAction) async throws -> Pet? { throw StickerAPIError.invalidResponse }
+    func petItemArt(itemID: String, size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
     func petRooms() async throws -> PetRooms { throw StickerAPIError.invalidResponse }
     func purchasePetRoom(roomID: String) async throws -> PetRoomChangeResponse { throw StickerAPIError.invalidResponse }
     func setPetRoom(roomID: String?) async throws -> PetRoomChangeResponse { throw StickerAPIError.invalidResponse }

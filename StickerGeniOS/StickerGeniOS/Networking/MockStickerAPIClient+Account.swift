@@ -25,23 +25,98 @@ extension MockStickerAPIClient {
         return accountDeletion
     }
 
-    func pet() async throws -> Pet? { adoptedPet }
+    func pet() async throws -> Pet? {
+        if adoptedPet == nil, !hasSeededFriendPet, ProcessInfo.processInfo.arguments.contains("--ui-pet-friend") {
+            hasSeededFriendPet = true
+            _ = try await setPet(stickerID: "sticker-borrowed", context: nil)
+        }
+        return adoptedPet
+    }
+
+    func markPetFriendSeen(friendID: String) async throws -> Pet? {
+        guard var current = adoptedPet else { return nil }
+        if current.friend?.id == friendID { current.friend = nil }
+        adoptedPet = current
+        return current
+    }
 
     func interactWithPet(_ action: PetAction) async throws -> Pet? {
         guard var current = adoptedPet else { return nil }
-        guard let selected = current.actions?.first(where: { $0.id == action.id }) else { throw StickerAPIError.invalidResponse }
-        guard selected.effects.price <= current.stats.gold else {
+        let offered = (current.actions ?? []) + (current.items?.actions ?? [])
+        guard let selected = offered.first(where: { $0.id == action.id }) else { throw StickerAPIError.invalidResponse }
+        guard selected.effects.price <= current.stats.gold else { throw Self.notEnoughGold }
+        current.stats.gold = max(0, current.stats.gold + selected.effects.gold)
+        Self.apply(selected, to: &current)
+        adoptedPet = current
+        return current
+    }
+
+    /// Like the server: a dose of medicine goes in the bag, and so does anything bought from the shop,
+    /// keeping as long as the item does.
+    func purchasePetMedicine() async throws -> Pet? {
+        guard var current = adoptedPet else { return nil }
+        let price = current.medicinePrice ?? 0
+        guard price <= current.stats.gold else { throw Self.notEnoughGold }
+        current.stats.gold -= price
+        current.medicine += 1
+        adoptedPet = current
+        return current
+    }
+
+    func purchasePetItem(itemID: String) async throws -> Pet? {
+        guard var current = adoptedPet else { return nil }
+        guard var item = current.items?.actions.first(where: { $0.id == itemID }) else {
             throw APIErrorEnvelope(error: .init(
-                code: "PET_NOT_ENOUGH_GOLD", message: "Not enough gold.", requestId: "mock-pet", details: nil
+                code: "PET_ITEM_NOT_AVAILABLE", message: "This item is no longer in the shop.", requestId: "mock-pet", details: nil
             ))
         }
-        current.stats.gold = max(0, current.stats.gold + selected.effects.gold)
+        guard item.effects.price <= current.stats.gold else { throw Self.notEnoughGold }
+        current.stats.gold -= item.effects.price
+        item.leavesAt = nil
+        let expiresAt = item.keepsHours.map { Date().addingTimeInterval(Double($0) * 3600) }
+        if let index = current.bag.firstIndex(where: { $0.id == itemID }) {
+            current.bag[index].count += 1
+            if let expiresAt, current.bag[index].expiresAt == nil || expiresAt < current.bag[index].expiresAt! {
+                current.bag[index].expiresAt = expiresAt
+            }
+        } else {
+            current.bag.append(PetBagEntry(item: item, count: 1, expiresAt: expiresAt))
+        }
+        adoptedPet = current
+        return current
+    }
+
+    func useBagItem(_ item: PetAction) async throws -> Pet? {
+        guard var current = adoptedPet, let index = current.bag.firstIndex(where: { $0.id == item.id }) else {
+            throw StickerAPIError.invalidResponse
+        }
+        Self.apply(current.bag[index].item, to: &current)
+        current.bag[index].count -= 1
+        if current.bag[index].count == 0 { current.bag.remove(at: index) }
+        adoptedPet = current
+        return current
+    }
+
+    func petItemArt(itemID: String, size: Int) async throws -> Data {
+        let known = adoptedPet?.bag.contains(where: { $0.id == itemID }) == true
+            || adoptedPet?.items?.actions.contains(where: { $0.id == itemID }) == true
+        guard known else { throw StickerAPIError.invalidResponse }
+        let bounds = CGRect(x: 0, y: 0, width: size, height: size)
+        return UIGraphicsImageRenderer(bounds: bounds).pngData { _ in
+            UIImage(systemName: "takeoutbag.and.cup.and.straw.fill")?.draw(in: bounds.insetBy(dx: 12, dy: 12))
+        }
+    }
+
+    private static let notEnoughGold = APIErrorEnvelope(error: .init(
+        code: "PET_NOT_ENOUGH_GOLD", message: "Not enough gold.", requestId: "mock-pet", details: nil
+    ))
+
+    /// What an action or item does to the pet's stats and line, gold aside.
+    private static func apply(_ selected: PetAction, to current: inout Pet) {
         current.stats.happiness = min(100, max(0, current.stats.happiness + selected.effects.happiness))
         current.stats.hp = min(current.maxHp, max(0, current.stats.hp + selected.effects.hp))
         current.stats.energy = min(100, max(0, current.stats.energy + selected.effects.energy))
         current.status = PetStatus(values: current.status?.values ?? [:], caption: selected.description, updatedAt: Date())
-        adoptedPet = current
-        return current
     }
 
     /// Stands in for the pet's look at a picture: always a little cheered by it.
@@ -102,8 +177,44 @@ extension MockStickerAPIClient {
             signals: Self.sampleSignals,
             nextEventAt: Date().addingTimeInterval(3 * 60 * 60),
             weatherArt: PetWeatherArt(kind: .rainy, isDay: true, key: "mock-rainy-day"),
+            medicinePrice: 10,
             windowWeatherArt: PetWeatherArt(kind: .rainy, isDay: true, key: "mock-rainy-day-window")
         )
+        if ProcessInfo.processInfo.arguments.contains("--ui-pet-friend") {
+            // The pet comes home having made a friend, for the welcome to greet.
+            adoptedPet?.friend = PetFriend(
+                id: "99999999-9999-4999-8999-999999999999", name: "Puddle",
+                story: "We met splashing by the window when the rain started.",
+                greeting: "This is Puddle! We splashed together all afternoon.",
+                sticker: sticker, metAt: Date()
+            )
+        }
+        adoptedPet?.items = PetItems(actions: [
+            PetAction(
+                id: "55555555-5555-4555-8555-555555555555", title: "Puddle boots",
+                description: "Stomp through puddles with \(sticker.title).",
+                effects: .init(happiness: 6, hp: 0, energy: -4), kind: .toy,
+                leavesAt: Date().addingTimeInterval(30 * 3600), keepsHours: nil
+            ),
+            PetAction(
+                id: "66666666-6666-4666-8666-666666666666", title: "Berry pie",
+                description: "Share a warm berry pie with \(sticker.title).",
+                effects: .init(happiness: 5, hp: 4, energy: -3, gold: -8), kind: .food,
+                leavesAt: Date().addingTimeInterval(14 * 3600), keepsHours: 10
+            ),
+            PetAction(
+                id: "77777777-7777-4777-8777-777777777777", title: "Aquarium ticket",
+                description: "A day among the fish with \(sticker.title).",
+                effects: .init(happiness: 10, hp: 0, energy: -8, gold: -12), kind: .ticket,
+                leavesAt: Date().addingTimeInterval(72 * 3600), keepsHours: 120
+            ),
+            PetAction(
+                id: "88888888-8888-4888-8888-888888888888", title: "Star tonic",
+                description: "A sparkling tonic that wakes \(sticker.title) right up.",
+                effects: .init(happiness: 2, hp: 0, energy: 40, gold: -35), kind: .food,
+                leavesAt: Date().addingTimeInterval(100 * 3600), keepsHours: 240
+            )
+        ], artKey: "99999999-9999-4999-8999-999999999999")
         return adoptedPet
     }
 
