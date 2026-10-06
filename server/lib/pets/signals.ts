@@ -2,6 +2,7 @@ import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetContextV1, PetIdentityV1, PetSignalsV1 } from "@/lib/contracts/api";
 import type { PetStoredContext } from "@/lib/db/schema";
 import { describeError } from "@/lib/observability/trace";
+import { forgetLocation, trackHome } from "./home";
 import type { PetWeatherKind } from "./identity";
 import { petLog } from "./log";
 import { ZERO_EFFECTS, type PetEffects } from "./stats";
@@ -40,7 +41,7 @@ export function mergeContext(stored: PetStoredContext | null, incoming: PetConte
   if (!incoming) return stored;
   const round = (value: number) => Math.round(value * 100) / 100;
   const timeZone = incoming.timeZone ?? stored?.timeZone;
-  return {
+  const merged: PetStoredContext = {
     ...stored,
     ...(incoming.latitude !== undefined && incoming.longitude !== undefined
       ? { latitude: round(incoming.latitude), longitude: round(incoming.longitude) } : {}),
@@ -48,6 +49,9 @@ export function mergeContext(stored: PetStoredContext | null, incoming: PetConte
     ...(timeZone ? { timeZone } : {}),
     updatedAt: now.toISOString(),
   };
+  // Tracking off: the server keeps nothing of where the owner is, or where home is.
+  if (incoming.trackLocation === false) return forgetLocation(merged);
+  return incoming.latitude !== undefined ? trackHome(merged, now) : merged;
 }
 
 /** Steps counted today, in the phone's own time zone, or null when the count is from another day. */

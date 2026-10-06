@@ -16,6 +16,7 @@ import { addEffects, applyEffects, personalizeEffects, preferenceEffects, ZERO_E
 import { ownerMoment, refreshActions } from "./pet-actions";
 import { maybeStartEncounter } from "./pet-encounters";
 import { refreshPetItems } from "./pet-items";
+import { planThemeVisit, refreshPetThemes } from "./pet-themes";
 import { commitPetChange, currentStats, ensurePetIdentity, lastAttendedAt, lastFeltWeather, petRow, remindedForecastOn, type PetChange } from "./pet-state";
 import { readablePlayback } from "./playback";
 
@@ -112,8 +113,11 @@ export async function visitPet(
     const hoursAway = Math.max(0, (now.getTime() - attendedAt.getTime()) / 3_600_000);
     const neglect = neglectEffects(hoursAway);
     const effects = withNeglect(personalizeEffects(raw, identity), neglect);
+    // Where the pet is counts first: the time it spent there, and whether its agent moves it on.
+    const themes = await planThemeVisit(db, row, { petTitle: playback.sticker.title, signals, now });
     const eventDetail = [
       detail,
+      themes.note ? `${themes.note}.` : "",
       neglect ? neglectNote(hoursAway) : "",
       stillIll ? `Still ill with ${stillIll.name}.` : "",
       caught ? `Came down with ${caught.name}.` : "",
@@ -160,9 +164,10 @@ export async function visitPet(
         signalsJson: signals,
         ...(headlinesRefreshed ? { signalsUpdatedAt: now } : {}),
         ...(caught ? { illnessJson: caught } : recovered ? { illnessJson: null } : {}),
+        ...themes.set,
         lifeTickAt: now,
       },
-      changes: [{
+      changes: [...themes.changes, {
         kind: event.special ? "special" : "random",
         title: event.title,
         detail: narrated && status ? `${eventDetail} “${status.caption}”` : eventDetail,
@@ -190,6 +195,8 @@ export async function visitPet(
     });
     if (!committed) return (await petRow(db, userId))?.lifeRunId === token;
     await refreshPetItems(db, userId, now);
+    // A trip, an accident or a new day may call for new places, drawn now for the visits to come.
+    await refreshPetThemes(db, userId, now);
     // Once a day, at a moment of its own, the pet runs into something its owner has to decide.
     await maybeStartEncounter(db, userId, now);
     petLog("life:visited", { userId, lifeId, event: event.id, effects, after: committed.after });

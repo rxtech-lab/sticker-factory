@@ -6,12 +6,13 @@ import { researchGenerationPrompt } from "./generation-research";
 import { gateway } from "@ai-sdk/gateway";
 import { experimental_generateVideo as generateVideo, generateImage, generateText, hasToolCall, stepCountIs, tool } from "ai";
 import sharp from "sharp";
+import { ROOM_CLOCK_KEY, ROOM_STATUS_KEY, ROOM_WEATHER_KEY } from "@/lib/pets/room-art";
 import { z } from "zod";
 import { recordImageApiCost, recordTextApiCost, recordVideoApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { ApiError } from "@/lib/http/errors";
 import { traceEvent, traceSpan } from "@/lib/observability/trace";
 import { downscaleForModelInput, inspectImage, normalizeTransparentPng } from "@/lib/storage/r2";
-import type { AiImageInput, AiImageOutput, AiPetRoomArtInput, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiVideoInput, AiVideoOutput } from "./gateway-contracts";
+import type { AiImageInput, AiImageOutput, AiPetRoomArtInput, AiPetThemeArtInput, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiVideoInput, AiVideoOutput } from "./gateway-contracts";
 import { IMAGE_TIMEOUT_MS, VIDEO_FPS, VIDEO_MODEL, VIDEO_RESOLUTION, VIDEO_TIMEOUT_MS, assertImageInputBounds, generateKeyedStickerImage, generateThroughImageModel, userTurn, videoInstruction } from "./gateway-models";
 
 export async function selectImageReferences(
@@ -333,10 +334,49 @@ export const PET_ROOM_ART_WIDTH = 1024;
 export const PET_ROOM_ART_HEIGHT = 1536;
 
 /**
+ * Rooms are drawn after the shop's response, inside a route that lives 300s. One try that ends well
+ * inside it, so a slow drawing fails while the refresh can still release its claim, instead of the
+ * function being killed mid-retry and the shop staying locked until the claim goes stale.
+ */
+const PET_ROOM_ART_TIMEOUT_MS = 200_000;
+
+/**
+ * The blank clock face, weather board and status board drawn into a room or a place, each flooded
+ * with its own key colour so the server can find it and the app can write the time, the weather and
+ * the pet's stats onto it. A place outdoors gets them in its own guise: a street clock, a sign.
+ */
+function petFixturesPrompt(setting: "room" | "place"): string {
+  const clock = setting === "room"
+    ? "Hang a clock on a wall or stand one on a shelf, made in the style of the room and placed where this room would keep one,"
+    : "Add a clock that belongs in this place (a street or station clock, a clock on a wall or post, a clock tower face), in its style,";
+  const board = setting === "room"
+    ? "add one small board for the weather (a chalk slate, a framed card, a little screen, a sign, whatever suits the room),"
+    : "add one small board for the weather (a chalk slate, a menu-style board, a little sign on a post, whatever suits the place),";
+  return [
+    `${clock} clear of the open floor. Its face must be completely blank and filled edge to edge with pure flat ${ROOM_CLOCK_KEY.name} (${ROOM_CLOCK_KEY.hex}):`,
+    "no hands, numbers, ticks, shading or reflections on it, just that one flat colour inside its rim.",
+    `Somewhere else, also in the ${setting}'s style, ${board}`,
+    `its writing surface completely blank and filled edge to edge with pure flat ${ROOM_WEATHER_KEY.name} (${ROOM_WEATHER_KEY.hex}).`,
+    "Make the clock face and the board each clearly visible, front-facing, not hidden behind anything, about a sixth to a quarter of the",
+    "frame wide, and not overlapping each other. Keep both inside the middle two thirds of the width, because phones crop",
+    "the sides of the picture, and in the upper half but below the top tenth: one left of the centre and one right of it, never straight",
+    "above the middle, where the pet stands.",
+    `In the foreground, just in front of where the pet stands, add one wide, low status board in the ${setting}'s style (a wooden plaque,`,
+    "a chalkboard propped on a stool, a framed notice on a low cabinet, a signboard on two short posts, whatever suits it), facing",
+    `straight at the viewer and level, its face completely blank and filled edge to edge with pure flat ${ROOM_STATUS_KEY.name} (${ROOM_STATUS_KEY.hex}),`,
+    "with no writing, shading or reflections on it. Make it about half the frame wide and a sixth of the frame tall, centred",
+    "left to right, with its top edge about three fifths of the way down the frame and its bottom edge well above the lowest sixth,",
+    "which buttons cover. Nothing may overlap it.",
+    `Use ${ROOM_CLOCK_KEY.name}, ${ROOM_WEATHER_KEY.name} and ${ROOM_STATUS_KEY.name} nowhere else in the ${setting}.`,
+  ].join(" ");
+}
+
+/**
  * A room for the pet to stand in, as a portrait scene that fills its frame. Unlike a sticker it is
  * the backdrop, so it skips the transparency path, and the pet itself is never drawn in it. Its
  * windows are a screen of `windowKey` instead of a view: the app keys them out and shows the live
- * weather through them.
+ * weather through them. A blank clock face, weather board and status board are flooded the same way,
+ * in their own colours, so the server can find them and the app can write onto them.
  */
 export async function generatePetRoomArt(input: AiPetRoomArtInput): Promise<AiImageOutput> {
   const key = `pure flat ${input.windowKey.name} (${input.windowKey.hex})`;
@@ -349,6 +389,37 @@ export async function generatePetRoomArt(input: AiPetRoomArtInput): Promise<AiIm
     `glass and every opening to the outside must be filled edge to edge with ${key}, like a film green screen:`,
     "no sky, landscape, weather, reflections, curtains across it, light rays or shading inside it, just that one flat colour.",
     `Use ${input.windowKey.name} nowhere else in the room: no ${input.windowKey.name} walls, plants, objects or glow.`,
+    petFixturesPrompt("room"),
+    "Keep the clock, the weather board and the status board clear of the window.",
+    input.reference ? "Match the reference character's art style, outline, palette and shading, but do NOT draw the character or any creature." : "",
+    "No characters, animals, people, words, letters, numbers, frames, borders or UI.",
+  ].filter(Boolean).join(" ");
+  const result = await generateImage({
+    model: gateway.imageModel(process.env.AI_IMAGE_MODEL ?? "openai/gpt-image-2"),
+    prompt: input.reference ? { text: prompt, images: [input.reference.bytes] } : prompt,
+    n: 1,
+    size: `${PET_ROOM_ART_WIDTH}x${PET_ROOM_ART_HEIGHT}`,
+    maxRetries: 0,
+    abortSignal: AbortSignal.timeout(PET_ROOM_ART_TIMEOUT_MS),
+  });
+  await reportAiStepUsage(result);
+  await recordImageApiCost(result);
+  const bytes = await sharp(Buffer.from(result.image.uint8Array)).png().toBuffer();
+  return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
+}
+
+/**
+ * One place the pet goes, drawn as a full-bleed portrait background in its own style: no windows
+ * cut out, since an outdoor place has its own sky. Same size as a room, so either fills the tab, and
+ * like a room it has a blank clock, weather board and status board for the app to write on.
+ */
+export async function generatePetThemeArt(input: AiPetThemeArtInput): Promise<AiImageOutput> {
+  const prompt = [
+    input.scene,
+    "Draw this place as one full-bleed portrait illustration that fills the whole frame, seen from the front at",
+    "the pet's eye level. Leave the lower middle of the ground open and uncluttered: a pet will stand there.",
+    "Keep the middle calm and softly lit so a character in front of it reads clearly.",
+    petFixturesPrompt("place"),
     input.reference ? "Match the reference character's art style, outline, palette and shading, but do NOT draw the character or any creature." : "",
     "No characters, animals, people, words, letters, numbers, frames, borders or UI.",
   ].filter(Boolean).join(" ");

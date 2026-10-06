@@ -478,11 +478,12 @@ struct StickerChatView: View {
     /// the list never scrolls itself afterwards — a reply that outgrows the viewport waits
     /// below the fold until the reader goes there. See `MessageList`.
     private var transcript: some View {
-        MessageList(
-            messages: conversation,
+        let folded = FoldedToolCalls(conversation)
+        return MessageList(
+            messages: folded.messages,
             isStreaming: isComputing
         ) { message in
-            transcriptRow(message)
+            transcriptRow(message, toolRun: folded.runs[message.id])
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
         } leadingContent: {
@@ -583,8 +584,10 @@ struct StickerChatView: View {
     }
 
     @ViewBuilder
-    private func transcriptRow(_ message: ChatMessage) -> some View {
-        if message.kind == .deviceEdit {
+    private func transcriptRow(_ message: ChatMessage, toolRun: [ChatMessage]?) -> some View {
+        if let toolRun {
+            ToolCallGroup(messages: toolRun, api: store.api)
+        } else if message.kind == .deviceEdit {
             // The divider says an edit happened; the sticker under it says what the edit produced,
             // so the transcript reads the same for a hand edit as for a generated turn.
             VStack(alignment: .leading, spacing: 10) {

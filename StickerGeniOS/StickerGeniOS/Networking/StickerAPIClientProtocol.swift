@@ -84,6 +84,9 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     /// pixels square. Fails until `Pet.weatherArt` names a drawing.
     func petWeatherArt(size: Int) async throws -> Data
     func petWeatherArt(size: Int, artKey: String) async throws -> Data
+    /// The sky outside the room's window, drawn by the server in the pet's style: a transparent PNG
+    /// `size` pixels square holding four pieces in a 2×2 grid. Fails until `Pet.windowWeatherArt` names one.
+    func petWindowWeatherArt(size: Int, artKey: String) async throws -> Data
     func petItemArt(index: Int, size: Int) async throws -> Data
     func petItemArt(index: Int, size: Int, artKey: String) async throws -> Data
     /// Performs an action and returns the pet's updated stats, pose, and spoken response.
@@ -104,6 +107,14 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func setPetRoom(roomID: String?) async throws -> PetRoomChangeResponse
     /// One room's drawing, owned or on offer, as portrait image data.
     func petRoomArt(roomID: String) async throws -> Data
+    /// The places the pet knows and the one it is at. When it is due new ones, its agent starts
+    /// looking; `discovering` says so, and a later call carries them.
+    func petThemes() async throws -> PetThemes
+    /// Takes the pet to a place it knows, or home with nil. Refused when the place's rules do not
+    /// allow it now, and for good once a limited place has expired.
+    func setPetTheme(themeID: String?) async throws -> PetThemeChangeResponse
+    /// One place's drawing, as portrait image data.
+    func petThemeArt(themeID: String) async throws -> Data
     /// Hands the server the phone's coarse context for the pet's life workflow to read on its next
     /// visit. Returns whether it was kept — false when there is no pet to keep it for — and what the
     /// owner's walk paid the pet, when these steps paid it out.
@@ -146,6 +157,7 @@ extension StickerAPIClientProtocol {
     func petWeatherArt(size: Int, artKey: String) async throws -> Data {
         try await petWeatherArt(size: size)
     }
+    func petWindowWeatherArt(size: Int, artKey: String) async throws -> Data { throw StickerAPIError.invalidResponse }
     func petItemArt(index: Int, size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
     func petItemArt(index: Int, size: Int, artKey: String) async throws -> Data {
         try await petItemArt(index: index, size: size)
@@ -160,6 +172,9 @@ extension StickerAPIClientProtocol {
     func purchasePetRoom(roomID: String) async throws -> PetRoomChangeResponse { throw StickerAPIError.invalidResponse }
     func setPetRoom(roomID: String?) async throws -> PetRoomChangeResponse { throw StickerAPIError.invalidResponse }
     func petRoomArt(roomID: String) async throws -> Data { throw StickerAPIError.invalidResponse }
+    func petThemes() async throws -> PetThemes { throw StickerAPIError.invalidResponse }
+    func setPetTheme(themeID: String?) async throws -> PetThemeChangeResponse { throw StickerAPIError.invalidResponse }
+    func petThemeArt(themeID: String) async throws -> Data { throw StickerAPIError.invalidResponse }
 
     /// Clients that cannot observe the transfer still upload; they just never report partway.
     func upload(

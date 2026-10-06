@@ -60,6 +60,8 @@
 	<string>Your pet reacts to how much you walk today. Winky only reads your step count.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Winky never writes to Apple Health. It only reads your step count so your pet can react to how much you walk today.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>With Location Tracking on, your pet notices when you travel and finds places on your trip. Only your approximate location is used, and you can turn it off in the Pet tab.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your pet feels the weather where you are. Only your approximate location is used.</string>
 	<key>NSMicrophoneUsageDescription</key>

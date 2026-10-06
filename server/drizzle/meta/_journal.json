@@ -211,6 +211,34 @@
       "when": 1789531200020,
       "tag": "0029_gold_in_rxsubscription",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789531200021,
+      "tag": "0030_pet_room_fixtures",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789531200022,
+      "tag": "0031_pet_themes",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789531200023,
+      "tag": "0032_pet_window_weather",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789531200024,
+      "tag": "0033_pet_theme_fixtures",
+      "breakpoints": true
     }
   ]
 }

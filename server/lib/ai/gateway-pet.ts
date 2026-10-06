@@ -7,8 +7,9 @@ import { z } from "zod";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { ENCOUNTER_PENALTY_MAX, ENCOUNTER_REWARD_MAX } from "@/lib/pets/encounters";
 import { ROOM_EFFECT_MAX, ROOM_EFFECT_MIN, ROOM_OFFER_COUNT, ROOM_PRICE_MAX, ROOM_PRICE_MIN } from "@/lib/pets/rooms";
-import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_ITEM_RESTORE_ENERGY_MAX, PET_ITEM_RESTORE_ENERGY_MIN, PET_ITEM_RESTORE_PRICE_MAX, PET_ITEM_RESTORE_PRICE_MIN, PET_ANIMATE_EVERY_MAX, PET_ANIMATE_EVERY_MIN, PET_CLASSES, PET_MUSING_AFTER_MAX, PET_MUSING_AFTER_MIN, PET_MUSINGS_MAX, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
-import type { AiOwnerMoment, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEvolutionChoice, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetRoom, AiPetStatus, AiPetStatusContext, PetAction } from "./gateway-contracts";
+import { THEME_DAILY_MINUTES_MAX, THEME_DAILY_MINUTES_MIN, THEME_EFFECT_MAX, THEME_EFFECT_MIN } from "@/lib/pets/themes";
+import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_ITEM_RESTORE_ENERGY_MAX, PET_ITEM_RESTORE_ENERGY_MIN, PET_ITEM_RESTORE_PRICE_MAX, PET_ITEM_RESTORE_PRICE_MIN, PET_ANIMATE_EVERY_MAX, PET_ANIMATE_EVERY_MIN, PET_CLASSES, PET_THEME_CATEGORIES, PET_MUSING_AFTER_MAX, PET_MUSING_AFTER_MIN, PET_MUSINGS_MAX, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
+import type { AiOwnerMoment, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEvolutionChoice, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetRoom, AiPetStatus, AiPetStatusContext, AiPetTheme, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, PetAction } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
 
 const PetStatusInputSchema = z.object({
@@ -193,10 +194,12 @@ export async function generatePetActions(input: AiPetActionsContext): Promise<Om
 /** The rooms the pet's shop offers: places it would love to live, each good for it in its own way. */
 export async function generatePetRooms(input: AiPetActionsContext): Promise<AiPetRoom[]> {
   const effect = z.number().int().min(ROOM_EFFECT_MIN).max(ROOM_EFFECT_MAX);
+  // Lengths are asked for in the prompt and trimmed after, not enforced: a scene that ran a little
+  // long (it now has to place a clock and a weather board too) must not throw away the whole shop.
   const schema = z.object({ rooms: z.array(z.object({
-    title: z.string().trim().min(1).max(32),
-    description: z.string().trim().min(1).max(140),
-    scene: z.string().trim().min(1).max(400),
+    title: z.string().trim().min(1),
+    description: z.string().trim().min(1),
+    scene: z.string().trim().min(1),
     effects: z.object({ happiness: effect, hp: effect, energy: effect }).strict(),
     price: z.number().int().min(ROOM_PRICE_MIN).max(ROOM_PRICE_MAX),
   }).strict()).length(ROOM_OFFER_COUNT) }).strict();
@@ -208,9 +211,13 @@ export async function generatePetRooms(input: AiPetActionsContext): Promise<AiPe
       "A room is a whole place — a cozy burrow, a rooftop greenhouse, a starlit library, a beach hut — that suits",
       "the pet's personality, likes, class and look; let its location, weather, mood and the news inspire some of them.",
       "Make the three clearly different in feel: for example one restful, one lively, one healing.",
-      "Give each a short title, a description of what living there is like for this pet, and a scene: a vivid",
+      "Give each a short title (under 32 characters), a description of what living there is like for this pet (under 140),",
+      "and a scene (under 400 characters): a vivid",
       "visual description of the empty room for an illustrator, with an open floor in the middle where the pet will stand",
       "and at least one big window to the outside; leave what is outside the window undescribed, it shows the owner's real weather.",
+      "Each scene also places a clock and a small board for the weather, both made the way this room would make them",
+      "(a cuckoo clock and a chalk slate, a brass porthole clock and a tide board, a neon clock and a little screen) and set",
+      "somewhere different in each room; leave the clock face and the board's surface blank, the app writes the real time and weather there.",
       `Set what living there does to the pet each day, each stat from ${ROOM_EFFECT_MIN} to ${ROOM_EFFECT_MAX}: restful rooms`,
       "restore energy, lively rooms lift happiness but may tire it, healing rooms restore HP. Every room helps at least",
       "one stat, and the strongest rooms have a small drawback.",
@@ -237,11 +244,131 @@ export async function generatePetRooms(input: AiPetActionsContext): Promise<AiPe
   await recordTextApiCost(result);
   const call = result.toolCalls.find((candidate) => candidate?.toolName === "set-pet-rooms");
   if (!call) throw new Error("Pet agent did not design rooms");
-  const rooms = schema.parse(call.input).rooms;
+  const rooms = schema.parse(call.input).rooms.map((room) => ({
+    ...room, title: room.title.slice(0, 32), description: room.description.slice(0, 140), scene: room.scene.slice(0, 600),
+  }));
   if (new Set(rooms.map((room) => room.title.toLocaleLowerCase())).size !== rooms.length) {
     throw new Error("Pet agent designed duplicate rooms");
   }
   return rooms;
+}
+
+/**
+ * New places the pet could go: everyday ones near its owner it can go back to, and — when the moment
+ * calls for one — a trip, a special event or an accident that will not last.
+ */
+export async function discoverPetThemes(input: AiPetThemeDiscoveryContext): Promise<AiPetTheme[]> {
+  const effect = z.number().int().min(THEME_EFFECT_MIN).max(THEME_EFFECT_MAX);
+  const schema = z.object({ themes: z.array(z.object({
+    title: z.string().trim().min(1).max(32),
+    description: z.string().trim().min(1).max(160),
+    scene: z.string().trim().min(1).max(400),
+    category: z.enum(PET_THEME_CATEGORIES),
+    effects: z.object({ happiness: effect, hp: effect, energy: effect }).strict(),
+    dailyMinutes: z.number().int().min(THEME_DAILY_MINUTES_MIN).max(THEME_DAILY_MINUTES_MAX).nullable(),
+    hours: z.object({ from: z.number().int().min(0).max(23), to: z.number().int().min(0).max(24) }).strict().nullable(),
+    weather: z.array(z.enum(PET_WEATHER_KINDS)).max(PET_WEATHER_KINDS.length).nullable(),
+    placeLabel: z.string().trim().min(1).max(40).nullable(),
+    lastsHours: z.number().int().min(1).max(7 * 24).nullable(),
+  }).strict()).max(input.max) }).strict();
+  const result = await generateText({
+    onLanguageModelCallEnd: reportAiStepUsage,
+    model: gateway(process.env.AI_SUMMARY_MODEL ?? process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    system: [
+      `Discover up to ${input.max} new places this pet could go with its owner, as backgrounds it stands in.`,
+      "Categories: indoor (a library, an arcade), outdoor (a plaza, a rooftop), restaurant (a noodle bar, a bakery café),",
+      "nature (a park, a beach, a forest trail) — everyday places it can go back to; and limited ones that expire for good:",
+      "travel (where the owner is on a trip), event (a festival, a holiday, a match from the news or the date), accident",
+      "(a vet clinic or a first-aid tent after the pet got hurt or ill). Let the owner's location, local time, weather,",
+      "the news and the pet's likes inspire them; a place near the owner's real location makes the best one.",
+      "Give each rules that suit it: dailyMinutes caps time there a day (a busy arcade 60, a park null for no limit);",
+      "hours limits it to the owner's local hours, `to` exclusive (a night market 18–24, a bakery 7–14), or null;",
+      "weather limits it to some kinds of weather (a snowy hill: snowy), or null; placeLabel pins it to where the",
+      "owner is now with a short name for the area (\"Shibuya\", \"Lake Tahoe\"), or null for anywhere. Not every place",
+      "needs rules; some should have none. Limited places need lastsHours: a trip 24–168, an event 6–72, an accident 6–48.",
+      `Effects apply on each visit while the pet is there, each stat ${THEME_EFFECT_MIN} to ${THEME_EFFECT_MAX}: restaurants restore`,
+      "energy or HP, lively places lift happiness but tire it, an accident's clinic heals HP but is no fun.",
+      "Give a short title, a description of the place for this pet, and a scene: a vivid visual description of the",
+      "empty place for an illustrator, with open ground in the lower middle where the pet will stand.",
+      input.hasLocation ? "" : "The owner's location is unknown: placeLabel must be null and there can be no travel place.",
+      "Write titles and descriptions in the language of the pet's name. Return only through set-pet-themes, with an",
+      "empty list when nothing new fits.",
+    ].filter(Boolean).join(" "),
+    messages: userTurn([
+      `Pet: ${input.petTitle}`,
+      describeIdentity(input.identity),
+      input.stats ? `Stats: ${JSON.stringify(input.stats)}` : "",
+      input.mood ? `Mood: ${input.mood}` : "",
+      input.illness ? `Ill with: ${input.illness}` : "",
+      describeMoment(input),
+      input.traveling ? `The owner is on a trip, about ${Math.round(input.traveling.distanceKm)} km from home.` : "",
+      describeSignals(input.signals),
+      input.needs.length ? `Must include exactly one of each: ${input.needs.join(", ")}.` : "",
+      input.known.length ? `Places already known, do not repeat: ${input.known.map((theme) => `${theme.title} (${theme.category})`).join(", ")}` : "",
+      input.image ? "The attached picture is the pet; design places that suit its look." : "",
+    ].filter(Boolean).join("\n\n"), input.image ? [input.image] : []),
+    tools: { "set-pet-themes": tool({ description: "Add these places for the pet.", inputSchema: schema, execute: async (value) => value }) },
+    toolChoice: "required",
+    stopWhen: [hasToolCall("set-pet-themes"), stepCountIs(2)],
+    maxRetries: 1,
+    abortSignal: AbortSignal.timeout(30_000),
+  });
+  await recordTextApiCost(result);
+  const call = result.toolCalls.find((candidate) => candidate?.toolName === "set-pet-themes");
+  if (!call) throw new Error("Pet agent did not discover places");
+  return schema.parse(call.input).themes;
+}
+
+/**
+ * Whether the pet should go somewhere else now. Staying is the usual answer: the pet moves when
+ * something calls for it — the weather turned, it is tired or hungry, a trip began, its time is up.
+ */
+export async function choosePetTheme(input: AiPetThemeChoiceContext): Promise<AiPetThemeChoice> {
+  const ids = input.candidates.map((candidate) => candidate.id);
+  const schema = z.object({
+    choice: z.enum(["stay", "home", ...ids] as [string, ...string[]]),
+    reason: z.string().trim().min(1).max(120),
+  }).strict();
+  const result = await generateText({
+    onLanguageModelCallEnd: reportAiStepUsage,
+    model: gateway(process.env.AI_SUMMARY_MODEL ?? process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    system: [
+      "Decide where this pet should be for the next hour or so: stay where it is, go home, or go to one of the places",
+      "listed by id. Most of the time it should stay; move when something calls for it — it is hungry or tired and a",
+      "restaurant or quiet place would help, the weather or time of day suits somewhere better, its owner is on a trip",
+      "and a travel place is listed, an event is on, or it is hurt and an accident place is listed. Do not move it just",
+      "to move it. Give the reason in a short line, in the language of the pet's name. Return only through choose-place.",
+    ].join(" "),
+    messages: userTurn([
+      `Pet: ${input.petTitle}`,
+      describeIdentity(input.identity),
+      `Stats: ${JSON.stringify(input.stats)}`,
+      input.illness ? `Ill with: ${input.illness}` : "",
+      describeMoment(input),
+      input.traveling ? "The owner is on a trip, far from home." : "",
+      describeSignals(input.signals),
+      input.current
+        ? `Now at: ${input.current.title} (${input.current.category}), for ${input.current.minutesHere} minutes today`
+        : "Now at: home",
+      `Places it can go now:\n${input.candidates.map((candidate) => [
+        `- id ${candidate.id}: ${candidate.title} (${candidate.category}) — ${candidate.description}`,
+        `effects each visit ${JSON.stringify(candidate.effects)}`,
+        candidate.minutesLeftToday !== null ? `${candidate.minutesLeftToday} minutes left today` : "",
+        candidate.expiresInHours !== null ? `gone for good in ${candidate.expiresInHours} hours` : "",
+      ].filter(Boolean).join("; ")).join("\n")}`,
+    ].filter(Boolean).join("\n\n"), []),
+    tools: { "choose-place": tool({ description: "Where the pet goes.", inputSchema: schema, execute: async (value) => value }) },
+    toolChoice: "required",
+    stopWhen: [hasToolCall("choose-place"), stepCountIs(2)],
+    maxRetries: 1,
+    abortSignal: AbortSignal.timeout(20_000),
+  });
+  await recordTextApiCost(result);
+  const call = result.toolCalls.find((candidate) => candidate?.toolName === "choose-place");
+  if (!call) throw new Error("Pet agent did not choose a place");
+  const { choice, reason } = schema.parse(call.input);
+  if (choice === "stay") return { move: false };
+  return { move: true, themeId: choice === "home" ? null : choice, reason };
 }
 
 /** Four objects the pet chooses from its current place, weather, mood and news. */

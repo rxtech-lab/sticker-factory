@@ -98,10 +98,29 @@ actor PetArtworkImageCache {
         }
     }
 
+    /// The sky outside the room's window for the weather now: one sheet of four pieces. Kept with the
+    /// weather drawings, so a new pet or a restyle clears it with them.
+    func loadWindowWeather(pet: Pet, artKey: String, size: Int, api: StickerAPIClientProtocol) async throws -> UIImage {
+        await prepareWeather(for: pet)
+        let scope = Self.scope(pet)
+        guard scope == weatherScope else { throw CancellationError() }
+        return try await load(key: "weather.\(scope).window.\(artKey).\(size)", cache: weatherCache, options: weatherOptions) {
+            try await api.petWindowWeatherArt(size: size, artKey: artKey)
+        }
+    }
+
     /// One room's drawing. Keyed by its `artKey`, which names a drawing that never changes.
     func loadRoom(roomID: String, artKey: String, api: StickerAPIClientProtocol) async throws -> UIImage {
         try await load(key: "room.\(artKey)", cache: roomCache, options: weatherOptions) {
             try await api.petRoomArt(roomID: roomID)
+        }
+    }
+
+    /// One place's drawing. Keyed by its `artKey`, which names a drawing that never changes; kept
+    /// alongside the rooms, since both are the backdrops the pet stands in.
+    func loadTheme(themeID: String, artKey: String, api: StickerAPIClientProtocol) async throws -> UIImage {
+        try await load(key: "theme.\(artKey)", cache: roomCache, options: weatherOptions) {
+            try await api.petThemeArt(themeID: themeID)
         }
     }
 

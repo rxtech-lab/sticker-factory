@@ -17,6 +17,8 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     var adoptedPet: Pet?
     /// The room shop and the rooms bought from it, as the server would keep them for this account.
     var petRoomList: [PetRoom] = MockStickerAPIClient.sampleRooms
+    /// The places the pet knows, as the server would keep them for this account.
+    var petThemeList: [PetTheme] = MockStickerAPIClient.sampleThemes
     /// How many times the pet's pose was drawn, so tests can see a picture was not fetched twice.
     var petPoseRequests = 0
     /// Readable so a test can assert which renditions an export actually produced — a publish that

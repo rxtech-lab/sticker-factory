@@ -27,6 +27,12 @@ final class PetModel {
         case buyingRoom(String)
         /// Moving the pet into another room it has, or back onto the plain page.
         case movingRoom
+        /// Taking the pet to one of its places.
+        case goingTo(String)
+        /// Bringing the pet home from a place.
+        case comingHome
+        /// Turning Location Tracking on or off, and telling the server.
+        case settingTracking(Bool)
     }
 
     private(set) var pet: Pet?
@@ -72,6 +78,29 @@ final class PetModel {
     private(set) var roomArt: UIImage?
     /// Names exactly what `roomArt` shows: `PetRoomRef.artKey`.
     private(set) var roomArtKey: String?
+    /// The places the pet knows. Nil until the Places tab has loaded them.
+    private(set) var themes: PetThemes?
+    /// The drawing of the place the pet has gone, filling the tab behind it in place of its room.
+    /// Nil while it is at home, and until it has loaded.
+    private(set) var themeArt: UIImage?
+    /// Names exactly what `themeArt` shows: `PetThemeRef.artKey`.
+    private(set) var themeArtKey: String?
+    /// The sky outside the room's window, drawn in the pet's style as pieces the tab animates. Nil on
+    /// the plain page and until it is drawn; the painted sky stands in until then.
+    private(set) var windowSky: PetWindowSprites?
+    /// Names exactly what `windowSky` shows: `Pet.windowWeatherArt.key`.
+    private(set) var windowSkyKey: String?
+    /// Where the room or place on screen shows the time, weather and stats. Nil on the plain page,
+    /// while its drawing loads, and in drawings made without them, so the tab keeps them in its own
+    /// chips and card then.
+    var roomFixtures: PetRoomFixtures? {
+        if themeArt != nil {
+            guard let theme = pet?.theme, theme.artKey == themeArtKey else { return nil }
+            return theme.fixtures
+        }
+        guard roomArt != nil, let room = pet?.room, room.artKey == roomArtKey else { return nil }
+        return room.fixtures
+    }
     var errorMessage: String?
 
     let api: any StickerAPIClientProtocol
@@ -98,6 +127,8 @@ final class PetModel {
     static let poseSize = 512
     /// Edge of the weather drawing, in pixels: the tab shows it at about 120 points.
     static let weatherArtSize = 384
+    /// Edge of the window sky's sheet, in pixels: four pieces, each shown at up to about 160 points.
+    static let windowSkySize = 1024
 
     /// Decides what the pet says and does: its agent on the server, and the on-device model.
     let brain: PetBrain
@@ -172,6 +203,8 @@ final class PetModel {
             Task { await refreshPose() }
             Task { await refreshWeatherArt() }
             Task { await refreshRoomArt() }
+            Task { await refreshThemeArt() }
+            Task { await refreshWindowSky() }
         } catch {
             guard !StickerStore.isCancellation(error) else { return }
             hasLoadedPet = true
@@ -267,6 +300,22 @@ final class PetModel {
             Haptics.failure()
         }
         return stored
+    }
+
+    /// Turns Location Tracking on or off, covering the screen while the server hears. Off has the
+    /// server forget where the owner was; on offers "Always" so trips are noticed in the background.
+    func setLocationTracking(_ enabled: Bool) async {
+        guard activity == nil else { return }
+        activity = .settingTracking(enabled)
+        defer { activity = nil }
+        let stored = await context.setLocationTracking(enabled, api: api)
+        if let refreshed = try? await api.pet() { pet = refreshed }
+        if stored || pet == nil {
+            errorMessage = nil
+            Haptics.success()
+        } else {
+            Haptics.failure()
+        }
     }
 
     /// Whether location is allowed but the pet still has no weather: the phone could not find where
@@ -417,8 +466,36 @@ final class PetModel {
         }
     }
 
-    /// Whether the pet has weather the server is still drawing, so the tab looks again shortly.
-    var isWeatherArtPending: Bool { pet?.signals?.weather != nil && pet?.weatherArt == nil }
+    /// Fetches the sky outside the room's window, drawn in the pet's style, when it changed. Off the
+    /// plain page, or with no drawing for this weather yet, it clears so the painted sky shows instead
+    /// of a stale one; a failed fetch keeps what is up.
+    private func refreshWindowSky() async {
+        guard let pet, pet.room != nil, let art = pet.windowWeatherArt else {
+            windowSky = nil
+            windowSkyKey = nil
+            return
+        }
+        guard art.key != windowSkyKey || windowSky == nil else { return }
+        do {
+            let image = try await PetArtworkImageCache.shared.loadWindowWeather(
+                pet: pet, artKey: art.key, size: Self.windowSkySize, api: api
+            )
+            // The weather turned while this one was fetched; that one's fetch will land it.
+            guard self.pet?.windowWeatherArt?.key == art.key else { return }
+            windowSky = PetWindowSprites(sheet: image, kind: art.kind, isDay: art.isDay)
+            windowSkyKey = art.key
+        } catch {
+            guard !StickerStore.isCancellation(error) else { return }
+            Self.log.error("pet window sky failed to load: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Whether the pet has weather the server is still drawing — the sticker beside it, or the sky
+    /// outside its room's window — so the tab looks again shortly.
+    var isWeatherArtPending: Bool {
+        guard pet?.signals?.weather != nil else { return false }
+        return pet?.weatherArt == nil || (pet?.room != nil && pet?.windowWeatherArt == nil)
+    }
 
     func release() async {
         guard activity == nil else { return }
@@ -431,6 +508,8 @@ final class PetModel {
             await refreshPose()
             await refreshWeatherArt()
             await refreshRoomArt()
+            await refreshThemeArt()
+            await refreshWindowSky()
             dismissPhoto()
             dismissItem()
             errorMessage = nil
@@ -561,6 +640,7 @@ final class PetModel {
         // The pet notices its new home.
         greetCount &+= 1
         Task { await refreshRoomArt() }
+        Task { await refreshWindowSky() }
     }
 
     /// Fetches the drawing of the pet's room when it changed. Off the plain page it clears at once;
@@ -581,6 +661,64 @@ final class PetModel {
         } catch {
             guard !StickerStore.isCancellation(error) else { return }
             Self.log.error("pet room art failed to load: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Reads the places the pet knows; its agent may still be discovering new ones, which a later
+    /// call picks up. A failure keeps what was shown.
+    func refreshThemes() async {
+        do {
+            themes = try await api.petThemes()
+        } catch {
+            guard !StickerStore.isCancellation(error) else { return }
+            if themes == nil { errorMessage = error.localizedDescription }
+        }
+    }
+
+    /// Takes the pet to `theme`, or home with nil, covering the screen while it goes. Returns
+    /// whether it went; a place its rules close says why in the error banner.
+    func goTo(_ theme: PetTheme?) async -> Bool {
+        guard activity == nil else { return false }
+        activity = theme.map { .goingTo($0.title) } ?? .comingHome
+        defer { activity = nil }
+        do {
+            let change = try await api.setPetTheme(themeID: theme?.id)
+            pet = change.pet
+            themes = change.themes
+            errorMessage = nil
+            publishToCompanions()
+            // The pet notices where it is.
+            greetCount &+= 1
+            Haptics.success()
+            await refreshThemeArt()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            Haptics.failure()
+            await refreshThemes()
+            return false
+        }
+    }
+
+    /// Fetches the drawing of the place the pet has gone when it changed. Back home it clears at
+    /// once, and the room shows again; a failed fetch leaves the room up rather than a blank. The
+    /// tab calls it whenever the pet's place changes, since its agent moves it on its own.
+    func refreshThemeArt() async {
+        guard let theme = pet?.theme else {
+            themeArt = nil
+            themeArtKey = nil
+            return
+        }
+        guard theme.artKey != themeArtKey || themeArt == nil else { return }
+        do {
+            let image = try await PetArtworkImageCache.shared.loadTheme(themeID: theme.id, artKey: theme.artKey, api: api)
+            // The pet went somewhere else while this one loaded; that trip's fetch will land it.
+            guard pet?.theme?.artKey == theme.artKey else { return }
+            themeArt = image
+            themeArtKey = theme.artKey
+        } catch {
+            guard !StickerStore.isCancellation(error) else { return }
+            Self.log.error("pet theme art failed to load: \(error.localizedDescription, privacy: .public)")
         }
     }
 

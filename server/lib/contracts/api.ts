@@ -734,6 +734,12 @@ export const AccountDeletionStateV1Schema = z.object({
 /** The classes a pet can be. Each sets its HP ceiling and how much its activities tire it. */
 export const PET_CLASSES = ["guardian", "explorer", "dreamer", "trickster", "scholar", "athlete"] as const;
 export const PET_WEATHER_KINDS = ["sunny", "cloudy", "rainy", "snowy", "stormy", "foggy", "windy"] as const;
+/**
+ * The kinds of place a pet can go. The first four can be gone back to; a trip, a special event and
+ * an accident are limited — once they expire, they are gone.
+ */
+export const PET_THEME_CATEGORIES = ["indoor", "outdoor", "restaurant", "nature", "travel", "event", "accident"] as const;
+export const PET_LIMITED_THEME_CATEGORIES = ["travel", "event", "accident"] as const;
 
 const PetEffectsV1Schema = z.object({ happiness: z.number().int(), hp: z.number().int(), energy: z.number().int(), gold: z.number().int() }).strict();
 const PetStatsV1Schema = z.object({
@@ -796,8 +802,15 @@ export const PetContextV1Schema = z.object({
   longitude: z.number().min(-180).max(180).optional(),
   stepsToday: z.number().int().min(0).max(200_000).optional(),
   timeZone: z.string().min(1).max(64).optional(),
+  /**
+   * False when the owner turned location tracking off: the server forgets where they were, and
+   * where home is, and the payload must carry no location.
+   */
+  trackLocation: z.boolean().optional(),
 }).strict().refine((value) => (value.latitude === undefined) === (value.longitude === undefined), {
   message: "latitude and longitude come together",
+}).refine((value) => value.trackLocation !== false || value.latitude === undefined, {
+  message: "no location while tracking is off",
 });
 export type PetContextV1 = z.infer<typeof PetContextV1Schema>;
 
@@ -897,6 +910,30 @@ export const PetEncounterV1Schema = z.object({
 
 export const PetIllnessV1Schema = z.object({ name: z.string(), since: z.string().datetime() }).strict();
 
+/**
+ * A place drawn into a room for the app to write on, as a 0–1 box of the room's drawing: `face` is
+ * the blank surface the server painted there and `ink` the colour that reads on it.
+ */
+const PetRoomFixtureV1Schema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  width: z.number().min(0).max(1),
+  height: z.number().min(0).max(1),
+  shape: z.enum(["round", "rect"]),
+  face: z.string().regex(/^#[0-9A-F]{6}$/),
+  ink: z.string().regex(/^#[0-9A-F]{6}$/),
+}).strict();
+
+/**
+ * Where a room or place shows the time, the weather and the pet's stats; any is null when its
+ * drawing has no place for it. `status` is absent from rooms drawn before status boards.
+ */
+export const PetRoomFixturesV1Schema = z.object({
+  clock: PetRoomFixtureV1Schema.nullable(),
+  weather: PetRoomFixtureV1Schema.nullable(),
+  status: PetRoomFixtureV1Schema.nullable().optional(),
+}).strict();
+
 export const PetResponseV1Schema = z.object({
   pet: z.object({
     sticker: StickerSummaryV1Schema,
@@ -948,6 +985,16 @@ export const PetResponseV1Schema = z.object({
       isDay: z.boolean(),
       key: z.string().min(1),
     }).strict().nullable().optional(),
+    /**
+     * The sky outside the room's window for the weather now, drawn in the pet's style as a 2×2 sheet
+     * of pieces — sun or moon, wide cloud, small cloud, particle — fetched from
+     * `GET /api/v1/pet/weather-art?layer=window`. Null with no weather, no room yet, or still drawing.
+     */
+    windowWeatherArt: z.object({
+      kind: z.enum(PET_WEATHER_KINDS),
+      isDay: z.boolean(),
+      key: z.string().min(1),
+    }).strict().nullable().optional(),
     /** Today's encounter while it waits for the owner's choice; null once chosen, expired, or none. */
     encounter: PetEncounterV1Schema.nullable().optional(),
     /** What the pet is ill with. Null while it is well. */
@@ -958,7 +1005,18 @@ export const PetResponseV1Schema = z.object({
      * The room the pet lives in, drawn behind it: fetched from `GET /api/v1/pet/rooms/art`. Null on
      * the plain page; optional so responses from before rooms decode.
      */
-    room: z.object({ id: z.string().uuid(), title: z.string(), artKey: z.string().uuid() }).strict().nullable().optional(),
+    room: z.object({
+      id: z.string().uuid(), title: z.string(), artKey: z.string().uuid(),
+      fixtures: PetRoomFixturesV1Schema.nullable().optional(),
+    }).strict().nullable().optional(),
+    /**
+     * The place the pet has gone, drawn behind it in place of its room: fetched from
+     * `GET /api/v1/pet/themes/art`. Null while it is at home; optional so older responses decode.
+     */
+    theme: z.object({
+      id: z.string().uuid(), title: z.string(), artKey: z.string().uuid(), category: z.enum(PET_THEME_CATEGORIES),
+      fixtures: PetRoomFixturesV1Schema.nullable().optional(),
+    }).strict().nullable().optional(),
   }).strict().nullable(),
 }).strict();
 
@@ -974,6 +1032,7 @@ export const PetRoomV1Schema = z.object({
   price: z.number().int().min(0),
   artKey: z.string().uuid(),
   owned: z.boolean(),
+  fixtures: PetRoomFixturesV1Schema.nullable().optional(),
 }).strict();
 
 /** The rooms the owner has, the shop's offers, and which room the pet lives in. */
@@ -1002,7 +1061,69 @@ export const PetRoomChangeResponseV1Schema = z.object({
   rooms: PetRoomsV1Schema,
 }).strict();
 
-export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room"] as const;
+/**
+ * A place the pet can go, discovered by its agent from its owner's world. What it does lands on each
+ * of the pet's visits while it is there. A limited place — a trip, a special event, an accident — is
+ * there for a while and then `expired` for good; the others can be gone back to whenever their rules
+ * allow, which `available` and `unavailableReason` say for right now.
+ */
+export const PetThemeV1Schema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string(),
+  category: z.enum(PET_THEME_CATEGORIES),
+  limited: z.boolean(),
+  effects: z.object({ happiness: z.number().int(), hp: z.number().int(), energy: z.number().int() }).strict(),
+  rules: z.object({
+    /** The most minutes a day the pet may spend here, or null for no limit. */
+    dailyMinutes: z.number().int().min(1).nullable(),
+    /** The owner's local hours it is open, `from` inclusive and `to` exclusive; may wrap midnight. */
+    hours: z.object({ from: z.number().int().min(0).max(23), to: z.number().int().min(0).max(24) }).strict().nullable(),
+    /** Only in these kinds of weather where the owner is. */
+    weather: z.array(z.enum(PET_WEATHER_KINDS)).nullable(),
+    /** Only while the owner is near this place. Its coordinates stay on the server. */
+    place: z.object({ label: z.string(), radiusKm: z.number().positive() }).strict().nullable(),
+  }).strict(),
+  artKey: z.string().uuid(),
+  /** Where its drawing shows the time, weather and stats; null for places drawn before it had them. */
+  fixtures: PetRoomFixturesV1Schema.nullable().optional(),
+  /** When a limited place expires; null for the ones that never do. */
+  expiresAt: z.string().datetime().nullable(),
+  expired: z.boolean(),
+  available: z.boolean(),
+  /** Why the pet cannot go right now, in a sentence for the owner. Null when it can. */
+  unavailableReason: z.string().nullable(),
+  /** Minutes the pet may still spend here today, when the place limits them. */
+  minutesLeftToday: z.number().int().min(0).nullable(),
+  discoveredAt: z.string().datetime(),
+}).strict();
+
+/** The places the pet knows, which one it is at, and what its agent is up to finding new ones. */
+export const PetThemesV1Schema = z.object({
+  /** Null while the pet is at home, in its room or on the plain page. */
+  activeThemeId: z.string().uuid().nullable(),
+  themes: z.array(PetThemeV1Schema),
+  /** True while the pet's agent is discovering and drawing new places. */
+  discovering: z.boolean(),
+  /** True while the owner is far from home, so the pet looks for places on the trip. */
+  traveling: z.boolean(),
+  /** False when the server has no location for the owner: place rules and trips cannot be known. */
+  hasLocation: z.boolean(),
+}).strict();
+
+export const PetThemesResponseV1Schema = z.object({ themes: PetThemesV1Schema }).strict();
+
+/** Takes the pet to a place it knows; null brings it home. */
+export const SetPetThemeRequestSchema = z.object({ themeId: z.string().uuid().nullable() }).strict();
+export type SetPetThemeRequest = z.infer<typeof SetPetThemeRequestSchema>;
+
+/** A trip somewhere or back home: the pet after it, and its places as they now stand. */
+export const PetThemeChangeResponseV1Schema = z.object({
+  pet: PetResponseV1Schema.shape.pet,
+  themes: PetThemesV1Schema,
+}).strict();
+
+export const PET_EVENT_KINDS = ["adopted", "send", "interaction", "random", "special", "share", "photo", "content", "sticker", "evolved", "encounter", "illness", "medicine", "room", "theme"] as const;
 
 /**
  * One line of the pet's diary: what happened, what it did to the stats, and what the server knew
@@ -1111,6 +1232,9 @@ export type PetSignalsV1 = z.infer<typeof PetSignalsV1Schema>;
 export type PetEventV1 = z.infer<typeof PetEventV1Schema>;
 export type PetRoomsV1 = z.infer<typeof PetRoomsV1Schema>;
 export type PetRoomV1 = z.infer<typeof PetRoomV1Schema>;
+export type PetThemesV1 = z.infer<typeof PetThemesV1Schema>;
+export type PetThemeV1 = z.infer<typeof PetThemeV1Schema>;
+export type PetThemeCategory = (typeof PET_THEME_CATEGORIES)[number];
 export type PostChatMessageRequest = z.infer<typeof PostChatMessageRequestSchema>;
 export type CreateUploadRequest = z.infer<typeof CreateUploadRequestSchema>;
 export type PublishExportsRequest = z.infer<typeof PublishExportsRequestSchema>;
