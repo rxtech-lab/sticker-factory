@@ -60,8 +60,12 @@ export const unusedAiProvider: AiProvider = {
   searchPetHeadlines: () => { throw new Error("Unexpected searchPetHeadlines"); },
   narratePetEvent: () => { throw new Error("Unexpected narratePetEvent"); },
   generatePetEncounter: () => { throw new Error("Unexpected generatePetEncounter"); },
+  meetPetFriend: () => { throw new Error("Unexpected meetPetFriend"); },
   // Every finished turn shows the owner's pet the new sticker; the step swallows a failure.
   noticePetSticker: () => { throw new Error("Unexpected noticePetSticker"); },
+  // Memory runs in the background and never fails what the owner waits on, so these surface only in logs.
+  embedPetMemories: () => { throw new Error("Unexpected embedPetMemories"); },
+  updatePetMemory: () => { throw new Error("Unexpected updatePetMemory"); },
 };
 
 /**

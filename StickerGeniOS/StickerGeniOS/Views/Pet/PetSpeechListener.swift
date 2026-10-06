@@ -44,6 +44,12 @@ final class PetSpeechListener {
     /// The tail the model is still unsure of; it is rewritten as the owner keeps talking.
     private(set) var tentativeText = ""
     var problem: Problem?
+    /// How loud the microphone has been lately, oldest first, each from 0 (silence) to 1; drawn as
+    /// the soundwave while listening.
+    private(set) var levels = PetSpeechListener.silence
+
+    static let levelCount = 28
+    private static let silence = [Float](repeating: 0, count: levelCount)
 
     /// Everything heard so far, settled and tentative.
     var transcript: String { (settledText + tentativeText).trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -61,6 +67,7 @@ final class PetSpeechListener {
         settledText = ""
         tentativeText = ""
         problem = nil
+        levels = Self.silence
         do {
             guard await AVAudioApplication.requestRecordPermission() else { throw Problem.microphoneDenied }
             guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: .current) else { throw Problem.unsupported }
@@ -104,7 +111,9 @@ final class PetSpeechListener {
                 await analyzer.cancelAndFinishNow()
                 return
             }
-            let feed = PetAudioFeed(format: format, continuation: continuation)
+            let feed = PetAudioFeed(format: format, continuation: continuation) { [weak self] level in
+                Task { @MainActor in self?.hear(level) }
+            }
             try feed.start()
             self.analyzer = analyzer
             self.feed = feed
@@ -117,12 +126,19 @@ final class PetSpeechListener {
         }
     }
 
+    private func hear(_ level: Float) {
+        guard state == .listening else { return }
+        levels.removeFirst()
+        levels.append(level)
+    }
+
     /// Turns the microphone off and waits for the last words to be written down.
     func stop() async {
         guard state == .listening else { return }
         state = .finishing
         feed?.stop()
         feed = nil
+        levels = Self.silence
         do {
             try await analyzer?.finalizeAndFinishThroughEndOfInput()
         } catch {
@@ -152,6 +168,7 @@ final class PetSpeechListener {
         results = nil
         await analyzer?.cancelAndFinishNow()
         analyzer = nil
+        levels = Self.silence
         state = .idle
     }
 }
@@ -163,11 +180,18 @@ nonisolated final class PetAudioFeed: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let format: AVAudioFormat
     private let continuation: AsyncStream<AnalyzerInput>.Continuation
+    /// Told how loud each buffer was, from 0 to 1, on the audio thread.
+    private let onLevel: @Sendable (Float) -> Void
     private var converter: AVAudioConverter?
 
-    init(format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
+    init(
+        format: AVAudioFormat,
+        continuation: AsyncStream<AnalyzerInput>.Continuation,
+        onLevel: @escaping @Sendable (Float) -> Void
+    ) {
         self.format = format
         self.continuation = continuation
+        self.onLevel = onLevel
     }
 
     func start() throws {
@@ -192,8 +216,20 @@ nonisolated final class PetAudioFeed: @unchecked Sendable {
     }
 
     private func feed(_ buffer: AVAudioPCMBuffer) {
+        onLevel(Self.level(of: buffer))
         guard let converted = convert(buffer) else { return }
         continuation.yield(AnalyzerInput(buffer: converted))
+    }
+
+    /// The buffer's loudness, mapped from -50 dB (quiet room) to 0 dB (shouting) onto 0...1.
+    private static func level(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
+        let count = Int(buffer.frameLength)
+        var sum: Float = 0
+        for index in 0..<count { sum += samples[index] * samples[index] }
+        let rms = (sum / Float(count)).squareRoot()
+        let decibels = 20 * log10(max(rms, 0.000_01))
+        return min(max((decibels + 50) / 50, 0), 1)
     }
 
     private func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {

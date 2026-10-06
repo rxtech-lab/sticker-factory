@@ -239,6 +239,27 @@
       "when": 1789531200024,
       "tag": "0033_pet_theme_fixtures",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789531200025,
+      "tag": "0034_pet_memories",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789531200026,
+      "tag": "0035_pet_item_stock",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789531200027,
+      "tag": "0036_pet_friends",
+      "breakpoints": true
     }
   ]
 }

@@ -15,10 +15,12 @@ import { forecastReminder, weatherChange } from "@/lib/pets/weather-news";
 import { addEffects, applyEffects, personalizeEffects, preferenceEffects, ZERO_EFFECTS } from "@/lib/pets/stats";
 import { ownerMoment, refreshActions } from "./pet-actions";
 import { maybeStartEncounter } from "./pet-encounters";
+import { maybeMeetPetFriend } from "./pet-friends";
 import { refreshPetItems } from "./pet-items";
 import { planThemeVisit, refreshPetThemes } from "./pet-themes";
 import { commitPetChange, currentStats, ensurePetIdentity, lastAttendedAt, lastFeltWeather, petRow, remindedForecastOn, type PetChange } from "./pet-state";
 import { readablePlayback } from "./playback";
+import { recallPetMemories } from "./pet-memory";
 
 /** Time passing between visits: the pet rests, and misses its owner a little. */
 const VISIT_DRIFT = { happiness: -3, hp: 0, energy: 6 };
@@ -137,6 +139,7 @@ export async function visitPet(
         petTitle: playback.sticker.title, identity, signals, event: { title: event.title, detail: eventDetail },
         stats: currentStats(row), controls: configuration?.controls ?? [], current: row.statusJson?.values ?? null,
         ...ownerMoment(row.contextJson, now),
+        memories: await recallPetMemories(db, userId, lifeId, `${event.title}: ${eventDetail}`),
       });
       status = {
         values: configuration ? normalizedControlValues(configuration, { ...row.statusJson?.values, ...answer.values }) : {},
@@ -199,6 +202,8 @@ export async function visitPet(
     await refreshPetThemes(db, userId, now);
     // Once a day, at a moment of its own, the pet runs into something its owner has to decide.
     await maybeStartEncounter(db, userId, now);
+    // Now and then what happened brings someone new along, who becomes a sticker of their own.
+    await maybeMeetPetFriend(db, userId, { now, happening: `${event.title}: ${eventDetail}` });
     petLog("life:visited", { userId, lifeId, event: event.id, effects, after: committed.after });
     if (narrated) await notify(db, userId).catch((error) => petLog("life:notify-failed", { userId, error: describeError(error) }));
     return true;

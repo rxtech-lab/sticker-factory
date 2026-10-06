@@ -425,6 +425,9 @@
     "%lld gold" : {
 
     },
+    "%lld in bag" : {
+
+    },
     "%lld layers" : {
 
     },
@@ -443,6 +446,9 @@
           }
         }
       }
+    },
+    "%lld left" : {
+
     },
     "%lld medicine" : {
 
@@ -1365,6 +1371,9 @@
     "Adopting %@…" : {
 
     },
+    "After Purchase" : {
+
+    },
     "All" : {
       "localizations" : {
         "zh-CN" : {
@@ -1655,6 +1664,9 @@
     "Athlete" : {
 
     },
+    "Availability & Expiry" : {
+
+    },
     "Back" : {
       "localizations" : {
         "zh-CN" : {
@@ -1670,6 +1682,9 @@
           }
         }
       }
+    },
+    "Bag" : {
+
     },
     "Balance" : {
       "localizations" : {
@@ -2000,7 +2015,16 @@
     "Buy for %lld Gold" : {
 
     },
+    "Buy Medicine" : {
+
+    },
     "Buy This Room?" : {
+
+    },
+    "Buying %@…" : {
+
+    },
+    "Buying medicine…" : {
 
     },
     "by %@" : {
@@ -2175,9 +2199,6 @@
           }
         }
       }
-    },
-    "Catching your last words…" : {
-
     },
     "Change how long this animation runs" : {
 
@@ -3046,6 +3067,9 @@
         }
       }
     },
+    "Cures any illness." : {
+
+    },
     "Current" : {
       "localizations" : {
         "zh-CN" : {
@@ -3385,6 +3409,9 @@
           }
         }
       }
+    },
+    "Details about %@" : {
+
     },
     "Diary" : {
 
@@ -4051,6 +4078,18 @@
     "Expanded" : {
 
     },
+    "Expired" : {
+
+    },
+    "Expires %@ after purchase." : {
+
+    },
+    "Expires At" : {
+
+    },
+    "Expires in %@" : {
+
+    },
     "Explorer" : {
 
     },
@@ -4442,7 +4481,13 @@
     "Folds the tool calls" : {
 
     },
+    "Food" : {
+
+    },
     "For %@s" : {
+
+    },
+    "For when your pet is ill." : {
 
     },
     "Frame %lld of %lld" : {
@@ -4641,9 +4686,6 @@
     "Get the full app" : {
 
     },
-    "Getting ready to listen…" : {
-
-    },
     "Getting ready…" : {
       "localizations" : {
         "zh-CN" : {
@@ -4659,6 +4701,9 @@
           }
         }
       }
+    },
+    "GETTING READY…" : {
+
     },
     "GIF" : {
       "localizations" : {
@@ -4884,6 +4929,22 @@
         }
       }
     },
+    "Hops hello" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "蹦一下打招呼"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳一跳打招呼"
+          }
+        }
+      }
+    },
     "How %@ works" : {
       "localizations" : {
         "zh-CN" : {
@@ -4969,6 +5030,9 @@
         }
       }
     },
+    "In %@" : {
+
+    },
     "In progress" : {
       "localizations" : {
         "zh-CN" : {
@@ -5000,6 +5064,9 @@
           }
         }
       }
+    },
+    "In Your Bag" : {
+
     },
     "Include" : {
       "localizations" : {
@@ -5070,7 +5137,10 @@
         }
       }
     },
-    "Items" : {
+    "Item" : {
+
+    },
+    "Item Details" : {
 
     },
     "Its stats, items and medicine are gone for good. Your gold stays with you." : {
@@ -5094,6 +5164,9 @@
           }
         }
       }
+    },
+    "Keep in Bag" : {
+
     },
     "Keep it" : {
       "localizations" : {
@@ -5158,6 +5231,9 @@
           }
         }
       }
+    },
+    "Keeps for %@ once bought." : {
+
     },
     "Kept" : {
       "localizations" : {
@@ -5260,6 +5336,12 @@
 
     },
     "Learn with tutorials" : {
+
+    },
+    "Leaves the Shop" : {
+
+    },
+    "Leaves the shop in %@" : {
 
     },
     "Left" : {
@@ -5383,10 +5465,7 @@
     "Likes" : {
 
     },
-    "Listening…" : {
-
-    },
-    "Listening… tap to stop" : {
+    "LISTENING · TAP SEND WHEN DONE" : {
 
     },
     "Living here" : {
@@ -6005,6 +6084,22 @@
         }
       }
     },
+    "Met new friends!" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "认识新朋友啦！"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "識咗新朋友啦！"
+          }
+        }
+      }
+    },
     "Midnight" : {
       "localizations" : {
         "zh-CN" : {
@@ -6214,6 +6309,28 @@
     "Needs You" : {
 
     },
+    "Never expires once bought." : {
+
+    },
+    "Never expires." : {
+
+    },
+    "New friend" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新朋友"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新朋友"
+          }
+        }
+      }
+    },
     "New layer" : {
 
     },
@@ -6348,6 +6465,9 @@
     "No controllable stickers" : {
 
     },
+    "No departure time listed." : {
+
+    },
     "No installs yet" : {
       "localizations" : {
         "zh-CN" : {
@@ -6368,6 +6488,9 @@
 
     },
     "No limits. Your pet can go any time." : {
+
+    },
+    "No longer in the shop." : {
 
     },
     "No matches" : {
@@ -6418,7 +6541,7 @@
         }
       }
     },
-    "No medicine. Help your pet with its daily moments to earn some." : {
+    "No medicine. Buy some in the item shop, or help your pet with its daily moments to earn some." : {
 
     },
     "No motion yet." : {
@@ -6825,9 +6948,6 @@
       }
     },
     "Nothing written yet" : {
-
-    },
-    "Objects your pet chose from its world today." : {
 
     },
     "Ocean gradient" : {
@@ -8101,6 +8221,9 @@
         }
       }
     },
+    "Quantity" : {
+
+    },
     "Quick generation uses your points." : {
 
     },
@@ -9057,7 +9180,23 @@
         }
       }
     },
-    "Say something to your pet. Your words are written down on your iPhone and never leave it." : {
+    "Say Hello to %@" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跟%@打个招呼"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同%@打個招呼"
+          }
+        }
+      }
+    },
+    "Say something to your pet." : {
 
     },
     "Say what is wrong and the assistant will draft a new plan right away. Leave it blank to just dismiss this one." : {
@@ -9232,6 +9371,9 @@
         }
       }
     },
+    "Send to Your Pet" : {
+
+    },
     "Sending the animation" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9340,6 +9482,9 @@
     "Sending…" : {
 
     },
+    "SENDING…" : {
+
+    },
     "Separate %lld parts" : {
       "localizations" : {
         "zh-CN" : {
@@ -9439,6 +9584,9 @@
       }
     },
     "Shine" : {
+
+    },
+    "Shopping" : {
 
     },
     "Show a Picture" : {
@@ -9832,9 +9980,6 @@
           }
         }
       }
-    },
-    "Start Listening" : {
-
     },
     "Start over" : {
       "localizations" : {
@@ -10307,9 +10452,6 @@
         }
       }
     },
-    "Stop Listening" : {
-
-    },
     "Stopped" : {
       "localizations" : {
         "zh-CN" : {
@@ -10375,6 +10517,9 @@
       }
     },
     "Storage" : {
+
+    },
+    "Store" : {
 
     },
     "Stormy" : {
@@ -10585,10 +10730,7 @@
     "Tap the layer count or the timing to edit layers, motion and duration. Every change is saved as a version you can switch back to." : {
 
     },
-    "Tap the microphone and start talking." : {
-
-    },
-    "Tap to talk" : {
+    "Tap to give it." : {
 
     },
     "Tap to view" : {
@@ -10813,6 +10955,9 @@
           }
         }
       }
+    },
+    "The dose goes in your pet's bag. Give it from there to cure your pet." : {
+
     },
     "The downloaded asset didn't match what was published." : {
       "localizations" : {
@@ -11334,6 +11479,9 @@
         }
       }
     },
+    "Things you keep from the store wait here until you use them." : {
+
+    },
     "Thinking about it…" : {
       "localizations" : {
         "zh-CN" : {
@@ -11470,6 +11618,9 @@
       }
     },
     "This is taking longer than expected. It is still running — open the main app to pick it up." : {
+
+    },
+    "This is the earliest expiry. The copy expiring soonest is used first." : {
 
     },
     "This one needs %lld credits and you have %lld. Top up to finish it." : {
@@ -11741,6 +11892,9 @@
     "Those reference images are too large together. Remove one and try again." : {
 
     },
+    "Ticket" : {
+
+    },
     "Time together" : {
 
     },
@@ -11951,6 +12105,9 @@
         }
       }
     },
+    "Toy" : {
+
+    },
     "Trickster" : {
 
     },
@@ -12113,6 +12270,9 @@
 
     },
     "Tutorials unavailable" : {
+
+    },
+    "Type" : {
 
     },
     "Ultra" : {
@@ -12349,6 +12509,9 @@
         }
       }
     },
+    "Use it with your pet now, or keep it in your bag for later. %@" : {
+
+    },
     "Use Live Subject" : {
       "localizations" : {
         "zh-CN" : {
@@ -12364,6 +12527,9 @@
           }
         }
       }
+    },
+    "Use Now" : {
+
     },
     "Use Subject" : {
       "localizations" : {
@@ -13110,6 +13276,9 @@
     "Your approximate location, to about a kilometre, is used to look up the weather. Only while you use the app." : {
 
     },
+    "Your Bag Is Empty" : {
+
+    },
     "YOUR CAPTURE" : {
       "localizations" : {
         "zh-CN" : {
@@ -13245,6 +13414,9 @@
     "Your pet is still thinking of something to do. Check back in a moment." : {
 
     },
+    "Your pet is well, so the dose goes in its bag until it's needed." : {
+
+    },
     "Your pet moves into %@ right away. You keep the room, and can move back any time." : {
 
     },
@@ -13310,6 +13482,9 @@
           }
         }
       }
+    },
+    "Your words never leave your iPhone." : {
+
     },
     "Zoom in" : {
 

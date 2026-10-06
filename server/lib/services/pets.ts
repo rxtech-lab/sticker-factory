@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetAction } from "@/lib/ai/gateway-contracts";
-import type { PetContextStoredV1, PetContextV1, PetIdentityV1, PetInteractionRequest, PetSignalsV1, RecordPetSendRequest, SendPetPhotoRequest, SetPetRequest, SharePetContentRequest } from "@/lib/contracts/api";
+import { PET_MEDICINE_PRICE, type PetContextStoredV1, type PetContextV1, type PetIdentityV1, type PetInteractionRequest, type PetSignalsV1, type RecordPetSendRequest, type SendPetPhotoRequest, type SetPetRequest, type SharePetContentRequest } from "@/lib/contracts/api";
 import { normalizedControlValues } from "@/lib/contracts/configuration";
 import { canonicalJson, resolveStickerConfiguration } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
@@ -21,15 +21,18 @@ import { localHour, mergeContext, resolveSignals, signalEffects } from "@/lib/pe
 import { isWalkPayoutDue, walkReward } from "@/lib/pets/walk";
 import { dailyGold } from "@/lib/pets/daily-gold";
 import { roomComfortDate } from "@/lib/pets/rooms";
+import { groupBag, liveBag, liveShelf, nextBagUnit, shopVersion } from "@/lib/pets/items";
 import { addEffects, applyEffects, initialStats, personalizeEffects, preferenceEffects, withoutGold, ZERO_EFFECTS } from "@/lib/pets/stats";
 import { getReadyOwnedAssets } from "./assets";
 import { generateActions, ownerMoment, refreshActions, sentStickerImage } from "./pet-actions";
 import { canEvolve, serializePetEvolution, startPetEvolution } from "./pet-evolution";
 import { openEncounter, serializeEncounter } from "./pet-encounters";
+import { serializeNewPetFriend } from "./pet-friends";
 import { drawPetWeatherArt, serializePetWeatherArt } from "./pet-weather";
 import { commitPetChange, currentStats, ensurePetIdentity, ensureWallet, petRow, type PetChange, type PetRow } from "./pet-state";
+import { queuePetMemory, recallPetMemories } from "./pet-memory";
 import { startPetLife } from "./pet-life-runner";
-import { refreshPetItems } from "./pet-items";
+import { bagUnchanged, refreshPetItems, releaseItemArt } from "./pet-items";
 import { serializePetRoom } from "./pet-rooms";
 import { refreshPetThemes, serializePetTheme } from "./pet-themes";
 import { loadPlaybackPayload, readablePlayback } from "./playback";
@@ -53,8 +56,11 @@ export type PetResponse = {
     weatherArt: Awaited<ReturnType<typeof serializePetWeatherArt>>;
     windowWeatherArt: Awaited<ReturnType<typeof serializePetWeatherArt>>;
     encounter: ReturnType<typeof serializeEncounter>;
+    friend: Awaited<ReturnType<typeof serializeNewPetFriend>>;
     illness: { name: string; since: string } | null;
     medicine: number;
+    medicinePrice: number;
+    bag: { item: PetAction; count: number; expiresAt: string | null }[];
     room: ReturnType<typeof serializePetRoom>;
     theme: ReturnType<typeof serializePetTheme>;
   } | null;
@@ -117,6 +123,11 @@ export async function getPet(db: Database, userId: string): Promise<PetResponse>
   return serializePet(db, userId, pet, playback, summary);
 }
 
+/** The shop as the client sees it: what is still on the shelf, named by a key that changes with it. */
+function serializeShelf(shelf: PetAction[]) {
+  return { actions: shelf.map((item) => ({ ...item, effects: { ...item.effects, gold: item.effects.gold ?? 0 } })), artKey: shopVersion(shelf) };
+}
+
 async function serializePet(
   db: Database,
   userId: string,
@@ -124,6 +135,7 @@ async function serializePet(
   playback: Awaited<ReturnType<typeof readablePlayback>>,
   summary: Parameters<typeof serializeStickerSummary>[0],
 ): Promise<PetResponse> {
+  const now = new Date();
   const status = row.statusJson && row.statusUpdatedAt
     ? { ...row.statusJson, updatedAt: row.statusUpdatedAt.toISOString() } : null;
   let actions = row.actionsJson;
@@ -143,15 +155,14 @@ async function serializePet(
   return { pet: { sticker: serializeStickerSummary(summary), selectedAt: row.updatedAt.toISOString(), status,
     // Actions stored before gold existed are free.
     stats: currentStats(row), actions: (actions ?? []).map((action) => ({ ...action, effects: { ...action.effects, gold: action.effects.gold ?? 0 } })),
-    items: row.itemsArtKey && row.itemsJson?.length === 4
-      ? { actions: row.itemsJson.map((item) => ({ ...item, effects: { ...item.effects, gold: item.effects.gold ?? 0 } })), artKey: row.itemsArtKey }
-      : null,
+    items: row.itemsArtKey ? serializeShelf(liveShelf(row.itemsJson, now)) : null,
     identity: row.identityJson, signals: row.signalsJson,
     nextEventAt: row.nextEventAt?.toISOString() ?? null, evolution: serializePetEvolution(row.evolutionJson),
     weatherArt: await serializePetWeatherArt(db, row.stickerId, row.signalsJson, playback.revision.id),
     windowWeatherArt: await serializePetWeatherArt(db, row.stickerId, row.signalsJson, playback.revision.id, "window"),
     encounter: serializeEncounter(row.lifeId ? await openEncounter(db, userId, row.lifeId) : undefined),
-    illness: row.illnessJson, medicine: row.medicine, room: serializePetRoom(row), theme: serializePetTheme(row) } };
+    friend: await serializeNewPetFriend(db, userId, row.lifeId),
+    illness: row.illnessJson, medicine: row.medicine, medicinePrice: PET_MEDICINE_PRICE, bag: groupBag(liveBag(row.bagJson, now)), room: serializePetRoom(row), theme: serializePetTheme(row) } };
 }
 
 /**
@@ -213,6 +224,8 @@ export async function setPet(db: Database, userId: string, input: SetPetRequest)
     itemsContextKey: null,
     itemsUpdatedAt: null,
     itemsClaimedAt: null,
+    itemsDate: null,
+    bagJson: [],
     identityJson: identity,
     contextJson: context,
     signalsJson: signals,
@@ -236,6 +249,9 @@ export async function setPet(db: Database, userId: string, input: SetPetRequest)
       energyMultiplier: identity.energyMultiplier, actions: actions.map((action) => action.title) },
     createdAt: now,
   });
+  queuePetMemory(db, userId, lifeId, [{ kind: "adopted", title: `Adopted ${playback.sticker.title}`,
+    detail: `A ${identity.class}: ${identity.personality}. Likes ${identity.likes.join(", ")}; dislikes ${identity.dislikes.join(", ")}.`,
+    at: now.toISOString() }]);
   petLog("adopted", { userId, lifeId, stickerId: input.stickerId, class: identity.class, maxHp: identity.maxHp,
     energyMultiplier: identity.energyMultiplier, identitySource: persona ? "model" : "fallback" });
   await startPetLife(db, userId, lifeId);
@@ -267,9 +283,17 @@ export async function interactWithPet(
   if (!found) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
   const { sticker, revision } = await readablePlayback(db, userId, found.stickerId);
   const pet = await ensurePetIdentity(db, found, describePet(db, sticker, revision));
-  const action = [...(pet.actionsJson ?? []), ...(pet.itemsJson ?? [])]
-    .find((candidate) => candidate.id === input.actionId);
+  // Something from the bag was paid for when it was bought, so using it costs no gold. The one
+  // expiring soonest goes first, and whatever has expired is cleared away in the same write.
+  const now = new Date();
+  const liveUnits = liveBag(pet.bagJson, now);
+  const bagUnit = input.fromBag ? nextBagUnit(liveUnits, input.actionId) : undefined;
+  if (input.fromBag && !bagUnit) throw new ApiError(422, "PET_BAG_ITEM_NOT_FOUND", "You don't have any of this left.");
+  const action = bagUnit
+    ? { ...bagUnit.item, effects: { ...bagUnit.item.effects, gold: 0 } }
+    : [...(pet.actionsJson ?? []), ...liveShelf(pet.itemsJson, now)].find((candidate) => candidate.id === input.actionId);
   if (!action) throw new ApiError(422, "PET_ACTION_NOT_AVAILABLE", "This action is no longer available for your pet.");
+  const bag = bagUnit ? liveUnits.filter((unit) => unit !== bagUnit) : undefined;
   const price = -Math.min(0, action.effects.gold ?? 0);
   if (price > currentStats(pet).gold) {
     throw new ApiError(422, "PET_NOT_ENOUGH_GOLD", `This costs ${price} gold, and you have ${currentStats(pet).gold}.`);
@@ -288,15 +312,17 @@ export async function interactWithPet(
     // The next actions are chosen alongside the reply, from the mood the action leaves the pet in,
     // so the owner is offered what fits now without waiting on a second model call.
     const [answer, actions] = await Promise.all([
-      getAiProvider().respondToPetInteraction({
-        petTitle: sticker.title,
-        action,
-        stats: currentStats(pet),
-        controls: configuration?.controls ?? [],
-        current: pet.statusJson?.values ?? null,
-        ...ownerMoment(pet.contextJson),
-        canEvolve: mayGrow,
-      }),
+      recallPetMemories(db, userId, pet.lifeId, `${action.title}: ${action.description}`).then((memories) =>
+        getAiProvider().respondToPetInteraction({
+          petTitle: sticker.title,
+          action,
+          stats: currentStats(pet),
+          controls: configuration?.controls ?? [],
+          current: pet.statusJson?.values ?? null,
+          ...ownerMoment(pet.contextJson),
+          canEvolve: mayGrow,
+          memories,
+        })),
       refreshActions(db, pet, sticker, revision, {
         stats: applyEffects(currentStats(pet), effects, pet.identityJson),
         mood: `Just did “${action.title}” with its owner: ${action.description}`,
@@ -309,20 +335,23 @@ export async function interactWithPet(
     const committed = await commitPetChange(db, userId, {
       lifeId: pet.lifeId!,
       price,
-      where: eq(userPets.interactionId, interactionId),
+      where: bag ? and(eq(userPets.interactionId, interactionId), bagUnchanged(pet.bagJson)) : eq(userPets.interactionId, interactionId),
       set: { statusJson: { values, caption, animateEverySeconds: answer.animateEverySeconds, musings: answer.musings }, statusUpdatedAt: new Date(), interactionId: null,
-        ...(actions ? { actionsJson: actions } : {}) },
+        ...(actions ? { actionsJson: actions } : {}), ...(bag ? { bagJson: bag } : {}) },
       changes: [{
         kind: "interaction",
         title: action.title,
         detail: caption,
         effects,
-        debug: { actionId: action.id, actionEffects: action.effects, preference: preference.matched,
+        debug: { actionId: action.id, actionEffects: action.effects, fromBag: !!bagUnit, preference: preference.matched,
           energyMultiplier: pet.identityJson?.energyMultiplier ?? 1, nextActions: actions?.map((next) => next.title) ?? null,
           mayGrow, evolve: answer.evolve?.brief ?? null },
       }],
     });
     if (!committed) throw new ApiError(409, "PET_CHANGED", "Your pet changed. Please try again.");
+    if (bagUnit) {
+      await releaseItemArt(db, userId, pet.bagJson.filter((unit) => !bag!.includes(unit)).map((unit) => unit.item.id));
+    }
     if (mayGrow && answer.evolve) {
       await startPetEvolution(db, userId, { stickerId: pet.stickerId, brief: answer.evolve.brief,
         redrawWeather: answer.evolve.redrawWeather, trigger: `action: ${action.title}` });
@@ -431,6 +460,7 @@ export async function readPetSend(
       stats: currentStats(pet),
       event: event && eventDetail ? { title: event.title, detail: eventDetail } : null,
       ...ownerMoment(pet.contextJson, now),
+      memories: await recallPetMemories(db, userId, pet.lifeId, `Its owner sent a sticker: ${sent.sticker.title}`),
       sent: {
         title: sent.sticker.title,
         kind: sent.sticker.kind,
@@ -620,6 +650,9 @@ export async function sendPetPhoto(
       current: pet.statusJson?.values ?? null,
       ...ownerMoment(pet.contextJson),
       canEvolve: mayGrow,
+      // A picture says nothing searchable before the pet has looked at it, so it is reminded of the
+      // owner's other pictures.
+      memories: await recallPetMemories(db, userId, pet.lifeId, "A picture its owner showed it"),
     });
     const values = configuration ? normalizedControlValues(configuration, { ...pet.statusJson?.values, ...answer.values }) : {};
     const caption = answer.caption.trim();

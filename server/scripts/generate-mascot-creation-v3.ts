@@ -183,10 +183,6 @@ function mascotSvg(option: Option, pose: Pose, mood: Mood, frame: number, size =
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"${pixels}><defs>${look.defs}<radialGradient id="eye" cx="36%" cy="28%" r="70%"><stop stop-color="#50515a"/><stop offset=".38" stop-color="#17181d"/><stop offset="1" stop-color="#050507"/></radialGradient></defs>${themeExtras(option)}<g transform="${group}"><g id="body" filter="${["clay", "watercolor", "paper-cut"].includes(option.id) ? "url(#bodyFx)" : "none"}">${petBehind}${look.extras}<path d="${bodyPath}" fill="${look.body}" stroke="${look.outline}" stroke-width="${look.pixel ? 20 : 12}" stroke-linejoin="round"/><path d="M260 250Q390 135 545 150" fill="none" stroke="#fff" stroke-width="23" stroke-linecap="round" opacity=".72"/>${petFront}</g><g id="eyes" transform="translate(${gx} ${gy})"><g transform="translate(496 382) scale(1 ${eyeScale}) translate(-496 -382)"><ellipse cx="496" cy="382" rx="${leftEye[0]}" ry="${leftEye[1]}" fill="url(#eye)" stroke="#23242a" stroke-width="7"/><circle cx="468" cy="353" r="24" fill="#fff"/></g><g transform="translate(758 305) scale(1 ${eyeScale}) translate(-758 -305)"><ellipse cx="758" cy="305" rx="${rightEye[0]}" ry="${rightEye[1]}" fill="url(#eye)" stroke="#23242a" stroke-width="6"/><circle cx="738" cy="284" r="18" fill="#fff"/></g></g><g id="mouth">${extraMouth}</g></g></svg>`;
 }
 
-async function reference(option: Option): Promise<Buffer> {
-  return rasterize(option, mascotSvg(option, "idle", "happy", 0, 512), 512);
-}
-
 async function contactSheet(items: Array<{ title: string; bytes: Buffer }>, columns: number, tile = 240): Promise<Buffer> {
   const label = 34, rows = Math.ceil(items.length / columns);
   const composite: OverlayOptions[] = [];

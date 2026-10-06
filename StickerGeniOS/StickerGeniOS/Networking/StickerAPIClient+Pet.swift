@@ -22,8 +22,36 @@ extension StickerAPIClient {
         )
     }
 
+    func markPetFriendSeen(friendID: String) async throws -> Pet? {
+        let response: PetResponse = try await send(
+            path: "api/v1/pet/friends/seen", method: "POST", body: MarkPetFriendSeenRequest(friendId: friendID)
+        )
+        return response.pet
+    }
+
     func givePetMedicine() async throws -> Pet? {
         let response: PetResponse = try await send(path: "api/v1/pet/medicine", method: "POST")
+        return response.pet
+    }
+
+    func purchasePetMedicine() async throws -> Pet? {
+        let response: PetResponse = try await send(path: "api/v1/pet/medicine/purchase", method: "POST")
+        return response.pet
+    }
+
+    func purchasePetItem(itemID: String) async throws -> Pet? {
+        let response: PetResponse = try await send(
+            path: "api/v1/pet/items/purchase", method: "POST", body: PurchasePetItemRequest(itemId: itemID)
+        )
+        return response.pet
+    }
+
+    func useBagItem(_ item: PetAction) async throws -> Pet? {
+        let response: PetResponse = try await send(
+            path: "api/v1/pet/interactions",
+            method: "POST",
+            body: PetInteractionRequest(actionId: item.id, fromBag: true)
+        )
         return response.pet
     }
 
@@ -111,6 +139,19 @@ extension StickerAPIClient {
         return try await send(path: "api/v1/pet/events", query: items)
     }
 
+    func petMemories(about query: String?) async throws -> [PetMemory] {
+        var items = [URLQueryItem(name: "limit", value: "5")]
+        if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
+        let response: PetMemoriesResponse = try await send(path: "api/v1/pet/memories", query: items)
+        return response.memories
+    }
+
+    func rememberPetTalk(words: String, reply: String?) async throws {
+        let _: RememberPetTalkResponse = try await send(
+            path: "api/v1/pet/talks", method: "POST", body: RememberPetTalkRequest(words: words, reply: reply)
+        )
+    }
+
     func clearPet() async throws {
         let _: PetResponse = try await send(path: "api/v1/pet", method: "DELETE")
     }
@@ -145,11 +186,17 @@ extension StickerAPIClient {
         try await petImage(path: "api/v1/pet/items/art", size: size, index: index, artKey: artKey, mimeType: "image/webp")
     }
 
+    func petItemArt(itemID: String, size: Int) async throws -> Data {
+        try await petImage(path: "api/v1/pet/items/art", size: size, item: itemID, mimeType: "image/webp")
+    }
+
     /// Artwork the server draws for the pet, `size` pixels square.
     private func petImage(
-        path: String, size: Int, index: Int? = nil, artKey: String? = nil, layer: String? = nil, mimeType: String = "image/png"
+        path: String, size: Int, index: Int? = nil, artKey: String? = nil, layer: String? = nil, item: String? = nil,
+        mimeType: String = "image/png"
     ) async throws -> Data {
         var query = [URLQueryItem(name: "size", value: String(size))]
+        if let item { query.append(URLQueryItem(name: "item", value: item)) }
         if let layer { query.append(URLQueryItem(name: "layer", value: layer)) }
         if let index { query.append(URLQueryItem(name: "index", value: String(index))) }
         if let artKey { query.append(URLQueryItem(name: "artKey", value: artKey)) }

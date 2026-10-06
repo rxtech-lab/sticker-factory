@@ -43,6 +43,7 @@
 		B47713E8475CA3990E4C3394 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3FB6529023D0F790FA2F9963 /* Assets.xcassets */; };
 		BEDA92EBF02EFB0893E0B42D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7FE3E61FCB0BE974B72CE94A /* Foundation.framework */; };
 		BEEF00000000000000000001 /* StickerPetShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BEEF00000000000000000002 /* StickerPetShare.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C0FFEE00000000000000A002 /* PetWidgetRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE00000000000000A001 /* PetWidgetRefresh.swift */; };
 		C119B001A001A001A001A001 /* ClipLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B001A001A001A001A002 /* ClipLibraryView.swift */; };
 		C119B002A002A002A002A001 /* ClipStickerViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B002A002A002A002A002 /* ClipStickerViewer.swift */; };
 		C119B003A003A003A003A001 /* ClipPlaybackLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C119B003A003A003A003A002 /* ClipPlaybackLoader.swift */; };
@@ -229,6 +230,7 @@
 		ACAB735450F28ED42A568EF9 /* StickerGenerationActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StickerGenerationActivity.swift; sourceTree = "<group>"; };
 		BD46604BC03322FA69C32012 /* QuickModeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickModeView.swift; sourceTree = "<group>"; };
 		BEEF00000000000000000002 /* StickerPetShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StickerPetShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0FFEE00000000000000A001 /* PetWidgetRefresh.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PetWidgetRefresh.swift; sourceTree = "<group>"; };
 		C119B001A001A001A001A002 /* ClipLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipLibraryView.swift; sourceTree = "<group>"; };
 		C119B002A002A002A002A002 /* ClipStickerViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipStickerViewer.swift; sourceTree = "<group>"; };
 		C119B003A003A003A003A002 /* ClipPlaybackLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipPlaybackLoader.swift; sourceTree = "<group>"; };
@@ -296,6 +298,14 @@
 			);
 			target = BEEF00000000000000000008 /* StickerPetShare */;
 		};
+		BEEF00000000000000000030 /* Exceptions for "StickerPetShare" folder in "StickerGenerationActivity" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AppGroupProcessLock.swift,
+				SharedAuthentication.swift,
+			);
+			target = B93E7E31E6C294F2D54196CD /* StickerGenerationActivity */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -334,6 +344,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				BEEF00000000000000000009 /* Exceptions for "StickerPetShare" folder in "StickerPetShare" target */,
+				BEEF00000000000000000030 /* Exceptions for "StickerPetShare" folder in "StickerGenerationActivity" target */,
 			);
 			path = StickerPetShare;
 			sourceTree = "<group>";
@@ -523,6 +534,7 @@
 			children = (
 				ACAB735450F28ED42A568EF9 /* StickerGenerationActivity.swift */,
 				7E7A00000000000000000003 /* PetWidget.swift */,
+				C0FFEE00000000000000A001 /* PetWidgetRefresh.swift */,
 				7E7A00000000000000000004 /* StickerGenerationActivity.entitlements */,
 				C2B67698C56773B6146926C1 /* Info.plist */,
 				3FB6529023D0F790FA2F9963 /* Assets.xcassets */,
@@ -1177,6 +1189,7 @@
 			files = (
 				72245A900BE8CEEEB691E8EF /* StickerGenerationActivity.swift in Sources */,
 				7E7A00000000000000000010 /* PetWidget.swift in Sources */,
+				C0FFEE00000000000000A002 /* PetWidgetRefresh.swift in Sources */,
 				0F98A6A3ED8D5E689FCA2458 /* StickerGenerationAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1276,6 +1289,7 @@
 /* Begin XCBuildConfiguration section */
 		61533BEB67AE8344C488AF47 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000034 /* Release.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -2032,6 +2046,7 @@
 		};
 		E873C1503B1714CE892D1BBA /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000033 /* Debug.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_OBJC_WEAK = NO;

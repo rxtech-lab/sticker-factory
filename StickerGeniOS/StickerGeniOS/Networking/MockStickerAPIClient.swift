@@ -15,6 +15,8 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     /// Both read and written by `MockStickerAPIClient+Account.swift`, which is why neither is private.
     var accountDeletion: AccountDeletionState = .none
     var adoptedPet: Pet?
+    /// `--ui-pet-friend` starts with the pet already home, once, so the welcome is all a test drives.
+    var hasSeededFriendPet = false
     /// The room shop and the rooms bought from it, as the server would keep them for this account.
     var petRoomList: [PetRoom] = MockStickerAPIClient.sampleRooms
     /// The places the pet knows, as the server would keep them for this account.

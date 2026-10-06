@@ -3,12 +3,16 @@ import WidgetKit
 
 /// The pet on the Home Screen and Lock Screen, posed the way it last read the user's stickers.
 ///
-/// It reads only what the app wrote to the app group (`PetCompanionSync`) and never goes to the
-/// network: the app reloads this timeline whenever the pet changes, including when the server's
-/// silent push wakes it after a send. So one entry and `.never` is the whole timeline.
+/// It draws what the app wrote to the app group (`PetCompanionSync`): the app reloads this timeline
+/// whenever the pet changes, including when the server's silent push wakes it after a send. Between
+/// those, the timeline comes back every five minutes and `PetWidgetRefresh` fetches the pet again if
+/// the app has not written it lately, so the pet keeps living on the Home Screen with the app closed.
 struct PetWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: PetCompanion.phoneWidgetKind, provider: PetTimelineProvider()) { entry in
+        StaticConfiguration(
+            kind: PetCompanion.phoneWidgetKind,
+            provider: PetTimelineProvider(refresh: { await PetWidgetRefresh.refreshIfNeeded() })
+        ) { entry in
             PetWidgetView(entry: entry)
                 .containerBackground(for: .widget) { PetWidgetBackground() }
         }

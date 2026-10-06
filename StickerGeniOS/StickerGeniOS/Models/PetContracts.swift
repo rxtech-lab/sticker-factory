@@ -31,10 +31,18 @@ nonisolated struct Pet: Codable, Equatable, Sendable {
     /// Today's encounter while it waits for the owner's choice. Nil once chosen or expired, on days
     /// without one, and from older servers.
     var encounter: PetEncounter?
+    /// A friend the pet made on its own — now a controllable sticker in the library — until the owner
+    /// has been welcomed to it. Nil when there is none, and from older servers.
+    var friend: PetFriend?
     /// What the pet is ill with. Nil while it is well.
     var illness: PetIllness?
-    /// Doses of medicine the pet has, won from its encounters. One cures an illness.
+    /// Doses of medicine the pet has, won from its encounters or bought. One cures an illness.
     var medicine: Int = 0
+    /// What a dose costs in the item shop, which always has some. Nil from older servers, which
+    /// do not sell it.
+    var medicinePrice: Int?
+    /// Food and tickets bought from the item shop to use later.
+    var bag: [PetBagEntry] = []
     /// The room the pet lives in, drawn behind it on the tab. Nil on the plain page, and from older servers.
     var room: PetRoomRef?
     /// The sky outside the room's window for the weather in `signals`, drawn by the server in the
@@ -66,8 +74,11 @@ nonisolated extension Pet {
         evolution = try container.decodeIfPresent(PetEvolution.self, forKey: .evolution)
         weatherArt = try container.decodeIfPresent(PetWeatherArt.self, forKey: .weatherArt)
         encounter = try container.decodeIfPresent(PetEncounter.self, forKey: .encounter)
+        friend = try container.decodeIfPresent(PetFriend.self, forKey: .friend)
         illness = try container.decodeIfPresent(PetIllness.self, forKey: .illness)
         medicine = try container.decodeIfPresent(Int.self, forKey: .medicine) ?? 0
+        medicinePrice = try container.decodeIfPresent(Int.self, forKey: .medicinePrice)
+        bag = try container.decodeIfPresent([PetBagEntry].self, forKey: .bag) ?? []
         room = try container.decodeIfPresent(PetRoomRef.self, forKey: .room)
         windowWeatherArt = try container.decodeIfPresent(PetWeatherArt.self, forKey: .windowWeatherArt)
         theme = try container.decodeIfPresent(PetThemeRef.self, forKey: .theme)
@@ -318,6 +329,24 @@ nonisolated struct PetEncounterOutcome: Codable, Equatable, Sendable {
     var sickened: Bool
 }
 
+/// Someone the pet met while its owner was away, grown out of the weather, the place, its memories
+/// and its mood, and made into a controllable sticker of their own.
+nonisolated struct PetFriend: Codable, Equatable, Identifiable, Sendable {
+    var id: String
+    var name: String
+    /// How the two met, in the pet's words.
+    var story: String
+    /// What the pet says to introduce its friend.
+    var greeting: String
+    /// The friend's own sticker, in the owner's library.
+    var sticker: Sticker
+    var metAt: Date
+}
+
+nonisolated struct MarkPetFriendSeenRequest: Codable, Sendable {
+    var friendId: String
+}
+
 nonisolated struct ResolvePetEncounterRequest: Codable, Sendable {
     var encounterId: String
     var choiceId: String
@@ -335,9 +364,38 @@ nonisolated struct PetIllness: Codable, Equatable, Sendable {
     var since: Date
 }
 
+/// The item shop: what is on the shelf, each leaving at its own `leavesAt`. The pet's agent adds a
+/// few new things once a day. `artKey` changes whenever the shelf does; each item's picture is
+/// fetched by its id with `petItemArt(itemID:size:)`.
 nonisolated struct PetItems: Codable, Equatable, Sendable {
     var actions: [PetAction]
     var artKey: String
+}
+
+/// Something in the pet's bag, bought from the item shop to use later: how many are left, and when
+/// the first of them expires — nil when none of them ever do. Using one uses the one expiring soonest.
+nonisolated struct PetBagEntry: Codable, Equatable, Identifiable, Sendable {
+    var item: PetAction
+    var count: Int
+    var expiresAt: Date?
+
+    var id: String { item.id }
+}
+
+/// What an item is. Open-ended, so a kind a newer server adds still decodes.
+nonisolated struct PetItemKind: RawRepresentable, Codable, Equatable, Hashable, Sendable {
+    var rawValue: String
+
+    init(rawValue: String) { self.rawValue = rawValue }
+    init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    static let food = PetItemKind(rawValue: "food")
+    static let ticket = PetItemKind(rawValue: "ticket")
+    static let toy = PetItemKind(rawValue: "toy")
 }
 
 /// Names the server's drawing of the pet's weather, fetched with `petWeatherArt(size:)`. A new
@@ -437,16 +495,7 @@ nonisolated struct PetWeatherKind: RawRepresentable, Codable, Hashable, Sendable
 
     /// The symbol for this weather; a clear night draws the moon rather than the sun.
     func symbol(isDay: Bool = true) -> String {
-        switch self {
-        case .sunny: isDay ? "sun.max.fill" : "moon.stars.fill"
-        case .cloudy: "cloud.fill"
-        case .rainy: "cloud.rain.fill"
-        case .snowy: "cloud.snow.fill"
-        case .stormy: "cloud.bolt.rain.fill"
-        case .foggy: "cloud.fog.fill"
-        case .windy: "wind"
-        default: "cloud.sun.fill"
-        }
+        PetSnapshotWeather.symbol(kind: rawValue, isDay: isDay)
     }
 }
 
@@ -555,6 +604,8 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
     static let medicine = PetEventKind(rawValue: "medicine")
     static let room = PetEventKind(rawValue: "room")
     static let theme = PetEventKind(rawValue: "theme")
+    static let purchase = PetEventKind(rawValue: "purchase")
+    static let friend = PetEventKind(rawValue: "friend")
 
     var displayName: String {
         switch self {
@@ -573,6 +624,8 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
         case .medicine: String(localized: "Medicine")
         case .room: String(localized: "Room")
         case .theme: String(localized: "Places")
+        case .purchase: String(localized: "Shopping")
+        case .friend: String(localized: "New friend")
         default: rawValue.capitalized
         }
     }
@@ -593,6 +646,8 @@ nonisolated struct PetEventKind: RawRepresentable, Codable, Hashable, Sendable {
         case .illness: "thermometer.medium"
         case .medicine: "pills.fill"
         case .theme: "map.fill"
+        case .purchase: "bag.fill"
+        case .friend: "person.2.fill"
         default: "circle.fill"
         }
     }
@@ -705,6 +760,12 @@ nonisolated struct PetAction: Codable, Equatable, Identifiable, Sendable {
     var title: String
     var description: String
     var effects: PetActionEffects
+    /// Set on items only. Nil on actions and on items from older servers.
+    var kind: PetItemKind?
+    /// Shop items only: when it leaves the shelf. Nil on items from older servers.
+    var leavesAt: Date?
+    /// Items only: hours one keeps in the bag once bought. Nil when it never expires, and on actions.
+    var keepsHours: Int?
 }
 
 nonisolated struct PetActionEffects: Codable, Equatable, Sendable {
@@ -728,7 +789,13 @@ extension PetActionEffects {
     }
 }
 
-nonisolated struct PetInteractionRequest: Codable, Sendable { var actionId: String }
+nonisolated struct PetInteractionRequest: Codable, Sendable {
+    var actionId: String
+    /// Uses one from the bag, already paid for, rather than buying it from the shop.
+    var fromBag: Bool?
+}
+
+nonisolated struct PurchasePetItemRequest: Codable, Sendable { var itemId: String }
 
 /// A picture the owner shows their pet, uploaded first as an unbound `reference` asset.
 nonisolated struct SendPetPhotoRequest: Codable, Sendable { var assetId: String }

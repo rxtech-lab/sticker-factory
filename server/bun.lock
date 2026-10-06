@@ -33,6 +33,7 @@
       },
       "devDependencies": {
         "@electric-sql/pglite": "^0.5.8",
+        "@electric-sql/pglite-pgvector": "0.0.9",
         "@libsql/client": "^0.17.4",
         "@playwright/test": "^1.62.1",
         "@tailwindcss/postcss": "^4",
@@ -169,6 +170,8 @@
     "@edge-runtime/vm": ["@edge-runtime/vm@3.2.0", "", { "dependencies": { "@edge-runtime/primitives": "4.1.0" } }, "sha512-0dEVyRLM/lG4gp1R/Ik5bfPl/1wX00xFwd5KcNH602tzBa09oF7pbTKETEhR1GjZ75K6OJnYFu8II2dyMhONMw=="],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.5.8", "", {}, "sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q=="],
+
+    "@electric-sql/pglite-pgvector": ["@electric-sql/pglite-pgvector@0.0.9", "", { "peerDependencies": { "@electric-sql/pglite": "0.5.8" } }, "sha512-ue4iBW651gDQwBwn97Ekv1lYGPvXa1ymHbRbTCSL0Ib286PRDD1VDOwzwEoekZuO/wctMbTzKzlwdgDwYrqZ8A=="],
 
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 
