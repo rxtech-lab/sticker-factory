@@ -162,3 +162,94 @@ export function suggestFreePlacement(
   }
   return best!.placement;
 }
+
+/**
+ * The middle half of a layer's box, where a character's face and body are. A pet's character fills
+ * most of its canvas, so its whole box leaves no room for anything "beside" it; its core does.
+ */
+function coreOf(box: Bounds): Bounds {
+  const insetX = (box.right - box.left) / 4;
+  const insetY = (box.bottom - box.top) / 4;
+  return { left: box.left + insetX, right: box.right - insetX, top: box.top + insetY, bottom: box.bottom - insetY };
+}
+
+/** More of an addition than this inside a kept layer's core is the addition covering it. */
+const MAX_CORE_COVERAGE = 0.25;
+
+/** Sizes an accessory moved off the character is tried at, largest first: about a quarter of it. */
+const ACCESSORY_SCALES = [0.3, 0.25, 0.2];
+
+function squareBox(position: { x: number; y: number }, side: number): Bounds {
+  const half = (LAYER_FIT * side) / 2;
+  return { left: position.x - half, right: position.x + half, top: position.y - half, bottom: position.y + half };
+}
+
+/** The ids of `additionIds` whose box sits over the face or body of a visible `retainedIds` layer. */
+export function additionsCoveringRetained(
+  document: StickerDocument,
+  additionIds: Iterable<string>,
+  retainedIds: ReadonlySet<string>,
+): string[] {
+  const cores = document.layers
+    .filter((layer) => retainedIds.has(layer.id) && !layer.hidden && layer.anchor.opacity > 0)
+    .map((layer) => coreOf(layerBounds(layer)));
+  if (cores.length === 0) return [];
+  return [...additionIds].filter((id) => {
+    const layer = document.layers.find((candidate) => candidate.id === id);
+    if (!layer) return false;
+    const box = layerBounds(layer);
+    return cores.some((core) => layerBoxCoverage(box, core) > MAX_CORE_COVERAGE);
+  });
+}
+
+/**
+ * New placements for the additions that cover a kept layer's face or body.
+ *
+ * For the pet's own growth, where the addition is an accessory that has to sit beside the character
+ * rather than on it. Each one moves to the nearest spot, at about a quarter of the character's size,
+ * that keeps it off every kept layer's core and every other addition; deterministic, so a replayed
+ * build lands where the first did.
+ */
+export function placementsOffRetained(
+  document: StickerDocument,
+  additionIds: Iterable<string>,
+  retainedIds: ReadonlySet<string>,
+): Map<string, Placement> {
+  const covering = additionsCoveringRetained(document, additionIds, retainedIds);
+  const placements = new Map<string, Placement>();
+  if (covering.length === 0) return placements;
+  const cores = document.layers
+    .filter((layer) => retainedIds.has(layer.id) && !layer.hidden && layer.anchor.opacity > 0)
+    .map((layer) => coreOf(layerBounds(layer)));
+  const taken: Bounds[] = document.layers
+    .filter((layer) => !retainedIds.has(layer.id) && !covering.includes(layer.id) && !layer.hidden)
+    .map((layer) => layerBounds(layer));
+  for (const id of covering) {
+    const layer = document.layers.find((candidate) => candidate.id === id)!;
+    const current = layer.anchor.position;
+    const ownSide = Math.max(layer.anchor.scale.x, layer.anchor.scale.y);
+    let best: { placement: Placement; score: number; distance: number } | undefined;
+    for (const scale of ACCESSORY_SCALES) {
+      const side = Math.min(ownSide, scale);
+      const half = (LAYER_FIT * side) / 2;
+      for (let row = 0; row < FREE_PLACEMENT_STEPS + 2; row += 1) {
+        for (let column = 0; column < FREE_PLACEMENT_STEPS + 2; column += 1) {
+          const position = {
+            x: half + (1 - 2 * half) * (column / (FREE_PLACEMENT_STEPS + 1)),
+            y: half + (1 - 2 * half) * (row / (FREE_PLACEMENT_STEPS + 1)),
+          };
+          const box = squareBox(position, side);
+          const score = Math.max(0, ...cores.map((core) => layerBoxCoverage(box, core)), ...taken.map((other) => layerBoxCoverage(box, other)));
+          const distance = Math.hypot(position.x - current.x, position.y - current.y);
+          if (!best || score < best.score - 1e-9 || (Math.abs(score - best.score) <= 1e-9 && distance < best.distance)) {
+            best = { placement: { position, scale: { x: side, y: side } }, score, distance };
+          }
+        }
+      }
+      if (best && best.score <= MAX_CORE_COVERAGE / 2) break;
+    }
+    placements.set(id, best!.placement);
+    taken.push(squareBox(best!.placement.position, best!.placement.scale.x));
+  }
+  return placements;
+}

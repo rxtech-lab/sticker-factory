@@ -235,7 +235,7 @@ nonisolated struct PetTheme: Codable, Equatable, Identifiable, Sendable {
         var hours: Hours?
         /// Only in these kinds of weather.
         var weather: [String]?
-        /// Only while the owner is near this place.
+        /// Only while the owner is within `radiusKm` of this place.
         var place: Place?
 
         nonisolated struct Hours: Codable, Equatable, Sendable {
@@ -245,6 +245,9 @@ nonisolated struct PetTheme: Codable, Equatable, Identifiable, Sendable {
 
         nonisolated struct Place: Codable, Equatable, Sendable {
             var label: String
+            /// Where the owner was when the place was found. Nil from servers that kept it to themselves.
+            var latitude: Double?
+            var longitude: Double?
             var radiusKm: Double
         }
 

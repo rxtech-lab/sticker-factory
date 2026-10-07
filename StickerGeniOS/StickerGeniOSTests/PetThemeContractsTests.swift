@@ -11,7 +11,8 @@ final class PetThemeContractsTests: XCTestCase {
           "themes":[
             {"id":"7f6d1d55-0000-4000-8000-000000000001","title":"Faraway Streets","description":"The trip","category":"travel",
              "limited":true,"effects":{"happiness":4,"hp":0,"energy":-2},
-             "rules":{"dailyMinutes":null,"hours":null,"weather":null,"place":{"label":"Kyoto","radiusKm":60}},
+             "rules":{"dailyMinutes":null,"hours":null,"weather":null,
+                      "place":{"label":"Kyoto","latitude":35.01,"longitude":135.77,"radiusKm":60}},
              "artKey":"7f6d1d55-0000-4000-8000-0000000000aa","expiresAt":"2026-10-09T12:00:00.000Z","expired":false,
              "available":true,"unavailableReason":null,"minutesLeftToday":null,"discoveredAt":"2026-10-06T12:00:00.000Z"},
             {"id":"7f6d1d55-0000-4000-8000-000000000002","title":"Night Market","description":"Lanterns","category":"floating-island",
@@ -28,6 +29,7 @@ final class PetThemeContractsTests: XCTestCase {
         XCTAssertEqual(trip.category, .travel)
         XCTAssertTrue(trip.limited)
         XCTAssertEqual(trip.rules.place?.label, "Kyoto")
+        XCTAssertEqual(trip.rules.place?.coordinate?.latitude, 35.01)
         XCTAssertNotNil(trip.expiresAt)
         let market = themes.themes[1]
         // A kind of place this build does not know yet still decodes.

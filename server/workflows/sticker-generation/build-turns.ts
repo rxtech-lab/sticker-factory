@@ -15,7 +15,7 @@ import { firstRow, getDatabase } from "@/lib/db/client";
 import { assets, chatMessages, generationJobs, plans, stickerRevisions, stickers } from "@/lib/db/schema";
 import { getAiProvider, TurnAbort, type LayoutDraftingSession, type AiImageReferenceCandidate } from "@/lib/ai/gateway";
 import { applyLayoutAdjustment, clampLayoutOnCanvas, layoutDiagnostics } from "@/lib/layout/composition";
-import { applyMeasuredPlacements, measuredPlacements } from "@/lib/layout/placement";
+import { additionsCoveringRetained, applyMeasuredPlacements, measuredPlacements, placementsOffRetained } from "@/lib/layout/placement";
 import { type SubjectBounds } from "@/lib/images/subject-bounds";
 import { traceEvent } from "@/lib/observability/trace";
 import { appendGenerationEvent } from "@/lib/services/events";
@@ -48,6 +48,8 @@ async function refineBuiltLayout(
   references: Array<{ bytes: Uint8Array; mimeType: string }> = [],
   retainedLayerIds: Set<string> = new Set(),
   baseConfiguration?: StickerConfiguration,
+  /** A rule of the build's own every adjustment must keep; throws to refuse one. */
+  assertLayout?: (document: StickerDocument) => void,
 ): Promise<StickerDocument> {
   // One layer has no inter-layer composition to repair. Skipping it also avoids adding a vision
   // round trip to plans whose only reason to exist is structured motion.
@@ -142,6 +144,7 @@ async function refineBuiltLayout(
         }
         const order = (value: StickerDocument) => value.layers.filter((layer) => retainedLayerIds.has(layer.id)).map((layer) => layer.id).join("|");
         if (order(landed) !== order(working)) throw new Error("Preserve the existing layer order");
+        assertLayout?.(landed);
         await assertDocumentAssetsOwned(landed, job.ownerId, job.stickerId).catch(abort);
         working = landed;
         revision += 1;
@@ -300,6 +303,9 @@ export async function executePlanBuildTurn(
   const plan = PlanV1Schema.parse(planRow.planJson);
   const pinnedBase = await loadPlanBase(db, job.ownerId, sticker.id, plan);
   const retainedLayerIds = new Set(pinnedBase?.document.layers.filter((layer) => !plan.layers.some((addition) => addition.layerId === layer.id)).map((layer) => layer.id) ?? []);
+  // Only the pet's own growth: an owner extending their sticker may well want a hat on its head.
+  const keepAdditionsBeside = job.origin === "pet" && retainedLayerIds.size > 0;
+  const additionIds = (document: StickerDocument) => document.layers.map((layer) => layer.id).filter((id) => !retainedLayerIds.has(id));
   // A user retry has a fresh job, but the confirmed plan and its generation slots are immutable.
   // Keep the original namespace so both stills and clips survive any number of failed attempts.
   const assetJobId = planRow.jobId ?? job.id;
@@ -315,7 +321,10 @@ export async function executePlanBuildTurn(
     document = await refineBuiltLayout(
       job,
       document,
-      `${plan.title}. ${plan.summary}. Preserve these existing layers without changing their layout or artwork: ${[...retainedLayerIds].join(", ")}`,
+      `${plan.title}. ${plan.summary}. Preserve these existing layers without changing their layout or artwork: ${[...retainedLayerIds].join(", ")}`
+        + (keepAdditionsBeside
+          ? ". The additions are accessories that sit beside the character, never over its face or body: where the reference shows one covering the character, keep it beside the character instead."
+          : ""),
       history,
       visualReference,
       assetJobId,
@@ -324,6 +333,12 @@ export async function executePlanBuildTurn(
       references,
       retainedLayerIds,
       pinnedBase?.document.configuration,
+      keepAdditionsBeside
+        ? (landed) => {
+          const covering = additionsCoveringRetained(landed, additionIds(landed), retainedLayerIds);
+          if (covering.length > 0) throw new Error(`Keep ${covering.join(", ")} beside the character, off its face and body`);
+        }
+        : undefined,
     );
     await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
       stage: "finalizing",
@@ -546,6 +561,15 @@ export async function executePlanBuildTurn(
   if (placements.size > 0) {
     traceEvent("composeLayout:measured", { jobId: job.id, layerIds: [...placements.keys()] });
     document = applyMeasuredPlacements(document, placements);
+  }
+  // The pet's growth is an accessory beside the character, however the sketch drew it: an addition
+  // left over the character's face or body is moved off it, since the character itself is locked.
+  if (keepAdditionsBeside) {
+    const offCharacter = placementsOffRetained(document, additionIds(document), retainedLayerIds);
+    if (offCharacter.size > 0) {
+      traceEvent("composeLayout:offCharacter", { jobId: job.id, layerIds: [...offCharacter.keys()] });
+      document = applyMeasuredPlacements(document, offCharacter);
+    }
   }
   // Covers the reused layers too: an `existing` source names an asset by id, and this is what stops
   // a plan from pointing at another sticker's artwork, or at one that has since been swept.

@@ -4,9 +4,11 @@ import { applyStickerOperationsV1, StickerDocumentSchema, type StickerDocument }
 import type { SubjectBounds } from "@/lib/images/subject-bounds";
 import { LAYER_FIT, layerBounds, layoutDiagnostics } from "@/lib/layout/composition";
 import {
+  additionsCoveringRetained,
   applyMeasuredPlacements,
   measuredPlacements,
   placementFromSubject,
+  placementsOffRetained,
   suggestFreePlacement,
 } from "@/lib/layout/placement";
 
@@ -144,5 +146,45 @@ describe("suggestFreePlacement", () => {
       anchor: { ...spark.anchor, ...placement },
     }]);
     expect(layoutDiagnostics(placed).offCanvasLayerIds).toEqual([]);
+  });
+});
+
+describe("placementsOffRetained", () => {
+  const retained = new Set(["hero"]);
+  /** The fixture's full-frame hero, with its spark moved over the hero's face. */
+  const sparkOnFace = () => {
+    const document = fixture();
+    const spark = document.layers.find((layer) => layer.id === "spark")!;
+    return applyStickerOperationsV1(document, [{
+      op: "setLayerAnimations",
+      layerId: "spark",
+      animations: spark.animations,
+      anchor: { ...spark.anchor, position: { x: 0.5, y: 0.42 }, scale: { x: 0.45, y: 0.45 } },
+    }]);
+  };
+
+  it("finds the addition covering the kept character's face", () => {
+    expect(additionsCoveringRetained(sparkOnFace(), ["spark"], retained)).toEqual(["spark"]);
+  });
+
+  it("moves it beside the character at about a quarter of its size, on canvas", () => {
+    const document = sparkOnFace();
+    const placements = placementsOffRetained(document, ["spark"], retained);
+    const placement = placements.get("spark")!;
+    expect(placement.scale.x).toBeLessThanOrEqual(0.3);
+    const half = (LAYER_FIT * placement.scale.x) / 2;
+    expect(placement.position.x - half).toBeGreaterThanOrEqual(0);
+    expect(placement.position.x + half).toBeLessThanOrEqual(1);
+    expect(placement.position.y - half).toBeGreaterThanOrEqual(0);
+    expect(placement.position.y + half).toBeLessThanOrEqual(1);
+    const moved = applyMeasuredPlacements(document, placements);
+    expect(additionsCoveringRetained(moved, ["spark"], retained)).toEqual([]);
+    // Deterministic, so a replayed build lands where the first did.
+    expect(placementsOffRetained(document, ["spark"], retained)).toEqual(placements);
+  });
+
+  it("leaves an addition already beside the character alone", () => {
+    const document = applyMeasuredPlacements(sparkOnFace(), new Map([["spark", { position: { x: 0.12, y: 0.12 }, scale: { x: 0.25, y: 0.25 } }]]));
+    expect(placementsOffRetained(document, ["spark"], retained).size).toBe(0);
   });
 });

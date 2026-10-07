@@ -123,4 +123,13 @@ final class PetCompanionSyncTests: XCTestCase {
         XCTAssertNil(store.envelope())
         XCTAssertEqual(reloads, 1)
     }
+
+    func testPoseKeyChangesWhenTheServerRePosesThePetAtRest() {
+        func key(_ pose: [String: String]) -> String {
+            PetSnapshot.poseKey(stickerID: "s", revisionID: "r", statusUpdatedAt: Date(timeIntervalSince1970: 100), pose: pose)
+        }
+        let resting = key(["pose": "think", "mood": "pleased"])
+        XCTAssertNotEqual(resting, key(["pose": "stretch", "mood": "tired"]))
+        XCTAssertEqual(resting, key(["mood": "pleased", "pose": "think"]))
+    }
 }

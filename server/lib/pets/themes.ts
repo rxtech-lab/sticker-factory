@@ -22,7 +22,12 @@ const LIMITED_HOURS: Record<"travel" | "event" | "accident", { min: number; max:
   event: { min: 6, max: 72 },
   accident: { min: 6, max: 48 },
 };
-const PLACE_RADIUS_KM = { travel: 60, nearby: 3 };
+/**
+ * How far a pinned place reaches, in kilometres: as far as the agent says, a whole city or one park,
+ * never under the kilometre the owner's location is known to, and never as far as a trip away.
+ * Without a say, a trip covers the region and anywhere else the city.
+ */
+export const PLACE_RADIUS_KM = { min: 2, max: 60, travel: 60, nearby: 30 };
 
 export type ThemeEffects = { happiness: number; hp: number; energy: number };
 
@@ -129,6 +134,8 @@ export type DesignedTheme = {
   weather: PetWeatherKind[] | null;
   /** Whether the place is where the owner is now, and only there: a name for it, or null. */
   placeLabel: string | null;
+  /** How far the place reaches from there: wide for a whole city, small for one park. */
+  placeRadiusKm: number | null;
   /** How long a limited place lasts; ignored for the others. */
   lastsHours: number | null;
 };
@@ -153,8 +160,10 @@ export function sanitizeTheme(
   const travel = theme.category === "travel";
   const label = theme.placeLabel?.trim().slice(0, 40) || (travel ? "this trip" : null);
   if (label && !world.location) return null;
-  const place = label && world.location
-    ? { label, ...world.location, radiusKm: travel ? PLACE_RADIUS_KM.travel : PLACE_RADIUS_KM.nearby } : null;
+  const radiusKm = theme.placeRadiusKm === null
+    ? (travel ? PLACE_RADIUS_KM.travel : PLACE_RADIUS_KM.nearby)
+    : clamp(theme.placeRadiusKm, PLACE_RADIUS_KM.min, PLACE_RADIUS_KM.max);
+  const place = label && world.location ? { label, ...world.location, radiusKm } : null;
   const minutes = theme.dailyMinutes === null ? null : clamp(theme.dailyMinutes, THEME_DAILY_MINUTES_MIN, THEME_DAILY_MINUTES_MAX + 1);
   const hours = theme.hours && theme.hours.from % 24 !== theme.hours.to % 24
     ? { from: clamp(theme.hours.from, 0, 23), to: clamp(theme.hours.to, 0, 24) } : null;

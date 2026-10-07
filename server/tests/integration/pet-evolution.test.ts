@@ -7,6 +7,7 @@ import { setPetRandomForTests } from "@/lib/pets/log";
 import { canEvolve, beginPetEvolutionPlan, failPetEvolution, finishPetEvolution, publishPetEvolution, setPetEvolutionStarterForTests, startPetEvolution } from "@/lib/services/pet-evolution";
 import { listPetEvents } from "@/lib/services/pet-state";
 import { getPet, interactWithPet, noticeNewSticker, setPet } from "@/lib/services/pets";
+import { getSticker } from "@/lib/services/stickers";
 import { MemoryObjectStore, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { seedPublishedSticker, seedUser } from "@/tests/helpers/packs";
@@ -217,9 +218,12 @@ describe("pet growth and noticing", () => {
       await db.update(userPets).set({ evolutionJson: { ...row.evolutionJson!, state: "building", composeJobId } })
         .where(eq(userPets.userId, "owner"));
 
+      // The chat is told the pet is publishing it, so it does not ask the owner to.
+      expect((await getSticker(db, "owner", pet.stickerId)).petEvolving).toBe(true);
       await expect(publishPetEvolution(db, "owner", evolutionId)).rejects.toThrow();
       const after = (await db.select().from(stickers).where(eq(stickers.id, pet.stickerId)))[0];
       expect(after).toMatchObject({ activeRevisionId: revision.id, status: "published" });
+      expect((await getPet(db, "owner")).pet).not.toBeNull();
     } finally {
       await close();
     }

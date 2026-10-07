@@ -87,13 +87,16 @@ struct StickerChatView: View {
         detail?.revisions.first { $0.state == .candidate && !rejectedRevisionIDs.contains($0.id) }
     }
     private var activeRevision: StickerRevision? { detail?.activeRevision }
+    /// The pet is growing this sticker and publishes the result itself, so there is nothing for the
+    /// owner to accept or publish meanwhile — only a note that it is on its way.
+    private var isPetEvolving: Bool { detail?.petEvolving == true }
     var messages: [ChatMessage] { store.messages[stickerID] ?? [] }
     private var isComputing: Bool { store.computingStickerIDs.contains(stickerID) }
     /// A finished sticker that Messages cannot see yet. Only shown once there is nothing else to
     /// decide first — a candidate or a running turn would change what gets published.
     private var needsPublishing: Bool {
         guard let detail, detail.status == .draft, let activeRevision, activeRevision.canPublishExports,
-              candidate == nil, !isComputing else { return false }
+              candidate == nil, !isComputing, !isPetEvolving else { return false }
         return dismissedPublishRevisionID != activeRevision.id
     }
     /// Only for a transcript with nothing in it yet. Every accept, save and stop reloads the
@@ -284,6 +287,20 @@ struct StickerChatView: View {
             consumeTutorialRequest()
         }
         .onDisappear { store.stopReconciliationPolling(stickerID: stickerID) }
+        // The pet's publish runs outside any turn this screen streams, so its end is only learned by
+        // asking. Once it lands the sticker is published and the banner goes.
+        .task(id: isPetEvolving) {
+            while isPetEvolving, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                await store.loadDetail(stickerID: stickerID, reportError: false)
+            }
+        }
+        .onChange(of: isPetEvolving) { wasEvolving, isEvolving in
+            guard wasEvolving, !isEvolving else { return }
+            Task { await store.loadMessages(stickerID: stickerID, reportError: false) }
+            if detail?.status == .published { Haptics.success() } else { Haptics.warning() }
+        }
         .task(id: mediaPreloadToken) { await preloadMessageMedia() }
         .task(id: messages.compactMap(\.plan)) {
             guard messages.contains(where: { $0.plan != nil }) else { return }
@@ -666,8 +683,13 @@ struct StickerChatView: View {
         VStack(spacing: 10) {
             streamErrorBanner
 
-            if candidate != nil {
+            if candidate != nil, !isPetEvolving {
                 CandidateReadyBanner(isBusy: isDeciding) { showingCandidate = true }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            if isPetEvolving, !isComputing {
+                PetPublishingBanner()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -682,6 +704,7 @@ struct StickerChatView: View {
         .padding(.bottom, 8)
         .animation(.easeInOut(duration: 0.25), value: candidate?.id)
         .animation(.easeInOut(duration: 0.25), value: needsPublishing)
+        .animation(.easeInOut(duration: 0.25), value: isPetEvolving)
         .onGeometryChange(for: CGFloat.self) { geometry in
             geometry.size.height
         } action: { height in

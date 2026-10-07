@@ -3,7 +3,6 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetAction } from "@/lib/ai/gateway-contracts";
 import { PET_MEDICINE_PRICE, type PetContextStoredV1, type PetContextV1, type PetIdentityV1, type PetInteractionRequest, type PetSignalsV1, type RecordPetSendRequest, type SendPetPhotoRequest, type SetPetRequest, type SharePetContentRequest } from "@/lib/contracts/api";
-import { normalizedControlValues } from "@/lib/contracts/configuration";
 import { canonicalJson, resolveStickerConfiguration } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
 import { generationJobs, packInstalls, petEvents, stickerPackItems, stickerPacks, stickerRevisions, stickers, userPets } from "@/lib/db/schema";
@@ -32,10 +31,11 @@ import { drawPetWeatherArt, serializePetWeatherArt } from "./pet-weather";
 import { commitPetChange, currentStats, ensurePetIdentity, ensureWallet, petRow, type PetChange, type PetRow } from "./pet-state";
 import { queuePetMemory, recallPetMemories } from "./pet-memory";
 import { startPetLife } from "./pet-life-runner";
+import { posePetForInteraction, settleRestingPose } from "./pet-pose";
 import { bagUnchanged, refreshPetItems, releaseItemArt } from "./pet-items";
 import { serializePetRoom } from "./pet-rooms";
 import { refreshPetThemes, serializePetTheme } from "./pet-themes";
-import { loadPlaybackPayload, readablePlayback } from "./playback";
+import { lastPublishedPlayback, loadPlaybackPayload, readablePlayback } from "./playback";
 import { selectStickerSummaries, serializeStickerSummary } from "./sticker-summaries";
 
 /** `PetResponseV1`, typed from the serializer like every other summary-bearing response. */
@@ -102,12 +102,14 @@ export async function getPet(db: Database, userId: string): Promise<PetResponse>
   if (!row) return { pet: null };
   let playback;
   try {
-    playback = await readablePlayback(db, userId, row.stickerId);
+    playback = await lastPublishedPlayback(db, userId, row.stickerId);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return { pet: null };
     throw error;
   }
-  const summary = await selectStickerSummaries(db).where(eq(stickers.id, row.stickerId)).then(firstRow);
+  // Summarised at the revision it plays, so a pet whose sticker went back to draft keeps showing,
+  // and loading, its last published look.
+  const summary = await selectStickerSummaries(db, playback.revision.id).where(eq(stickers.id, row.stickerId)).then(firstRow);
   if (!summary) return { pet: null };
   // Pets adopted before identities get one on first read, and a life of their own.
   let pet = await ensurePetIdentity(db, row, describePet(db, playback.sticker, playback.revision));
@@ -120,6 +122,8 @@ export async function getPet(db: Database, userId: string): Promise<PetResponse>
     await commitPetChange(db, userId, { lifeId: pet.lifeId, changes: [] });
     pet = await petRow(db, userId) ?? pet;
   }
+  // Seen now: the pose it holds is brought in line with how it feels.
+  pet = await settleRestingPose(db, pet, playback.sticker.title, playback.revision.playbackJson?.document.configuration);
   return serializePet(db, userId, pet, playback, summary);
 }
 
@@ -136,8 +140,10 @@ async function serializePet(
   summary: Parameters<typeof serializeStickerSummary>[0],
 ): Promise<PetResponse> {
   const now = new Date();
+  // Everything but `feels`, the server's own note on which feeling the pose was chosen for.
   const status = row.statusJson && row.statusUpdatedAt
-    ? { ...row.statusJson, updatedAt: row.statusUpdatedAt.toISOString() } : null;
+    ? { values: row.statusJson.values, caption: row.statusJson.caption, animateEverySeconds: row.statusJson.animateEverySeconds,
+      musings: row.statusJson.musings, updatedAt: row.statusUpdatedAt.toISOString() } : null;
   let actions = row.actionsJson;
   if (!actions?.length) {
     try {
@@ -281,7 +287,7 @@ export async function interactWithPet(
 ): Promise<PetResponse> {
   const found = await petRow(db, userId);
   if (!found) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
-  const { sticker, revision } = await readablePlayback(db, userId, found.stickerId);
+  const { sticker, revision } = await lastPublishedPlayback(db, userId, found.stickerId);
   const pet = await ensurePetIdentity(db, found, describePet(db, sticker, revision));
   // Something from the bag was paid for when it was bought, so using it costs no gold. The one
   // expiring soonest goes first, and whatever has expired is cleared away in the same write.
@@ -328,10 +334,13 @@ export async function interactWithPet(
         mood: `Just did “${action.title}” with its owner: ${action.description}`,
       }),
     ]);
-    const values = configuration
-      ? normalizedControlValues(configuration, { ...pet.statusJson?.values, ...answer.values })
-      : {};
     const caption = answer.caption.trim();
+    const values = configuration
+      ? await posePetForInteraction(configuration, pet.statusJson?.values, answer.values, {
+        petTitle: sticker.title, identity: pet.identityJson, stats: currentStats(pet), illness: pet.illnessJson?.name, said: caption,
+        moment: `Its owner just did “${action.title}” with it: ${action.description}`,
+      })
+      : {};
     const committed = await commitPetChange(db, userId, {
       lifeId: pet.lifeId!,
       price,
@@ -435,7 +444,7 @@ export async function readPetSend(
   try {
     const found = await petRow(db, userId);
     if (!found?.lastSentStickerId || found.lastSentAt?.getTime() !== sentAt.getTime()) return;
-    const { sticker: petSticker, revision: petRevision } = await readablePlayback(db, userId, found.stickerId);
+    const { sticker: petSticker, revision: petRevision } = await lastPublishedPlayback(db, userId, found.stickerId);
     const configuration = petRevision.playbackJson?.document.configuration;
     if (!configuration) return;
     const sent = await sendableSticker(db, userId, found.lastSentStickerId);
@@ -470,8 +479,11 @@ export async function readPetSend(
     });
     // Omitted controls keep the pose the pet already had; anything the model made up falls back to
     // that control's default. The watch is only ever handed values this pet's document can play.
-    const values = normalizedControlValues(configuration, { ...pet.statusJson?.values, ...status.values });
     const caption = status.caption.trim();
+    const values = await posePetForInteraction(configuration, pet.statusJson?.values, status.values, {
+      petTitle: petSticker.title, identity, stats: currentStats(pet), illness: pet.illnessJson?.name, said: caption,
+      moment: `Its owner just sent the sticker “${sent.sticker.title}” in a chat${event && eventDetail ? `; also: ${event.title} — ${eventDetail}` : ""}.`,
+    });
     const bound = (value: number) => Math.max(-8, Math.min(8, Math.round(value)));
     const mood = status.effects
       ? { happiness: bound(status.effects.happiness), hp: bound(status.effects.hp), energy: bound(status.effects.energy) }
@@ -554,7 +566,7 @@ export async function noticeNewSticker(
       .where(and(eq(stickerRevisions.id, revisionId), eq(stickers.id, job.stickerId), eq(stickers.ownerId, userId)))
       .then(firstRow);
     if (!made) return;
-    const { sticker: petSticker, revision: petRevision } = await readablePlayback(db, userId, found.stickerId);
+    const { sticker: petSticker, revision: petRevision } = await lastPublishedPlayback(db, userId, found.stickerId);
     const configuration = petRevision.playbackJson?.document.configuration;
     if (!configuration) return;
     const now = new Date();
@@ -576,8 +588,11 @@ export async function noticeNewSticker(
       petLog("sticker:ignored", { userId, stickerId: made.sticker.id, jobId });
       return;
     }
-    const values = normalizedControlValues(configuration, { ...found.statusJson?.values, ...answer.values });
     const caption = answer.caption.trim();
+    const values = await posePetForInteraction(configuration, found.statusJson?.values, answer.values, {
+      petTitle: petSticker.title, identity: found.identityJson, stats: currentStats(found), illness: found.illnessJson?.name, said: caption,
+      moment: `Its owner just made a new sticker, “${made.sticker.title}”.`,
+    });
     const bound = (value: number) => Math.max(-8, Math.min(8, Math.round(value)));
     const mood = answer.effects
       ? { happiness: bound(answer.effects.happiness), hp: bound(answer.effects.hp), energy: bound(answer.effects.energy) }
@@ -623,7 +638,7 @@ export async function sendPetPhoto(
 ): Promise<PetResponse> {
   const found = await petRow(db, userId);
   if (!found) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
-  const { sticker, revision } = await readablePlayback(db, userId, found.stickerId);
+  const { sticker, revision } = await lastPublishedPlayback(db, userId, found.stickerId);
   const [asset] = await getReadyOwnedAssets(db, userId, [input.assetId]);
   if (!asset.mimeType.startsWith("image/") || asset.mimeType === "image/gif") {
     throw new ApiError(422, "PET_PHOTO_NOT_IMAGE", "Your pet can only look at a still picture.");
@@ -654,8 +669,13 @@ export async function sendPetPhoto(
       // owner's other pictures.
       memories: await recallPetMemories(db, userId, pet.lifeId, "A picture its owner showed it"),
     });
-    const values = configuration ? normalizedControlValues(configuration, { ...pet.statusJson?.values, ...answer.values }) : {};
     const caption = answer.caption.trim();
+    const values = configuration
+      ? await posePetForInteraction(configuration, pet.statusJson?.values, answer.values, {
+        petTitle: sticker.title, identity: pet.identityJson, stats: currentStats(pet), illness: pet.illnessJson?.name, said: caption,
+        moment: "Its owner just showed it a picture.",
+      })
+      : {};
     const bound = (value: number) => Math.max(-8, Math.min(8, Math.round(value)));
     const mood = answer.effects
       ? { happiness: bound(answer.effects.happiness), hp: bound(answer.effects.hp), energy: bound(answer.effects.energy) }
@@ -703,7 +723,7 @@ export async function acceptPetContentShare(
 ): Promise<{ accepted: true }> {
   const found = await petRow(db, userId);
   if (!found) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
-  await readablePlayback(db, userId, found.stickerId);
+  await lastPublishedPlayback(db, userId, found.stickerId);
   schedule(async () => {
     try {
       await shareContentWithPet(db, userId, input);
@@ -723,7 +743,7 @@ export async function shareContentWithPet(
 ): Promise<PetResponse> {
   const found = await petRow(db, userId);
   if (!found) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
-  const { sticker, revision } = await readablePlayback(db, userId, found.stickerId);
+  const { sticker, revision } = await lastPublishedPlayback(db, userId, found.stickerId);
   const pet = await ensurePetIdentity(db, found, describePet(db, sticker, revision));
   const configuration = revision.playbackJson?.document.configuration;
   const interactionId = crypto.randomUUID();
@@ -745,10 +765,13 @@ export async function shareContentWithPet(
       current: pet.statusJson?.values ?? null,
       ...ownerMoment(pet.contextJson),
     });
-    const values = configuration
-      ? normalizedControlValues(configuration, { ...pet.statusJson?.values, ...answer.values })
-      : {};
     const caption = answer.caption.trim();
+    const values = configuration
+      ? await posePetForInteraction(configuration, pet.statusJson?.values, answer.values, {
+        petTitle: sticker.title, identity: pet.identityJson, stats: currentStats(pet), illness: pet.illnessJson?.name, said: caption,
+        moment: `Its owner just shared ${input.title ? `“${input.title}”` : input.url ?? "something to read"} with it.`,
+      })
+      : {};
     const effects = personalizeEffects({ happiness: 2, hp: 0, energy: -1, gold: 0 }, pet.identityJson);
     const actions = await refreshActions(db, pet, sticker, revision, {
       stats: applyEffects(currentStats(pet), effects, pet.identityJson),
@@ -784,7 +807,7 @@ export async function sharePet(db: Database, userId: string): Promise<{ accepted
     petLog("share:folded", { userId });
     return { accepted: false, ...await getPet(db, userId) };
   }
-  const { sticker, revision } = await readablePlayback(db, userId, found.stickerId).catch((error) => {
+  const { sticker, revision } = await lastPublishedPlayback(db, userId, found.stickerId).catch((error) => {
     if (error instanceof ApiError && error.status === 404) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
     throw error;
   });
@@ -891,11 +914,14 @@ export async function getPetPose(
   size: number,
   ifNoneMatch?: string | null,
 ): Promise<{ etag: string; bytes: Uint8Array | null }> {
-  const row = await db.select().from(userPets).where(eq(userPets.userId, userId)).then(firstRow);
+  let row = await petRow(db, userId);
   if (!row) throw new ApiError(404, "PET_NOT_FOUND", "You have not chosen a pet.");
   let revision: Awaited<ReturnType<typeof readablePlayback>>["revision"];
   try {
-    ({ revision } = await readablePlayback(db, userId, row.stickerId));
+    let sticker: Awaited<ReturnType<typeof readablePlayback>>["sticker"];
+    ({ revision, sticker } = await lastPublishedPlayback(db, userId, row.stickerId));
+    // The widget and the watch show the pose at rest too, true to how the pet feels now.
+    row = await settleRestingPose(db, row, sticker.title, revision.playbackJson?.document.configuration);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       throw new ApiError(404, "PET_NOT_FOUND", "You have not chosen a pet.");

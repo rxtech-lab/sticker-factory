@@ -134,10 +134,13 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func petEvents(cursor: String?) async throws -> PetEventsResponse
     /// What the pet remembers, nearest by meaning to `query` when given, otherwise most important first.
     func petMemories(about query: String?) async throws -> [PetMemory]
-    /// Tells the server what the owner said and what the pet answered on the phone, for it to remember.
     /// Tells the pet's memory of a talk; answers with the pet posed for it, nil from older servers.
     @discardableResult
     func rememberPetTalk(words: String, reply: String?) async throws -> Pet?
+    /// The pose the pet switches to for a moment in reaction to `touch`, from the one it shows now
+    /// (`shown` over its stored pose), decided on the server by its decision model: only the controls
+    /// it changed. Nothing is stored.
+    func petTouchPose(_ touch: PetTouch, shown: [String: AnimatedControlValue]) async throws -> [String: AnimatedControlValue]
 
     // Marketplace
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
@@ -169,6 +172,7 @@ extension StickerAPIClientProtocol {
     func petEvents(cursor: String?) async throws -> PetEventsResponse { PetEventsResponse(events: [], nextCursor: nil) }
     func petMemories(about query: String?) async throws -> [PetMemory] { [] }
     func rememberPetTalk(words: String, reply: String?) async throws -> Pet? { nil }
+    func petTouchPose(_ touch: PetTouch, shown: [String: AnimatedControlValue]) async throws -> [String: AnimatedControlValue] { [:] }
     func clearPet() async throws {}
     func petCandidates(query: String?) async throws -> LibrarySectionsResponse { throw StickerAPIError.invalidResponse }
     func petPose(size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }

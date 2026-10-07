@@ -1412,6 +1412,9 @@
     "Allow location above to let your pet notice when you travel." : {
 
     },
+    "Allow location access in Settings to see how far you are." : {
+
+    },
     "Allow photo-library access in Settings to save this image." : {
       "localizations" : {
         "zh-CN" : {
@@ -4370,6 +4373,9 @@
     "Finding the weather where you are…" : {
 
     },
+    "Finding where you are…" : {
+
+    },
     "Finding your pet…" : {
 
     },
@@ -4774,8 +4780,37 @@
     "Grew something new" : {
 
     },
-    "Growing something new…" : {
-
+    "Growing something new" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在长出新模样"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在長出新模樣"
+          }
+        }
+      }
+    },
+    "Growing…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成长中…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成長中…"
+          }
+        }
+      }
     },
     "Guardian" : {
 
@@ -7102,8 +7137,15 @@
     "Only when it's %@ where you are" : {
 
     },
-    "Only while you're near %@" : {
-
+    "Only within %@ of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Only within %1$@ of %2$@"
+          }
+        }
+      }
     },
     "Only you can see this pack until you publish it." : {
       "localizations" : {
@@ -7200,6 +7242,9 @@
           }
         }
       }
+    },
+    "Open in Maps" : {
+
     },
     "Open mask image" : {
 
@@ -9587,6 +9632,9 @@
 
     },
     "Shopping" : {
+
+    },
+    "Show %@ on a full-screen map" : {
 
     },
     "Show a Picture" : {
@@ -13005,6 +13053,9 @@
         }
       }
     },
+    "Where" : {
+
+    },
     "White" : {
       "localizations" : {
         "zh-CN" : {
@@ -13200,6 +13251,16 @@
         }
       }
     },
+    "You're %@ away. Get within %@ to go." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You're %1$@ away. Get within %2$@ to go."
+          }
+        }
+      }
+    },
     "You're back! It's been ages!" : {
 
     },
@@ -13208,6 +13269,16 @@
     },
     "You're far from home, so your pet is looking for places on your trip." : {
 
+    },
+    "You're within %@ of %@, near enough for this place." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You're within %1$@ of %2$@, near enough for this place."
+          }
+        }
+      }
     },
     "Your %@ plan is active. Top up whenever you need more credits." : {
       "localizations" : {
@@ -13409,6 +13480,9 @@
 
     },
     "Your pet is here" : {
+
+    },
+    "Your pet is publishing its new look in the background." : {
 
     },
     "Your pet is still thinking of something to do. Check back in a moment." : {

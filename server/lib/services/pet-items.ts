@@ -16,7 +16,7 @@ import { localDate } from "@/lib/pets/signals";
 import { getObjectStore } from "@/lib/storage/r2";
 import { ownerMoment, sentStickerImage } from "./pet-actions";
 import { currentStats, petRow, type PetRow } from "./pet-state";
-import { readablePlayback } from "./playback";
+import { lastPublishedPlayback } from "./playback";
 
 const RETRY_AFTER_MS = 10 * 60 * 1000;
 const ART_SIZE = 1024;
@@ -201,7 +201,7 @@ async function restock(db: Database, pet: PetRow, lifeId: string, shelf: PetActi
     });
     const room = PET_SHOP_MAX - kept.length;
     if (room > 0) {
-      const { sticker, revision } = await readablePlayback(db, userId, pet.stickerId);
+      const { sticker, revision } = await lastPublishedPlayback(db, userId, pet.stickerId);
       const style = await sentStickerImage(db, revision.pngAssetId ?? revision.systemAssetId);
       const generated = await getAiProvider().generatePetItems({
         petTitle: sticker.title,
@@ -295,7 +295,7 @@ export async function getPetItemArt(
 ): Promise<{ etag: string; bytes: Uint8Array | null }> {
   const pet = await petRow(db, userId);
   if (!pet) throw new ApiError(404, "PET_NOT_FOUND", "Choose a pet first.");
-  await readablePlayback(db, userId, pet.stickerId);
+  await lastPublishedPlayback(db, userId, pet.stickerId);
   if (!pet.itemsArtKey) throw new ApiError(404, "PET_ITEMS_NOT_READY", "Your pet's items are still being drawn.");
   const shelf = liveShelf(pet.itemsJson, now);
   if (expectedArtKey && expectedArtKey !== shopVersion(shelf)) {

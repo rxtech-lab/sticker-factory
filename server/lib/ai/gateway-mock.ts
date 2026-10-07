@@ -11,7 +11,7 @@ import { normalizeTransparentPng } from "@/lib/storage/r2";
 import { PET_MEMORY_DIMENSIONS } from "@/lib/contracts/api";
 import { GatewayAiProvider } from "./gateway";
 import { resolveChatAction } from "./gateway-contracts";
-import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetEncounter, AiPetItem, AiPetItemsContext, AiPetEncounterContext, AiPetEventContext, AiPetFriend, AiPetFriendContext, AiPetInteractionContext, AiPetMemoryContext, AiPetMemoryOperation, AiPetPhotoContext, AiPetPose, AiPetPoseContext, AiPetRoom, AiPetRoomArtInput, AiPetSharedContentContext, AiPetTheme, AiPetThemeArtInput, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult } from "./gateway-contracts";
+import type { AiAnimationContext, AiChatAction, AiChatContext, AiEditContext, AiImageInput, AiImageOutput, AiLayoutContext, AiPetActionsContext, AiPetDecisionAnswer, AiPetEncounter, AiPetItem, AiPetItemsContext, AiPetEncounterContext, AiPetEventContext, AiPetFriend, AiPetFriendContext, AiPetInteractionContext, AiPetMemoryContext, AiPetMemoryOperation, AiPetPhotoContext, AiPetRoom, AiPetRoomArtInput, AiPetSharedContentContext, AiPetTheme, AiPetThemeArtInput, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, AiPetPersona, AiPetPersonaContext, AiPetStatus, AiPetStatusContext, AiPetStickerContext, AiPetStickerReaction, AiPlanContext, AiProvider, AiReferenceSelectionContext, AiSheetInspection, AiSheetInspectionContext, AiTitleContext, AiVideoOutput, AnimateTurnResult, AnimationDraftingSession, EditDraftingSession, EditTurnResult, LayoutDraftingSession, LayoutTurnResult, PetAction, PlanDraftingSession, PlanTurnResult, AiPetPose, AiPetPoseContext } from "./gateway-contracts";
 
 /**
  * What the mock draws for a sprite sheet: one pink body per cell with a magenta face placeholder,
@@ -491,7 +491,7 @@ export class MockAiProvider implements AiProvider {
     return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
   }
   async discoverPetThemes(input: AiPetThemeDiscoveryContext): Promise<AiPetTheme[]> {
-    const none = { hours: null, weather: null, placeLabel: null, lastsHours: null };
+    const none = { hours: null, weather: null, placeLabel: null, placeRadiusKm: null, lastsHours: null };
     const everyday: AiPetTheme[] = [
       { ...none, title: "Corner Café", description: `A warm café where ${input.petTitle} gets a treat.`, scene: "A cosy corner café.",
         category: "restaurant", effects: { happiness: 2, hp: 1, energy: 3 }, dailyMinutes: 90 },
@@ -522,6 +522,10 @@ export class MockAiProvider implements AiProvider {
   }
   async respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus> {
     return { values: {}, caption: `${input.petTitle}: ${input.action.description}` };
+  }
+  /** Keeps every control as it is: no answers, so the agent's pose stands. */
+  async decideForPet(): Promise<Record<string, AiPetDecisionAnswer>> {
+    return {};
   }
   async reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus> {
     return { values: {}, caption: `${input.petTitle} loves this picture`, effects: { happiness: 5, hp: 0, energy: -1 } };

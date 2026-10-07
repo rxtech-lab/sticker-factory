@@ -3,9 +3,10 @@ import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetEventV1, PetSignalsV1 } from "@/lib/contracts/api";
 import { firstRow, type Database } from "@/lib/db/client";
-import { petEvents, petRooms, petThemes, userPets, userWalletGrants, userWallets, type PetRoomRow, type PetStatsValues, type PetThemeRow, type UserPetRow, type UserWalletRow } from "@/lib/db/schema";
+import { petEvents, petRooms, petThemes, userPets, userWalletGrants, userWallets, type PetRoomRow, type PetStatsValues, type PetStatus, type PetThemeRow, type UserPetRow, type UserWalletRow } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
 import { describeError } from "@/lib/observability/trace";
+import { describeCondition } from "@/lib/pets/condition";
 import { buildIdentity, fallbackIdentity } from "@/lib/pets/identity";
 import { petLog, petRandom } from "@/lib/pets/log";
 import { isMemorable, queuePetMemory } from "@/lib/services/pet-memory";
@@ -107,6 +108,17 @@ export function currentStats(row: PetRow): PetStats {
   return { ...withoutGold(row.statsJson ?? initialStats(row.identityJson)), gold: row.gold };
 }
 
+/**
+ * A new status written with a change is the pose chosen for how the pet feels once the change has
+ * landed: stamped with that feeling, so it is not re-chosen the next time the pet is seen.
+ */
+function stampFeels(set: PgUpdateSetSource<typeof userPets> | undefined, row: PetRow, stats: PetStatsValues) {
+  const status = set?.statusJson;
+  if (!status || typeof status !== "object" || !("values" in status) || (status as PetStatus).feels) return {};
+  const illness = set && "illnessJson" in set ? (set.illnessJson as PetRow["illnessJson"] | undefined) : row.illnessJson;
+  return { statusJson: { ...(status as PetStatus), feels: describeCondition(stats, row.identityJson?.maxHp ?? 100, illness?.name) } };
+}
+
 /** Thrown inside the commit's transaction when the wallet moved underneath it, to roll back and retry. */
 class WalletConflict extends Error {}
 
@@ -203,7 +215,7 @@ export async function commitPetChange(
     try {
       updated = await db.transaction(async (tx) => {
         const written = await tx.update(userPets)
-          .set({ ...input.set, statsJson: withoutGold(stats), ...(comfortDate ? { roomEffectDate: comfortDate } : {}) })
+          .set({ ...input.set, ...stampFeels(input.set, row, stats), statsJson: withoutGold(stats), ...(comfortDate ? { roomEffectDate: comfortDate } : {}) })
           .where(and(
             eq(userPets.userId, userId),
             eq(userPets.lifeId, input.lifeId),

@@ -118,7 +118,7 @@ describe("pet theme rules", () => {
     const designed: DesignedTheme = {
       title: "  Shibuya Crossing  ", description: "Lights", scene: "A busy crossing", category: "travel",
       effects: { happiness: 40, hp: -40, energy: 0 }, dailyMinutes: 5, hours: { from: 9, to: 9 }, weather: ["rainy", "rainy"],
-      placeLabel: null, lastsHours: 1_000,
+      placeLabel: null, placeRadiusKm: null, lastsHours: 1_000,
     };
     const trip = sanitizeTheme(designed, { location: tokyo, now })!;
     expect(trip.title).toBe("Shibuya Crossing");
@@ -129,6 +129,19 @@ describe("pet theme rules", () => {
     expect(sanitizeTheme(designed, { location: null, now })).toBeNull();
 
     const park = { ...designed, category: "nature" as const, effects: { happiness: 0, hp: 0, energy: -2 }, dailyMinutes: null };
+    // A place named for a city reaches across it: pinned in Central, open from Sha Tin, not from Macau.
+    const central = { latitude: 22.25, longitude: 114.15 };
+    const harbour = sanitizeTheme({ ...park, weather: null, placeLabel: "Hong Kong" }, { location: central, now })!;
+    const near = (spot: { latitude: number; longitude: number }) => themeAvailability({ id: "harbour", state: "available", expiresAt: null,
+      rulesJson: harbour.rules }, world(now, { context: { ...context, ...spot } })).available;
+    expect(near({ latitude: 22.38, longitude: 114.19 })).toBe(true);
+    expect(near({ latitude: 22.14, longitude: 113.56 })).toBe(false);
+    // The agent sizes a place to what it names: one park reaches only so far, never under the
+    // kilometre the location is known to, and never as far as a trip.
+    const pond = sanitizeTheme({ ...park, weather: null, placeLabel: "Victoria Park", placeRadiusKm: 3 }, { location: central, now })!;
+    expect(pond.rules.place).toEqual({ label: "Victoria Park", ...central, radiusKm: 3 });
+    expect(sanitizeTheme({ ...park, placeLabel: "Victoria Park", placeRadiusKm: 0 }, { location: central, now })!.rules.place?.radiusKm).toBe(2);
+    expect(sanitizeTheme({ ...park, placeLabel: "Hong Kong", placeRadiusKm: 500 }, { location: central, now })!.rules.place?.radiusKm).toBe(60);
     expect(sanitizeTheme({ ...park, placeLabel: "Golden Gate Park" }, { location: null, now })).toBeNull();
     // An everyday place anywhere needs no location, never expires, and is always good for something.
     expect(sanitizeTheme(park, { location: null, now })).toMatchObject({

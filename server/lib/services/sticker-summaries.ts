@@ -217,7 +217,7 @@ export const telegramSummaryColumns = {
  * function. Walking sticker -> revision -> asset -> asset per row made a 30-item page 90+ chained
  * queries; the joins below keep it at one regardless of page size.
  */
-export function selectStickerSummaries(db: Database) {
+export function selectStickerSummaries(db: Database, /** Summarise this revision instead of the active one. */ revisionId?: string) {
   return db.select({
     sticker: stickerSummaryColumns,
     systemAsset: systemAssetSummaryColumns,
@@ -232,7 +232,7 @@ export function selectStickerSummaries(db: Database) {
     activeJob: { id: generationJobs.id, kind: generationJobs.kind, state: generationJobs.state },
   }).from(stickers)
     .leftJoin(stickerRevisions, and(
-      eq(stickerRevisions.id, stickers.activeRevisionId),
+      revisionId ? eq(stickerRevisions.id, revisionId) : eq(stickerRevisions.id, stickers.activeRevisionId),
       eq(stickerRevisions.stickerId, stickers.id),
     ))
     .leftJoin(systemAssets, eq(systemAssets.id, stickerRevisions.systemAssetId))

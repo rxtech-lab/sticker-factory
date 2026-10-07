@@ -816,7 +816,11 @@ export type PetThemeRules = {
 export type PetThemeUsage = { date: string; accruedAt: string; minutes: Record<string, number> };
 
 export type PetMusing = { text: string; afterMinutes: number };
-export type PetStatus = { values: StickerControlValues; caption: string; animateEverySeconds?: number; musings?: PetMusing[] };
+export type PetStatus = {
+  values: StickerControlValues; caption: string; animateEverySeconds?: number; musings?: PetMusing[];
+  /** How the pet felt (`describeCondition`) when `values` was chosen; a pose for another feeling is re-chosen when seen. */
+  feels?: string;
+};
 export type PetEvolution = {
   id: string;
   state: "planning" | "building" | "publishing" | "ready" | "failed";

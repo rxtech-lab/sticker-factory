@@ -1,3 +1,4 @@
+import AnimatedView
 import Foundation
 import FoundationModels
 import Observation
@@ -11,6 +12,8 @@ import os
 /// what it says back when it is touched or greeted, its first reaction to an action or a picture
 /// while its agent is still thinking, and its thanks when a walk gives it energy back. Without the
 /// on-device model the pet still reacts with its body, and with a predefined line where there is one.
+/// The pose it strikes for a moment when touched is picked by its decision model, Jev, on the server,
+/// which answers within a second and only with values the pet's sticker can draw.
 @MainActor
 @Observable
 final class PetBrain {
@@ -86,33 +89,87 @@ final class PetBrain {
         LanguageModelSession(model: model).prewarm()
     }
 
-    /// Lets the on-device model answer `touch` with a short line, and maybe play the pet's animation.
-    /// Does nothing without the model, while a reply is already being thought of, or right after one.
-    func react(to touch: PetTouch, pet: Pet) {
-        guard canThinkOnDevice, thinking == nil else { return }
+    /// Answers `touch` with a pose and a few words. The pose is the pet's decision model's (Jev, on
+    /// the server), struck from `controls`; the line, and whether the pet plays its animation, are the
+    /// on-device model's when the phone has one. `strike` is handed the controls Jev changed, and is
+    /// waited on before the line shows, so line and pose land together. Does nothing while a reaction
+    /// is already being decided, or right after one.
+    func react(
+        to touch: PetTouch,
+        pet: Pet,
+        controls: [AnimatedControl] = [],
+        shown: [String: AnimatedControlValue] = [:],
+        strike: @escaping @MainActor ([String: AnimatedControlValue]) async -> Void = { _ in }
+    ) {
+        let poses = !Self.posableControls(controls).isEmpty
+        guard poses || canThinkOnDevice, thinking == nil else { return }
         if let lastReplyAt, Date.now.timeIntervalSince(lastReplyAt) < Self.localReplyCooldown { return }
         lastReplyAt = .now
+        let speaks = canThinkOnDevice
         let instructions = Self.instructions(for: pet)
         let prompt = Self.prompt(for: touch, pet: pet)
         let model = model
+        let api = api
         let id = UUID()
         thinkingID = id
         thinking = Task {
             defer { if thinkingID == id { thinking = nil } }
-            do {
-                let session = LanguageModelSession(model: model, instructions: instructions)
-                let reply = try await session.respond(
-                    to: prompt,
-                    generating: PetTouchReply.self,
-                    options: GenerationOptions(temperature: 0.9, maximumResponseTokens: 80)
-                ).content
-                guard !Task.isCancelled else { return }
-                let line = reply.line.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !line.isEmpty { show(LocalLine(text: line)) }
-                if reply.playsAnimation { playRequest &+= 1 }
-            } catch {
-                // Guardrails, a busy model or anything else: the pet's body has already answered.
-                Self.log.error("On-device touch reply failed: \(error.localizedDescription, privacy: .public)")
+            async let decided: [String: AnimatedControlValue] = poses ? Self.decidePose(for: touch, shown: shown, api: api) : [:]
+            async let spoken: PetTouchReply? = speaks ? Self.reply(to: prompt, instructions: instructions, model: model) : nil
+            let pose = await decided
+            let reply = await spoken
+            guard !Task.isCancelled else { return }
+            if !pose.isEmpty { await strike(pose) }
+            guard !Task.isCancelled, let reply else { return }
+            let text = reply.line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { show(LocalLine(text: text)) }
+            if reply.playsAnimation { playRequest &+= 1 }
+        }
+    }
+
+    /// The pose Jev strikes for `touch`; none when it cannot be reached — the pet's body has already answered.
+    private static func decidePose(
+        for touch: PetTouch,
+        shown: [String: AnimatedControlValue],
+        api: any StickerAPIClientProtocol
+    ) async -> [String: AnimatedControlValue] {
+        do {
+            let pose = try await api.petTouchPose(touch, shown: shown)
+            let changed = pose.isEmpty ? "keeps its pose" : pose.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
+            log.info("Touch \(touch.wireName, privacy: .public) → \(changed, privacy: .public)")
+            return pose
+        } catch {
+            log.error("Touch pose failed: \(error.localizedDescription, privacy: .public)")
+            return [:]
+        }
+    }
+
+    /// What the on-device model says back to a touch; nil when it does not answer.
+    private static func reply(to prompt: String, instructions: String, model: SystemLanguageModel) async -> PetTouchReply? {
+        do {
+            let session = LanguageModelSession(model: model, instructions: instructions)
+            return try await session.respond(
+                to: prompt,
+                generating: PetTouchReply.self,
+                options: GenerationOptions(temperature: 0.9, maximumResponseTokens: 80)
+            ).content
+        } catch {
+            // Guardrails, a busy model or anything else: the pet's body has already answered.
+            log.error("On-device touch reply failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    // MARK: Touch poses
+
+    /// The controls a touch may change: choices with something to choose between, and toggles.
+    /// Speed is left to the pet's agent.
+    static func posableControls(_ controls: [AnimatedControl]) -> [AnimatedControl] {
+        controls.filter { control in
+            switch control.type {
+            case .choice: (control.options?.count ?? 0) > 1
+            case .toggle: true
+            case .number: false
             }
         }
     }

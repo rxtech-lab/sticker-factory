@@ -4,8 +4,9 @@ import { and, asc, desc, eq, gt, inArray, isNull, lt, lte } from "drizzle-orm";
 import type { CreateStickerRequest, ImportStickerRequest, UpdateStickerRequest } from "@/lib/contracts/api";
 import { CURRENT_DOCUMENT_VERSION, downcastForClient, StickerDocumentSchema, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
-import { assets, chatMessages, chatThreads, generationEvents, generationJobs, stickerRevisions, stickers } from "@/lib/db/schema";
+import { assets, chatMessages, chatThreads, generationEvents, generationJobs, stickerRevisions, stickers, userPets } from "@/lib/db/schema";
 import { ApiError } from "@/lib/http/errors";
+import { evolutionInFlight } from "@/lib/pets/evolution";
 import { getReadyOwnedAssets } from "@/lib/services/assets";
 import { abandonHold, holdCreditsForJob } from "@/lib/subscription/credits";
 import { AI_INPUT_ASSET_KINDS, AI_REFERENCE_MIME_TYPES, MAX_AI_INPUT_BYTES, assertOwnedSticker, isActiveJobConstraint, serializeSticker } from "./sticker-summaries";
@@ -355,9 +356,14 @@ export async function getSticker(db: Database, ownerId: string, stickerId: strin
   const sticker = await assertOwnedSticker(db, ownerId, stickerId);
   const revisions = await db.select().from(stickerRevisions)
     .where(eq(stickerRevisions.stickerId, stickerId)).orderBy(desc(stickerRevisions.createdAt));
+  const pet = await db.select({ evolutionJson: userPets.evolutionJson }).from(userPets)
+    .where(and(eq(userPets.userId, ownerId), eq(userPets.stickerId, stickerId))).then(firstRow);
   return {
     ...(await serializeSticker(db, sticker)),
     presets: creationPresetDisplay(sticker.creationPresets),
+    // The owner's pet is growing this sticker and will build, accept and publish it on its own, so
+    // the chat says so instead of asking the owner to decide or publish what is already on its way.
+    petEvolving: evolutionInFlight(pet?.evolutionJson),
     revisions: revisions.map((revision) => ({
       id: revision.id,
       parentRevisionId: revision.parentRevisionId,

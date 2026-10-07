@@ -39,11 +39,14 @@ nonisolated struct PetSnapshot: Codable, Equatable, Sendable {
         return snapshot
     }
 
-    /// What the server draws the pose from: the revision it plays, and the reading that posed it.
-    /// The app and the widget both name a pose this way, so either can tell the other's is current.
-    static func poseKey(stickerID: String, revisionID: String?, statusUpdatedAt: Date?) -> String {
-        [stickerID, revisionID ?? "", statusUpdatedAt.map { String($0.timeIntervalSince1970) } ?? "default"]
-            .joined(separator: "|")
+    /// What the server draws the pose from: the revision it plays, the reading that posed it, and the
+    /// pose itself — the server re-poses a pet at rest when how it feels changes, without a new
+    /// reading. The app and the widget both name a pose this way, so either can tell the other's is current.
+    static func poseKey(stickerID: String, revisionID: String?, statusUpdatedAt: Date?, pose: [String: String] = [:]) -> String {
+        [
+            stickerID, revisionID ?? "", statusUpdatedAt.map { String($0.timeIntervalSince1970) } ?? "default",
+            pose.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        ].joined(separator: "|")
     }
 }
 

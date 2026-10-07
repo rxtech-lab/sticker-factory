@@ -1,3 +1,4 @@
+import AnimatedView
 import Foundation
 
 extension StickerAPIClient {
@@ -152,6 +153,13 @@ extension StickerAPIClient {
             path: "api/v1/pet/talks", method: "POST", body: RememberPetTalkRequest(words: words, reply: reply)
         )
         return response.pet
+    }
+
+    func petTouchPose(_ touch: PetTouch, shown: [String: AnimatedControlValue]) async throws -> [String: AnimatedControlValue] {
+        let response: PetTouchResponse = try await send(
+            path: "api/v1/pet/touch", method: "POST", body: PetTouchRequest(touch: touch.wireName, pose: shown.isEmpty ? nil : shown)
+        )
+        return response.values
     }
 
     func clearPet() async throws {
