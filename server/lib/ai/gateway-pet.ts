@@ -7,7 +7,7 @@ import { z } from "zod";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { ENCOUNTER_PENALTY_MAX, ENCOUNTER_REWARD_MAX } from "@/lib/pets/encounters";
 import { ROOM_EFFECT_MAX, ROOM_EFFECT_MIN, ROOM_OFFER_COUNT, ROOM_PRICE_MAX, ROOM_PRICE_MIN } from "@/lib/pets/rooms";
-import { THEME_DAILY_MINUTES_MAX, THEME_DAILY_MINUTES_MIN, THEME_EFFECT_MAX, THEME_EFFECT_MIN } from "@/lib/pets/themes";
+import { PLACE_RADIUS_KM, THEME_DAILY_MINUTES_MAX, THEME_DAILY_MINUTES_MIN, THEME_EFFECT_MAX, THEME_EFFECT_MIN } from "@/lib/pets/themes";
 import { PET_ACTION_GOLD_EARN_MAX, PET_ACTION_GOLD_MAX, PET_ANIMATE_EVERY_MAX, PET_ANIMATE_EVERY_MIN, PET_CLASSES, PET_THEME_CATEGORIES, PET_MUSING_AFTER_MAX, PET_MUSING_AFTER_MIN, PET_MUSINGS_MAX, PET_WEATHER_KINDS, type PetIdentityV1, type PetSignalsV1 } from "@/lib/contracts/api";
 import type { AiOwnerMoment, AiPetRecall, AiPetActionsContext, AiPetEncounter, AiPetEncounterContext, AiPetEvolutionChoice, AiPetFriend, AiPetFriendContext, AiPetStickerContext, AiPetStickerReaction, AiPetEventContext, AiPetHeadlinesContext, AiPetInteractionContext, AiPetPhotoContext, AiPetSharedContentContext, AiPetPersona, AiPetPersonaContext, AiPetRoom, AiPetStatus, AiPetStatusContext, AiPetTheme, AiPetThemeChoice, AiPetThemeChoiceContext, AiPetThemeDiscoveryContext, PetAction } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
@@ -283,6 +283,7 @@ export async function discoverPetThemes(input: AiPetThemeDiscoveryContext): Prom
     hours: z.object({ from: z.number().int().min(0).max(23), to: z.number().int().min(0).max(24) }).strict().nullable(),
     weather: z.array(z.enum(PET_WEATHER_KINDS)).max(PET_WEATHER_KINDS.length).nullable(),
     placeLabel: z.string().trim().min(1).max(40).nullable(),
+    placeRadiusKm: z.number().int().min(PLACE_RADIUS_KM.min).max(PLACE_RADIUS_KM.max).nullable(),
     lastsHours: z.number().int().min(1).max(7 * 24).nullable(),
   }).strict()).max(input.max) }).strict();
   const result = await generateText({
@@ -297,8 +298,12 @@ export async function discoverPetThemes(input: AiPetThemeDiscoveryContext): Prom
       "the news and the pet's likes inspire them; a place near the owner's real location makes the best one.",
       "Give each rules that suit it: dailyMinutes caps time there a day (a busy arcade 60, a park null for no limit);",
       "hours limits it to the owner's local hours, `to` exclusive (a night market 18–24, a bakery 7–14), or null;",
-      "weather limits it to some kinds of weather (a snowy hill: snowy), or null; placeLabel pins it to where the",
-      "owner is now with a short name for the area (\"Shibuya\", \"Lake Tahoe\"), or null for anywhere. Not every place",
+      "weather limits it to some kinds of weather (a snowy hill: snowy), or null; placeLabel pins it to the owner's",
+      "rough location as it is now, so it must name the city or area at those coordinates (\"Tokyo\", \"Lake Tahoe\"),",
+      "never a place from the news or anywhere else the owner is not; or null for anywhere. With a placeLabel,",
+      `placeRadiusKm is how far the place reaches from there, ${PLACE_RADIUS_KM.min}–${PLACE_RADIUS_KM.max} km, matching what the label`,
+      "names: a whole city 20–40 (\"Tokyo\"), a district 5–10 (\"Shibuya\"), one park, beach or street 2–3; a trip",
+      "covers the region, 40–60. Leave it null without a placeLabel. Not every place",
       "needs rules; some should have none. Limited places need lastsHours: a trip 24–168, an event 6–72, an accident 6–48.",
       `Effects apply on each visit while the pet is there, each stat ${THEME_EFFECT_MIN} to ${THEME_EFFECT_MAX}: restaurants restore`,
       "energy or HP, lively places lift happiness but tire it, an accident's clinic heals HP but is no fun.",

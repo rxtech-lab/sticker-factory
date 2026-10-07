@@ -30,7 +30,8 @@ extension MockStickerAPIClient {
                   unavailableReason: "Open 18:00–00:00 your time."),
             theme("mock-theme-kyoto", "Kyoto Streets", "Temples and tea on your trip.", .travel,
                   effects: .init(happiness: 4, hp: 0, energy: -2),
-                  rules: .init(place: .init(label: "Kyoto", radiusKm: 60)), limited: true, expired: true)
+                  rules: .init(place: .init(label: "Kyoto", latitude: 35.01, longitude: 135.77, radiusKm: 60)),
+                  limited: true, expired: true)
         ]
     }()
 

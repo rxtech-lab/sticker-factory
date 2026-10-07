@@ -1140,8 +1140,10 @@ export const PetThemeV1Schema = z.object({
     hours: z.object({ from: z.number().int().min(0).max(23), to: z.number().int().min(0).max(24) }).strict().nullable(),
     /** Only in these kinds of weather where the owner is. */
     weather: z.array(z.enum(PET_WEATHER_KINDS)).nullable(),
-    /** Only while the owner is near this place. Its coordinates stay on the server. */
-    place: z.object({ label: z.string(), radiusKm: z.number().positive() }).strict().nullable(),
+    /** Only while the owner is within `radiusKm` of this point: where they were when it was found. */
+    place: z.object({
+      label: z.string(), latitude: z.number(), longitude: z.number(), radiusKm: z.number().positive(),
+    }).strict().nullable(),
   }).strict(),
   artKey: z.string().uuid(),
   /** Where its drawing shows the time, weather and stats; null for places drawn before it had them. */

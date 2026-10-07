@@ -1,3 +1,4 @@
+import MapKit
 import SwiftUI
 
 /// The Places tab of the time-together sheet: the places the pet's agent discovered from its owner's
@@ -203,6 +204,9 @@ struct PetThemeDetailSheet: View {
                     .font(.system(size: 14, weight: .heavy, design: .monospaced))
                 rules(theme)
             }
+            if let place = theme.rules.place, let center = place.coordinate {
+                PetThemePlaceMap(label: place.label, center: center, radiusKm: place.radiusKm)
+            }
             PetThemeStatusLine(theme: theme, isActive: isActive)
         }
         .padding()
@@ -231,7 +235,7 @@ struct PetThemeDetailSheet: View {
             ruleRow("cloud.sun", "Only when it's \(weather.joined(separator: " or ")) where you are")
         }
         if let place = theme.rules.place {
-            ruleRow("location", "Only while you're near \(place.label)")
+            ruleRow("location", "Only within \(Self.distance(place.radiusKm)) of \(place.label)")
         }
         if theme.rules.isEmpty && !theme.limited {
             ruleRow("checkmark.seal", "No limits. Your pet can go any time.")
@@ -242,6 +246,11 @@ struct PetThemeDetailSheet: View {
         Label(text, systemImage: symbol)
             .font(.subheadline)
             .foregroundStyle(AppColors.ink)
+    }
+
+    private static func distance(_ km: Double) -> String {
+        Measurement(value: km, unit: UnitLength.kilometers)
+            .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.fractionLength(0))))
     }
 
     private static func hour(_ value: Int) -> String {
@@ -273,6 +282,182 @@ struct PetThemeDetailSheet: View {
             .disabled(!theme.available || model.activity != nil)
             .accessibilityIdentifier("pet-theme-go")
         }
+    }
+}
+
+/// Where a place is pinned and how far it reaches, with the owner on the map when they share their
+/// location, so they can see how close they need to be. Tapping it opens the map full screen.
+struct PetThemePlaceMap: View {
+    let label: String
+    let center: CLLocationCoordinate2D
+    let radiusKm: Double
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Where")
+                .font(.system(size: 14, weight: .heavy, design: .monospaced))
+            Button {
+                Haptics.tap(.light)
+                isExpanded = true
+            } label: {
+                PetThemePlaceMapContent(label: label, center: center, radiusKm: radiusKm, interactive: false)
+                    .frame(height: 200)
+                    .clipShape(.rect(cornerRadius: 12))
+                    .allowsHitTesting(false)
+                    .overlay(alignment: .topTrailing) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.caption.weight(.bold))
+                            .padding(8)
+                            .background(.regularMaterial, in: .circle)
+                            .padding(8)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Show \(label) on a full-screen map"))
+            .accessibilityIdentifier("pet-theme-place-map")
+        }
+        .fullScreenCover(isPresented: $isExpanded) {
+            PetThemePlaceMapScreen(label: label, center: center, radiusKm: radiusKm)
+        }
+    }
+}
+
+/// The pin, the circle it reaches across, and the owner where they are.
+private struct PetThemePlaceMapContent: View {
+    let label: String
+    let center: CLLocationCoordinate2D
+    let radiusKm: Double
+    let interactive: Bool
+
+    private var position: MapCameraPosition {
+        let span = radiusKm * 2_000 * 1.25
+        return .region(MKCoordinateRegion(center: center, latitudinalMeters: span, longitudinalMeters: span))
+    }
+
+    var body: some View {
+        Map(initialPosition: position, interactionModes: interactive ? .all : []) {
+            MapCircle(center: center, radius: radiusKm * 1_000)
+                .foregroundStyle(Color.accentColor.opacity(0.18))
+                .stroke(Color.accentColor, lineWidth: 2)
+            Marker(label, systemImage: "mappin", coordinate: center)
+            UserAnnotation()
+        }
+    }
+}
+
+/// The place's map full screen: pan and zoom around it, follow where the owner is, and see how far
+/// they are from being near enough to go.
+private struct PetThemePlaceMapScreen: View {
+    let label: String
+    let center: CLLocationCoordinate2D
+    let radiusKm: Double
+    @State private var here: CLLocation?
+    @State private var locationDenied = false
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+
+    /// Kilometres from the owner to the pin, once their location is known.
+    private var distanceKm: Double? {
+        here.map { $0.distance(from: CLLocation(latitude: center.latitude, longitude: center.longitude)) / 1_000 }
+    }
+
+    private var isInside: Bool? { distanceKm.map { $0 <= radiusKm } }
+
+    var body: some View {
+        NavigationStack {
+            PetThemePlaceMapContent(label: label, center: center, radiusKm: radiusKm, interactive: true)
+                .mapControls {
+                    MapUserLocationButton()
+                    MapCompass()
+                    MapScaleView()
+                }
+                .ignoresSafeArea(edges: .bottom)
+                .safeAreaInset(edge: .bottom) { status.padding() }
+                .navigationTitle(label)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { Haptics.tap(.light); dismiss() }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Open in Maps", systemImage: "map") {
+                            Haptics.tap(.light)
+                            openInMaps()
+                        }
+                    }
+                }
+        }
+        .task { await followLocation() }
+        .onChange(of: isInside) { old, new in
+            // Crossing into the circle is the moment the place opens up.
+            if old == false, new == true { Haptics.success() }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        Group {
+            if let distanceKm, let isInside {
+                Label(
+                    isInside
+                        ? "You're within \(Self.distance(radiusKm)) of \(label), near enough for this place."
+                        : "You're \(Self.distance(distanceKm)) away. Get within \(Self.distance(radiusKm)) to go.",
+                    systemImage: isInside ? "checkmark.circle.fill" : "location.circle"
+                )
+                .foregroundStyle(isInside ? Color.green : AppColors.ink)
+            } else if locationDenied {
+                Label("Allow location access in Settings to see how far you are.", systemImage: "location.slash")
+                    .foregroundStyle(AppColors.muted)
+            } else {
+                Label("Finding where you are…", systemImage: "location.magnifyingglass")
+                    .foregroundStyle(AppColors.muted)
+            }
+        }
+        .font(.subheadline.weight(.semibold))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.regularMaterial, in: .rect(cornerRadius: 14))
+        .accessibilityIdentifier("pet-theme-place-map-status")
+    }
+
+    /// Asks for location while the map is open, and keeps the distance current as the owner moves.
+    private func followLocation() async {
+        let session = CLServiceSession(authorization: .whenInUse)
+        defer { session.invalidate() }
+        do {
+            for try await update in CLLocationUpdate.liveUpdates() {
+                if let location = update.location { here = location }
+                if update.authorizationDenied || update.authorizationDeniedGlobally { locationDenied = true; return }
+            }
+        } catch {
+            return
+        }
+    }
+
+    private func openInMaps() {
+        var components = URLComponents(string: "https://maps.apple.com/")!
+        components.queryItems = [
+            .init(name: "ll", value: "\(center.latitude),\(center.longitude)"),
+            .init(name: "q", value: label)
+        ]
+        if let url = components.url { openURL(url) }
+    }
+
+    private static func distance(_ km: Double) -> String {
+        Measurement(value: km, unit: UnitLength.kilometers)
+            .formatted(.measurement(
+                width: .abbreviated, usage: .road,
+                numberFormatStyle: .number.precision(.fractionLength(km < 10 ? 1 : 0))
+            ))
+    }
+}
+
+extension PetTheme.Rules.Place {
+    /// Where the place is pinned, when the server said.
+    var coordinate: CLLocationCoordinate2D? {
+        guard let latitude, let longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 }
 

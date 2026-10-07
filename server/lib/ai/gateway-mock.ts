@@ -491,7 +491,7 @@ export class MockAiProvider implements AiProvider {
     return { bytes: new Uint8Array(bytes), mimeType: "image/png" };
   }
   async discoverPetThemes(input: AiPetThemeDiscoveryContext): Promise<AiPetTheme[]> {
-    const none = { hours: null, weather: null, placeLabel: null, lastsHours: null };
+    const none = { hours: null, weather: null, placeLabel: null, placeRadiusKm: null, lastsHours: null };
     const everyday: AiPetTheme[] = [
       { ...none, title: "Corner Café", description: `A warm café where ${input.petTitle} gets a treat.`, scene: "A cosy corner café.",
         category: "restaurant", effects: { happiness: 2, hp: 1, energy: 3 }, dailyMinutes: 90 },

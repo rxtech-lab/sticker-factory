@@ -45,11 +45,10 @@ function isExpired(row: PetThemeRow, now: Date): boolean {
 
 function serializeTheme(row: PetThemeRow, world: World): PetThemeV1 {
   const availability = themeAvailability(row, world);
-  const { place } = row.rulesJson;
   return {
     id: row.id, title: row.title, description: row.description, category: row.category,
     limited: isLimitedTheme(row.category), effects: row.effectsJson,
-    rules: { ...row.rulesJson, place: place ? { label: place.label, radiusKm: place.radiusKm } : null },
+    rules: row.rulesJson,
     artKey: row.artKey, fixtures: row.fixturesJson ?? null, expiresAt: row.expiresAt?.toISOString() ?? null, expired: isExpired(row, world.now),
     available: availability.available, unavailableReason: availability.available ? null : availability.reason,
     minutesLeftToday: minutesLeftToday(row, world.usage, world.now, world.context?.timeZone),

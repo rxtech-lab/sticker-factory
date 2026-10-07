@@ -85,7 +85,7 @@ describe("pet themes", () => {
       expect(away.traveling).toBe(true);
       const trip = away.themes.find((theme) => theme.category === "travel")!;
       expect(trip).toMatchObject({ title: "Faraway Streets", limited: true, available: true, expired: false,
-        rules: { place: { label: "the trip", radiusKm: 60 } } });
+        rules: { place: { label: "the trip", latitude: tokyo.latitude, longitude: tokyo.longitude, radiusKm: 60 } } });
       expect(trip.expiresAt).not.toBeNull();
 
       // On its next visit the pet's agent takes it on the trip, and its time there counts on the next.
