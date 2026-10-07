@@ -395,6 +395,13 @@ export async function quickPublishSticker(
   stickerId: string,
   /** Where the render's own progress goes. Omitted, the publish is silent but identical. */
   onProgress?: QuickPublishReporter,
+  /**
+   * `candidateId` publishes that candidate rather than the newest one. `acceptLast` renders it
+   * before accepting it: accepting makes an unrendered revision active and drops the sticker to
+   * draft, and a sticker in use — the pet's, drawn on the watch and the widget — must not vanish
+   * for the whole render. A render that fails then leaves the candidate undecided.
+   */
+  options: { candidateId?: string; acceptLast?: boolean } = {},
 ): Promise<QuickPublishResult> {
   const report: QuickPublishReporter = onProgress ?? (async () => {});
   const sticker = await db.select().from(stickers)
@@ -404,9 +411,19 @@ export async function quickPublishSticker(
   const candidate = await db.select().from(stickerRevisions).where(and(
     eq(stickerRevisions.stickerId, stickerId),
     eq(stickerRevisions.candidateState, "candidate"),
+    ...(options.candidateId ? [eq(stickerRevisions.id, options.candidateId)] : []),
   )).orderBy(desc(stickerRevisions.createdAt)).then(firstRow);
 
-  if (candidate) await acceptRevision(db, ownerId, stickerId, candidate.id);
+  if (!candidate && options.candidateId) {
+    // Gone from the candidates is fine only for a replay that already accepted it; a rejected or
+    // superseded one must not quietly republish whatever is active instead.
+    const named = await db.select({ candidateState: stickerRevisions.candidateState }).from(stickerRevisions)
+      .where(and(eq(stickerRevisions.id, options.candidateId), eq(stickerRevisions.stickerId, stickerId))).then(firstRow);
+    if (named?.candidateState !== "accepted") {
+      throw new ApiError(409, "REVISION_ALREADY_DECIDED", "Revision is missing or no longer a candidate");
+    }
+  }
+  if (candidate && !options.acceptLast) await acceptRevision(db, ownerId, stickerId, candidate.id);
 
   const targetId = candidate?.id ?? sticker.activeRevisionId;
   if (!targetId) throw new ApiError(409, "NO_REVISION_TO_PUBLISH", "This sticker has nothing to publish yet");
@@ -430,6 +447,7 @@ export async function quickPublishSticker(
     : await renderStaticExports(db, ownerId, stickerId, revision.id, document, sourceAssets, report);
   traceEvent("quickPublish:rendered", { stickerId, revisionId: revision.id, kind: document.kind, ms: Date.now() - startedAt });
 
+  if (candidate && options.acceptLast) await acceptRevision(db, ownerId, stickerId, candidate.id);
   return bindExports(
     db,
     ownerId,

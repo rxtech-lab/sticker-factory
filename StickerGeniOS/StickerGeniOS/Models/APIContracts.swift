@@ -106,6 +106,9 @@ nonisolated struct StickerDetail: Codable, Identifiable, Hashable, Sendable {
     var messengerEmoji: String?
     var presets: CreationPresetDisplay?
     var revisions: [StickerRevision]
+    /// The owner's pet is growing this sticker: it builds, accepts and publishes the new look on its
+    /// own. Nil from servers that predate it.
+    var petEvolving: Bool?
 
     var sticker: Sticker {
         .init(

@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { PetResponseV1Schema, RecordPetSendResponseV1Schema } from "@/lib/contracts/api";
-import { assets, packInstalls, stickerPackItems, stickerPacks, stickers, userPets } from "@/lib/db/schema";
+import { assets, packInstalls, stickerPackItems, stickerPacks, stickerRevisions, stickers, userPets } from "@/lib/db/schema";
+import { getStickerPlayback } from "@/lib/services/playback";
 import { getObjectStore, MemoryObjectStore, setObjectStoreForTests } from "@/lib/storage/r2";
 import { clearPet, getPet, getPetPose, interactWithPet, readPetSend, recordPetSend, sendPetPhoto, setPet, updatePetContext } from "@/lib/services/pets";
 import { notifyPetStatusChanged, PET_STATUS_PUSH_KIND } from "@/lib/notifications/pet";
@@ -380,6 +381,33 @@ describe("pets", () => {
       }
     });
 
+    it("re-poses the pet at rest with its decision model when how it feels changes, once", async () => {
+      const { db, close, send } = await petSetup();
+      try {
+        const party = await seedPublishedSticker(db, "owner", { title: "Happy Dance" });
+        await send(party.stickerId);
+        const posed = PetResponseV1Schema.parse(await getPet(db, "owner")).pet!;
+        expect(posed.status?.values).toEqual({ mood: "happy", pose: "dance", speed: 1 });
+
+        // Worn out since: the next look finds a pose chosen for another feeling.
+        const asked: unknown[] = [];
+        setAiProviderForTests({ ...unusedAiProvider, decideForPet: async (state) => {
+          asked.push(state);
+          return { mood: { type: "choice", choice: "sleepy" }, pose: { type: "choice", choice: "sit" } };
+        } });
+        await db.update(userPets).set({ statsJson: { happiness: posed.stats.happiness, hp: posed.stats.hp, energy: 10 } })
+          .where(eq(userPets.userId, "owner"));
+        const tired = PetResponseV1Schema.parse(await getPet(db, "owner")).pet!;
+        expect(tired.status?.values).toEqual({ mood: "sleepy", pose: "sit", speed: 1 });
+        expect(asked).toMatchObject([{ feels: expect.stringContaining("exhausted and sleepy") }]);
+        // Nothing asks again while the feeling holds.
+        expect((await getPet(db, "owner")).pet?.status?.values).toEqual({ mood: "sleepy", pose: "sit", speed: 1 });
+        expect(asked).toHaveLength(1);
+      } finally {
+        await close();
+      }
+    });
+
     it("never hands the watch a value the pet's controls cannot play", async () => {
       const { db, close, send } = await petSetup();
       try {
@@ -509,11 +537,32 @@ describe("pets", () => {
       }
     });
 
-    it("refuses a pet the caller can no longer pose", async () => {
+    it("keeps a pet whose sticker went back to draft in its last published look, until the sticker is deleted", async () => {
       const { db, close, pet } = await poseSetup();
       try {
         await setPet(db, "owner", { stickerId: pet.stickerId });
-        await db.update(stickers).set({ status: "draft" }).where(eq(stickers.id, pet.stickerId));
+        const published = (await getPet(db, "owner")).pet!;
+        const shown = await getPetPose(db, "owner", 128);
+
+        // An edit the owner has not published yet: a new active revision with no renditions.
+        const [sticker] = await db.select().from(stickers).where(eq(stickers.id, pet.stickerId));
+        const [revision] = await db.select().from(stickerRevisions).where(eq(stickerRevisions.id, sticker.activeRevisionId!));
+        const draftId = crypto.randomUUID();
+        await db.insert(stickerRevisions).values({ ...revision, id: draftId, parentRevisionId: revision.id, candidateState: "accepted",
+          playbackJson: null, pngAssetId: null, systemAssetId: null, apngAssetId: null, attachmentMediumAssetId: null,
+          attachmentSmallAssetId: null, webpAssetId: null, createdAt: new Date() });
+        await db.update(stickers).set({ status: "draft", activeRevisionId: draftId }).where(eq(stickers.id, pet.stickerId));
+
+        const kept = (await getPet(db, "owner")).pet!;
+        expect(kept.sticker.playbackRevisionId).toBe(published.sticker.playbackRevisionId);
+        expect(kept.sticker.systemSticker).toEqual(published.sticker.systemSticker);
+        expect((await getStickerPlayback(db, "owner", pet.stickerId, kept.sticker.playbackRevisionId!)).revisionId)
+          .toBe(published.sticker.playbackRevisionId);
+        await expect(getStickerPlayback(db, "owner", pet.stickerId, draftId)).rejects.toMatchObject({ status: 404 });
+        expect(await getPetPose(db, "owner", 128, shown.etag)).toEqual({ etag: shown.etag, bytes: null });
+
+        await db.update(stickers).set({ deletedAt: new Date() }).where(eq(stickers.id, pet.stickerId));
+        expect((await getPet(db, "owner")).pet).toBeNull();
         await expect(getPetPose(db, "owner", 128)).rejects.toMatchObject({ status: 404, code: "PET_NOT_FOUND" });
       } finally {
         await close();

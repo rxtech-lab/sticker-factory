@@ -52,6 +52,7 @@ export const unusedAiProvider: AiProvider = {
   choosePetTheme: () => { throw new Error("Unexpected choosePetTheme"); },
   generatePetThemeArt: () => { throw new Error("Unexpected generatePetThemeArt"); },
   respondToPetInteraction: () => { throw new Error("Unexpected respondToPetInteraction"); },
+  decideForPet: () => { throw new Error("Unexpected decideForPet"); },
   reactToPetPhoto: () => { throw new Error("Unexpected reactToPetPhoto"); },
   reactToPetSharedContent: () => { throw new Error("Unexpected reactToPetSharedContent"); },
   decidePetPose: () => { throw new Error("Unexpected decidePetPose"); },

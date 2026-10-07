@@ -610,29 +610,7 @@ struct PetView: View {
                 avoiding: dialogueObstacles
             )
             PetDialogueLayout(placement: placement) {
-                // The pose the pet struck for its last interaction, or its sticker until
-                // it has struck one. A new pose fades in over the old one. Every so often,
-                // as often as its agent chose, the pet plays its own animation in that pose.
-                PetAnimatedPose(
-                    animation: model.animation,
-                    interval: model.animationInterval,
-                    playRequest: model.brain.playRequest
-                ) {
-                    ZStack {
-                        if let pose = model.pose {
-                            Image(uiImage: pose)
-                                .resizable()
-                                .interpolation(.high)
-                                .scaledToFit()
-                                .id(model.poseKey)
-                                .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottom)))
-                        } else {
-                            StickerThumbnail(sticker: pet.sticker, api: model.api, detail: .preview)
-                                .transition(.opacity)
-                        }
-                    }
-                    .animation(.snappy(duration: 0.35), value: model.poseKey)
-                }
+                PetCurrentPose(model: model, pet: pet)
                     .aspectRatio(1, contentMode: .fit)
                     // As big as the page allows, but narrow enough that a picture held up
                     // at its side still fits on screen.
@@ -665,7 +643,7 @@ struct PetView: View {
                 // also says something back, and may play its animation, thought of on the phone.
                 .modifier(PetTouchReactions(
                     profile: motion,
-                    replayKey: model.poseKey,
+                    replayKey: model.touchPose?.key ?? model.poseKey,
                     greetKey: model.greetCount,
                     onTouch: {
                         // Touching the pet is a new interaction, so the picture is put away.
@@ -678,6 +656,15 @@ struct PetView: View {
                 .modifier(PetItemPresentation(
                     item: model.usedItem, isVisible: !showingActions && isShown && scenePhase == .active
                 ))
+                // The pet growing something new in the background is a badge pinned to it,
+                // so the dialogue box keeps to what the pet says.
+                .overlay(alignment: .topLeading) {
+                    if pet.evolution?.isGrowing == true {
+                        PetGrowingBadge()
+                            .transition(.scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity))
+                    }
+                }
+                .animation(.snappy(duration: 0.3), value: pet.evolution?.isGrowing)
 
                 Group {
                     if model.isAnswering {
@@ -685,8 +672,7 @@ struct PetView: View {
                         // for the thinking line while its agent answers.
                         PetThinkingBubble(reaction: model.brain.localLine?.text, placement: placement)
                     } else {
-                        // The pet growing something new in the background is said in the
-                        // dialogue box, under its line. Between moods it moves on to each
+                        // Between moods it moves on to each
                         // line its agent queued, at the pause the agent chose.
                         // A touch the on-device model answered shows its reply for a while.
                         TimelineView(.explicit(pet.status?.captionDates ?? [.now])) { context in
@@ -694,13 +680,11 @@ struct PetView: View {
                                 text: model.brain.localLine?.text
                                     ?? pet.status?.caption(at: context.date)
                                     ?? String(localized: "I'm here with you. What shall we do?"),
-                                isGrowing: pet.evolution?.isGrowing == true,
                                 placement: placement
                             )
                         }
                     }
                 }
-                .animation(.snappy(duration: 0.3), value: pet.evolution?.isGrowing)
                 .accessibilityIdentifier("pet-dialogue")
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { dialogueSize = $0 }
                 // Drawn over the sticker's transparent margin on either side.
@@ -785,28 +769,20 @@ struct PetView: View {
 /// The pet's latest line, with its tail pointing toward the sticker.
 private struct PetSpeechBubble: View {
     let text: String
-    /// Adds a "growing something new" line under the text while the pet evolves.
-    var isGrowing = false
     var placement: PetDialoguePlacement = .below
 
     var body: some View {
         VStack(spacing: -2) {
             if placement == .below { tail.rotationEffect(.degrees(180)) }
-            VStack(alignment: .leading, spacing: 8) {
-                Text(text)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(AppColors.ink)
-                    .multilineTextAlignment(.leading)
-                    // Hugs the line rather than spanning the screen; long lines still wrap.
-                    .fixedSize(horizontal: false, vertical: true)
-                    // A line the pet moves on to by itself fades in over the last.
-                    .contentTransition(.opacity)
-                    .animation(.snappy(duration: 0.4), value: text)
-                if isGrowing {
-                    PetGrowingLine()
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
+            Text(text)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppColors.ink)
+                .multilineTextAlignment(.leading)
+                // Hugs the line rather than spanning the screen; long lines still wrap.
+                .fixedSize(horizontal: false, vertical: true)
+                // A line the pet moves on to by itself fades in over the last.
+                .contentTransition(.opacity)
+                .animation(.snappy(duration: 0.4), value: text)
                 .padding(.leading, 14)
                 // Room for the cursor, so a short line does not run into it.
                 .padding(.trailing, 26)
@@ -952,16 +928,34 @@ struct PetActivityOverlay: View {
     NavigationStack { PetView(api: MockStickerAPIClient()) }
 }
 
-/// A line in the dialogue box while the pet grows a new mood or look in the background.
-private struct PetGrowingLine: View {
+/// Pinned to the pet while it grows a new mood or look in the background, in the same badge as
+/// the weather and the time. Tapping it nudges the pet's sparkle, so the wait is felt.
+private struct PetGrowingBadge: View {
+    @State private var nudges = 0
+
     var body: some View {
-        HStack(spacing: 6) {
-            ProgressView().controlSize(.mini)
-            Text("Growing something new…")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppColors.ink.opacity(0.6))
+        Button {
+            nudges += 1
+            Haptics.tap(.light)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.orange)
+                    .symbolEffect(.pulse, options: .repeating)
+                    .symbolEffect(.bounce, value: nudges)
+                Text("Growing…")
+            }
+            .font(.system(size: 13, weight: .heavy, design: .monospaced))
+            .foregroundStyle(AppColors.ink)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(AppColors.card, in: .capsule)
+            .overlay { Capsule().strokeBorder(AppColors.ink, lineWidth: 2) }
+            .fixedSize()
         }
-        .accessibilityElement(children: .combine)
+        .buttonStyle(.plain)
+        .onAppear { Haptics.tap(.soft) }
+        .accessibilityLabel(Text("Growing something new"))
         .accessibilityIdentifier("pet-growing-badge")
     }
 }

@@ -13,7 +13,7 @@ import { getObjectStore } from "@/lib/storage/r2";
 import { ownerMoment, sentStickerImage } from "./pet-actions";
 import { commitPetChange, currentStats, petRow, type PetRow } from "./pet-state";
 import { queuePetMemory } from "./pet-memory";
-import { readablePlayback } from "./playback";
+import { lastPublishedPlayback } from "./playback";
 
 /** A refresh that has not published within this long is taken to have died, and may be tried again. */
 const RETRY_AFTER_MS = 10 * 60 * 1000;
@@ -90,7 +90,7 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
   petLog("rooms:generating", { userId, lifeId: pet.lifeId, lastOfferedAt: pet.roomsOfferedAt?.toISOString() ?? null });
   const drawn: string[] = [];
   try {
-    const { sticker, revision } = await readablePlayback(db, userId, pet.stickerId);
+    const { sticker, revision } = await lastPublishedPlayback(db, userId, pet.stickerId);
     const style = await sentStickerImage(db, revision.pngAssetId ?? revision.systemAssetId);
     const earlier = await db.select({ title: petRooms.title }).from(petRooms)
       .where(eq(petRooms.userId, userId)).orderBy(desc(petRooms.createdAt)).limit(24);

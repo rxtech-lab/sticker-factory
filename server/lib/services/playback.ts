@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import sharp from "sharp";
 import { StickerDocumentSchema, canonicalJson, documentRenderableLayers, layerImageAssetIds, type StickerDocument } from "@/lib/contracts/sticker";
 import { firstRow, type Database } from "@/lib/db/client";
@@ -19,20 +19,47 @@ export async function readablePlayback(db: Database, requesterId: string, sticke
   if (!row || !row.revision.playbackJson || (revisionId && row.revision.id !== revisionId)) {
     throw new ApiError(404, "PLAYBACK_NOT_FOUND", "This sticker's controls are not available. Refresh your library.");
   }
-  if (row.sticker.ownerId !== requesterId) {
-    const installed = await db.select({ id: stickerPackItems.packId }).from(stickerPackItems)
-      .innerJoin(stickerPacks, eq(stickerPacks.id, stickerPackItems.packId))
-      .innerJoin(packInstalls, eq(packInstalls.packId, stickerPacks.id))
-      .where(and(eq(stickerPackItems.stickerId, stickerId), eq(packInstalls.userId, requesterId),
-        eq(packInstalls.state, "installed"), inArray(stickerPacks.state, ["published", "unlisted"])))
-      .limit(1).then(firstRow);
-    if (!installed) throw new ApiError(404, "PLAYBACK_NOT_FOUND", "This sticker's controls are not available");
+  if (row.sticker.ownerId !== requesterId && !await installedByRequester(db, requesterId, stickerId)) {
+    throw new ApiError(404, "PLAYBACK_NOT_FOUND", "This sticker's controls are not available");
   }
   return row;
 }
 
+/**
+ * The sticker's current published look, or — while it is a draft again, edited or mid-publish — the
+ * last look it was published with. Only deleting the sticker, or losing access to it, takes that
+ * away: a pet or a posed sticker keeps playing its old self until the new one is published.
+ *
+ * `revisionId` pins the answer to one revision, current or last published; any other is not found.
+ */
+export async function lastPublishedPlayback(db: Database, requesterId: string, stickerId: string, revisionId?: string) {
+  try {
+    return await readablePlayback(db, requesterId, stickerId, revisionId);
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 404)) throw error;
+    const sticker = await db.select().from(stickers)
+      .where(and(eq(stickers.id, stickerId), isNull(stickers.deletedAt))).then(firstRow);
+    if (!sticker || (sticker.ownerId !== requesterId && !await installedByRequester(db, requesterId, stickerId))) throw error;
+    // A published revision is the one `bindExports` minted with the renditions and the bundle.
+    const revision = await db.select().from(stickerRevisions)
+      .where(and(eq(stickerRevisions.stickerId, stickerId), isNotNull(stickerRevisions.playbackJson), isNotNull(stickerRevisions.systemAssetId)))
+      .orderBy(desc(stickerRevisions.createdAt)).limit(1).then(firstRow);
+    if (!revision || (revisionId && revision.id !== revisionId)) throw error;
+    return { sticker, revision };
+  }
+}
+
+async function installedByRequester(db: Database, requesterId: string, stickerId: string): Promise<boolean> {
+  return !!await db.select({ id: stickerPackItems.packId }).from(stickerPackItems)
+    .innerJoin(stickerPacks, eq(stickerPacks.id, stickerPackItems.packId))
+    .innerJoin(packInstalls, eq(packInstalls.packId, stickerPacks.id))
+    .where(and(eq(stickerPackItems.stickerId, stickerId), eq(packInstalls.userId, requesterId),
+      eq(packInstalls.state, "installed"), inArray(stickerPacks.state, ["published", "unlisted"])))
+    .limit(1).then(firstRow);
+}
+
 export async function getStickerPlayback(db: Database, requesterId: string, stickerId: string, revisionId?: string) {
-  const { revision } = await readablePlayback(db, requesterId, stickerId, revisionId);
+  const { revision } = await lastPublishedPlayback(db, requesterId, stickerId, revisionId);
   const { rows, ...payload } = await loadPlaybackPayload(db, stickerId, revision);
   return { ...payload, assets: rows.map(describePlaybackAsset) };
 }

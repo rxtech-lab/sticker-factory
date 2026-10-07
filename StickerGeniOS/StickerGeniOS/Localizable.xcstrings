@@ -4780,8 +4780,37 @@
     "Grew something new" : {
 
     },
-    "Growing something new…" : {
-
+    "Growing something new" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在长出新模样"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在長出新模樣"
+          }
+        }
+      }
+    },
+    "Growing…" : {
+      "localizations" : {
+        "zh-CN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成长中…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成長中…"
+          }
+        }
+      }
     },
     "Guardian" : {
 
@@ -13451,6 +13480,9 @@
 
     },
     "Your pet is here" : {
+
+    },
+    "Your pet is publishing its new look in the background." : {
 
     },
     "Your pet is still thinking of something to do. Check back in a moment." : {

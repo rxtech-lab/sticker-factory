@@ -1,4 +1,4 @@
-import { readablePlayback } from "./playback";
+import { lastPublishedPlayback } from "./playback";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import sharp from "sharp";
@@ -652,7 +652,7 @@ export async function getReadableAsset(
   if (!asset || asset.state === "deleted") throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
   if (asset.ownerId === requesterId) return { asset, audience: "owner" };
   if (asset.kind === "playback" && asset.stickerId) {
-    const row = await readablePlayback(db, requesterId, asset.stickerId);
+    const row = await lastPublishedPlayback(db, requesterId, asset.stickerId);
     if (row.revision.playbackJson?.assetIds.includes(asset.id)) return { asset, audience: "pack-member" };
     throw new ApiError(404, "ASSET_NOT_FOUND", "Asset not found");
   }

@@ -4,6 +4,7 @@ import type { StickerControl, StickerControlValues } from "@/lib/contracts/confi
 // The shape of every AI turn: what a caller hands the provider, what the provider hands back,
 // and the drafting sessions a long turn streams its partial work through.
 
+import type { experimental_decide, Experimental_DecisionAnswer, Experimental_DecisionQuestion } from "ai";
 import { z } from "zod";
 import type { PosePreset } from "@/lib/contracts/pose-preset";
 import { type ChromaKeyColor } from "@/lib/ai/chroma-key";
@@ -1016,6 +1017,11 @@ export interface AiPetItemsContext extends AiPetActionsContext {
   keeping: Omit<PetAction, "id">[];
 }
 
+/** What the pet's decision model is shown, and what it is asked and answers. */
+export type AiPetDecisionState = Parameters<typeof experimental_decide>[0]["state"];
+export type AiPetDecisionQuestion = Experimental_DecisionQuestion;
+export type AiPetDecisionAnswer = Experimental_DecisionAnswer<Experimental_DecisionQuestion>;
+
 export interface AiProvider {
   /** Chooses which candidate images the image model needs for one concrete draw. */
   selectImageReferences(input: AiReferenceSelectionContext): Promise<number[]>;
@@ -1117,6 +1123,11 @@ export interface AiProvider {
   /** Draws one place as the background the pet stands in. */
   generatePetThemeArt(input: AiPetThemeArtInput): Promise<AiImageOutput>;
   respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus>;
+  /**
+   * Answers typed questions about the pet — which value each of its controls takes — on the pet's
+   * decision model rather than writing them out. Answers are keyed like `questions`.
+   */
+  decideForPet(state: AiPetDecisionState, questions: Record<string, AiPetDecisionQuestion>, timeoutMs?: number): Promise<Record<string, AiPetDecisionAnswer>>;
   reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus>;
   reactToPetSharedContent(input: AiPetSharedContentContext): Promise<AiPetStatus>;
   /** Picks the pose and expression the pet answers its owner's words with, on the decision model. */

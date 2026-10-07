@@ -1,3 +1,4 @@
+import AnimatedView
 import Foundation
 import OSLog
 import UIKit
@@ -144,7 +145,8 @@ extension PetSnapshot {
             poseKey: PetSnapshot.poseKey(
                 stickerID: sticker.id,
                 revisionID: sticker.playbackRevisionId ?? sticker.activeRevisionId,
-                statusUpdatedAt: pet.status?.updatedAt
+                statusUpdatedAt: pet.status?.updatedAt,
+                pose: (pet.status?.values ?? [:]).mapValues(\.poseKeyText)
             ),
             weather: pet.signals?.weather.map { weather in
                 PetSnapshotWeather(
@@ -158,5 +160,16 @@ extension PetSnapshot {
             },
             musings: pet.status?.musings
         )
+    }
+}
+
+extension AnimatedControlValue {
+    /// This value as `PetSnapshot.poseKey` names it; the widget reads the server's JSON the same way.
+    nonisolated var poseKeyText: String {
+        switch self {
+        case .string(let value): value
+        case .number(let value): String(value)
+        case .bool(let value): String(value)
+        }
     }
 }

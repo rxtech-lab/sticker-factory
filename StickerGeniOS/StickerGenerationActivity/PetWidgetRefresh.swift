@@ -165,6 +165,24 @@ private nonisolated struct PetWidgetPayload: Decodable, Sendable {
         var caption: String
         var updatedAt: Date
         var musings: [PetMusing]?
+        /// The pose, only to name it: each control's value as the app names it in `poseKey`.
+        var values: [String: PoseValue]?
+    }
+
+    /// One control's value, read as text the same way the app's `AnimatedControlValue.poseKeyText` writes it.
+    struct PoseValue: Decodable, Sendable {
+        var text: String
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let value = try? container.decode(Bool.self) {
+                text = String(value)
+            } else if let value = try? container.decode(Double.self) {
+                text = String(value)
+            } else {
+                text = try container.decode(String.self)
+            }
+        }
     }
 
     struct Signals: Decodable, Sendable {
@@ -213,7 +231,8 @@ private extension PetSnapshot {
             poseKey: PetSnapshot.poseKey(
                 stickerID: pet.sticker.id,
                 revisionID: pet.sticker.playbackRevisionId ?? pet.sticker.activeRevisionId,
-                statusUpdatedAt: pet.status?.updatedAt
+                statusUpdatedAt: pet.status?.updatedAt,
+                pose: (pet.status?.values ?? [:]).mapValues(\.text)
             ),
             weather: pet.signals?.weather.map { weather in
                 PetSnapshotWeather(

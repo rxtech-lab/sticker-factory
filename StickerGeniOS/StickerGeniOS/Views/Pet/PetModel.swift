@@ -75,6 +75,9 @@ final class PetModel {
     /// The pet's sticker in the pose it holds now, ready to play through. Nil until it has loaded,
     /// and for a sticker with nothing that moves; the still pose stands in between plays either way.
     private(set) var animation: PetAnimation?
+    /// The pose the pet switched to in reaction to a touch, picked by its decision model, drawn over its agent's pose for
+    /// as long as its touch reply stays up. Nil when the agent's pose should show.
+    private(set) var touchPose: PetAnimation?
     /// The owner's rooms and the room shop. Nil until the Rooms tab has loaded them.
     private(set) var rooms: PetRooms?
     /// The drawing of the room the pet lives in, filling the tab behind it. Nil on the plain page,
@@ -125,6 +128,11 @@ final class PetModel {
     /// Puts the shown picture away once it has been up for `photoLifetime`.
     @ObservationIgnored private var photoExpiry: Task<Void, Never>?
     @ObservationIgnored private var itemExpiry: Task<Void, Never>?
+    /// Puts the touch pose away after `PetBrain.localLineLifetime`, with the touch reply.
+    @ObservationIgnored private var touchPoseExpiry: Task<Void, Never>?
+    /// The controls `touchPose` moves off the agent's pose, sent with the next touch so the pet
+    /// switches away from what the owner sees rather than from the stored pose.
+    @ObservationIgnored private var touchValues: [String: AnimatedControlValue] = [:]
     /// How long the picture stays up after the pet's reaction lands.
     static let photoLifetime: Duration = .seconds(20)
     /// Edge of the pose drawing, in pixels: the tab shows the pet at 176 points, so about 3x.
@@ -146,10 +154,61 @@ final class PetModel {
         brain = PetBrain(api: api)
     }
 
-    /// Lets the pet answer a touch with a few words of its own, thought of on the phone.
+    /// Lets the pet answer a touch with a pose its decision model (Jev) picks and a few words thought
+    /// of on the phone. The pose is struck from its sticker's own controls, so it needs the playback
+    /// document; until that has loaded the pet answers in words only.
     func touched(_ touch: PetTouch) {
         guard let pet, activity == nil, !isAnswering else { return }
-        brain.react(to: touch, pet: pet)
+        let controls = playback(for: pet)?.configuration?.controls ?? []
+        brain.react(to: touch, pet: pet, controls: controls, shown: touchPose == nil ? [:] : touchValues) { [weak self] values in
+            await self?.strikeTouchPose(values)
+        }
+    }
+
+    /// The playback document kept for `pet`, when it is this pet's.
+    private func playback(for pet: Pet) -> AnimatedDocument? {
+        guard let revisionID = pet.sticker.playbackRevisionId, let playback,
+              playback.key == "\(pet.sticker.id)|\(revisionID)" else { return nil }
+        return playback.document
+    }
+
+    /// Resolves the pet's sticker in its agent's pose with the touch pose it shows now and `values`
+    /// laid over it, loads what it draws, and holds it up while the touch reply does. A pose that
+    /// cannot be drawn is skipped: the pet still answers in words.
+    private func strikeTouchPose(_ values: [String: AnimatedControlValue]) async {
+        guard let pet, let document = playback(for: pet) else { return }
+        do {
+            var settings = StickerControlSettings.defaults(for: document)
+            if let posed = pet.status?.values { settings.values.merge(posed) { _, posed in posed } }
+            let touched = (touchPose == nil ? [:] : touchValues).merging(values) { _, new in new }
+            settings.values.merge(touched) { _, touched in touched }
+            let resolved = try settings.resolvedDocument(document)
+            await animationAssets.preload(document: resolved, api: api)
+            // The pet moved on while it loaded: another pet, or its agent is answering.
+            guard self.pet?.sticker.id == pet.sticker.id, activity == nil, !isAnswering else { return }
+            touchValues = touched
+            touchPose = PetAnimation(
+                key: "touch-\(UUID().uuidString)", stickerID: pet.sticker.id,
+                document: resolved, assets: animationAssets.renderAssets
+            )
+            Haptics.tap(.soft)
+            touchPoseExpiry?.cancel()
+            touchPoseExpiry = Task { [weak self] in
+                do { try await Task.sleep(for: PetBrain.localLineLifetime) } catch { return }
+                self?.touchPose = nil
+                self?.touchValues = [:]
+            }
+        } catch {
+            Self.log.error("pet touch pose failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Lets the agent's pose show again. Called whenever something other than a touch moves the pet.
+    private func dismissTouchPose() {
+        touchPoseExpiry?.cancel()
+        touchPoseExpiry = nil
+        touchPose = nil
+        touchValues = [:]
     }
 
     /// Counts the times the pet greeted its owner; the pet hops hello each time it changes.
@@ -247,6 +306,7 @@ final class PetModel {
             let birthWorld = await context.quickContext()
             pet = try await api.setPet(stickerID: sticker.id, context: birthWorld)
             brain.forgetLocalLine()
+            dismissTouchPose()
             dismissPhoto()
             dismissItem()
             errorMessage = nil
@@ -509,6 +569,7 @@ final class PetModel {
             try await api.clearPet()
             pet = nil
             brain.forgetLocalLine()
+            dismissTouchPose()
             await refreshPose()
             await refreshWeatherArt()
             await refreshRoomArt()
@@ -537,8 +598,9 @@ final class PetModel {
         let words = words.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty, let pet, activity == nil, !isAnswering else { return false }
         isHearingOwner = true
-        // A new interaction moves on from the picture.
+        // A new interaction moves on from the picture, and from the pose a touch struck.
         dismissPhoto()
+        dismissTouchPose()
         dismissItem()
         Task {
             defer { isHearingOwner = false }
@@ -593,6 +655,7 @@ final class PetModel {
             let response = try await api.resolvePetEncounter(encounterID: encounter.id, choiceID: choice.id)
             pet = response.pet
             brain.forgetLocalLine()
+            dismissTouchPose()
             errorMessage = nil
             publishToCompanions()
             Task { await refreshPose() }
@@ -878,6 +941,7 @@ final class PetModel {
         dismissItem()
         shownPhoto = image
         isLookingAtPhoto = true
+        dismissTouchPose()
         if let pet { brain.anticipatePhoto(pet: pet) }
         Task {
             defer {
@@ -940,8 +1004,9 @@ final class PetModel {
         pendingAction = action
         dismissItem()
         usedItem = item
-        // A new interaction moves on from the picture.
+        // A new interaction moves on from the picture, and from the pose a touch struck.
         dismissPhoto()
+        dismissTouchPose()
         // The pet's first reaction comes from the phone, so it answers at once; its agent's lands after.
         if let pet { brain.anticipate(action, pet: pet) }
         Task {

@@ -19,7 +19,7 @@ import { maybeMeetPetFriend } from "./pet-friends";
 import { refreshPetItems } from "./pet-items";
 import { planThemeVisit, refreshPetThemes } from "./pet-themes";
 import { commitPetChange, currentStats, ensurePetIdentity, lastAttendedAt, lastFeltWeather, petRow, remindedForecastOn, type PetChange } from "./pet-state";
-import { readablePlayback } from "./playback";
+import { lastPublishedPlayback } from "./playback";
 import { recallPetMemories } from "./pet-memory";
 
 /** Time passing between visits: the pet rests, and misses its owner a little. */
@@ -71,7 +71,7 @@ export async function visitPet(
   try {
     let playback;
     try {
-      playback = await readablePlayback(db, userId, row.stickerId);
+      playback = await lastPublishedPlayback(db, userId, row.stickerId);
     } catch (error) {
       // Not posable right now — a pack uninstalled, a sticker unpublished. The life goes on in
       // case it comes back; nothing happens to a pet nobody can see.

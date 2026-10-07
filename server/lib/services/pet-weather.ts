@@ -24,7 +24,7 @@ import { petLog } from "@/lib/pets/log";
 import { getObjectStore } from "@/lib/storage/r2";
 import { sentStickerImage } from "./pet-actions";
 import { petRow } from "./pet-state";
-import { readablePlayback } from "./playback";
+import { lastPublishedPlayback } from "./playback";
 
 type Weather = NonNullable<PetSignalsV1["weather"]>;
 
@@ -200,7 +200,7 @@ async function drawLook(db: Database, userId: string, layer: PetWeatherArtLayer,
     const pet = await petRow(db, userId);
     const weather = pet?.signalsJson?.weather;
     if (!pet || !weather) return;
-    const { revision } = await readablePlayback(db, userId, pet.stickerId);
+    const { revision } = await lastPublishedPlayback(db, userId, pet.stickerId);
     claimed = await claimLook(db, pet.stickerId, revision.id, weather, layer, now);
     if (!claimed) return;
     const style = await sentStickerImage(db, revision.pngAssetId ?? revision.systemAssetId);
@@ -310,7 +310,7 @@ export async function getPetWeatherArt(
   if (!pet) throw new ApiError(404, "PET_NOT_FOUND", "You have not chosen a pet.");
   let playback;
   try {
-    playback = await readablePlayback(db, userId, pet.stickerId);
+    playback = await lastPublishedPlayback(db, userId, pet.stickerId);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) throw new ApiError(404, "PET_NOT_FOUND", "You have not chosen a pet.");
     throw error;

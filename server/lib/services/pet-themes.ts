@@ -18,7 +18,7 @@ import {
 import { getObjectStore } from "@/lib/storage/r2";
 import { ownerMoment, sentStickerImage } from "./pet-actions";
 import { commitPetChange, currentStats, petRow, type PetChange, type PetRow } from "./pet-state";
-import { readablePlayback } from "./playback";
+import { lastPublishedPlayback } from "./playback";
 
 /** A search that has not published within this long is taken to have died, and may be tried again. */
 const RETRY_AFTER_MS = 10 * 60 * 1000;
@@ -150,7 +150,7 @@ export async function refreshPetThemes(db: Database, userId: string, now = new D
   if (!claimed) return;
   const drawn: string[] = [];
   try {
-    const { sticker, revision } = await readablePlayback(db, userId, pet.stickerId);
+    const { sticker, revision } = await lastPublishedPlayback(db, userId, pet.stickerId);
     const style = await sentStickerImage(db, revision.pngAssetId ?? revision.systemAssetId);
     const location = currentLocation(pet.contextJson, now);
     const home = pet.contextJson?.home;

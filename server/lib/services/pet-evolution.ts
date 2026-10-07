@@ -18,6 +18,7 @@ import { chatMessages, generationJobs, plans, stickers, userPets, type PetEvolut
 import { ApiError } from "@/lib/http/errors";
 import { notifyPetEvolved } from "@/lib/notifications/pet";
 import { describeError } from "@/lib/observability/trace";
+import { ACTIVE_EVOLUTION_STATES, EVOLUTION_STALE_AFTER_MS, evolutionInFlight } from "@/lib/pets/evolution";
 import { petLog } from "@/lib/pets/log";
 import { EMPTY_SIGNALS } from "@/lib/pets/signals";
 import { applyEffects, personalizeEffects } from "@/lib/pets/stats";
@@ -25,20 +26,14 @@ import { petEvolutionWorkflow } from "@/workflows/pet-evolution";
 import { ownerMoment, refreshActions } from "./pet-actions";
 import { commitPetChange, currentStats, petRow } from "./pet-state";
 import { confirmPlan } from "./plans";
-import { readablePlayback } from "./playback";
+import { lastPublishedPlayback } from "./playback";
 import { quickPublishSticker } from "./quick-publish";
 import { forgetPetWeatherArt } from "./pet-weather";
 import { createChatTurn } from "./sticker-chat";
-import { acceptRevision } from "./sticker-revisions";
 import { startGenerationWorkflow } from "./workflows";
 
 /** What growing does to the pet on its own: pride, and the effort of it. */
 const EVOLVED_EFFECTS = { happiness: 10, hp: 0, energy: -5 };
-
-/** An evolution that started longer ago than this is dead, whatever its row still says. */
-const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
-
-const ACTIVE_STATES: PetEvolution["state"][] = ["planning", "building", "publishing"];
 
 function cooldownMs(): number {
   const hours = Number(process.env.PET_EVOLUTION_COOLDOWN_HOURS ?? 24);
@@ -51,7 +46,7 @@ function evolutionEnabled(): boolean {
 
 /** The earliest `lastEvolvedAt` that still blocks a new evolution: the cooldown, or a run still going. */
 function blockingSince(now: Date): Date {
-  return new Date(now.getTime() - Math.max(cooldownMs(), STALE_AFTER_MS));
+  return new Date(now.getTime() - Math.max(cooldownMs(), EVOLUTION_STALE_AFTER_MS));
 }
 
 /**
@@ -122,7 +117,7 @@ async function evolvingPet(db: Database, userId: string, evolutionId: string) {
   const pet = await petRow(db, userId);
   const evolution = pet?.evolutionJson;
   if (!pet || evolution?.id !== evolutionId || pet.stickerId !== evolution.stickerId) return undefined;
-  if (!ACTIVE_STATES.includes(evolution.state)) return undefined;
+  if (!ACTIVE_EVOLUTION_STATES.includes(evolution.state)) return undefined;
   return { pet, evolution };
 }
 
@@ -234,10 +229,11 @@ export async function publishPetEvolution(db: Database, userId: string, evolutio
   const before = await db.select({ activeRevisionId: stickers.activeRevisionId, status: stickers.status })
     .from(stickers).where(eq(stickers.id, stickerId)).then(firstRow);
   try {
-    // The build's candidate carries the build job's id. Accepting it by name rather than taking the
-    // newest candidate keeps a revision the owner happened to be drafting out of the pet.
-    await acceptRevision(db, userId, stickerId, composeJobId);
-    await quickPublishSticker(db, userId, stickerId);
+    // The build's candidate carries the build job's id. Publishing it by name rather than taking the
+    // newest candidate keeps a revision the owner happened to be drafting out of the pet. It is
+    // rendered before it is accepted, so the old look stays published — and the pet on screen —
+    // for the whole render instead of the sticker sitting as a draft and the pet disappearing.
+    await quickPublishSticker(db, userId, stickerId, undefined, { candidateId: composeJobId, acceptLast: true });
   } catch (error) {
     // Accepting made the unpublished build the active revision, which leaves the sticker a draft and
     // the pet with nothing to play. Put the published look back; the build stays in the sticker's
@@ -264,7 +260,7 @@ export async function finishPetEvolution(
   const current = await evolvingPet(db, userId, evolutionId);
   if (!current) return false;
   const { pet, evolution } = current;
-  const { sticker, revision } = await readablePlayback(db, userId, pet.stickerId);
+  const { sticker, revision } = await lastPublishedPlayback(db, userId, pet.stickerId);
   const configuration = revision.playbackJson?.document.configuration;
   const plan = evolution.composeJobId
     ? await db.select({ planJson: plans.planJson }).from(plans).where(eq(plans.jobId, evolution.composeJobId)).then(firstRow)
@@ -330,7 +326,7 @@ export async function finishPetEvolution(
 /** Ends an evolution that could not finish. The pet stays as it was; the cooldown still holds. */
 export async function failPetEvolution(db: Database, userId: string, evolutionId: string, message: string): Promise<void> {
   const pet = await petRow(db, userId);
-  if (pet?.evolutionJson?.id !== evolutionId || !ACTIVE_STATES.includes(pet.evolutionJson.state)) return;
+  if (pet?.evolutionJson?.id !== evolutionId || !ACTIVE_EVOLUTION_STATES.includes(pet.evolutionJson.state)) return;
   await db.update(userPets).set({
     evolutionJson: { ...pet.evolutionJson, state: "failed", finishedAt: new Date().toISOString(), error: message.slice(0, 300) },
   }).where(eq(userPets.userId, userId));
@@ -340,7 +336,7 @@ export async function failPetEvolution(db: Database, userId: string, evolutionId
 /** The public shape of `PetEvolution`: where it is, never the brief or the jobs behind it. */
 export function serializePetEvolution(evolution: PetEvolution | null) {
   if (!evolution) return null;
-  const stale = ACTIVE_STATES.includes(evolution.state) && Date.now() - Date.parse(evolution.startedAt) > STALE_AFTER_MS;
+  const stale = ACTIVE_EVOLUTION_STATES.includes(evolution.state) && !evolutionInFlight(evolution);
   return {
     state: stale ? "failed" as const : evolution.state,
     startedAt: evolution.startedAt,
