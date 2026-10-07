@@ -837,6 +837,23 @@ export interface AiPetSharedContentContext extends AiOwnerMoment {
   current: StickerControlValues | null;
 }
 
+/** Something the owner just said to their pet, and what it said back, for the pet to strike a pose to. */
+export interface AiPetPoseContext extends AiOwnerMoment {
+  petTitle: string;
+  identity: PetIdentityV1 | null;
+  stats: { happiness: number; hp: number; energy: number };
+  controls: StickerControl[];
+  current: StickerControlValues | null;
+  words: string;
+  reply: string | null;
+}
+
+/** The pose and expression the decision model picked; omitted controls keep their value. */
+export interface AiPetPose {
+  values: StickerControlValues;
+  animateEverySeconds?: number;
+}
+
 /** What the agent knows when it writes the day's encounter for the pet. */
 export interface AiPetEncounterContext extends AiOwnerMoment {
   petTitle: string;
@@ -1102,6 +1119,8 @@ export interface AiProvider {
   respondToPetInteraction(input: AiPetInteractionContext): Promise<AiPetStatus>;
   reactToPetPhoto(input: AiPetPhotoContext): Promise<AiPetStatus>;
   reactToPetSharedContent(input: AiPetSharedContentContext): Promise<AiPetStatus>;
+  /** Picks the pose and expression the pet answers its owner's words with, on the decision model. */
+  decidePetPose(input: AiPetPoseContext): Promise<AiPetPose>;
   /** Chooses a new pet's class, personality and preferences. */
   generatePetPersona(input: AiPetPersonaContext): Promise<AiPetPersona>;
   /** Up to three short headlines from a web search, for the pet to have heard about. */

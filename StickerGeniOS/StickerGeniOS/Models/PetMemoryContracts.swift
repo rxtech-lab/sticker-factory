@@ -22,6 +22,8 @@ nonisolated struct RememberPetTalkRequest: Codable, Equatable, Sendable {
     var reply: String?
 }
 
-nonisolated struct RememberPetTalkResponse: Codable, Equatable, Sendable {
+nonisolated struct RememberPetTalkResponse: Codable, Sendable {
     var accepted: Bool
+    /// The pet posed for the talk by its decision model. Absent from servers that only remember.
+    var pet: Pet?
 }

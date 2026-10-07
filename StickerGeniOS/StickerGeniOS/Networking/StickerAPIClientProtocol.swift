@@ -135,7 +135,9 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     /// What the pet remembers, nearest by meaning to `query` when given, otherwise most important first.
     func petMemories(about query: String?) async throws -> [PetMemory]
     /// Tells the server what the owner said and what the pet answered on the phone, for it to remember.
-    func rememberPetTalk(words: String, reply: String?) async throws
+    /// Tells the pet's memory of a talk; answers with the pet posed for it, nil from older servers.
+    @discardableResult
+    func rememberPetTalk(words: String, reply: String?) async throws -> Pet?
 
     // Marketplace
     func marketplacePacks(sort: PackSort, query: String?, cursor: String?) async throws -> Page<StickerPack>
@@ -166,7 +168,7 @@ extension StickerAPIClientProtocol {
     }
     func petEvents(cursor: String?) async throws -> PetEventsResponse { PetEventsResponse(events: [], nextCursor: nil) }
     func petMemories(about query: String?) async throws -> [PetMemory] { [] }
-    func rememberPetTalk(words: String, reply: String?) async throws {}
+    func rememberPetTalk(words: String, reply: String?) async throws -> Pet? { nil }
     func clearPet() async throws {}
     func petCandidates(query: String?) async throws -> LibrarySectionsResponse { throw StickerAPIError.invalidResponse }
     func petPose(size: Int) async throws -> Data { throw StickerAPIError.invalidResponse }
