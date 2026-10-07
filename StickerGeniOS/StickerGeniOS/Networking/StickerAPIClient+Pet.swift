@@ -146,10 +146,12 @@ extension StickerAPIClient {
         return response.memories
     }
 
-    func rememberPetTalk(words: String, reply: String?) async throws {
-        let _: RememberPetTalkResponse = try await send(
+    @discardableResult
+    func rememberPetTalk(words: String, reply: String?) async throws -> Pet? {
+        let response: RememberPetTalkResponse = try await send(
             path: "api/v1/pet/talks", method: "POST", body: RememberPetTalkRequest(words: words, reply: reply)
         )
+        return response.pet
     }
 
     func clearPet() async throws {

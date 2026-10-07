@@ -1,7 +1,6 @@
 // The pet's item shop: the agent that restocks it with things that fit the pet's world, each with
 // its own time on the shelf and its own time it keeps once bought.
 
-import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
@@ -12,6 +11,7 @@ import {
 } from "@/lib/contracts/api";
 import type { AiPetItem, AiPetItemsContext } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
+import { petAgentModel } from "./pet-models";
 import { describeIdentity, describeMoment, describeSignals, PetEffectsInputSchema } from "./gateway-pet";
 
 export async function generatePetItems(input: AiPetItemsContext): Promise<AiPetItem[]> {
@@ -29,7 +29,7 @@ export async function generatePetItems(input: AiPetItemsContext): Promise<AiPetI
   const keptRestorer = input.keeping.some((item) => item.effects.energy > 20);
   const result = await generateText({
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_SUMMARY_MODEL ?? process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: petAgentModel(),
     system: [
       `Restock this pet's item shop with between ${input.minCount} and ${input.maxCount} distinct physical objects for it to play with or use;`,
       "pick how many yourself, as a shopkeeper would on a given day.",

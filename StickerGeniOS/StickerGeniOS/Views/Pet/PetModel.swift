@@ -545,17 +545,26 @@ final class PetModel {
             let memories = await recall(about: words)
             let reply = await brain.hear(words, pet: pet, memories: memories)
             Haptics.success()
-            // Remembering is the server's business; a talk it never hears of is only forgotten.
-            let api = api, log = Self.log
-            Task.detached {
-                do {
-                    try await api.rememberPetTalk(words: words, reply: reply)
-                } catch {
-                    log.error("Could not tell the pet's memory about a talk: \(error.localizedDescription, privacy: .public)")
-                }
-            }
+            // Remembering is the server's business, and so is the pose the pet's decision model picks
+            // to go with its answer; a talk it never hears of is only forgotten, and the pet keeps its pose.
+            Task { await strikePose(forTalk: words, reply: reply) }
         }
         return true
+    }
+
+    /// Tells the server of a talk and takes on the pose it answers with. Its on-device line stays up.
+    /// Skipped when something else started changing the pet meanwhile, since that poses it anyway.
+    private func strikePose(forTalk words: String, reply: String) async {
+        do {
+            guard let posed = try await api.rememberPetTalk(words: words, reply: reply),
+                  activity == nil, !isAnswering, posed.status?.values != pet?.status?.values else { return }
+            pet = posed
+            publishToCompanions()
+            Haptics.tap(.soft)
+            await refreshPose()
+        } catch {
+            Self.log.error("Could not tell the pet's memory about a talk: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// What the pet remembers that bears on `words`, or nothing when the server is slow or away:

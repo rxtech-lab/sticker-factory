@@ -8,6 +8,7 @@ import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { PET_MEMORY_CATEGORIES } from "@/lib/contracts/api";
 import type { AiPetMemoryContext, AiPetMemoryOperation } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
+import { petAgentModel } from "./pet-models";
 import { describeIdentity } from "./gateway-pet";
 
 /** The model every memory is embedded with; its width is `PET_MEMORY_DIMENSIONS`. */
@@ -44,7 +45,7 @@ export async function updatePetMemory(input: AiPetMemoryContext): Promise<AiPetM
   const result = await generateText({
     onLanguageModelCallEnd: reportAiStepUsage,
     // Runs in the background after every moment, so it takes the cheap model.
-    model: gateway(process.env.AI_SUMMARY_MODEL ?? process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: petAgentModel(),
     system: [
       "You keep the long-term memory of a user's virtual pet. You are given what just happened between the pet",
       "and its owner, and the memories the pet already has that are closest to it. Decide what the pet should",

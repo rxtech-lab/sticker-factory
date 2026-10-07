@@ -11,7 +11,8 @@ Next.js 16 backend and read-only web library for Sticker Factory. The iOS app cr
 - `workflows/sticker-generation`: Vercel Workflow generation, editing, validated animation snapshots, decision transitions, and delayed R2 deletion sweeps. Its `"use step"` wrappers are shells over `lib/services/job-lifecycle.ts`, which owns the three transitions a job can take and is shared with the work that does not need a workflow.
 - `lib/ai`: Vercel AI Gateway adapter (`AI_IMAGE_MODEL` for every image generation/edit,
   `AI_QUICK_IMAGE_MODEL` for turns the Messages extension's quick mode starts, and
-  `AI_ORCHESTRATOR_MODEL` for chat, routing, planning, review, and animation) plus a deterministic
+  `AI_ORCHESTRATOR_MODEL` for chat, routing, planning, review, and animation; `AI_PET_AGENT_MODEL` for
+  the pet's agent and `AI_PET_DECISION_MODEL` for the pose it strikes when talked to) plus a deterministic
   local/test adapter. The quick model cannot draw transparency, so those turns are drawn against a
   pure green or blue backdrop that `lib/ai/chroma-key.ts` cuts back out.
 - `lib/storage`: private R2 S3-compatible storage, signed URLs, checksum/media/transparency verification, and bounded image decoding.

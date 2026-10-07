@@ -54,6 +54,7 @@ export const unusedAiProvider: AiProvider = {
   respondToPetInteraction: () => { throw new Error("Unexpected respondToPetInteraction"); },
   reactToPetPhoto: () => { throw new Error("Unexpected reactToPetPhoto"); },
   reactToPetSharedContent: () => { throw new Error("Unexpected reactToPetSharedContent"); },
+  decidePetPose: () => { throw new Error("Unexpected decidePetPose"); },
   // Pet background reads fall back on failure — a persona to a balanced explorer, headlines to the
   // last ones — so a stub that throws here leaves a test's own pet assertions alone.
   generatePetPersona: () => { throw new Error("Unexpected generatePetPersona"); },
