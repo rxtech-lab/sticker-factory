@@ -1,3 +1,5 @@
+import { animationSettings, serverAnimationEngine } from "@/lib/services/animation-settings";
+import { clientDocumentVersion } from "@/lib/contracts/sticker";
 import { and, eq, inArray } from "drizzle-orm";
 import { assets } from "@/lib/db/schema";
 import { isAppClipClient } from "@/lib/subscription/app-clip";
@@ -42,7 +44,8 @@ export async function POST(request: Request) {
       key,
       request: body,
     }, async () => {
-      const created = await createSticker(db, principal.sub, body);
+      const engine = clientDocumentVersion(request) >= 8 ? (serverAnimationEngine() ?? body.controllableEngine ?? (await animationSettings(db, principal.sub)).engine) : "legacy";
+      const created = await createSticker(db, principal.sub, { ...body, controllableEngine: engine });
       let turn: Awaited<ReturnType<typeof createChatTurn>>;
       try {
         turn = await createChatTurn(db, principal.sub, created.stickerId, {

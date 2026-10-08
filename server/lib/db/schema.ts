@@ -87,6 +87,8 @@ const apnsEnvironments = ["sandbox", "production"] as const;
  * fencing token: a finalize only proceeds while it still matches, which is what makes
  * schedule -> cancel -> re-schedule safe against an in-flight sweep.
  */
+import type { SVGScene } from "@/lib/contracts/controllable";
+
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email"),
@@ -101,6 +103,7 @@ export const users = pgTable("users", {
    * produce a proof at all, and is only ever written from a verified signature — never `xcode`,
    * which the verifier does not accept.
    */
+  animationEngine: text("animation_engine", { enum: ["legacy", "svg"] }),
   lastBillingEnvironment: text("last_billing_environment", { enum: ["sandbox", "production"] }),
   createdAt: timestampColumn("created_at").notNull().$defaultFn(() => new Date()),
   updatedAt: timestampColumn("updated_at").notNull().$defaultFn(() => new Date()),
@@ -134,6 +137,7 @@ export const stickers = pgTable("stickers", {
    */
   creationPresets: jsonb("creation_presets").$type<CreationPresetSnapshot>(),
   controllable: boolean("controllable").notNull().default(false),
+  controllableEngine: text("controllable_engine", { enum: ["legacy", "svg"] }).notNull().default("legacy"),
   posePreset: text("pose_preset", { enum: ["low", "medium", "high", "ultra"] }),
   /**
    * Whether the character travels around the canvas rather than resting in place.
@@ -181,6 +185,7 @@ export const generationJobs = pgTable("generation_jobs", {
    * the user and announce nothing: the pet says so itself once the new look is published.
    */
   origin: text("origin", { enum: jobOrigins }).notNull().default("user"),
+  controllableEngine: text("controllable_engine", { enum: ["legacy", "svg"] }).notNull().default("legacy"),
   usageReservationId: text("usage_reservation_id"),
   priorStickerStatus: text("prior_sticker_status", { enum: ["draft", "published"] }),
   state: text("state", { enum: jobStates }).notNull().default("queued"),
@@ -768,6 +773,7 @@ export const petRooms = pgTable("pet_rooms", {
   artKey: text("art_key").notNull(),
   /** Its clock face, weather board and status board. Null for rooms drawn before rooms had them. */
   fixturesJson: jsonb("fixtures_json").$type<PetRoomFixtures>(),
+  sceneJson: jsonb("scene_json").$type<SVGScene>(),
   state: text("state", { enum: ["offered", "owned"] }).notNull(),
   createdAt: timestampColumn("created_at").notNull(),
   purchasedAt: timestampColumn("purchased_at"),
@@ -797,6 +803,7 @@ export const petThemes = pgTable("pet_themes", {
   artKey: text("art_key").notNull(),
   /** Its clock, weather board and status board. Null for places drawn before places had them. */
   fixturesJson: jsonb("fixtures_json").$type<PetRoomFixtures>(),
+  sceneJson: jsonb("scene_json").$type<SVGScene>(),
   state: text("state", { enum: ["available", "expired"] }).notNull(),
   expiresAt: timestampColumn("expires_at"),
   createdAt: timestampColumn("created_at").notNull(),

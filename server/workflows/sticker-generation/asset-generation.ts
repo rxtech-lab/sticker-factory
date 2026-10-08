@@ -377,6 +377,7 @@ interface GeneratedLayer {
  * `workflows/sticker-generation/sprite-artwork.ts`, consumed by `documentFromPlan`.
  */
 export interface SpriteBuild {
+  rig?: import("@/lib/contracts/controllable").SVGAnimationRig;
   clips: Array<{
     id: string;
     assetId: string;
@@ -676,6 +677,8 @@ export function documentFromPlan(
     case "sprite": {
       const build = spriteBuilds.get(layer.layerId);
       if (!build) throw new Error(`Sprite layer ${layer.layerId} has no registered sheets`);
+      if (build.rig) return { ...base, type: "svg", rig: build.rig, svgState: { pose: source.clips[0].id, expression: source.expressions[0].id },
+        source: { kind: "inline", markup: build.rig.groups[0].markup }, renderMode: "native", contentMode: "fit", staggerSeconds: 0, posterAssetId: build.posterAssetId };
       return {
         ...base,
         type: "sprite",
@@ -715,7 +718,8 @@ export function documentFromPlan(
   const spriteFrameRate = [...spriteBuilds.values()].flatMap((build) => build.clips.flatMap(
     (clip) => clip.frames.map((frame) => 1 / frame.duration),
   ));
-  const clipSeconds = Math.max(0, ...[...videoTimings.values()].map((timing) => timing.durationSeconds), ...spriteClipSeconds);
+  const svgSeconds = [...spriteBuilds.values()].flatMap(build => build.rig?.groups.flatMap(g => g.tracks.map(t => t.duration)) ?? []);
+  const clipSeconds = Math.max(0, ...svgSeconds, ...[...videoTimings.values()].map((timing) => timing.durationSeconds), ...spriteClipSeconds);
   return plan.kind === "static"
     ? StickerDocumentSchema.parse({
       ...retainedDocument, version: CURRENT_DOCUMENT_VERSION, canvas, layers, kind: "static", durationSeconds: 0, fps: 0, loop: "once",

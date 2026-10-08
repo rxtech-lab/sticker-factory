@@ -15,6 +15,8 @@ import {
   stickerPacks,
   stickers,
   petEvents,
+  petRooms,
+  petThemes,
   userPets,
   users,
 } from "@/lib/db/schema";
@@ -284,6 +286,9 @@ export async function finalizeAccountDeletion(
     await purgeStickerMediaImmediately(db, userId, sticker.id);
   }
   await purgeUnboundAssets(db, userId);
+  // Includes reference images, vector bundles, posters and interrupted conversion checkpoints.
+  await getObjectStore().deletePrefix(`private/pet-rooms/${userId}/`);
+  await getObjectStore().deletePrefix(`private/pet-themes/${userId}/`);
 
   // Phase 3 — anonymize and tombstone.
   await db.transaction(async (tx) => {
@@ -300,6 +305,8 @@ export async function finalizeAccountDeletion(
     await tx.delete(deviceTokens).where(eq(deviceTokens.userId, userId));
     await tx.delete(packInstalls).where(eq(packInstalls.userId, userId));
     await tx.delete(userPets).where(eq(userPets.userId, userId));
+    await tx.delete(petRooms).where(eq(petRooms.userId, userId));
+    await tx.delete(petThemes).where(eq(petThemes.userId, userId));
     await tx.delete(petEvents).where(eq(petEvents.userId, userId));
     await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.ownerId, userId));
     await tx.delete(chatMessages).where(eq(chatMessages.ownerId, userId));

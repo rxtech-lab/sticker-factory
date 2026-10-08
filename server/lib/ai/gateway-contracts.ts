@@ -200,6 +200,8 @@ export interface AiPlanContext {
    * it in words, so nothing in `instruction` need mention it.
    */
   controllable: boolean;
+  controllableEngine?: "legacy" | "svg";
+  controllableGuidance?: string;
   /**
    * The user asked for the subject to travel around the canvas. Off by default, and like
    * `controllable` it was chosen with a switch rather than in words, so `instruction` will not
@@ -922,6 +924,7 @@ export type AiPetRoom = {
  * flooded with `windowKey` so the server can cut it out and the app can show the live weather behind.
  */
 export interface AiPetRoomArtInput {
+  engine?: "legacy" | "svg";
   scene: string;
   reference: AiReferenceImage | null;
   windowKey: ChromaKeyColor;
@@ -965,6 +968,7 @@ export type AiPetThemeChoice = { move: false } | { move: true; themeId: string |
 
 /** One place drawn as a full portrait background, in the pet's own art style. */
 export interface AiPetThemeArtInput {
+  engine?: "legacy" | "svg";
   scene: string;
   reference: AiReferenceImage | null;
 }

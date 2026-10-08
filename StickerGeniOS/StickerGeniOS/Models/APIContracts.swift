@@ -353,6 +353,7 @@ nonisolated struct PlanConfigurationChanges: Codable, Hashable, Sendable {
 }
 
 nonisolated struct Plan: Codable, Hashable, Sendable {
+    var engine: ControllableEngineID?
     var baseRevisionId: String?
     var configurationChanges: PlanConfigurationChanges?
     var version: Int

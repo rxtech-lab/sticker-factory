@@ -1,0 +1,306 @@
+{
+  "rig": {
+    "version": 1,
+    "width": 200,
+    "height": 200,
+    "defaults": {
+      "pose": "idle",
+      "expression": "calm",
+      "emotion": "content",
+      "weather": "sunny",
+      "night": false,
+      "sheltered": false,
+      "facing": "right"
+    },
+    "groups": [
+      {
+        "id": "body",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"60\" fill=\"#FFD080\"/></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {},
+        "tracks": [
+          {
+            "property": "x",
+            "duration": 2,
+            "loop": true,
+            "interpolation": "linear",
+            "frames": [
+              {
+                "time": 0,
+                "value": 0
+              },
+              {
+                "time": 1,
+                "value": 10
+              },
+              {
+                "time": 2,
+                "value": 0
+              }
+            ]
+          },
+          {
+            "property": "y",
+            "duration": 2,
+            "loop": true,
+            "interpolation": "step",
+            "frames": [
+              {
+                "time": 0,
+                "value": 0
+              },
+              {
+                "time": 1,
+                "value": 8
+              },
+              {
+                "time": 2,
+                "value": 0
+              }
+            ]
+          },
+          {
+            "property": "rotation",
+            "duration": 2,
+            "loop": true,
+            "interpolation": "linear",
+            "frames": [
+              {
+                "time": 0,
+                "value": 0
+              },
+              {
+                "time": 1,
+                "value": 10
+              },
+              {
+                "time": 2,
+                "value": 0
+              }
+            ]
+          },
+          {
+            "property": "scaleX",
+            "duration": 2,
+            "loop": true,
+            "interpolation": "linear",
+            "frames": [
+              {
+                "time": 0,
+                "value": 1
+              },
+              {
+                "time": 1,
+                "value": 1.5
+              },
+              {
+                "time": 2,
+                "value": 1
+              }
+            ]
+          },
+          {
+            "property": "scaleY",
+            "duration": 2,
+            "loop": true,
+            "interpolation": "linear",
+            "frames": [
+              {
+                "time": 0,
+                "value": 1
+              },
+              {
+                "time": 1,
+                "value": 0.5
+              },
+              {
+                "time": 2,
+                "value": 1
+              }
+            ]
+          },
+          {
+            "property": "opacity",
+            "duration": 2,
+            "loop": true,
+            "interpolation": "linear",
+            "frames": [
+              {
+                "time": 0,
+                "value": 1
+              },
+              {
+                "time": 1,
+                "value": 0.5
+              },
+              {
+                "time": 2,
+                "value": 1
+              }
+            ]
+          }
+        ],
+        "colors": [],
+        "depth": null
+      },
+      {
+        "id": "lamp",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"60\" fill=\"#FFD080\"/></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {
+          "night": [
+            true
+          ]
+        },
+        "tracks": [],
+        "colors": [],
+        "depth": null
+      },
+      {
+        "id": "umbrella",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"60\" fill=\"#FFD080\"/></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {
+          "weather": [
+            "rainy",
+            "stormy"
+          ],
+          "sheltered": [
+            false
+          ]
+        },
+        "tracks": [],
+        "colors": [],
+        "depth": null
+      },
+      {
+        "id": "face",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"60\" fill=\"#FFD080\"/></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {
+          "expression": [
+            "happy"
+          ]
+        },
+        "tracks": [],
+        "colors": [
+          {
+            "when": {
+              "emotion": [
+                "joyful"
+              ]
+            },
+            "color": "#FFAA22"
+          }
+        ],
+        "depth": null
+      }
+    ],
+    "emotions": {
+      "calm": "content",
+      "happy": "joyful"
+    }
+  },
+  "cases": [
+    {
+      "time": 0,
+      "state": {},
+      "x": 0,
+      "lamp": false,
+      "umbrella": false,
+      "face": false,
+      "channels": {
+        "y": 0,
+        "rotation": 0,
+        "scaleX": 1.0,
+        "scaleY": 1.0,
+        "opacity": 1.0
+      }
+    },
+    {
+      "time": 0.5,
+      "state": {
+        "night": true,
+        "weather": "rainy"
+      },
+      "x": 5,
+      "lamp": true,
+      "umbrella": true,
+      "face": false,
+      "channels": {
+        "y": 0,
+        "rotation": 5.0,
+        "scaleX": 1.25,
+        "scaleY": 0.75,
+        "opacity": 0.75
+      }
+    },
+    {
+      "time": 1,
+      "state": {
+        "weather": "rainy",
+        "sheltered": true,
+        "expression": "happy",
+        "emotion": "joyful"
+      },
+      "x": 10,
+      "lamp": false,
+      "umbrella": false,
+      "face": true,
+      "channels": {
+        "y": 8,
+        "rotation": 10,
+        "scaleX": 1.5,
+        "scaleY": 0.5,
+        "opacity": 0.5
+      }
+    },
+    {
+      "time": 2,
+      "state": {},
+      "x": 0,
+      "lamp": false,
+      "umbrella": false,
+      "face": false,
+      "channels": {
+        "y": 0,
+        "rotation": 0,
+        "scaleX": 1.0,
+        "scaleY": 1.0,
+        "opacity": 1.0
+      }
+    },
+    {
+      "time": -1,
+      "state": {
+        "night": true,
+        "weather": "stormy",
+        "sheltered": true,
+        "emotion": "grumpy"
+      },
+      "x": 0,
+      "lamp": true,
+      "umbrella": false,
+      "face": false,
+      "channels": {
+        "y": 0,
+        "rotation": 0,
+        "scaleX": 1.0,
+        "scaleY": 1.0,
+        "opacity": 1.0
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import type { PublishExportsRequest } from "@/lib/contracts/api";
-import { planVideoCount, planGenerationCount, planSpriteSheetCount, type PlanV1 } from "@/lib/contracts/plan";
+import { planVideoCount, planGenerationCount, planSpriteSheetCount, planSpriteLayers, type PlanV1 } from "@/lib/contracts/plan";
 import type { GenerationJobRow } from "@/lib/db/schema";
 
 /** The RxSubscription balance unit API spend is charged against. */
@@ -56,10 +56,12 @@ const VIDEO_LAYER_HOLD = 10;
 const SPRITE_SHEET_HOLD = 2 * JOB_HOLDS.image;
 
 /** The compose hold for a specific plan: the flat estimate, plus one video's worth per clip. */
-export function composeCreditHold(plan: Pick<PlanV1, "layers" | "configuration">): number {
-  const additionalArtwork = planGenerationCount(plan) - planGenerationCount({ layers: plan.layers });
+export function composeCreditHold(plan: Pick<PlanV1, "layers" | "configuration" | "engine">): number {
+  const additionalArtwork = planGenerationCount(plan) - planGenerationCount({ layers: plan.layers, engine: plan.engine });
+  // Vector authoring and visual review are text/vision calls, with no sprite-sheet purchase.
+  const vectorAuthoring = plan.engine === "svg" ? 2 * JOB_HOLDS.plan * planSpriteLayers(plan).length : 0;
   return jobCreditHold("compose") + VIDEO_LAYER_HOLD * planVideoCount(plan) + jobCreditHold("image") * additionalArtwork
-    + SPRITE_SHEET_HOLD * planSpriteSheetCount(plan);
+    + SPRITE_SHEET_HOLD * planSpriteSheetCount(plan) + vectorAuthoring;
 }
 
 /**

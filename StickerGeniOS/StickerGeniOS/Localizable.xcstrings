@@ -485,6 +485,9 @@
         }
       }
     },
+    "%lld seconds" : {
+
+    },
     "%lld selectable poses per character" : {
 
     },
@@ -1581,6 +1584,9 @@
     "Animation %lld" : {
 
     },
+    "Animation engine" : {
+
+    },
     "Animation format" : {
       "localizations" : {
         "zh-CN" : {
@@ -1600,6 +1606,9 @@
     "ANIMATION SUMMARY" : {
 
     },
+    "Animation Testing" : {
+
+    },
     "Anyone can find this pack. Edits reach everyone who added it." : {
       "localizations" : {
         "zh-CN" : {
@@ -1615,6 +1624,9 @@
           }
         }
       }
+    },
+    "Applies to newly generated controllable stickers, rooms, and places. Existing artwork keeps its engine." : {
+
     },
     "Apply" : {
       "localizations" : {
@@ -1666,6 +1678,19 @@
     },
     "Athlete" : {
 
+    },
+    "Attempt" : {
+
+    },
+    "Attempt %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attempt %1$lld of %2$lld"
+          }
+        }
+      }
     },
     "Availability & Expiry" : {
 
@@ -2272,6 +2297,9 @@
           }
         }
       }
+    },
+    "Checking SVG animation" : {
+
     },
     "Checking the result" : {
 
@@ -3604,6 +3632,9 @@
         }
       }
     },
+    "Drawing SVG artwork" : {
+
+    },
     "Drawing the frames" : {
       "localizations" : {
         "zh-CN" : {
@@ -4091,6 +4122,9 @@
 
     },
     "Expires in %@" : {
+
+    },
+    "Explore" : {
 
     },
     "Explorer" : {
@@ -5380,6 +5414,9 @@
 
     },
     "Left" : {
+
+    },
+    "Legacy" : {
 
     },
     "Legal" : {
@@ -8478,6 +8515,9 @@
         }
       }
     },
+    "Refining the SVG animation" : {
+
+    },
     "Refresh" : {
 
     },
@@ -8954,6 +8994,9 @@
           }
         }
       }
+    },
+    "Reviewing SVG artwork" : {
+
     },
     "Reviewing the design" : {
 
@@ -10715,6 +10758,12 @@
         }
       }
     },
+    "SVG" : {
+
+    },
+    "SVG animation needs another attempt" : {
+
+    },
     "Sway" : {
       "localizations" : {
         "zh-CN" : {
@@ -11872,6 +11921,9 @@
           }
         }
       }
+    },
+    "This uses the approved image to create SVG artwork with selectable expressions and poses. Vector authoring and visual review are included in the estimate." : {
+
     },
     "This uses the approved static reference to assemble %lld existing layers and add motion." : {
       "localizations" : {

@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "engine": "svg",
+  "rig": {
+    "version": 1,
+    "width": 200,
+    "height": 200,
+    "defaults": {
+      "pose": "idle",
+      "expression": "calm",
+      "emotion": "content",
+      "weather": "sunny",
+      "night": false,
+      "sheltered": false,
+      "facing": "right"
+    },
+    "groups": [
+      {
+        "id": "body",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><rect x=\"0\" y=\"0\" width=\"200\" height=\"200\" fill=\"#FFD080\"/></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {},
+        "tracks": [],
+        "colors": [],
+        "depth": null
+      },
+      {
+        "id": "lamp",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"60\" fill=\"#FFD080\"/></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {
+          "night": [
+            true
+          ]
+        },
+        "tracks": [],
+        "colors": [],
+        "depth": null
+      },
+      {
+        "id": "umbrella",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"60\" fill=\"#FFD080\"/></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {
+          "weather": [
+            "rainy",
+            "stormy"
+          ],
+          "sheltered": [
+            false
+          ]
+        },
+        "tracks": [],
+        "colors": [],
+        "depth": null
+      },
+      {
+        "id": "face",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><rect x=\"20\" y=\"20\" width=\"60\" height=\"60\" fill=\"#FFD080\"/></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {
+          "expression": [
+            "happy"
+          ]
+        },
+        "tracks": [],
+        "colors": [
+          {
+            "when": {
+              "emotion": [
+                "joyful"
+              ]
+            },
+            "color": "#FFAA22"
+          }
+        ],
+        "depth": null
+      },
+      {
+        "id": "weather",
+        "markup": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\"><defs><clipPath id=\"window\" clipPathUnits=\"userSpaceOnUse\"><rect x=\"20\" y=\"20\" width=\"40\" height=\"40\"/></clipPath></defs><g clip-path=\"url(#window)\"><rect x=\"0\" y=\"0\" width=\"200\" height=\"200\" fill=\"#88AAFF\"/></g></svg>",
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "when": {
+          "weather": [
+            "cloudy",
+            "rainy",
+            "snowy",
+            "stormy",
+            "foggy",
+            "windy"
+          ]
+        },
+        "tracks": [],
+        "colors": [],
+        "depth": null
+      }
+    ],
+    "emotions": {
+      "calm": "content",
+      "happy": "joyful"
+    }
+  },
+  "indoor": false,
+  "spawn": {
+    "x": 0.5,
+    "y": 0.7
+  },
+  "walkable": [
+    {
+      "x": 0,
+      "y": 0
+    },
+    {
+      "x": 1,
+      "y": 0
+    },
+    {
+      "x": 1,
+      "y": 1
+    },
+    {
+      "x": 0,
+      "y": 1
+    }
+  ],
+  "obstacles": [],
+  "shelters": [
+    [
+      {
+        "x": 0.1,
+        "y": 0.6
+      },
+      {
+        "x": 0.3,
+        "y": 0.6
+      },
+      {
+        "x": 0.3,
+        "y": 0.9
+      },
+      {
+        "x": 0.1,
+        "y": 0.9
+      }
+    ]
+  ],
+  "fixtures": {
+    "clock": {
+      "x": 0.2,
+      "y": 0.1
+    },
+    "weather": {
+      "x": 0.5,
+      "y": 0.1
+    },
+    "status": {
+      "x": 0.8,
+      "y": 0.1
+    }
+  },
+  "effects": {
+    "lights": [
+      "lamp"
+    ],
+    "lightPools": [
+      "lamp"
+    ],
+    "precipitation": [
+      "weather"
+    ],
+    "umbrellas": [
+      "umbrella"
+    ],
+    "puddles": [
+      "weather"
+    ],
+    "windows": [
+      {
+        "groupId": "weather",
+        "bounds": [
+          {
+            "x": 0,
+            "y": 0
+          },
+          {
+            "x": 1,
+            "y": 0
+          },
+          {
+            "x": 1,
+            "y": 1
+          },
+          {
+            "x": 0,
+            "y": 1
+          }
+        ]
+      }
+    ]
+  }
+}

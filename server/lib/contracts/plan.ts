@@ -229,6 +229,7 @@ export const PlanTimingV1Schema = z.object({
  * generates images.
  */
 export const PlanV1Schema = z.object({
+  engine: z.enum(["legacy", "svg"]).optional(),
   baseRevisionId: z.string().uuid().optional(),
   configurationChanges: PlanConfigurationChangesSchema.optional(),
   posePreset: PosePresetSchema.optional(),
@@ -442,7 +443,7 @@ export function compilePlanAnimations(plan: Pick<PlanV1, "kind" | "timing" | "la
  * A video layer counts: its clip is animated from a still that is separated from the approved
  * reference exactly the way a generate layer's artwork is, so it pays for that image first.
  */
-export function planGenerationCount(plan: Pick<PlanV1, "layers" | "configuration" | "configurationChanges" | "baseRevisionId">): number {
+export function planGenerationCount(plan: Pick<PlanV1, "layers" | "configuration" | "configurationChanges" | "baseRevisionId" | "engine">): number {
   const alternatives = plannedConfiguration(plan)?.variants.flatMap((variant) => variant.layers).filter((layer) => layer.source?.kind === "generate" || layer.source?.kind === "frames").length ?? 0;
   const stills = plan.layers.filter((layer) => layer.source.kind === "generate" || layer.source.kind === "video" || layer.source.kind === "sprite").length;
   return alternatives + stills + planSpriteSheetCount(plan);
@@ -453,8 +454,8 @@ export function planGenerationCount(plan: Pick<PlanV1, "layers" | "configuration
  * sprite layer. Counted apart from the stills because a sheet is drawn at a higher quality and
  * holds more than an ordinary generation.
  */
-export function planSpriteSheetCount(plan: Pick<PlanV1, "layers">): number {
-  return planSpriteLayers(plan).reduce((total, { source }) => total + source.clips.length + 1, 0);
+export function planSpriteSheetCount(plan: Pick<PlanV1, "layers" | "engine">): number {
+  return plan.engine === "svg" ? 0 : planSpriteLayers(plan).reduce((total, { source }) => total + source.clips.length + 1, 0);
 }
 
 /** How many video generations executing this plan will cost, on top of its image generations. */

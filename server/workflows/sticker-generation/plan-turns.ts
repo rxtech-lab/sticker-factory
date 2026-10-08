@@ -1,3 +1,4 @@
+import { controllableEngine } from "./controllable-engine";
 import { renderExtensionPreview } from "./extension-preview";
 import { loadPlanBase } from "@/lib/services/plan-base";
 import { creationPresetReferences } from "@/lib/creation-presets/references";
@@ -8,7 +9,7 @@ import { creationPresetGuidance } from "@/lib/creation-presets/selection";
 import { renderPlanAnimationPreview } from "./plan-animation-preview";
 import { and, eq } from "drizzle-orm";
 import { FatalError } from "workflow";
-import { assertAnimatedPlanUsesReferenceBackedArtwork, assertControllablePlan, assertNonControllablePlan, assertPlanPosePreset, assertPlanAllowedForJob, assertPlanReuseIsResolvable, assertSpriteFaces, planRequiresConcept, withoutLayerTravel, type PlanV1 } from "@/lib/contracts/plan";
+import { assertAnimatedPlanUsesReferenceBackedArtwork, assertNonControllablePlan, assertPlanPosePreset, assertPlanAllowedForJob, assertPlanReuseIsResolvable, assertSpriteFaces, planRequiresConcept, withoutLayerTravel, type PlanV1 } from "@/lib/contracts/plan";
 import { applyStickerOperationsV1, type StickerDocument, type StickerOperationV1 } from "@/lib/contracts/sticker";
 import { firstRow, getDatabase, type Database } from "@/lib/db/client";
 import { chatMessages, generationJobs, plans, stickerRevisions, stickers } from "@/lib/db/schema";
@@ -225,9 +226,10 @@ export async function executePlanTurn(
     createPlan: async (plan) => {
       const call = await beginToolCall(job, "create_plan", undefined, nextLabel("create_plan"));
       try {
+        plan = { ...plan, engine: sticker.controllableEngine ?? "legacy" };
         await checkBase(plan);
         assertPlanAllowedForJob(plan, job);
-        if (sticker.controllable) assertControllablePlan(plan); else assertNonControllablePlan(plan);
+        if (sticker.controllable) controllableEngine(sticker.controllableEngine ?? "legacy").validate(plan); else assertNonControllablePlan(plan);
         assertSpriteFaces(plan);
         if (sticker.posePreset) {
           assertPlanPosePreset(plan, sticker.posePreset);
@@ -259,9 +261,10 @@ export async function executePlanTurn(
     updatePlan: async (planId, plan) => {
       const call = await beginToolCall(job, "update_plan", undefined, nextLabel("update_plan"));
       try {
+        plan = { ...plan, engine: sticker.controllableEngine ?? "legacy" };
         await checkBase(plan);
         assertPlanAllowedForJob(plan, job);
-        if (sticker.controllable) assertControllablePlan(plan); else assertNonControllablePlan(plan);
+        if (sticker.controllable) controllableEngine(sticker.controllableEngine ?? "legacy").validate(plan); else assertNonControllablePlan(plan);
         assertSpriteFaces(plan);
         if (sticker.posePreset) {
           assertPlanPosePreset(plan, sticker.posePreset);
@@ -317,6 +320,8 @@ export async function executePlanTurn(
     history,
     stickerKind: sticker.kind,
     controllable: sticker.controllable,
+    controllableEngine: sticker.controllableEngine,
+    controllableGuidance: controllableEngine(sticker.controllableEngine ?? "legacy").planningGuidance,
     motion: sticker.motion,
     posePreset: sticker.posePreset ?? undefined,
     document: activeDocument,

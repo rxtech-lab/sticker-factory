@@ -3,6 +3,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -29,6 +30,7 @@ export interface ObjectStore {
   get(key: string): Promise<StoredObject>;
   head(key: string): Promise<{ contentType?: string; byteSize?: number; metadata?: Record<string, string> }>;
   delete(key: string): Promise<void>;
+  deletePrefix(prefix: string): Promise<void>;
 }
 
 class R2ObjectStore implements ObjectStore {
@@ -105,10 +107,24 @@ class R2ObjectStore implements ObjectStore {
   async delete(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
+
+  async deletePrefix(prefix: string): Promise<void> {
+    if (!prefix.endsWith("/") || prefix.split("/").length < 4) throw new Error("An owner-scoped prefix is required");
+    let continuation: string | undefined;
+    do {
+      const page = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: continuation, MaxKeys: 100 }));
+      await Promise.all((page.Contents ?? []).flatMap(item => item.Key ? [this.delete(item.Key)] : []));
+      continuation = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (continuation);
+  }
 }
 
 export class MemoryObjectStore implements ObjectStore {
   readonly objects = new Map<string, StoredObject>();
+  async deletePrefix(prefix: string): Promise<void> {
+    if (!prefix.endsWith("/") || prefix.split("/").length < 4) throw new Error("An owner-scoped prefix is required");
+    for (const key of this.objects.keys()) if (key.startsWith(prefix)) this.objects.delete(key);
+  }
 
   async signedPut(key: string, contentType: string, byteSize: number) {
     return {

@@ -1,3 +1,5 @@
+import { backgroundAnimationEngine } from "./animation-settings";
+import { generateSceneArt, sceneDesignCheckpoint } from "@/lib/pets/scene-art";
 import { and, asc, desc, eq, isNull, lt, lte, or } from "drizzle-orm";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { PetRoomsV1, PetRoomV1 } from "@/lib/contracts/api";
@@ -25,7 +27,7 @@ function artPath(userId: string, artKey: string): string {
 }
 
 async function deleteArt(userId: string, artKeys: string[]): Promise<void> {
-  await Promise.all(artKeys.map((key) => getObjectStore().delete(artPath(userId, key)).catch(() => undefined)));
+  await Promise.all(artKeys.flatMap((key) => [artPath(userId, key), artPath(userId, key).replace(".webp", ".reference.png"), artPath(userId, key).replace(".webp", ".svg.json")].map(path => getObjectStore().delete(path).catch(() => undefined))));
 }
 
 function serializeRoom(row: PetRoomRow): PetRoomV1 {
@@ -89,12 +91,14 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
   const elapsedMs = () => Date.now() - started;
   petLog("rooms:generating", { userId, lifeId: pet.lifeId, lastOfferedAt: pet.roomsOfferedAt?.toISOString() ?? null });
   const drawn: string[] = [];
+  const clearCheckpoints: (() => Promise<void>)[] = [];
   try {
     const { sticker, revision } = await lastPublishedPlayback(db, userId, pet.stickerId);
     const style = await sentStickerImage(db, revision.pngAssetId ?? revision.systemAssetId);
+    const requestedEngine = await backgroundAnimationEngine(db, userId);
     const earlier = await db.select({ title: petRooms.title }).from(petRooms)
       .where(eq(petRooms.userId, userId)).orderBy(desc(petRooms.createdAt)).limit(24);
-    const designed = (await getAiProvider().generatePetRooms({
+    const designBatch = await sceneDesignCheckpoint(userId, "rooms", `${pet.stickerId}:${revision.id}`, async () => ({ engine: requestedEngine, designs: (await getAiProvider().generatePetRooms({
       petTitle: sticker.title,
       controls: revision.playbackJson?.document.configuration?.controls ?? [],
       image: style,
@@ -104,18 +108,17 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
       mood: pet.statusJson?.caption ?? null,
       previous: earlier.map((room) => room.title),
       ...ownerMoment(pet.contextJson, now),
-    })).map(sanitizeRoom);
+    })).map(sanitizeRoom) }));
+    const { engine, designs: designed } = designBatch.value;
     petLog("rooms:designed", { userId, elapsedMs: elapsedMs(), rooms: designed.map((room) => room.title) });
     // Drawn side by side; a room that could not be drawn is left out rather than shown blank.
     const rooms = (await Promise.all(designed.map(async (room) => {
       try {
         const windowKey = roomWindowKey(room.scene);
         petLog("rooms:drawing", { userId, title: room.title, windowKey: windowKey.name, scene: room.scene });
-        const art = await getAiProvider().generatePetRoomArt({ scene: room.scene, reference: style, windowKey });
-        // Its windows become see-through, so the app can show the owner's weather behind the glass,
-        // and its blank clock face, weather board and status board become places the app writes the
-        // time, weather and the pet's stats on.
-        const { bytes, windowFraction, fixtures } = await renderRoomArt(art.bytes, windowKey);
+        const draw = () => getAiProvider().generatePetRoomArt({ scene: room.scene, reference: style, windowKey, ...(engine === "svg" ? { engine } : {}) });
+        const vector = engine === "svg" ? await generateSceneArt({ userId, kind: "rooms", brief: room.scene, style, draw }) : null;
+        const { bytes, fixtures, windowFraction } = vector ? { ...vector, windowFraction: 1 } : await renderRoomArt((await draw()).bytes, windowKey);
         if (!windowFraction) petLog("rooms:no-window", { userId, title: room.title, key: windowKey.name });
         if (!fixtures.clock || !fixtures.weather || !fixtures.status) {
           petLog("rooms:missing-fixture", {
@@ -123,15 +126,21 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
           });
         }
         const artKey = crypto.randomUUID();
-        await getObjectStore().put(artPath(userId, artKey), { bytes, contentType: "image/webp" });
         drawn.push(artKey);
+        await getObjectStore().put(artPath(userId, artKey), { bytes, contentType: "image/webp" });
+        if (vector) {
+          await getObjectStore().put(artPath(userId, artKey).replace(".webp", ".reference.png"), { bytes: vector.referenceBytes, contentType: "image/png" });
+          await getObjectStore().put(artPath(userId, artKey).replace(".webp", ".svg.json"), { bytes: Buffer.from(JSON.stringify(vector.scene)), contentType: "application/json" });
+          clearCheckpoints.push(vector.clearCheckpoint);
+        }
         petLog("rooms:drawn", { userId, title: room.title, elapsedMs: elapsedMs(), windowFraction, fixtures });
-        return { ...room, artKey, fixtures };
+        return { ...room, artKey, fixtures, scene: vector?.scene ?? null };
       } catch (error) {
         petLog("rooms:draw-failed", { userId, title: room.title, error: describeError(error) });
         return null;
       }
     }))).filter((room) => room !== null);
+    if (engine === "svg" && rooms.length !== designed.length) throw new Error("SVG room batch is incomplete; saved references will be reused on retry");
     if (!rooms.length) throw new Error("No room could be drawn");
 
     const stale = await db.transaction(async (tx) => {
@@ -144,7 +153,7 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
         .returning({ artKey: petRooms.artKey });
       await tx.insert(petRooms).values(rooms.map((room) => ({
         id: crypto.randomUUID(), userId, title: room.title.slice(0, 32), description: room.description.slice(0, 140),
-        effectsJson: room.effects, price: room.price, artKey: room.artKey, fixturesJson: room.fixtures, state: "offered" as const, createdAt: now,
+        effectsJson: room.effects, price: room.price, artKey: room.artKey, fixturesJson: room.fixtures, sceneJson: room.scene, state: "offered" as const, createdAt: now,
       })));
       return removed.map((row) => row.artKey);
     });
@@ -154,6 +163,8 @@ export async function refreshPetRoomOffers(db: Database, userId: string, now = n
       return;
     }
     await deleteArt(userId, stale);
+    await designBatch.clear().catch(() => undefined);
+    await Promise.all(clearCheckpoints.map(clear => clear().catch(() => undefined)));
     petLog("rooms:offered", { userId, lifeId: pet.lifeId, elapsedMs: elapsedMs(),
       rooms: rooms.map((room) => ({ title: room.title, price: room.price, effects: room.effects })) });
   } catch (error) {

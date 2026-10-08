@@ -1,3 +1,5 @@
+import { rememberSVGCapability } from "@/lib/services/animation-settings";
+import { clientDocumentVersion } from "@/lib/contracts/sticker";
 import { recordServerEvent } from "@/lib/analytics/server";
 import { assertAppClipRoute } from "@/lib/subscription/app-clip";
 import { requireApiPrincipal, type ApiPrincipal } from "@/lib/auth/bearer";
@@ -35,6 +37,7 @@ export async function withApiAuth(
       if (requiresUserRow) {
         await timeStage("ensure-user", () => ensureUser(db, authenticatedPrincipal));
       }
+      if (clientDocumentVersion(request) >= 8 && ["/api/v1/pet", "/api/v1/pet/rooms", "/api/v1/pet/themes", "/api/v1/stickers"].includes(new URL(request.url).pathname)) await rememberSVGCapability(db, authenticatedPrincipal.sub);
       stage = "handler";
       const response = await timeStage("handler", () =>
         withBillingRequest(request, authenticatedPrincipal, () => action(authenticatedPrincipal, db, context), db));

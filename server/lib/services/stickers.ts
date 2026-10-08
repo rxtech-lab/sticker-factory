@@ -42,6 +42,7 @@ export async function createSticker(db: Database, ownerId: string, request: Crea
       kind: request.kind,
       creationPresets,
       controllable: request.controllable,
+      controllableEngine: request.controllableEngine ?? "legacy",
       posePreset: request.posePreset,
       // Absent means still: the column's own default carries the same answer, so an older client
       // that never sends the field gets a sticker that holds its place.
@@ -195,7 +196,7 @@ export async function createExportJob(
   stickerId: string,
   creditCost = 0,
 ) {
-  await assertOwnedSticker(db, ownerId, stickerId);
+  const sticker = await assertOwnedSticker(db, ownerId, stickerId);
   const id = crypto.randomUUID();
   const reservationId = await holdCreditsForJob({
     ownerId,
@@ -211,6 +212,7 @@ export async function createExportJob(
         id,
         ownerId,
         stickerId,
+        controllableEngine: sticker.controllableEngine,
         kind: "export",
         state: "queued",
         reservationId,
@@ -254,6 +256,7 @@ export async function createCleanupJob(db: Database, ownerId: string, stickerId:
       id,
       ownerId,
       stickerId,
+      controllableEngine: sticker.controllableEngine,
       kind: "cleanup",
       priorStickerStatus: sticker.status === "published" ? "published" : "draft",
       state: "queued",

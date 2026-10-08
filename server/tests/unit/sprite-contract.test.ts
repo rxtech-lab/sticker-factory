@@ -169,6 +169,13 @@ describe("sprite plans", () => {
     expect(() => assertPlanAllowedForJob(source, { quick: false })).not.toThrow();
   });
 
+  it("holds vector authoring and review without buying sprite sheets", () => {
+    const source = plan({ engine: "svg" });
+    expect(planSpriteSheetCount(source)).toBe(0);
+    expect(planGenerationCount(source)).toBe(1);
+    expect(composeCreditHold(source)).toBe(jobCreditHold("compose") + 2 * jobCreditHold("plan"));
+  });
+
   it("rejects bindings the sprite does not declare, artwork swaps on a sprite, and static plans", () => {
     const base = plan();
     const withVariant = (index: number, patch: Record<string, unknown>) => {

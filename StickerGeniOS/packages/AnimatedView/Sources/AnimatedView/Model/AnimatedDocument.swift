@@ -9,11 +9,11 @@ import Foundation
 ///
 /// Coordinates are normalized and keyframe times are absolute seconds.
 public struct AnimatedDocument: Codable, Hashable, Sendable {
-    public static let currentVersion = 7
+    public static let currentVersion = 8
     /// Versions this build can read. v3 only *added* the `sequence` layer and v4 only added the
     /// `video` layer, so a v2 document is already a valid v4 one and needs no rewriting —
     /// accepting it is the whole migration.
-    public static let readableVersions: ClosedRange<Int> = 2...7
+    public static let readableVersions: ClosedRange<Int> = 2...8
     public static let maximumLayerCount = 12
     public static let maximumKeyframeCount = 128
     public static let durationRange: ClosedRange<Double> = 0.1...30
@@ -21,6 +21,7 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
     public static let fpsRange: ClosedRange<Int> = 1...60
 
     public var configuration: AnimatedControlConfiguration?
+    public var engine: ControllableEngineID?
     public var version: Int
     public var canvas: AnimatedCanvas
     public var kind: AnimatedKind
@@ -67,11 +68,12 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case configuration, version, canvas, kind, durationSeconds, fps, loop, speed, background, mp4Background, layers
+        case engine, configuration, version, canvas, kind, durationSeconds, fps, loop, speed, background, mp4Background, layers
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        engine = try c.decodeIfPresent(ControllableEngineID.self, forKey: .engine)
         configuration = try c.decodeIfPresent(AnimatedControlConfiguration.self, forKey: .configuration)
         version = try c.value(.version, default: Self.currentVersion)
         canvas = try c.value(.canvas, default: .init())
@@ -87,6 +89,7 @@ public struct AnimatedDocument: Codable, Hashable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(engine, forKey: .engine)
         try c.encodeIfPresent(configuration, forKey: .configuration)
         try c.encode(version, forKey: .version)
         try c.encode(canvas, forKey: .canvas)

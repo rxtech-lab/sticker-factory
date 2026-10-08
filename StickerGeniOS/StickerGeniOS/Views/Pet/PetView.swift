@@ -57,14 +57,15 @@ struct PetView: View {
         content
             .background {
                 // A place the pet has gone stands in for its room; it has its own sky.
-                PetRoomBackdrop(image: model.pet == nil ? nil : model.themeArt ?? model.roomArt, weather: model.pet?.signals?.weather,
+                if model.worldScene == nil { PetRoomBackdrop(image: model.pet == nil ? nil : model.themeArt ?? model.roomArt,
+                                                                weather: model.pet?.signals?.weather,
                                 fixtures: model.pet == nil ? nil : roomFixtures,
                                 stats: model.pet.map { PetRoomStats(happiness: $0.stats.happiness, hp: $0.stats.hp,
                                                                     maxHp: $0.maxHp, energy: $0.stats.energy) },
                                 sky: model.themeArt == nil ? model.windowSky : nil, weatherArt: model.weatherArt,
                                 onVisibleFixturesChange: { shownFixtures = $0 },
                                 onStatusFrameChange: { statusFrame = $0 },
-                                onDialogueObstaclesChange: { dialogueObstacles = $0 })
+                                onDialogueObstaclesChange: { dialogueObstacles = $0 }) }
             }
             // The pet's agent takes it places on its own; whichever way the pet arrives, its place follows.
             .task(id: model.pet?.theme?.artKey) { await model.refreshThemeArt() }
@@ -602,7 +603,19 @@ struct PetView: View {
     }
 
     /// Choose the clearer side of the pet, leaving the room's window and boards visible.
+    @ViewBuilder
     private func petStage(_ pet: Pet, motion: PetMotionProfile) -> some View {
+        if let scene = model.worldScene {
+            PetWorldStage(model: model, pet: pet, document: scene,
+                          paused: !isShown || scenePhase != .active || isPresentingSheet || confirmingMedicine
+                              || model.activity != nil || model.isAnswering,
+                          conversing: model.brain.localLine != nil)
+        } else {
+            legacyPetStage(pet, motion: motion)
+        }
+    }
+
+    private func legacyPetStage(_ pet: Pet, motion: PetMotionProfile) -> some View {
         GeometryReader { proxy in
             let placement = PetDialoguePlacement.preferred(
                 in: proxy.frame(in: .global),
@@ -767,7 +780,7 @@ struct PetView: View {
 }
 
 /// The pet's latest line, with its tail pointing toward the sticker.
-private struct PetSpeechBubble: View {
+struct PetSpeechBubble: View {
     let text: String
     var placement: PetDialoguePlacement = .below
 
@@ -815,7 +828,7 @@ private struct PetSpeechBubble: View {
 
 /// Stands in for the pet's reply while it is on its way: the reaction the on-device model wrote,
 /// or a predefined line until it has one or without the model.
-private struct PetThinkingBubble: View {
+struct PetThinkingBubble: View {
     var reaction: String?
     var placement: PetDialoguePlacement = .below
 
@@ -854,7 +867,7 @@ private struct BubbleTail: Shape {
 }
 
 /// The picture the pet was just shown, in a framed bubble with a tail pointing left at the pet.
-private struct PetPhotoBubble: View {
+struct PetPhotoBubble: View {
     /// The framed picture's width: the photo plus its padding.
     static let width: CGFloat = 80
     /// The space between the pet's frame and the picture.
@@ -930,7 +943,7 @@ struct PetActivityOverlay: View {
 
 /// Pinned to the pet while it grows a new mood or look in the background, in the same badge as
 /// the weather and the time. Tapping it nudges the pet's sparkle, so the wait is felt.
-private struct PetGrowingBadge: View {
+struct PetGrowingBadge: View {
     @State private var nudges = 0
 
     var body: some View {

@@ -1,3 +1,5 @@
+import { backgroundAnimationEngine } from "./animation-settings";
+import { generateSceneArt, sceneDesignCheckpoint } from "@/lib/pets/scene-art";
 import { and, asc, eq, isNull, lt, lte, or } from "drizzle-orm";
 import { getAiProvider } from "@/lib/ai/gateway";
 import type { AiPetThemeChoice } from "@/lib/ai/gateway-contracts";
@@ -30,7 +32,7 @@ function artPath(userId: string, artKey: string): string {
 }
 
 async function deleteArt(userId: string, artKeys: string[]): Promise<void> {
-  await Promise.all(artKeys.map((key) => getObjectStore().delete(artPath(userId, key)).catch(() => undefined)));
+  await Promise.all(artKeys.flatMap((key) => [artPath(userId, key), artPath(userId, key).replace(".webp", ".reference.png"), artPath(userId, key).replace(".webp", ".svg.json")].map(path => getObjectStore().delete(path).catch(() => undefined))));
 }
 
 type World = { context: PetRow["contextJson"]; signals: PetSignalsV1 | null; usage: PetThemeUsage | null; now: Date };
@@ -149,12 +151,14 @@ export async function refreshPetThemes(db: Database, userId: string, now = new D
     .returning({ userId: userPets.userId });
   if (!claimed) return;
   const drawn: string[] = [];
+  const clearCheckpoints: (() => Promise<void>)[] = [];
   try {
     const { sticker, revision } = await lastPublishedPlayback(db, userId, pet.stickerId);
     const style = await sentStickerImage(db, revision.pngAssetId ?? revision.systemAssetId);
+    const requestedEngine = await backgroundAnimationEngine(db, userId);
     const location = currentLocation(pet.contextJson, now);
     const home = pet.contextJson?.home;
-    const designed = await getAiProvider().discoverPetThemes({
+    const designBatch = await sceneDesignCheckpoint(userId, "themes", `${pet.stickerId}:${revision.id}:${needs.join(",")}`, async () => ({ engine: requestedEngine, designs: await getAiProvider().discoverPetThemes({
       petTitle: sticker.title,
       controls: revision.playbackJson?.document.configuration?.controls ?? [],
       image: style,
@@ -169,7 +173,8 @@ export async function refreshPetThemes(db: Database, userId: string, now = new D
       traveling: needs.includes("travel") && location && home ? { distanceKm: distanceKm(location, home) } : null,
       hasLocation: !!location,
       ...ownerMoment(pet.contextJson, now),
-    });
+    }) }));
+    const { engine, designs: designed } = designBatch.value;
     const known = new Set(rows.map((row) => row.title.toLocaleLowerCase()));
     const themes = designed
       // A trip or a clinic only when the moment calls for one; everyday places and events once a day.
@@ -187,22 +192,29 @@ export async function refreshPetThemes(db: Database, userId: string, now = new D
     // Drawn side by side; a place that could not be drawn is left out rather than shown blank.
     const drawnThemes = (await Promise.all(themes.map(async (theme) => {
       try {
-        const art = await getAiProvider().generatePetThemeArt({ scene: theme.scene, reference: style });
-        const { bytes, fixtures } = await renderThemeArt(art.bytes);
+        const draw = () => getAiProvider().generatePetThemeArt({ scene: theme.scene, reference: style, ...(engine === "svg" ? { engine } : {}) });
+        const vector = engine === "svg" ? await generateSceneArt({ userId, kind: "themes", brief: theme.scene, style, draw }) : null;
+        const { bytes, fixtures } = vector ?? await renderThemeArt((await draw()).bytes);
         if (!fixtures.clock || !fixtures.weather || !fixtures.status) {
           petLog("themes:missing-fixture", {
             userId, title: theme.title, clock: !!fixtures.clock, weather: !!fixtures.weather, status: !!fixtures.status,
           });
         }
         const artKey = crypto.randomUUID();
-        await getObjectStore().put(artPath(userId, artKey), { bytes, contentType: "image/webp" });
         drawn.push(artKey);
-        return { ...theme, artKey, fixtures };
+        await getObjectStore().put(artPath(userId, artKey), { bytes, contentType: "image/webp" });
+        if (vector) {
+          await getObjectStore().put(artPath(userId, artKey).replace(".webp", ".reference.png"), { bytes: vector.referenceBytes, contentType: "image/png" });
+          await getObjectStore().put(artPath(userId, artKey).replace(".webp", ".svg.json"), { bytes: Buffer.from(JSON.stringify(vector.scene)), contentType: "application/json" });
+          clearCheckpoints.push(vector.clearCheckpoint);
+        }
+        return { ...theme, artKey, fixtures, scene: vector?.scene ?? null };
       } catch (error) {
         petLog("themes:draw-failed", { userId, title: theme.title, error: describeError(error) });
         return null;
       }
     }))).filter((theme) => theme !== null);
+    if (engine === "svg" && drawnThemes.length !== themes.length) throw new Error("SVG place batch is incomplete; saved references will be reused on retry");
     if (themes.length && !drawnThemes.length) throw new Error("No place could be drawn");
 
     const published = await db.transaction(async (tx) => {
@@ -214,7 +226,7 @@ export async function refreshPetThemes(db: Database, userId: string, now = new D
       if (drawnThemes.length) {
         await tx.insert(petThemes).values(drawnThemes.map((theme) => ({
           id: crypto.randomUUID(), userId, title: theme.title, description: theme.description, category: theme.category,
-          effectsJson: theme.effects, rulesJson: theme.rules, artKey: theme.artKey, fixturesJson: theme.fixtures,
+          effectsJson: theme.effects, rulesJson: theme.rules, artKey: theme.artKey, fixturesJson: theme.fixtures, sceneJson: theme.scene,
           state: "available" as const,
           expiresAt: theme.expiresAt, createdAt: now,
         })));
@@ -225,6 +237,8 @@ export async function refreshPetThemes(db: Database, userId: string, now = new D
       await deleteArt(userId, drawn);
       return;
     }
+    await designBatch.clear().catch(() => undefined);
+    await Promise.all(clearCheckpoints.map(clear => clear().catch(() => undefined)));
     petLog("themes:discovered", { userId, lifeId: pet.lifeId, needs, everyday,
       themes: drawnThemes.map((theme) => ({ title: theme.title, category: theme.category, effects: theme.effects, rules: theme.rules })) });
   } catch (error) {

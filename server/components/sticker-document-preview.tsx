@@ -1,5 +1,6 @@
 "use client";
 
+import { renderSVG } from "@/lib/controllable/sample";
 import { useEffect, useState, type CSSProperties } from "react";
 import { easedProgress } from "@/lib/animation/easing";
 import type { StickerEasingV1 } from "@/lib/contracts/animation";
@@ -215,7 +216,7 @@ export function StickerDocumentPreview({ document, assetUrls, label, repeats = f
       {layer.type === "svg" && layer.source.kind === "inline"
         // The markup passed `svgMarkupRejectionReason` on the way into the document — no scripts,
         // no remote references — which is what makes embedding it here safe.
-        ? <span className="scene-svg" dangerouslySetInnerHTML={{ __html: layer.source.markup }} />
+        ? <span className="scene-svg" dangerouslySetInnerHTML={{ __html: layer.rig ? renderSVG(layer.rig, layer.svgState, time) : layer.source.markup }} />
         : null}
       {layer.type === "particle" && <span className="scene-particles">{Array.from({ length: Math.min(layer.count, 24) }, (_, index) => <i style={{ left: `${(layer.seed + index * 37) % 100}%`, top: `${(layer.seed * 3 + index * 61) % 100}%`, color: paintToColor(layer.paint) }} key={index}>{layer.preset === "hearts" ? "♥" : layer.preset === "bubbles" ? "○" : "✦"}</i>)}</span>}
       <SheenOverlay layer={layer} time={time} />

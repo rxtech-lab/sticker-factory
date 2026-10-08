@@ -421,7 +421,7 @@ public enum AnimatedConfigurationError: Error, LocalizedError, Equatable {
 }
 
 extension AnimatedDocument {
-    public func resolvingConfiguration(_ selected: [String: AnimatedControlValue] = [:]) throws -> Self {
+    func resolvingEngineConfiguration(_ selected: [String: AnimatedControlValue] = [:]) throws -> Self {
         var result = self
         result.configuration = nil
         guard let configuration else { return result }
@@ -450,6 +450,14 @@ extension AnimatedDocument {
                     )
                 }
                 if patch.clip != nil || patch.expression != nil {
+                    if case .svg(var svg) = result.layers[index], svg.rig != nil {
+                        var state = svg.svgState ?? [:]
+                        if let pose = patch.clip { state["pose"] = .string(pose) }
+                        if let expression = patch.expression { state["expression"] = .string(expression) }
+                        svg.svgState = state
+                        result.layers[index] = .svg(svg)
+                        continue
+                    }
                     guard case .sprite(var sprite) = result.layers[index] else {
                         throw AnimatedConfigurationError.invalid("Layer \(patch.layerId) is not a sprite, so it has nothing to select")
                     }

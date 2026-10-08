@@ -1,3 +1,4 @@
+import { backgroundAnimationEngine } from "./animation-settings";
 // The pet making friends on its own: now and then, on a visit from its life workflow, it meets
 // someone new — a creature that grows out of the weather, where its owner is, what it remembers and
 // how it feels — and that friend becomes a new controllable sticker in the owner's library.
@@ -165,6 +166,7 @@ export async function beginPetFriendPlan(db: Database, userId: string, friendId:
       prompt: friendPlanningInstruction(friend),
       referenceAssetIds: [],
       controllable: true,
+      controllableEngine: await backgroundAnimationEngine(db, userId),
       posePreset: "medium",
       motion: false,
     }));

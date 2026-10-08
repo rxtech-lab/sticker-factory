@@ -1,5 +1,5 @@
-import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
+import { orchestratorModel } from "./text-model";
 import { z } from "zod";
 import { recordTextApiCost, reportAiStepUsage } from "./cost";
 import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
@@ -10,7 +10,7 @@ export async function researchGenerationPrompt(prompt: string): Promise<string> 
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: orchestratorModel(),
     system: [
       "You prepare research for sticker image and video generation.",
       WEB_RESEARCH_PROMPT,

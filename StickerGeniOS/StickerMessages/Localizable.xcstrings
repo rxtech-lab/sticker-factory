@@ -387,6 +387,9 @@
         }
       }
     },
+    "Checking SVG animation" : {
+
+    },
     "Checking the result" : {
 
     },
@@ -594,6 +597,9 @@
           }
         }
       }
+    },
+    "Drawing SVG artwork" : {
+
     },
     "Drawing the frames" : {
       "localizations" : {
@@ -1427,6 +1433,9 @@
         }
       }
     },
+    "Refining the SVG animation" : {
+
+    },
     "Refreshing your stickers…" : {
       "localizations" : {
         "zh-CN" : {
@@ -1469,6 +1478,9 @@
 
     },
     "Retry loading" : {
+
+    },
+    "Reviewing SVG artwork" : {
 
     },
     "Reviewing the design" : {
@@ -1899,6 +1911,9 @@
       }
     },
     "Surveying colors" : {
+
+    },
+    "SVG animation needs another attempt" : {
 
     },
     "That didn't finish. Try again." : {

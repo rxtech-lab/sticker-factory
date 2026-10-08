@@ -5,6 +5,7 @@ import { createWebTools, isWebTool, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { researchGenerationPrompt } from "./generation-research";
 import { gateway } from "@ai-sdk/gateway";
 import { experimental_generateVideo as generateVideo, generateImage, generateText, hasToolCall, stepCountIs, tool } from "ai";
+import { orchestratorModel } from "./text-model";
 import sharp from "sharp";
 import { ROOM_CLOCK_KEY, ROOM_STATUS_KEY, ROOM_WEATHER_KEY } from "@/lib/pets/room-art";
 import { z } from "zod";
@@ -46,7 +47,7 @@ export async function selectImageReferences(
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: orchestratorModel(),
     system: [
       WEB_RESEARCH_PROMPT,
       "You select reference images for a separate image-generation model.",
@@ -139,7 +140,7 @@ export async function inspectSpriteSheet(input: AiSheetInspectionContext): Promi
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: orchestratorModel(),
     system: [
       "You inspect a generated sprite sheet before it is used, and call report_sheet exactly once.",
       "Cells are read left to right, then top to bottom; only the first N cells are used and the rest stay empty.",
@@ -385,11 +386,16 @@ export async function generatePetRoomArt(input: AiPetRoomArtInput): Promise<AiIm
     "Draw this room as one full-bleed portrait illustration that fills the whole frame, seen from the front at",
     "the pet's eye level. Leave the lower middle of the floor open and uncluttered: a pet will stand there.",
     "Keep the middle calm and softly lit so a character in front of it reads clearly.",
-    "Give the room at least one large window in its upper half, framed in the style of the room. Every pane of",
-    `glass and every opening to the outside must be filled edge to edge with ${key}, like a film green screen:`,
-    "no sky, landscape, weather, reflections, curtains across it, light rays or shading inside it, just that one flat colour.",
-    `Use ${input.windowKey.name} nowhere else in the room: no ${input.windowKey.name} walls, plants, objects or glow.`,
-    petFixturesPrompt("room"),
+    ...(input.engine === "svg" ? [
+      "Give the room a large framed window showing a finished outdoor view, and visible lamps with warm light pools.",
+      "Include a small clock face, weather board and status board as blank finished surfaces in the scene's palette. No chroma keys, marker colours or placeholders.",
+    ] : [
+      "Give the room at least one large window in its upper half, framed in the style of the room. Every pane of",
+      `glass and every opening to the outside must be filled edge to edge with ${key}, like a film green screen:`,
+      "no sky, landscape, weather, reflections, curtains across it, light rays or shading inside it, just that one flat colour.",
+      `Use ${input.windowKey.name} nowhere else in the room: no ${input.windowKey.name} walls, plants, objects or glow.`,
+      petFixturesPrompt("room"),
+    ]),
     "Keep the clock, the weather board and the status board clear of the window.",
     input.reference ? "Match the reference character's art style, outline, palette and shading, but do NOT draw the character or any creature." : "",
     "No characters, animals, people, words, letters, numbers, frames, borders or UI.",
@@ -419,7 +425,9 @@ export async function generatePetThemeArt(input: AiPetThemeArtInput): Promise<Ai
     "Draw this place as one full-bleed portrait illustration that fills the whole frame, seen from the front at",
     "the pet's eye level. Leave the lower middle of the ground open and uncluttered: a pet will stand there.",
     "Keep the middle calm and softly lit so a character in front of it reads clearly.",
-    petFixturesPrompt("place"),
+    input.engine === "svg"
+      ? "Include a small clock face, weather board and status board as blank finished surfaces in the scene palette, plus visible lamps and a sheltered area. No chroma keys or marker colours."
+      : petFixturesPrompt("place"),
     input.reference ? "Match the reference character's art style, outline, palette and shading, but do NOT draw the character or any creature." : "",
     "No characters, animals, people, words, letters, numbers, frames, borders or UI.",
   ].filter(Boolean).join(" ");

@@ -2,8 +2,8 @@
 // narrate a turn once it is done.
 
 import { createWebTools, isWebTool, WEB_RESEARCH_PROMPT } from "./web-tools";
-import { gateway } from "@ai-sdk/gateway";
 import { generateText, hasToolCall, stepCountIs, tool, type LanguageModel } from "ai";
+import { orchestratorModel, textModel } from "./text-model";
 import { z } from "zod";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
 import { resolveChatAction } from "./gateway-contracts";
@@ -181,7 +181,7 @@ export async function routeChatTurn(input: AiChatContext, chatModel?: LanguageMo
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: chatModel ?? gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: chatModel ?? orchestratorModel(),
     system: [
       input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,
@@ -375,7 +375,7 @@ export async function showSticker(
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: orchestratorModel(),
     system:
       WEB_RESEARCH_PROMPT + " A sticker revision is ready. Call show-sticker exactly once with a concise caption that says what changed and invites further natural-language refinement.",
     prompt: `Revision id: ${revisionId}\nSticker kind: ${kind}\nUser request: ${instruction}\nRecoverable chat history:\n${history}`,
@@ -399,7 +399,7 @@ export async function reply(instruction: string, history: string): Promise<strin
   const result = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: orchestratorModel(),
     system:
       WEB_RESEARCH_PROMPT + " You are Sticker Factory's concise creative assistant. Help refine the user's private sticker project. Never claim an edit was made unless an image or animation revision was actually created.",
     prompt: `Recoverable project transcript:\n${history}\n\nLatest user message:\n${instruction}`,
@@ -418,7 +418,7 @@ export async function summarizeStickerTitle(input: AiTitleContext): Promise<stri
     onLanguageModelCallEnd: reportAiStepUsage,
     // A naming call sits between a finished turn and the client being told the turn finished, so
     // it runs on the cheapest model the deployment has rather than the orchestrator's.
-    model: gateway(
+    model: textModel(
       process.env.AI_SUMMARY_MODEL ??
         process.env.AI_ORCHESTRATOR_MODEL ??
         "openai/gpt-5.6",

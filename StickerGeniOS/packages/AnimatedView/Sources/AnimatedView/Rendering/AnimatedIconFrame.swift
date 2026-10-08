@@ -236,8 +236,7 @@ public struct AnimatedIconFrame: View {
     private func spriteContent(_ layer: AnimatedSpriteLayer, box: CGSize) -> some View {
         // The clip and face were already chosen by `resolvingConfiguration`; only the frame is
         // picked here, from document time, so `speed` and the loop apply exactly as for a capture.
-        let index = AnimationInterpolator.spriteFrameIndex(layer.currentClip.frames, atDocumentTime: documentTime)
-        if let frame = SpriteFrameCache.shared.frame(for: layer, index: index, assets: assets) {
+        if let frame = LegacyControllableEngine.spriteFrame(layer, atDocumentTime: documentTime, assets: assets) {
             Image(platformImage: frame)
                 .resizable()
                 .aspectRatio(contentMode: layer.contentMode == .fit ? .fit : .fill)
@@ -301,7 +300,10 @@ public struct AnimatedIconFrame: View {
 
     @ViewBuilder
     private func svgContent(_ layer: AnimatedSVGLayer, state: AnimatedLayerState, box: CGSize) -> some View {
-        if let parsed = SVGCache.shared.document(for: layer.source, assets: assets) {
+        if let rig = layer.rig {
+            ControllableSVGFrame(rig: rig, state: layer.svgState ?? [:], time: documentTime)
+                .frame(width: box.width, height: box.height)
+        } else if let parsed = SVGCache.shared.document(for: layer.source, assets: assets) {
             let viewBox = parsed.drawing.viewBox
             let scale = layer.contentMode == .fit
                 ? min(box.width / max(viewBox.width, 1), box.height / max(viewBox.height, 1))
