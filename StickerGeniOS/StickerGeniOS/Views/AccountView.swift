@@ -7,6 +7,7 @@ struct AccountView: View {
     var onShowWelcome: () -> Void = {}
     var onShowFeatures: () -> Void = {}
     @State private var confirmingLogout = false
+    @State private var showingAnimationTesting = false
 
     private var userName: String {
         environment.authManager.currentUser?.name ?? String(localized: "Sticker maker")
@@ -121,6 +122,13 @@ struct AccountView: View {
                 PosterListHeader("About")
             }
 
+            Section {
+                Button("Animation Testing", systemImage: "slider.horizontal.3") {
+                    Haptics.tap(.light)
+                    showingAnimationTesting = true
+                }
+                .accessibilityIdentifier("animation-testing-button")
+            }
             DiskCacheSection()
 
             DeleteAccountSection(environment: environment)
@@ -141,6 +149,7 @@ struct AccountView: View {
             }
         }
         .navigationTitle("Account")
+        .sheet(isPresented: $showingAnimationTesting) { AnimationTestingSheet(api: environment.store.api) }
         // A `Form` paints its own grouped grey, which is the one surface in the app that is
         // neither paper nor card. Hidden, so the poster page shows through and each row sits on
         // cream instead.

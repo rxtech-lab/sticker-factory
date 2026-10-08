@@ -182,6 +182,7 @@ export async function createChatTurn(
           stickerId,
           sourceMessageId: messageId,
           kind: jobKind,
+          controllableEngine: sticker.controllableEngine,
           quick: request.quick ?? false,
           appClip,
           origin,
@@ -305,6 +306,7 @@ export async function retryFailedChatTurn(
         stickerId,
         sourceMessageId,
         kind: original.kind,
+        controllableEngine: original.controllableEngine,
         // Carried rather than defaulted: a retry is another attempt at the same turn, and the
         // surface that asked for it has no chance to say so again — the extension's retry is the
         // same Retry button the app has.

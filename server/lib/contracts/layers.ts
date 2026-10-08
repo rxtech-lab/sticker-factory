@@ -8,6 +8,7 @@
  * unaffected.
  */
 import { z } from "zod";
+import { SVGAnimationRigSchema } from "./controllable";
 import { SpriteLayerFieldsV1, spriteLayerIssues } from "./sprite";
 import {
   AnimationSpecV1Schema,
@@ -124,6 +125,9 @@ export const ShapeLayerV1Schema = LayerBaseSchema.extend({
  */
 export const SVGLayerV1Schema = LayerBaseSchema.extend({
   type: z.literal("svg"),
+  rig: SVGAnimationRigSchema.optional(),
+  svgState: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+  posterAssetId: AssetIdSchema.optional(),
   source: SVGSourceSchema,
   /**
    * `native` renders the artwork through the SVG renderer directly: highest fidelity, but the

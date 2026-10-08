@@ -173,6 +173,7 @@ export async function preparePlaybackBundle(
       });
       layer.posterAssetId = await raster(layer.posterAssetId);
     }
+    if (layer.type === "svg" && layer.posterAssetId) layer.posterAssetId = await raster(layer.posterAssetId);
     if (layer.type === "svg" && layer.source.kind === "asset") {
       const [svg] = await getReadyOwnedAssets(db, ownerId, [layer.source.assetId]);
       if (svg.stickerId !== stickerId || svg.mimeType !== "image/svg+xml") throw new ApiError(422, "INVALID_PLAYBACK_SOURCE", "Invalid vector artwork");

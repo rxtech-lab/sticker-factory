@@ -420,6 +420,10 @@ struct PlanCard: View {
     }
 
     private var baseConfirmationMessage: String {
+        if plan.engine == .svg, plan.configuration != nil {
+            // swiftlint:disable:next line_length
+            return String(localized: "This uses the approved image to create SVG artwork with selectable expressions and poses. Vector authoring and visual review are included in the estimate.")
+        }
         if plan.baseRevisionId != nil {
             return String(localized: "This generates \(generationCount) new images and keeps the existing artwork and controls.")
         }

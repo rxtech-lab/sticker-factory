@@ -82,6 +82,14 @@ final class PetModel {
     private(set) var rooms: PetRooms?
     /// The drawing of the room the pet lives in, filling the tab behind it. Nil on the plain page,
     /// and until it has loaded.
+    private(set) var roomScene: SVGSceneDocument?
+    private(set) var themeScene: SVGSceneDocument?
+    var worldScene: SVGSceneDocument? {
+        if let theme = pet?.theme { return theme.artKey == themeSceneKey ? themeScene : nil }
+        return pet?.room?.artKey == roomSceneKey ? roomScene : nil
+    }
+    private var roomSceneKey: String?
+    private var themeSceneKey: String?
     private(set) var roomArt: UIImage?
     /// Names exactly what `roomArt` shows: `PetRoomRef.artKey`.
     private(set) var roomArtKey: String?
@@ -534,7 +542,7 @@ final class PetModel {
     /// plain page, or with no drawing for this weather yet, it clears so the painted sky shows instead
     /// of a stale one; a failed fetch keeps what is up.
     private func refreshWindowSky() async {
-        guard let pet, pet.room != nil, let art = pet.windowWeatherArt else {
+        guard worldScene == nil, let pet, pet.room != nil, let art = pet.windowWeatherArt else {
             windowSky = nil
             windowSkyKey = nil
             return
@@ -558,7 +566,7 @@ final class PetModel {
     /// outside its room's window — so the tab looks again shortly.
     var isWeatherArtPending: Bool {
         guard pet?.signals?.weather != nil else { return false }
-        return pet?.weatherArt == nil || (pet?.room != nil && pet?.windowWeatherArt == nil)
+        return worldScene == nil && (pet?.weatherArt == nil || (pet?.room != nil && pet?.windowWeatherArt == nil))
     }
 
     func release() async {
@@ -813,17 +821,23 @@ final class PetModel {
     /// a failed fetch keeps whatever room is up rather than flashing back to paper.
     private func refreshRoomArt() async {
         guard let room = pet?.room else {
+            roomScene = nil
+            roomSceneKey = nil
             roomArt = nil
             roomArtKey = nil
             return
         }
-        guard room.artKey != roomArtKey || roomArt == nil else { return }
+        guard room.artKey != roomArtKey || roomArt == nil || roomSceneKey != room.artKey else { return }
         do {
             let image = try await PetArtworkImageCache.shared.loadRoom(roomID: room.id, artKey: room.artKey, api: api)
             // The pet moved again while this one loaded; that move's fetch will land it.
             guard pet?.room?.artKey == room.artKey else { return }
             roomArt = image
             roomArtKey = room.artKey
+            let scene = try await api.petScene(id: room.id, isTheme: false)
+            guard pet?.room?.artKey == room.artKey else { return }
+            roomScene = scene
+            roomSceneKey = room.artKey
         } catch {
             guard !StickerStore.isCancellation(error) else { return }
             Self.log.error("pet room art failed to load: \(error.localizedDescription, privacy: .public)")
@@ -871,17 +885,23 @@ final class PetModel {
     /// tab calls it whenever the pet's place changes, since its agent moves it on its own.
     func refreshThemeArt() async {
         guard let theme = pet?.theme else {
+            themeScene = nil
+            themeSceneKey = nil
             themeArt = nil
             themeArtKey = nil
             return
         }
-        guard theme.artKey != themeArtKey || themeArt == nil else { return }
+        guard theme.artKey != themeArtKey || themeArt == nil || themeSceneKey != theme.artKey else { return }
         do {
             let image = try await PetArtworkImageCache.shared.loadTheme(themeID: theme.id, artKey: theme.artKey, api: api)
             // The pet went somewhere else while this one loaded; that trip's fetch will land it.
             guard pet?.theme?.artKey == theme.artKey else { return }
             themeArt = image
             themeArtKey = theme.artKey
+            let scene = try await api.petScene(id: theme.id, isTheme: true)
+            guard pet?.theme?.artKey == theme.artKey else { return }
+            themeScene = scene
+            themeSceneKey = theme.artKey
         } catch {
             guard !StickerStore.isCancellation(error) else { return }
             Self.log.error("pet theme art failed to load: \(error.localizedDescription, privacy: .public)")

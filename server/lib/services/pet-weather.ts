@@ -186,6 +186,10 @@ export async function serializePetWeatherArt(
  */
 export async function drawPetWeatherArt(db: Database, userId: string, now = new Date()): Promise<void> {
   const pet = await petRow(db, userId).catch(() => undefined);
+  // SVG scenes already contain every weather/daylight state. Their updates never buy new art;
+  // companions can use the existing cached weather look or their native symbol fallback.
+  const scene = pet?.themeId ? pet.theme?.sceneJson : pet?.room?.sceneJson;
+  if (scene?.engine === "svg") return;
   await Promise.all([
     drawLook(db, userId, "sticker", now),
     // Only a pet in a room has a window to look out of; the sky waits until it moves in.

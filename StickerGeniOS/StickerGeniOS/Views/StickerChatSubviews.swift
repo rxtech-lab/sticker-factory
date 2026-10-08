@@ -207,18 +207,19 @@ private struct ToolCallRow: View {
 
     var body: some View {
         Button {
+            Haptics.tap(.light)
             showingDetails = true
         } label: {
             chip
         }
         .buttonStyle(.posterPlain)
-        .accessibilityLabel("Tool \(message.content), \(message.status.label)")
+        .accessibilityLabel("Tool \(message.displayToolName), \(message.status.label)")
         .accessibilityHint("Shows the tool result or error")
         .sheet(isPresented: $showingDetails) {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text(message.content).font(.headline)
+                        Text(message.displayToolName).font(.headline)
                         Label(message.status.label, systemImage: message.status == .failed ? "exclamationmark.circle" : "info.circle")
                             .foregroundStyle(AppColors.muted)
                         if let assetID = message.toolPreviewAssetID, let api {
@@ -250,7 +251,28 @@ private struct ToolCallRow: View {
                             }
                         } else {
                             let details = message.toolDetails ?? fallbackDetails
-                            if message.status == .failed {
+                            if let progress = message.svgToolProgress {
+                                Text(progress.message).font(.body)
+                                if let attempt = progress.attempt, let maximum = progress.maxAttempts {
+                                    LabeledContent("Attempt", value: "\(attempt) of \(maximum)")
+                                        .accessibilityElement(children: .ignore)
+                                        .accessibilityLabel("Attempt")
+                                        .accessibilityValue("\(attempt) of \(maximum)")
+                                        .accessibilityIdentifier("svg-tool-attempt")
+                                }
+                                if let duration = progress.durationMs, duration > 0 {
+                                    LabeledContent("Duration",
+                                        value: String(localized: "\(max(1, Int((Double(duration) / 1000).rounded()))) seconds"))
+                                        .accessibilityIdentifier("svg-tool-duration")
+                                }
+                                if let correction = progress.correction {
+                                    Label(correction, systemImage: "arrow.clockwise")
+                                        .foregroundStyle(AppColors.muted)
+                                }
+                                DisclosureGroup("Technical details") {
+                                    Text(details).font(.body.monospaced()).textSelection(.enabled)
+                                }
+                            } else if message.status == .failed {
                                 VStack(alignment: .leading, spacing: 12) {
                                     Text(message.readableToolFailure ?? "The edit could not be applied.")
                                         .font(.body)
@@ -312,10 +334,10 @@ private struct ToolCallRow: View {
     private var chip: some View {
         ToolStatusChip(
             status: message.status,
-            title: message.content,
-            subtitle: message.status == .streaming ? String(localized: "Running…") : nil
+            title: message.displayToolName,
+            subtitle: message.svgToolSummary ?? (message.status == .streaming ? String(localized: "Running…") : nil)
         )
-        .accessibilityLabel("Tool \(message.content), \(message.status.label)")
+        .accessibilityLabel("Tool \(message.displayToolName), \(message.status.label)")
     }
 }
 
@@ -345,7 +367,10 @@ struct ToolCallGroup: View {
     private var title: String {
         var seen = Set<String>()
         return messages
-            .map { $0.content.replacingOccurrences(of: #"\s+#\d+$"#, with: "", options: .regularExpression) }
+            .map { message in
+                let name = message.content.replacingOccurrences(of: #"\s+#\d+$"#, with: "", options: .regularExpression)
+                return StickerToolLabel.isSVGTool(name) ? StickerToolLabel.text(for: name) : name
+            }
             .filter { seen.insert($0).inserted }
             .joined(separator: ", ")
     }
@@ -353,7 +378,7 @@ struct ToolCallGroup: View {
     private var subtitle: String {
         let failed = messages.filter { $0.status == .failed }.count
         if status == .streaming, let running = messages.last(where: { $0.status == .streaming }) {
-            return String(localized: "\(messages.count) tool calls · Running \(running.content)…")
+            return String(localized: "\(messages.count) tool calls · Running \(running.displayToolName)…")
         }
         if failed > 0 {
             return String(localized: "\(messages.count) tool calls · \(failed) failed")
@@ -799,7 +824,35 @@ struct ComposerMediaChip: View {
     }
 }
 
+nonisolated struct SVGToolProgress: Decodable {
+    var engine: String
+    var message: String
+    var attempt: Int?
+    var maxAttempts: Int?
+    var durationMs: Int?
+    var correction: String?
+}
+
 nonisolated extension ChatMessage {
+    var displayToolName: String { StickerToolLabel.isSVGTool(content) ? StickerToolLabel.text(for: content) : content }
+    var svgToolProgress: SVGToolProgress? {
+        guard let data = toolDetails?.data(using: .utf8),
+              let progress = try? JSONDecoder().decode(SVGToolProgress.self, from: data), progress.engine == "svg" else { return nil }
+        return progress
+    }
+    var svgToolSummary: String? {
+        guard let progress = svgToolProgress else { return nil }
+        var parts: [String] = []
+        if let attempt = progress.attempt, let maximum = progress.maxAttempts {
+                                    parts.append(String(localized: "Attempt \(attempt) of \(maximum)"))
+                                }
+        if let duration = progress.durationMs, duration > 0 {
+                                    parts.append(String(localized: "\(max(1, Int((Double(duration) / 1000).rounded()))) seconds"))
+                                }
+        if status == .streaming { parts.append(String(localized: "Running…")) }
+        if status == .failed { parts.append(progress.message) }
+        return parts.isEmpty ? progress.message : parts.joined(separator: " · ")
+    }
     var toolPreviewAssetID: String? {
         guard status == .complete,
               let data = toolDetails?.data(using: .utf8),

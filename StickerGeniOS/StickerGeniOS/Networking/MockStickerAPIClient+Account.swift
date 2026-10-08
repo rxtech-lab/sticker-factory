@@ -26,6 +26,10 @@ extension MockStickerAPIClient {
     }
 
     func pet() async throws -> Pet? {
+        if adoptedPet == nil, ProcessInfo.processInfo.arguments.contains("--ui-svg-world") {
+            _ = try await setPet(stickerID: "sticker-borrowed", context: nil)
+            _ = try await setPetTheme(themeID: "mock-theme-park")
+        }
         if adoptedPet == nil, !hasSeededFriendPet, ProcessInfo.processInfo.arguments.contains("--ui-pet-friend") {
             hasSeededFriendPet = true
             _ = try await setPet(stickerID: "sticker-borrowed", context: nil)

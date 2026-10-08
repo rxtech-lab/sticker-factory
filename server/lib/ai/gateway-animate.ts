@@ -1,8 +1,8 @@
 // The animation turn: keyframing a document the user has already accepted.
 
 import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
-import { gateway } from "@ai-sdk/gateway";
 import { generateText, stepCountIs, tool } from "ai";
+import { orchestratorModel } from "./text-model";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
@@ -192,7 +192,7 @@ export async function animateSticker(
   const generation = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: orchestratorModel(),
     system: [
       input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,

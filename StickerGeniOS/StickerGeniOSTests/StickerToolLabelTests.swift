@@ -73,4 +73,18 @@ struct StickerToolLabelTests {
         #expect(StickerToolLabel.text(for: "some_new_tool") == "Some new tool")
         #expect(StickerToolLabel.text(for: "polish-edges") == "Polish edges")
     }
+    @Test func svgAttemptsRemainToolCardsWithReadableLabelsAndDetails() throws {
+        let name = "validate_svg Cat [hero] #2"
+        #expect(!StickerToolLabel.isPhase(name))
+        #expect(StickerToolLabel.text(for: name) == "Checking SVG animation · Cat (2)")
+        #expect(StickerToolLabel.text(forStage: "retrying_svg") == "Refining the SVG animation")
+        let message = ChatMessage(id: "svg", role: .system, kind: .status, content: name, imagePlacement: .replace,
+            sequence: 1, status: .failed, createdAt: .now, attachments: [], toolDetails:
+            #"{"engine":"svg","message":"Missing walk pose","attempt":2,"maxAttempts":3,"durationMs":44165,"# +
+            #""correction":"Trying again using the same reference."}"#)
+        #expect(message.svgToolSummary?.contains("Attempt 2 of 3") == true)
+        #expect(message.svgToolSummary?.contains("44 seconds") == true)
+        #expect(message.svgToolSummary?.contains("Missing walk pose") == true)
+        #expect(message.svgToolProgress?.correction == "Trying again using the same reference.")
+    }
 }

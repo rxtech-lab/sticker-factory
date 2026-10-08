@@ -118,6 +118,9 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
     func setPetRoom(roomID: String?) async throws -> PetRoomChangeResponse
     /// One room's drawing, owned or on offer, as portrait image data.
     func petRoomArt(roomID: String) async throws -> Data
+    func petScene(id: String, isTheme: Bool) async throws -> SVGSceneDocument?
+    func animationEngine() async throws -> ControllableEngineID
+    func setAnimationEngine(_ engine: ControllableEngineID) async throws
     /// The places the pet knows and the one it is at. When it is due new ones, its agent starts
     /// looking; `discovering` says so, and a later call carries them.
     func petThemes() async throws -> PetThemes
@@ -160,6 +163,9 @@ nonisolated protocol StickerAPIClientProtocol: Sendable {
 }
 
 extension StickerAPIClientProtocol {
+    func petScene(id: String, isTheme: Bool) async throws -> SVGSceneDocument? { nil }
+    func animationEngine() async throws -> ControllableEngineID { .legacy }
+    func setAnimationEngine(_ engine: ControllableEngineID) async throws { throw StickerAPIError.invalidResponse }
     func creationPresets(refresh: Bool) async throws -> CreationPresetCatalog { throw StickerAPIError.invalidResponse }
     func configurationLimits() async throws -> ConfigurationLimits { throw StickerAPIError.invalidResponse }
     func pet() async throws -> Pet? { nil }

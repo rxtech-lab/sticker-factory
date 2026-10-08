@@ -2,7 +2,7 @@ import { loadPlanBase } from "@/lib/services/plan-base";
 import { loadCreationPresetGuidance, loadCreationPresetReferences } from "@/lib/creation-presets/guidance";
 import { BuildReviewCheckpointSchema, loadBuildCheckpoint, saveBuildCheckpoint, completedBuildSteps, buildAssetsReady, type BuildReviewCheckpoint } from "./build-checkpoints";
 import { generatePlannedVariants } from "./configurable-artwork";
-import { generateSpriteArtwork } from "./sprite-artwork";
+import { controllableEngine } from "./controllable-engine";
 import { configurationReviewSelections, configurationEditReviewSelections, type StickerConfiguration } from "@/lib/contracts/configuration";
 import { resolveStickerConfiguration } from "@/lib/contracts/sticker";
 // Building a confirmed plan into a finished composition, and the layout pass that settles
@@ -548,12 +548,13 @@ export async function executePlanBuildTurn(
   // from the layer's separated still, and a sprite is the most generations any one layer can cost.
   // A sticker that was not asked to move keeps its sprite frames on one ground line too, not just
   // its layer motion: otherwise the drawn frames bob the character up and down in place.
-  const spriteBuilds = await generateSpriteArtwork(job, sticker.id, plan, assetJobId, visualReference, animationSummary, { stayPut: !sticker.motion });
+  const spriteBuilds = await controllableEngine(job.controllableEngine ?? sticker.controllableEngine ?? "legacy").generate({ job, stickerId: sticker.id, plan, assetJobId, reference: visualReference, summary: animationSummary, stayPut: !sticker.motion });
   await generatePlannedVariants(job, sticker.id, plan, assetJobId, visualReference, pinnedBase?.document);
   await appendGenerationEvent(db, job.id, job.ownerId, "progress", {
     stage: "assembling", message: "Assembling your sticker…", clearProgress: true,
   });
   let document = documentFromPlan(plan, assetJobId, videoTimings, spriteBuilds, pinnedBase?.document);
+  document.engine = job.controllableEngine ?? sticker.controllableEngine ?? "legacy";
   // The reference is the picture the user approved, so a part measured in it outranks the position
   // the planner guessed before that picture existed. Parts whose measurement is implausible keep
   // the plan's layout, and the review below still looks at the whole.

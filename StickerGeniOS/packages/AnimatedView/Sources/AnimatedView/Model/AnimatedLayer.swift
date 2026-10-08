@@ -274,6 +274,9 @@ public struct AnimatedShapeLayer: Codable, Hashable, Sendable {
 }
 
 public struct AnimatedSVGLayer: Codable, Hashable, Sendable {
+    public var rig: SVGAnimationRig?
+    public var svgState: SVGControlState?
+    public var posterAssetId: String?
     public var base: AnimatedLayerBase
     public var source: AnimatedSVGSource
     public var renderMode: AnimatedSVGRenderMode
@@ -306,12 +309,15 @@ public struct AnimatedSVGLayer: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, source, renderMode, tint, strokeOverride, contentMode, staggerSeconds
+        case type, source, renderMode, tint, strokeOverride, contentMode, staggerSeconds, rig, svgState, posterAssetId
     }
 
     public init(from decoder: Decoder) throws {
         base = try AnimatedLayerBase(from: decoder)
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        rig = try c.decodeIfPresent(SVGAnimationRig.self, forKey: .rig)
+        svgState = try c.decodeIfPresent(SVGControlState.self, forKey: .svgState)
+        posterAssetId = try c.decodeIfPresent(String.self, forKey: .posterAssetId)
         source = try c.decode(AnimatedSVGSource.self, forKey: .source)
         renderMode = try c.value(.renderMode, default: .vector)
         tint = try c.decodeIfPresent(AnimatedPaint.self, forKey: .tint)
@@ -323,6 +329,9 @@ public struct AnimatedSVGLayer: Codable, Hashable, Sendable {
     public func encode(to encoder: Encoder) throws {
         try base.encode(to: encoder)
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(rig, forKey: .rig)
+        try c.encodeIfPresent(svgState, forKey: .svgState)
+        try c.encodeIfPresent(posterAssetId, forKey: .posterAssetId)
         try c.encode(AnimatedLayerType.svg, forKey: .type)
         try c.encode(source, forKey: .source)
         try c.encode(renderMode, forKey: .renderMode)
@@ -333,7 +342,8 @@ public struct AnimatedSVGLayer: Codable, Hashable, Sendable {
     }
 
     public var isValid: Bool {
-        base.isValid && source.isValid && (0...4).contains(staggerSeconds)
+        base.isValid && source.isValid && (rig?.isValid ?? true) && (0...4).contains(staggerSeconds)
+            && (rig == nil || posterAssetId?.isAnimatedUUID == true)
             && (tint?.isValid ?? true) && (strokeOverride?.isValid ?? true)
     }
 }
@@ -770,7 +780,8 @@ public enum AnimatedLayer: Codable, Identifiable, Hashable, Sendable {
         // Every clip sheet and the expression sheet, whatever is selected: a control can switch to
         // any of them without another download. The poster is for consumers that cannot composite.
         case .sprite(let v): v.clips.flatMap { [$0.assetId, $0.faceMaskAssetId].compactMap { $0 } } + [v.expressions.assetId]
-        case .text, .shape, .svg, .particle, .unsupported: []
+        case .svg(let layer): layer.posterAssetId.map { [$0] } ?? []
+        case .text, .shape, .particle, .unsupported: []
         }
     }
 

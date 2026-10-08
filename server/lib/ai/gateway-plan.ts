@@ -2,8 +2,8 @@
 
 import { createWebTools, WEB_RESEARCH_PROMPT } from "./web-tools";
 import { POSE_COUNTS } from "@/lib/contracts/pose-preset";
-import { gateway } from "@ai-sdk/gateway";
 import { generateText, stepCountIs, tool } from "ai";
+import { orchestratorModel } from "./text-model";
 import { z } from "zod";
 import { compactingPrepareStep } from "@/lib/ai/compaction";
 import { recordTextApiCost, reportAiStepUsage } from "@/lib/ai/cost";
@@ -82,7 +82,7 @@ export async function refineStickerLayout(
   const generation = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: orchestratorModel(),
     system: [
       input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,
@@ -234,7 +234,7 @@ export async function planSticker(
   const generation = await generateText({
     // Feeds the chat screen's live token meter; see `reportAiStepUsage`.
     onLanguageModelCallEnd: reportAiStepUsage,
-    model: gateway(process.env.AI_ORCHESTRATOR_MODEL ?? "openai/gpt-5.6"),
+    model: orchestratorModel(),
     system: [
       input.presetGuidance ?? "",
       WEB_RESEARCH_PROMPT,
@@ -526,6 +526,8 @@ export async function planSticker(
       // The switch in the create screen, not a sentence the user typed — so it is stated as a
       // requirement of the project rather than left for the model to infer from their wording.
       // `create_plan` enforces the same rule and hands back a repair instruction if it is ignored.
+      input.controllableGuidance ?? "",
+      input.controllableEngine === "svg" ? "This character uses the SVG engine. Keep the sprite planning vocabulary for named clips and expressions, but describe vector group motion, not purchased sprite sheets. The approved concept image is traced into vector groups. Include idle and walk behavior; retain the requested pose preset. Explain SVG animation in your summary." : "",
       input.controllable
         ? "This project is controllable: the user asked for characters whose mood and pose they can"
           + " switch from the sticker itself. Plan one sprite layer per character their request calls"

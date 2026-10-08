@@ -15,6 +15,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     /// Both read and written by `MockStickerAPIClient+Account.swift`, which is why neither is private.
     var accountDeletion: AccountDeletionState = .none
     var adoptedPet: Pet?
+    var selectedAnimationEngine: ControllableEngineID = .svg
     /// `--ui-pet-friend` starts with the pet already home, once, so the welcome is all a test drives.
     var hasSeededFriendPet = false
     /// The room shop and the rooms bought from it, as the server would keep them for this account.
@@ -70,6 +71,9 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
                     imagePlacement: .replace, sequence: source.sequence + index + 1,
                     jobId: source.jobId, status: .complete, createdAt: .now, attachments: []))
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--ui-svg-working-progress") {
+            messages = [PreviewFixtures.messages[0]]
         }
         if ProcessInfo.processInfo.arguments.contains("--ui-installed-pack") {
             // The demo pack's member is the mock's one controllable sticker: the pet picker's offer.
@@ -369,22 +373,7 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
                 + (createdChatMessages[stickerID] ?? []), nextBeforeSequence: nil)
         }
 
-        if ProcessInfo.processInfo.arguments.contains("--ui-tool-preview") {
-            let arguments = ProcessInfo.processInfo.arguments
-            let toolName: String
-            if arguments.contains("--ui-compose-preview") {
-                toolName = "compose-part:0 Heart"
-            } else if arguments.contains("--ui-layout-preview") {
-                toolName = "adjust_layout"
-            } else {
-                toolName = "view_sticker"
-            }
-            return .init(data: [ChatMessage(
-                id: "tool-preview", role: .system, kind: .status, content: toolName,
-                imagePlacement: .replace, sequence: 1, status: .complete, createdAt: Date(),
-                attachments: [], toolDetails: "{\"previewAssetId\":\"\(PreviewFixtures.borrowedAssetID)\"}"
-            )], nextBeforeSequence: nil)
-        }
+        if let preview = Self.uiTestChatPreview() { return preview }
         let eligible = beforeSequence.map { sequence in messages.filter { $0.sequence < sequence } } ?? messages
         return .init(data: eligible, nextBeforeSequence: nil)
     }
@@ -836,6 +825,22 @@ actor MockStickerAPIClient: StickerAPIClientProtocol {
     nonisolated func generationEvents(jobID: String, after lastEventID: Int64?) -> AsyncThrowingStream<GenerationEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
+                if ProcessInfo.processInfo.arguments.contains("--ui-svg-working-progress") {
+                    let updates: [GenerationEventData] = [
+                        .init(message: "Refining the SVG animation…", stage: "retrying_svg",
+                            note: "Missing walk pose. Trying again using the same reference.", outputTokens: 610),
+                        .init(toolCallId: "svg-check", toolName: "validate_svg Cat [hero] #2", toolStatus: .failed),
+                        .init(message: "Drawing SVG artwork for Cat…", stage: "authoring_svg", completedUnits: 0, totalUnits: 1,
+                            progressLabel: "SVG characters", note: "Attempt 3 of 3",
+                              toolCallId: "svg-draw", toolName: "create_svg Cat [hero] #3", toolStatus: .streaming)
+                    ]
+                    for (index, data) in updates.enumerated() where Int64(index + 1) > (lastEventID ?? 0) {
+                        continuation.yield(.init(id: Int64(index + 1), jobId: jobID, type: .progress, createdAt: .now, data: data))
+                    }
+                    do { try await Task.sleep(for: .seconds(60)) } catch {}
+                    continuation.finish()
+                    return
+                }
                 if ProcessInfo.processInfo.arguments.contains("--ui-working-progress") {
                     let updates: [GenerationEventData] = [
                         .init(message: "Finishing up", stage: "finalizing",

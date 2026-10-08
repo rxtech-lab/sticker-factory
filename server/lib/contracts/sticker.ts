@@ -1,3 +1,4 @@
+import { traceEvent } from "@/lib/observability/trace";
 import { z } from "zod";
 import { StickerConfigurationSchema, ConfigurationChangesSchema, updateConfiguration, requiresConfigurationV6, requiresConfigurationV7, configurationIssueDetails, configurationIssues, configurationCoverage, configurationKeepingLayers, controlLayerIds, normalizedControlValues, type StickerControlValues, type StickerConfiguration } from "./configuration";
 import { selectSpriteState, spriteDocumentIssues } from "./sprite";
@@ -65,8 +66,9 @@ export * from "./layers";
  * below v5 is served the resolved default with each sprite replaced by its poster still.
  * v6 adds native caption and choice-driven visibility bindings. v7 adds per-option placement and
  * stacking, plus masked sprite faces whose foreground artwork survives expression compositing.
+ * v8 adds safe controllable SVG rigs and per-document engine identity.
  */
-export const CURRENT_DOCUMENT_VERSION = 7;
+export const CURRENT_DOCUMENT_VERSION = 8;
 
 /**
  * How big a stored document may get, serialized.
@@ -86,6 +88,7 @@ export const CANVAS_MAX_DIMENSION = 4096;
 const DocumentBaseSchema = z.object({
   /** Controls and the variants they select. Only legal on an animated document; see the refinement. */
   configuration: StickerConfigurationSchema.optional(),
+  engine: z.enum(["legacy", "svg"]).optional(),
   version: z.literal(CURRENT_DOCUMENT_VERSION),
   canvas: z.object({
     // v1 pinned this to exactly 1024x1024. It is a validated range in v2 so one engine can drive a
@@ -436,6 +439,8 @@ const LegacyStickerDocumentV6Schema = z.discriminatedUnion("kind", [
   AnimatedDocumentV1Schema.extend({ version: z.literal(6) }),
 ]);
 const upcastV6ToV7 = (document: z.infer<typeof LegacyStickerDocumentV6Schema>): unknown => ({ ...document, version: 7 });
+const LegacyStickerDocumentV7Schema = z.discriminatedUnion("kind", [StaticDocumentV1Schema.extend({ version: z.literal(7) }), AnimatedDocumentV1Schema.extend({ version: z.literal(7) })]);
+const upcastV7ToV8 = (document: z.infer<typeof LegacyStickerDocumentV7Schema>): unknown => ({ ...document, version: 8 });
 const upcastV4ToV5 = (document: z.infer<typeof LegacyStickerDocumentV4Schema>): unknown => ({ ...document, version: 5 as const });
 export const MIN_CLIENT_DOCUMENT_VERSION = 2;
 
@@ -466,6 +471,16 @@ export const MIN_CLIENT_DOCUMENT_VERSION = 2;
  */
 export function downcastForClient(document: StickerDocument, clientVersion: number): unknown {
   if (clientVersion >= CURRENT_DOCUMENT_VERSION) return document;
+  if (document.layers.some(layer => layer.type === "svg" && layer.rig)) {
+    traceEvent("controllable:poster-fallback", { engine: "svg", clientVersion });
+    document = resolveStickerConfiguration(document);
+    document.layers = document.layers.map(layer => layer.type === "svg" && layer.rig
+      ? (layer.posterAssetId ? { ...layerBaseOf(layer), type: "image" as const, assetId: layer.posterAssetId, contentMode: layer.contentMode }
+        : { ...layerBaseOf(layer), type: "svg" as const, source: layer.source, renderMode: layer.renderMode, contentMode: layer.contentMode, staggerSeconds: 0 }) : layer);
+  }
+  const { engine: _engine, ...compatibleDocument } = document;
+  void _engine;
+  document = compatibleDocument;
 
   if (clientVersion >= 5) {
     const needsMaskedPoster = document.layers.some((layer) => layer.type === "sprite"
@@ -545,15 +560,16 @@ const CurrentDocumentSchema = z.discriminatedUnion("kind", [
  */
 export const StickerDocumentSchema = z.union([
   CurrentDocumentSchema,
-  LegacyStickerDocumentV6Schema.transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
-  LegacyStickerDocumentV5Schema.transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
-  LegacyStickerDocumentV4Schema.transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
-  LegacyStickerDocumentV3Schema.transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV7Schema.transform(upcastV7ToV8).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV6Schema.transform(upcastV6ToV7).pipe(LegacyStickerDocumentV7Schema).transform(upcastV7ToV8).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV5Schema.transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(LegacyStickerDocumentV7Schema).transform(upcastV7ToV8).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV4Schema.transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(LegacyStickerDocumentV7Schema).transform(upcastV7ToV8).pipe(CurrentDocumentSchema),
+  LegacyStickerDocumentV3Schema.transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(LegacyStickerDocumentV7Schema).transform(upcastV7ToV8).pipe(CurrentDocumentSchema),
   LegacyStickerDocumentV2Schema.transform(upcastV2ToV3)
-    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
+    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(LegacyStickerDocumentV7Schema).transform(upcastV7ToV8).pipe(CurrentDocumentSchema),
   LegacyStickerDocumentV1Schema.transform(upcastV1ToV2)
     .pipe(LegacyStickerDocumentV2Schema).transform(upcastV2ToV3)
-    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(CurrentDocumentSchema),
+    .pipe(LegacyStickerDocumentV3Schema).transform(upcastV3ToV4).pipe(LegacyStickerDocumentV4Schema).transform(upcastV4ToV5).pipe(LegacyStickerDocumentV5Schema).transform(upcastV5ToV6).pipe(LegacyStickerDocumentV6Schema).transform(upcastV6ToV7).pipe(LegacyStickerDocumentV7Schema).transform(upcastV7ToV8).pipe(CurrentDocumentSchema),
 ]).superRefine((document, context) => {
   if (document.configuration) {
     const details = configurationIssueDetails(document.configuration, new Set(document.layers.map((layer) => layer.id)));
@@ -621,6 +637,14 @@ export const StickerDocumentSchema = z.union([
       }
     }
 
+    if (layer.type === "svg" && layer.rig && !layer.posterAssetId) context.addIssue({ code: "custom", message: "A controllable SVG needs a poster for older clients" });
+    if (layer.type === "svg" && layer.rig) {
+      for (const variant of document.configuration?.variants ?? []) for (const patch of variant.layers.filter(p => p.layerId === layer.id)) {
+        for (const [key, value] of [["pose", patch.clip], ["expression", patch.expression]] as const) {
+          if (value && layer.rig.defaults[key] !== value && !layer.rig.groups.some(g => g.when[key]?.includes(value))) context.addIssue({ code: "custom", message: `SVG ${layer.id} has no ${key} binding for ${value}` });
+        }
+      }
+    }
     if (layer.type === "sprite") {
       for (const message of spriteDocumentIssues(layer, document)) context.addIssue({ code: "custom", message });
     }
@@ -809,9 +833,9 @@ export function layerImageAssetIds(layer: StickerLayerV1): string[] {
   // document *needs* is whatever any control can select, and the poster is asked for explicitly.
   case "sprite":
     return [...layer.clips.flatMap((clip) => [clip.assetId, clip.faceMaskAssetId].filter((id): id is string => Boolean(id))), layer.expressions.assetId];
+  case "svg": return layer.posterAssetId ? [layer.posterAssetId] : [];
   case "text":
   case "shape":
-  case "svg":
   case "particle":
     return [];
   }
@@ -1038,8 +1062,12 @@ export function resolveStickerConfiguration<T extends { configuration?: StickerC
         layer.animation = compileLayerAnimation(patch.animations, layer.anchor, { kind: document.kind, durationSeconds: document.durationSeconds });
       }
       if (patch.clip !== undefined || patch.expression !== undefined) {
-        if (layer.type !== "sprite") throw new Error(`Layer ${patch.layerId} is not a sprite layer, so it has no clips or expressions to select`);
-        selectSpriteState(layer, patch);
+        if (layer.type === "svg" && layer.rig) {
+          layer.svgState = { ...layer.svgState, ...(patch.clip ? { pose: patch.clip } : {}), ...(patch.expression ? { expression: patch.expression } : {}) };
+        } else {
+          if (layer.type !== "sprite") throw new Error(`Layer ${patch.layerId} cannot select a pose`);
+          selectSpriteState(layer, patch);
+        }
       }
       document.layers[index] = layer;
     }

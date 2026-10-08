@@ -46,8 +46,17 @@ nonisolated enum StickerToolLabel {
     static func text(for toolName: String) -> String {
         let stem = base(of: toolName)
         let ordinal = self.ordinal(of: toolName)
-        let label = known[stem] ?? fallback(for: stem)
+        let label: String
+        if isSVGTool(toolName), let split = stem.firstIndex(of: " ") {
+            let tool = String(stem[..<split])
+            let part = String(stem[stem.index(after: split)...])
+                .replacingOccurrences(of: #"\s+\[[^\]]+\]$"#, with: "", options: .regularExpression)
+            label = "\(known[tool] ?? fallback(for: tool)) · \(part)"
+        } else { label = known[stem] ?? fallback(for: stem) }
         return ordinal.isEmpty ? label : "\(label) (\(ordinal))"
+    }
+    static func isSVGTool(_ toolName: String) -> Bool {
+        ["create_svg", "validate_svg", "review_svg"].contains(String(toolName.split(separator: " ").first ?? ""))
     }
 
     /// Sentence-cased wording for a `stage` on a progress event.
@@ -71,6 +80,11 @@ nonisolated enum StickerToolLabel {
         "composing": String(localized: "Composing the artwork"),
         "composing_part": String(localized: "Drawing a part"),
         "composing_sprite": String(localized: "Drawing the frames"),
+        "authoring_svg": String(localized: "Drawing SVG artwork"),
+        "validating_svg": String(localized: "Checking SVG animation"),
+        "reviewing_svg": String(localized: "Reviewing SVG artwork"),
+        "retrying_svg": String(localized: "Refining the SVG animation"),
+        "svg_failed": String(localized: "SVG animation needs another attempt"),
         "composing_video": String(localized: "Filming a clip"),
         "assembling": String(localized: "Assembling the layers"),
         "validating_candidate": String(localized: "Checking the result"),
@@ -102,6 +116,9 @@ nonisolated enum StickerToolLabel {
         "build-plan": String(localized: "Building plan"),
         "show-sticker": String(localized: "Showing the sticker"),
         // Tool calls.
+        "create_svg": String(localized: "Drawing SVG artwork"),
+        "validate_svg": String(localized: "Checking SVG animation"),
+        "review_svg": String(localized: "Reviewing SVG artwork"),
         "create_plan": String(localized: "Drafting a plan"),
         "update_plan": String(localized: "Revising the plan"),
         "show_plan": String(localized: "Showing the plan"),

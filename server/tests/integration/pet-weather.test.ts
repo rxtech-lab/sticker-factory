@@ -1,4 +1,6 @@
 import { eq } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+import { SVGSceneSchema } from "@/lib/contracts/controllable";
 import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import { setAiProviderForTests } from "@/lib/ai/gateway";
@@ -169,6 +171,23 @@ describe("pet weather art", () => {
     } finally {
       await close();
     }
+  });
+
+  it("updates SVG scene weather without generating new sky or weather images", async () => {
+    const { db, close } = await setup();
+    try {
+      const prompts: string[] = []; setAiProviderForTests(drawer(prompts));
+      const scene = SVGSceneSchema.parse(JSON.parse(readFileSync(new URL("../../../StickerGeniOS/packages/AnimatedView/Tests/AnimatedViewTests/Fixtures/controllable-scene.json", import.meta.url), "utf8")));
+      const roomId = crypto.randomUUID();
+      await db.insert(petRooms).values({ id: roomId, userId: "owner", title: "SVG room", description: "A responsive room", price: 40,
+        effectsJson: { happiness: 1, hp: 0, energy: 0 }, artKey: crypto.randomUUID(), state: "owned", sceneJson: scene, createdAt: new Date() });
+      await db.update(userPets).set({ roomId }).where(eq(userPets.userId, "owner"));
+      await drawPetWeatherArt(db, "owner");
+      await db.update(userPets).set({ signalsJson: { weather: { kind: "stormy", temperatureC: 8, isDay: false }, stepsToday: null, headlines: [] } }).where(eq(userPets.userId, "owner"));
+      await drawPetWeatherArt(db, "owner");
+      expect(prompts).toEqual([]);
+      expect(await db.select().from(petWeatherArt)).toEqual([]);
+    } finally { await close(); }
   });
 
   it("draws nothing for a pet that has no weather", async () => {

@@ -1,3 +1,4 @@
+import { renderSVG } from "@/lib/controllable/sample";
 import { sampleLayerState, sequenceFrameIndex, spriteFrameIndex, type LayerState } from "@/lib/animation/sample";
 import type { PaintV2, StrokeV2 } from "@/lib/contracts/paint";
 import { effectiveLayerScale, spriteClip, type StickerDocument, type StickerLayerV1 } from "@/lib/contracts/sticker";
@@ -320,6 +321,7 @@ function layerBody(
       + `${strokeAttributes(layer.stroke, box, ids, defs)}/></g>`;
   }
   case "svg": {
+    if (layer.rig) return embedSvg(renderSVG(layer.rig, layer.svgState, time), box);
     if (layer.source.kind !== "inline") {
       const asset = assets.get(layer.source.assetId);
       if (!asset) return "";

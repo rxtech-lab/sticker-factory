@@ -149,6 +149,7 @@ export const CreateStickerRequestSchema = z.object({
   referenceAssetIds: z.array(z.string().uuid()).max(8).default([]),
   quick: QuickGenerationSchema,
   controllable: ControllableGenerationSchema,
+  controllableEngine: z.enum(["legacy", "svg"]).optional(),
   posePreset: PosePresetSchema.optional(),
   /**
    * Whether the character may travel around the canvas, rather than resting in place.

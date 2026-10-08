@@ -2,6 +2,21 @@ import AnimatedView
 import Foundation
 
 extension StickerAPIClient {
+    func animationEngine() async throws -> ControllableEngineID {
+        let response: AnimationTestingSettings = try await send(path: "api/v1/account/animation-settings")
+        return response.engine
+    }
+    func setAnimationEngine(_ engine: ControllableEngineID) async throws {
+        let _: AnimationTestingSettings = try await send(path: "api/v1/account/animation-settings", method: "PATCH",
+            body: AnimationTestingSettings(engine: engine))
+    }
+    func petScene(id: String, isTheme: Bool) async throws -> SVGSceneDocument? {
+        let path = isTheme ? "api/v1/pet/themes/scene" : "api/v1/pet/rooms/scene"
+        let response: PetSceneResponse = try await send(path: path, query: [URLQueryItem(name: "id", value: id)])
+        guard response.scene?.isValid != false else { throw StickerAPIError.invalidResponse }
+        return response.scene
+    }
+
     func pet() async throws -> Pet? {
         let response: PetResponse = try await send(path: "api/v1/pet")
         return response.pet
