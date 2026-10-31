@@ -96,7 +96,7 @@ export function ownerMoment(context: PetStoredContext | null, now = new Date()):
   }
   const location = context?.latitude !== undefined && context.longitude !== undefined
     ? { latitude: Math.round(context.latitude * 100) / 100, longitude: Math.round(context.longitude * 100) / 100 } : null;
-  return { localTime, location };
+  return { localTime, location, language: context?.language };
 }
 
 /** A sticker's picture, downscaled for a model to look at. Optional: the title still reads. */

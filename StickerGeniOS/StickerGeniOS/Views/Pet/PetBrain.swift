@@ -247,7 +247,7 @@ final class PetBrain {
 
     static func hearingPrompt(_ words: String) -> String {
         "Your owner just said to you, out loud: \"\(words)\". Answer them in your own voice, " +
-            "in the language they spoke. Take what they said to heart, but stay in character."
+            "in their preferred language. Take what they said to heart, but stay in character."
     }
 
     /// What the pet says back to its owner's words without the on-device model.
@@ -380,12 +380,17 @@ final class PetBrain {
 
     // MARK: Prompts
 
-    static func instructions(for pet: Pet, memories: [PetMemory] = []) -> String {
+    static func instructions(
+        for pet: Pet, memories: [PetMemory] = [],
+        language: String = Locale.preferredLanguages.first ?? "en"
+    ) -> String {
         let mood = PetMood(stats: pet.stats, maxHp: pet.maxHp)
         var lines = [
             "You are \(pet.sticker.title), a small virtual pet living in a sticker app.",
             "You answer your owner with one short line in your own voice: at most 12 words, no emoji, no quotes.",
             "Stay in character. Never mention being an AI, a model or an app.",
+            "Your owner's preferred language is \(language). Always reply in that language.",
+            "Never change reply language because of location, time zone, local news, your name, shared content or a previous line.",
             "Right now you feel \(mood.promptDescription).",
             "Happiness \(pet.stats.happiness)/100, energy \(pet.stats.energy)/100, HP \(pet.stats.hp)/\(pet.maxHp)."
         ]
@@ -396,7 +401,7 @@ final class PetBrain {
         }
         if let caption = pet.status?.caption(at: .now), !caption.isEmpty {
             lines.append("The last thing you said was: \(caption)")
-            lines.append("Reply in the same language as that line.")
+            lines.append("That line is context only; keep using your owner's preferred language.")
         }
         if !memories.isEmpty {
             lines.append("Things you remember about your owner and your life together; bring one up when it fits, never invent more:")

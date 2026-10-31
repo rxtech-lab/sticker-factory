@@ -300,7 +300,7 @@ export async function ensurePetIdentity(
     const birth = row.signalsJson ?? EMPTY_SIGNALS;
     try {
       const pet = await describe();
-      const persona = await getAiProvider().generatePetPersona({ petTitle: pet.title, controls: pet.controls, image: pet.image, birth });
+      const persona = await getAiProvider().generatePetPersona({ petTitle: pet.title, controls: pet.controls, image: pet.image, birth, language: row.contextJson?.language });
       identity = buildIdentity(persona, birth, now, petRandom);
       source = "model";
     } catch (error) {

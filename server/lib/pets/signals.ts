@@ -43,6 +43,7 @@ export function mergeContext(stored: PetStoredContext | null, incoming: PetConte
   const timeZone = incoming.timeZone ?? stored?.timeZone;
   const merged: PetStoredContext = {
     ...stored,
+    ...(incoming.language ? { language: incoming.language } : {}),
     ...(incoming.latitude !== undefined && incoming.longitude !== undefined
       ? { latitude: round(incoming.latitude), longitude: round(incoming.longitude) } : {}),
     ...(incoming.stepsToday !== undefined ? { stepsToday: incoming.stepsToday, stepsDate: localDate(now, timeZone) } : {}),
@@ -199,6 +200,7 @@ export async function resolveSignals(input: {
 async function searchHeadlines(userId: string, context: PetStoredContext | null, identity: PetIdentityV1 | null, now: Date): Promise<string[] | null> {
   try {
     const headlines = await getAiProvider().searchPetHeadlines({
+      language: context?.language,
       timeZone: context?.timeZone ?? null,
       latitude: context?.latitude ?? null,
       longitude: context?.longitude ?? null,

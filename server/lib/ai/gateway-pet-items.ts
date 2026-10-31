@@ -12,6 +12,7 @@ import {
 import type { AiPetItem, AiPetItemsContext } from "./gateway-contracts";
 import { userTurn } from "./gateway-models";
 import { petAgentModel } from "./pet-models";
+import { petLanguageGuidance } from "./pet-language";
 import { describeIdentity, describeMoment, describeSignals, PetEffectsInputSchema } from "./gateway-pet";
 
 export async function generatePetItems(input: AiPetItemsContext): Promise<AiPetItem[]> {
@@ -31,6 +32,7 @@ export async function generatePetItems(input: AiPetItemsContext): Promise<AiPetI
     onLanguageModelCallEnd: reportAiStepUsage,
     model: petAgentModel(),
     system: [
+      petLanguageGuidance(input),
       `Restock this pet's item shop with between ${input.minCount} and ${input.maxCount} distinct physical objects for it to play with or use;`,
       "pick how many yourself, as a shopkeeper would on a given day.",
       input.keeping.length ? "Some items are still on the shelf; the new ones must be different from them." : "",

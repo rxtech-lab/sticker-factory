@@ -678,6 +678,8 @@ export interface AiTitleContext {
  */
 /** When and where the owner is right now, so the pet can tell a sleepy midnight from a sunny noon. */
 export interface AiOwnerMoment {
+  /** Owner's preferred BCP-47 reply language; never inferred from geography. */
+  language?: string;
   /** The owner's local date and time, e.g. "Sunday 5 October, 21:40". */
   localTime?: string | null;
   /** Roughly where the owner is, as rounded coordinates the model can place. */
@@ -780,7 +782,7 @@ export interface AiPetPersona {
   favoriteWeather: (typeof PET_WEATHER_KINDS)[number];
 }
 
-export interface AiPetPersonaContext {
+export interface AiPetPersonaContext extends AiOwnerMoment {
   petTitle: string;
   controls: StickerControl[];
   image: AiReferenceImage | null;
@@ -790,6 +792,7 @@ export interface AiPetPersonaContext {
 
 /** Where to look for news: the owner's rough place and day, and what the pet cares about. */
 export interface AiPetHeadlinesContext {
+  language?: string;
   timeZone: string | null;
   latitude: number | null;
   longitude: number | null;

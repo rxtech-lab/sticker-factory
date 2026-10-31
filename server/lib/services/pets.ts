@@ -205,7 +205,7 @@ export async function setPet(db: Database, userId: string, input: SetPetRequest)
   const describe = describePet(db, playback.sticker, playback.revision);
   const [actions, persona] = await Promise.all([
     generateActions(db, playback.sticker, playback.revision, ownerMoment(context)),
-    describe().then((pet) => getAiProvider().generatePetPersona({ petTitle: pet.title, controls: pet.controls, image: pet.image, birth: signals }))
+    describe().then((pet) => getAiProvider().generatePetPersona({ petTitle: pet.title, controls: pet.controls, image: pet.image, birth: signals, ...ownerMoment(context) }))
       .catch((error) => {
         petLog("identity:fallback", { userId, stickerId: input.stickerId, error: describeError(error) });
         return null;

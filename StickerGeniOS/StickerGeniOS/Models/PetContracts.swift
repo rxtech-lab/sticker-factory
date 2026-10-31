@@ -712,6 +712,7 @@ nonisolated struct PetEventsResponse: Codable, Equatable, Sendable {
 /// "today" is in. Every field is optional and left out of the JSON when nil, so a permission the
 /// user never granted is simply unknown rather than zero. Latitude and longitude travel together.
 nonisolated struct PetContextPayload: Codable, Equatable, Sendable {
+    var language: String?
     var latitude: Double?
     var longitude: Double?
     var stepsToday: Int?
@@ -721,7 +722,7 @@ nonisolated struct PetContextPayload: Codable, Equatable, Sendable {
     var trackLocation: Bool?
 
     var hasLocation: Bool { latitude != nil && longitude != nil }
-    var isEmpty: Bool { !hasLocation && stepsToday == nil && timeZone == nil && trackLocation == nil }
+    var isEmpty: Bool { language == nil && !hasLocation && stepsToday == nil && timeZone == nil && trackLocation == nil }
 }
 
 /// Whether the server kept the context — false when there is no pet to keep it for — and what the

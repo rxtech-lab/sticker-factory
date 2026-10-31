@@ -295,3 +295,8 @@ Verify browser events in GA4 Realtime after deployment. Server events may appear
 later; successful Measurement Protocol HTTP responses do not guarantee event validation. Use Google's
 [validation endpoint](https://developers.google.com/analytics/devguides/collection/protocol/ga4/validating-events)
 with a test property for payload diagnostics. No live GA delivery is exercised by the unit tests.
+
+Pet context (`PetContextV1`, including `PUT /api/v1/pet/context`) accepts an optional
+`language` BCP-47 tag such as `zh-Hant-HK`. Clients send the owner's preferred language
+independently of coordinates and time zone. Omitted language preserves the stored preference,
+including after travel or location opt-out; background replies use that preference too.

@@ -844,6 +844,8 @@ export type PetEvolution = {
   error?: string;
 };
 export type PetStoredContext = {
+  /** Preferred reply language, retained across travel and location opt-out. */
+  language?: string;
   latitude?: number;
   longitude?: number;
   stepsToday?: number;
