@@ -126,6 +126,17 @@ final class PetContractsTests: XCTestCase {
         XCTAssertEqual(page.events[1].signals, PetSignals())
     }
 
+    func testPetReplyLanguageOverridesPreviousCaption() {
+        let pet = Pet(
+            sticker: PreviewFixtures.borrowedSticker, selectedAt: .now,
+            status: PetStatus(values: [:], caption: "こんにちは", updatedAt: .now))
+        let instructions = PetBrain.instructions(for: pet, language: "zh-Hant-HK")
+        XCTAssertTrue(instructions.contains("こんにちは"))
+        XCTAssertTrue(instructions.contains("preferred language is zh-Hant-HK"))
+        XCTAssertTrue(instructions.contains("Never change reply language because of location"))
+        XCTAssertFalse(instructions.contains("Reply in the same language as that line"))
+    }
+
     func testContextPayloadLeavesOutWhatWasNotCollected() throws {
         let payload = PetContextPayload(stepsToday: 120, timeZone: "Europe/Paris")
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder.api.encode(payload)) as? [String: Any])
@@ -143,13 +154,15 @@ final class PetContractsTests: XCTestCase {
         XCTAssertNil(cache.read())
 
         let capturedAt = Date(timeIntervalSince1970: 1_790_000_000)
-        let payload = PetContextPayload(latitude: 48.86, longitude: 2.35, stepsToday: 4321, timeZone: "Europe/Paris")
+        let payload = PetContextPayload(
+            language: "zh-Hant-HK", latitude: 48.86, longitude: 2.35, stepsToday: 4321, timeZone: "Europe/Paris")
         cache.write(payload, previous: nil, capturedAt: capturedAt)
         XCTAssertEqual(cache.read(), PetContextCache.Snapshot(payload: payload, capturedAt: capturedAt))
 
         // The exact contract the Messages extension decodes.
         let raw = try XCTUnwrap(UserDefaults(suiteName: suite)?.data(forKey: "StickerFactoryPetContext"))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: raw) as? [String: Any])
+        XCTAssertEqual(object["language"] as? String, "zh-Hant-HK")
         XCTAssertEqual(object["latitude"] as? Double, 48.86)
         XCTAssertEqual(object["longitude"] as? Double, 2.35)
         XCTAssertEqual(object["stepsToday"] as? Int, 4321)

@@ -12,6 +12,7 @@ import Foundation
 /// not at all, and nil keys omitted rather than sent as null (the server's schema is `.strict()`
 /// and `.optional()`, which rejects an explicit null).
 struct PetContextSnapshot: Codable, Equatable, Sendable {
+    var language: String?
     var latitude: Double?
     var longitude: Double?
     var stepsToday: Int?
@@ -26,7 +27,7 @@ struct PetContextSnapshot: Codable, Equatable, Sendable {
     static let maximumAge: TimeInterval = 24 * 60 * 60
 
     var isEmpty: Bool {
-        latitude == nil && longitude == nil && stepsToday == nil && timeZone == nil
+        language == nil && latitude == nil && longitude == nil && stepsToday == nil && timeZone == nil
     }
 
     /// What the app wrote, stamped with when it captured it.
@@ -58,8 +59,11 @@ struct PetContextSnapshot: Codable, Equatable, Sendable {
     ///   calendar day in the snapshot's time zone (or this device's when it named none).
     /// - Latitude and longitude survive only as a pair, matching the server's refinement.
     /// - `timeZone` falls back to `TimeZone.current` so it is always present.
-    static func resolve(data: Data?, now: Date, currentTimeZone: TimeZone = .current) -> PetContextSnapshot {
-        let fallback = PetContextSnapshot(timeZone: currentTimeZone.identifier)
+    static func resolve(
+        data: Data?, now: Date, currentTimeZone: TimeZone = .current,
+        language: String? = Locale.preferredLanguages.first
+    ) -> PetContextSnapshot {
+        let fallback = PetContextSnapshot(language: language, timeZone: currentTimeZone.identifier)
         guard let data,
               let stored = try? JSONDecoder().decode(Stored.self, from: data),
               let capturedAt = parseDate(stored.capturedAt)
@@ -76,7 +80,7 @@ struct PetContextSnapshot: Codable, Equatable, Sendable {
         calendar.timeZone = zone
         let sameDay = calendar.isDate(capturedAt, inSameDayAs: now)
 
-        var snapshot = PetContextSnapshot(timeZone: zoneIdentifier ?? currentTimeZone.identifier)
+        var snapshot = PetContextSnapshot(language: language, timeZone: zoneIdentifier ?? currentTimeZone.identifier)
         if let latitude = stored.latitude, let longitude = stored.longitude,
            (-90...90).contains(latitude), (-180...180).contains(longitude) {
             snapshot.latitude = latitude

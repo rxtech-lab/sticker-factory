@@ -799,6 +799,8 @@ export const PetIdentityV1Schema = z.object({
  * steps today, and which time zone "today" is in. All optional; a field left out stays unknown.
  */
 export const PetContextV1Schema = z.object({
+  /** Device preferred BCP-47 language; independent of location and time zone. */
+  language: z.string().trim().min(2).max(64).regex(/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   stepsToday: z.number().int().min(0).max(200_000).optional(),
@@ -810,9 +812,7 @@ export const PetContextV1Schema = z.object({
   trackLocation: z.boolean().optional(),
 }).strict().refine((value) => (value.latitude === undefined) === (value.longitude === undefined), {
   message: "latitude and longitude come together",
-}).refine((value) => value.trackLocation !== false || value.latitude === undefined, {
-  message: "no location while tracking is off",
-});
+}).refine((value) => value.trackLocation !== false || value.latitude === undefined, { message: "no location while tracking is off" });
 export type PetContextV1 = z.infer<typeof PetContextV1Schema>;
 
 /**

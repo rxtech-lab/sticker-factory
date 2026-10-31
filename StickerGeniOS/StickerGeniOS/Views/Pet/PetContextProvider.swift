@@ -266,7 +266,7 @@ final class PetContextProvider {
     }
 
     private func gather(locationTimeout: Duration) async -> PetContextPayload {
-        var payload = PetContextPayload(timeZone: TimeZone.current.identifier)
+        var payload = PetContextPayload(language: Locale.preferredLanguages.first, timeZone: TimeZone.current.identifier)
         // Tracking off: nothing of where the owner is goes anywhere, and the server forgets it.
         if !isLocationTrackingEnabled { payload.trackLocation = false }
         async let steps = stepsToday()
@@ -441,6 +441,7 @@ nonisolated struct PetContextCache: Sendable {
     /// The stored shape. `capturedAt` stays a string so neither side depends on a decoder's date
     /// strategy to agree.
     struct Entry: Codable, Equatable, Sendable {
+        var language: String?
         var latitude: Double?
         var longitude: Double?
         var stepsToday: Int?
@@ -463,6 +464,7 @@ nonisolated struct PetContextCache: Sendable {
 
     static func encode(_ payload: PetContextPayload, capturedAt: Date) throws -> Data {
         let entry = Entry(
+            language: payload.language,
             latitude: payload.latitude,
             longitude: payload.longitude,
             stepsToday: payload.stepsToday,
@@ -477,6 +479,7 @@ nonisolated struct PetContextCache: Sendable {
               let capturedAt = ISO8601DateFormatter().date(from: entry.capturedAt) else { return nil }
         return Snapshot(
             payload: PetContextPayload(
+                language: entry.language,
                 latitude: entry.latitude,
                 longitude: entry.longitude,
                 stepsToday: entry.stepsToday,

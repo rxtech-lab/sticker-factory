@@ -24,8 +24,23 @@ struct PetContextSnapshotTests {
             "latitude": 35.68, "longitude": 139.69, "stepsToday": 4210,
             "timeZone": "Asia/Tokyo", "capturedAt": "2026-10-04T01:00:00Z"
         ])
-        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: newYork)
+        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: newYork, language: nil)
         #expect(snapshot == PetContextSnapshot(latitude: 35.68, longitude: 139.69, stepsToday: 4210, timeZone: "Asia/Tokyo"))
+    }
+
+    @Test("Reply language follows the owner across locations, even without a fresh snapshot")
+    func languageAcrossLocations() throws {
+        let data = try stored([
+            "latitude": 35.68, "longitude": 139.69, "language": "ja",
+            "timeZone": "Asia/Tokyo", "capturedAt": "2026-10-04T01:00:00Z"
+        ])
+        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: newYork, language: "zh-Hant-HK")
+        #expect(snapshot.language == "zh-Hant-HK")
+        #expect(snapshot.timeZone == "Asia/Tokyo")
+        let fallback = PetContextSnapshot.resolve(data: nil, now: now, currentTimeZone: newYork, language: "zh-Hant-HK")
+        #expect(fallback.language == "zh-Hant-HK")
+        let object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(fallback)) as? [String: Any])
+        #expect(object["language"] as? String == "zh-Hant-HK")
     }
 
     @Test("Fractional-second timestamps are accepted")
@@ -40,7 +55,7 @@ struct PetContextSnapshotTests {
             "latitude": 35.68, "longitude": 139.69, "stepsToday": 4210,
             "timeZone": "Asia/Tokyo", "capturedAt": "2026-10-03T02:59:00Z"
         ])
-        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: newYork)
+        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: newYork, language: nil)
         #expect(snapshot == PetContextSnapshot(timeZone: "America/New_York"))
     }
 
@@ -51,7 +66,7 @@ struct PetContextSnapshotTests {
             "latitude": 35.68, "longitude": 139.69, "stepsToday": 9000,
             "timeZone": "Asia/Tokyo", "capturedAt": "2026-10-03T14:30:00Z"
         ])
-        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: newYork)
+        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: newYork, language: nil)
         #expect(snapshot.stepsToday == nil)
         #expect(snapshot.latitude == 35.68)
         #expect(snapshot.timeZone == "Asia/Tokyo")
@@ -65,14 +80,14 @@ struct PetContextSnapshotTests {
         let readAt = date("2026-10-04T05:00:00Z")
         let inNewYork = try stored(["stepsToday": 50, "timeZone": "America/New_York", "capturedAt": captured])
         let inTokyo = try stored(["stepsToday": 50, "timeZone": "Asia/Tokyo", "capturedAt": captured])
-        #expect(PetContextSnapshot.resolve(data: inNewYork, now: readAt, currentTimeZone: tokyo).stepsToday == nil)
-        #expect(PetContextSnapshot.resolve(data: inTokyo, now: readAt, currentTimeZone: newYork).stepsToday == 50)
+        #expect(PetContextSnapshot.resolve(data: inNewYork, now: readAt, currentTimeZone: tokyo, language: nil).stepsToday == nil)
+        #expect(PetContextSnapshot.resolve(data: inTokyo, now: readAt, currentTimeZone: newYork, language: nil).stepsToday == 50)
     }
 
     @Test("Without a stored time zone, the device's is used for the day and supplied")
     func missingTimeZone() throws {
         let data = try stored(["stepsToday": 300, "capturedAt": "2026-10-04T01:00:00Z"])
-        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: tokyo)
+        let snapshot = PetContextSnapshot.resolve(data: data, now: now, currentTimeZone: tokyo, language: nil)
         #expect(snapshot == PetContextSnapshot(stepsToday: 300, timeZone: "Asia/Tokyo"))
     }
 
@@ -87,12 +102,12 @@ struct PetContextSnapshotTests {
     @Test("Missing, unreadable or future-dated snapshots fall back to the time zone alone")
     func unusable() throws {
         let fallback = PetContextSnapshot(timeZone: "Asia/Tokyo")
-        #expect(PetContextSnapshot.resolve(data: nil, now: now, currentTimeZone: tokyo) == fallback)
-        #expect(PetContextSnapshot.resolve(data: Data("nope".utf8), now: now, currentTimeZone: tokyo) == fallback)
+        #expect(PetContextSnapshot.resolve(data: nil, now: now, currentTimeZone: tokyo, language: nil) == fallback)
+        #expect(PetContextSnapshot.resolve(data: Data("nope".utf8), now: now, currentTimeZone: tokyo, language: nil) == fallback)
         let noDate = try stored(["stepsToday": 1])
-        #expect(PetContextSnapshot.resolve(data: noDate, now: now, currentTimeZone: tokyo) == fallback)
+        #expect(PetContextSnapshot.resolve(data: noDate, now: now, currentTimeZone: tokyo, language: nil) == fallback)
         let future = try stored(["stepsToday": 1, "capturedAt": "2026-10-04T05:00:00Z"])
-        #expect(PetContextSnapshot.resolve(data: future, now: now, currentTimeZone: tokyo) == fallback)
+        #expect(PetContextSnapshot.resolve(data: future, now: now, currentTimeZone: tokyo, language: nil) == fallback)
     }
 
     @Test("Encoding omits absent fields rather than sending null")

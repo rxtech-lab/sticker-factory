@@ -7,7 +7,7 @@ import { StickerConfigurationSchema } from "@/lib/contracts/configuration";
 import { setPetRandomForTests } from "@/lib/pets/log";
 import { settlePetMemoriesForTests } from "@/lib/services/pet-memory";
 import { posePetForTalk } from "@/lib/services/pet-talk";
-import { setPet } from "@/lib/services/pets";
+import { setPet, updatePetContext } from "@/lib/services/pets";
 import { MemoryObjectStore, setObjectStoreForTests } from "@/lib/storage/r2";
 import { createTestDatabase } from "@/tests/helpers/database";
 import { seedPublishedSticker, seedUser } from "@/tests/helpers/packs";
@@ -42,11 +42,12 @@ describe("pet pose for talk", () => {
         variants: [],
       });
       const loaf = await seedPublishedSticker(db, "owner", { title: "Loaf", kind: "animated", controllable: true, configuration });
-      const adopted = await setPet(db, "owner", { stickerId: loaf.stickerId });
+      const adopted = await setPet(db, "owner", { stickerId: loaf.stickerId, context: { language: "zh-Hant-HK", timeZone: "Asia/Hong_Kong" } });
+      await updatePetContext(db, "owner", { latitude: 35.68, longitude: 139.69, timeZone: "Asia/Tokyo" });
       await settlePetMemoriesForTests();
 
       const { pet } = await posePetForTalk(db, "owner", { words: "You make me so happy", reply: "Yay!" }, async () => {});
-      expect(ai.asked[0]).toMatchObject({ words: "You make me so happy", reply: "Yay!", petTitle: "Loaf" });
+      expect(ai.asked[0]).toMatchObject({ words: "You make me so happy", reply: "Yay!", petTitle: "Loaf", language: "zh-Hant-HK", location: { latitude: 35.68, longitude: 139.69 } });
       expect(pet!.status!.values).toMatchObject({ mood: "happy" });
       // A pet with no line yet takes its answer as one.
       expect(adopted.pet!.status).toBeNull();
